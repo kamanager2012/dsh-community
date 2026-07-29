@@ -28,7 +28,7 @@
 import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ToolCall, Verdict } from "../../types.js";
+import type { ToolCall, Verdict, ExecutionIdentity } from "../../types.js";
 import { GovernanceEngine } from "../../engine.js";
 import { ScopeValidator } from "../../scope.js";
 import { loadPolicy, mergeWithDefault } from "../../policy.js";
@@ -44,12 +44,32 @@ interface PreToolUseEvent {
 export function normalize(evt: PreToolUseEvent): ToolCall {
   const tool = evt.tool_name ?? "";
   const input = evt.tool_input ?? {};
-  const call: ToolCall = { tool, raw: evt };
+  const call: ToolCall = { tool, raw: evt, identity: { agentId: "claude-code" } };
   if (typeof input.command === "string") call.command = input.command;
   // Write/Edit/MultiEdit/NotebookEdit all carry the target as file_path.
   if (typeof input.file_path === "string") call.file = input.file_path;
   else if (typeof input.notebook_path === "string") call.file = input.notebook_path;
   return call;
+}
+
+/** Overlay execution identity from the environment onto a base identity. Lets a
+ *  runtime inject run/attempt/agent context (AIGOV_RUN_ID, AIGOV_AGENT_ID, ...)
+ *  without changing the hook; unset vars leave the base untouched, and agentId
+ *  falls back to the standalone default. */
+export function resolveIdentity(base?: ExecutionIdentity): ExecutionIdentity {
+  const env = process.env;
+  const identity: ExecutionIdentity = {
+    agentId: env.AIGOV_AGENT_ID ?? base?.agentId ?? "claude-code",
+  };
+  const runId = env.AIGOV_RUN_ID ?? base?.runId;
+  const attemptId = env.AIGOV_ATTEMPT_ID ?? base?.attemptId;
+  const parentRunId = env.AIGOV_PARENT_RUN_ID ?? base?.parentRunId;
+  const lineageId = env.AIGOV_LINEAGE_ID ?? base?.lineageId;
+  if (runId !== undefined) identity.runId = runId;
+  if (attemptId !== undefined) identity.attemptId = attemptId;
+  if (parentRunId !== undefined) identity.parentRunId = parentRunId;
+  if (lineageId !== undefined) identity.lineageId = lineageId;
+  return identity;
 }
 
 /** Map an engine Verdict to the Claude Code PreToolUse hook JSON output. */
@@ -140,7 +160,9 @@ async function main(): Promise<void> {
     process.exit(0);
   }
   const engine = await buildEngine();
-  const verdict = await engine.evaluate(normalize(evt));
+  const call = normalize(evt);
+  call.identity = resolveIdentity(call.identity);
+  const verdict = await engine.evaluate(call);
   process.stdout.write(JSON.stringify(toHookOutput(verdict)));
   process.exit(0);
 }

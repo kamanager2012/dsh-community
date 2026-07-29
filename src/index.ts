@@ -15,6 +15,7 @@ export type {
   PlanStep,
   ApprovalToken,
   AuditEvent,
+  ExecutionIdentity,
 } from "./types.js";
 
 export { GovernanceEngine, type EngineConfig } from "./engine.js";

@@ -11,7 +11,7 @@
 import { appendFile, readFile, mkdir, copyFile, rm, stat } from "node:fs/promises";
 import { dirname } from "node:path";
 import { createHash } from "node:crypto";
-import type { AuditEvent } from "./types.js";
+import type { AuditEvent, ExecutionIdentity } from "./types.js";
 
 export interface ChainedRecord {
   seq: number;
@@ -263,7 +263,7 @@ export class AuditLog {
   async record(
     mode: AuditEvent["mode"],
     action: string,
-    opts: { planId?: string; reason?: string } = {},
+    opts: { planId?: string; reason?: string; identity?: ExecutionIdentity } = {},
   ): Promise<ChainedRecord> {
     const event: AuditEvent = {
       mode,
@@ -272,6 +272,7 @@ export class AuditLog {
       timestamp: this.now(),
       ...(opts.planId !== undefined ? { planId: opts.planId } : {}),
       ...(opts.reason !== undefined ? { reason: opts.reason } : {}),
+      ...(opts.identity !== undefined ? { identity: opts.identity } : {}),
     };
     return this.sink.append(event);
   }

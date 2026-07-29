@@ -3,6 +3,9 @@
 // Lifted from AIOS 9.0 kernel/schema/index.ts (the kernel<->governor contract),
 // decoupled here so the governance engine has zero dependency on any agent runtime.
 
+import type { ExecutionIdentity } from "./types/identity.js";
+export type { ExecutionIdentity } from "./types/identity.js";
+
 // ── Governance decision surface (the agent-agnostic contract) ───────────────
 
 /** A normalized tool invocation. Adapters (Claude Code hook, MCP gateway, ...)
@@ -16,6 +19,10 @@ export interface ToolCall {
   file?: string;
   /** Original adapter payload, kept verbatim for the audit trail. */
   raw?: unknown;
+  /** Execution provenance (who/which run/attempt). Optional: standalone
+   *  adapters may omit it; recorded into the audit chain when present. Does not
+   *  influence the verdict in v0.1. */
+  identity?: ExecutionIdentity;
 }
 
 export type Decision = "allow" | "deny" | "ask";
@@ -79,5 +86,8 @@ export interface AuditEvent {
   actor: string;
   action: string;
   reason?: string;
+  /** Execution provenance snapshot for this decision. Part of the hashed
+   *  payload, so tampering with it breaks the chain. */
+  identity?: ExecutionIdentity;
   timestamp: string;
 }

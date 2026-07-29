@@ -80,6 +80,7 @@ export class GovernanceEngine {
     try {
       await this.audit.record("INTERCEPT", `${call.tool} -> ${verdict.decision}`, {
         reason: verdict.reason,
+        ...(call.identity !== undefined ? { identity: call.identity } : {}),
       });
     } catch (err) {
       return {
