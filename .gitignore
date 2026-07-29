@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.log
+*.corrupt
+.aigov/
+
+# Re-include essential config files (repo-root .gitignore excludes *.json)
+!package.json
+!tsconfig.json
+!policy.json
