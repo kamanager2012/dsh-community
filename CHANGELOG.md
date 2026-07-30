@@ -4,6 +4,22 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Execution identity model (v0.1)** — an optional `ExecutionIdentity`
+  provenance record (`agentId` plus optional `runId` / `attemptId` /
+  `parentRunId` / `lineageId` / `executionEpoch`) attached to `ToolCall` and
+  snapshotted into the audit chain. Every field except `agentId` is optional, so
+  both standalone (no-runtime) and runtime modes work with zero breakage. The
+  snapshot enters the existing SHA-256 hash chain via `hashRecord` with no change
+  to the hashing logic, so tampering still breaks `verifyChain`. The Claude Code
+  adapter defaults `agentId` to `"claude-code"` and overlays run/attempt context
+  from `AIGOV_*` env vars via `resolveIdentity()`. Deliberately deferred to later
+  phases: identity does **not** influence the verdict and does **not** bind
+  approval tokens in v0.1.
+
 ## [1.0.0] - 2026-07-29
 
 First release: a deterministic, agent-agnostic policy & accountability layer with
