@@ -2,6 +2,10 @@
 
 **A deterministic, agent-agnostic policy & accountability layer for AI coding agents.**
 
+> **Part of the [Agent Governance Stack](https://github.com/kamanager2012/agent-constraint-system)** — the policy-engine layer between
+> [ACS](https://github.com/kamanager2012/agent-constraint-system) (command-level execution gate) and
+> [aios-core](https://github.com/kamanager2012/aios-core) (plan-level execution kernel).
+
 `governor-core` intercepts an AI agent's tool calls *before* they run and returns
 an **allow / deny / ask** verdict, recording every decision to a tamper-evident,
 hash-chained audit log. A denied action does not happen, and every action is
