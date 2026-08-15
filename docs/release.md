@@ -2,8 +2,8 @@
 
 Do these in order. Stop when the next item needs another machine or the upstream TUI repo.
 
-1. **GitHub preview repo** — `main` + Actions CI. This repo is `0.1.0-preview`, not an official client.
-2. **Linux unpacked / AppImage** — `pnpm desktop:package` (default `dir`). Optional: `pnpm desktop:package -- --appimage`.
+1. **GitHub preview repo** — done: https://github.com/kamanager2012/dsh-community (`main` + Actions).
+2. **Linux AppImage** — done: [v0.1.0-preview](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.0-preview). Rebuild: `pnpm desktop:package -- --appimage`.
 3. **Windows / macOS artifacts** — `pnpm desktop:package -- --win` or `--mac` on those OSes. No signing in this preview.
 4. **Do not npm-publish** workspace packages. They stay `private`.
 5. **Do not replace dsh-TUI.** Patch-surface KPI lives here; Ink stays upstream.

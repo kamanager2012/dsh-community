@@ -2,6 +2,8 @@
 
 **0.1.0-preview.** 社区发行层预览，不是官方客户端，也不是 TUI 替代品。
 
+[仓库](https://github.com/kamanager2012/dsh-community) · [Release](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.0-preview)
+
 围绕官方 DeepSeek Harness Runtime：Terminal Distribution 契约、Desktop 薄壳、Compatibility Infrastructure。不是超级客户端，也不是第二套 harness。
 
 中文 | [Architecture](ARCHITECTURE.md) · [重构说明](docs/reconstruction.md) · [Upgrade](docs/upgrade.md) · [TUI adapter](docs/tui-adapter.md) · [contracts](contracts/README.md) · [Version Manager](docs/version-manager.md)

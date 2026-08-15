@@ -2,6 +2,8 @@
 
 ## 0.1.0-preview — 2026-08-15
 
+Release: https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.0-preview
+
 First public-shaped preview. Not a replacement for official DSH, dsh-TUI, or the third-party Desktop installers.
 
 - Thin Electron shell that spawns published `@deepseek-ai/dsh@0.1.0-rc.6` (`dsh web`)
