@@ -3,7 +3,13 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { composeCommunityTuiPatch } from '../src/compose-patch.ts'
-import { isCommunityListSessions, parseCommunityLaunch, resumeEnv } from '../src/launch.ts'
+import {
+  isCommunityListSessions,
+  officialAppArgs,
+  officialTuiArgv,
+  parseCommunityLaunch,
+  resumeEnv,
+} from '../src/launch.ts'
 import {
   COMMUNITY_TUI_BUNDLES,
   COMMUNITY_TUI_PROFILE,
@@ -41,12 +47,26 @@ describe('our TUI profile', () => {
   })
 
   it('resumes from an official session id, not a second store', () => {
-    expect(parseCommunityLaunch(['--resume', 'sess-abc'])).toEqual({
+    const launch = parseCommunityLaunch(['--resume', 'sess-abc'])
+    expect(launch).toEqual({
       kind: 'resume',
       id: 'sess-abc',
       rest: [],
     })
+    expect(officialAppArgs(launch as Extract<typeof launch, { kind: 'resume' }>)).toEqual([
+      '--resume',
+      'sess-abc',
+    ])
+    expect(officialTuiArgv('/tmp/community.patch.yml', officialAppArgs(launch as Extract<typeof launch, { kind: 'resume' }>))).toEqual([
+      '--profile',
+      COMMUNITY_TUI_PROFILE,
+      '--patch',
+      '/tmp/community.patch.yml',
+      '--resume',
+      'sess-abc',
+    ])
     expect(resumeEnv({}, 'sess-abc').DSH_TUI_RESUME_SESSION).toBe('sess-abc')
+    expect(resumeEnv({}, 'sess-abc').DSH_CC_RESUME_SESSION).toBe('sess-abc')
     expect(() => parseCommunityLaunch(['--resume'])).toThrow(/session id/)
   })
 })

@@ -15,7 +15,7 @@ import {
 import { runMarketplaceCli } from '@dsh-community/marketplace'
 import { composeCommunityTuiPatch } from './compose-patch.js'
 import { installProfileDeps, profileNeedsInstall } from './install.js'
-import { officialTuiArgv, parseCommunityLaunch, resumeEnv } from './launch.js'
+import { officialAppArgs, officialTuiArgv, parseCommunityLaunch, resumeEnv } from './launch.js'
 import { COMMUNITY_TUI_PROFILE, ensureCommunityTuiProfile } from './profile.js'
 
 // Community catalog. Official dsh remains the plugin/runtime host after install.
@@ -60,7 +60,16 @@ if (profileNeedsInstall(dir)) {
   }
 }
 
-const extra = launch.rest
+if (launch.kind === 'resume') {
+  const root = officialSessionRoot(dshHome)
+  const known = listOfficialSessions(root).some((session) => session.id === launch.id)
+  if (!known) {
+    process.stderr.write(`no official session ${launch.id} under ${root}\n`)
+    process.exit(2)
+  }
+}
+
+const extra = officialAppArgs(launch)
 const env = launch.kind === 'resume' ? resumeEnv(process.env, launch.id) : process.env
 
 const install = resolveOfficialDsh({ from: import.meta.url })

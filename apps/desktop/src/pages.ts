@@ -16,6 +16,19 @@ export interface AboutPageModel {
   readonly logs: string
 }
 
+export interface OfficialSessionRow {
+  readonly id: string
+  readonly projectKey: string
+  readonly transcript: string
+}
+
+export interface OfficialSessionsPageModel {
+  readonly product: string
+  readonly officialHome: string
+  readonly isolated: boolean
+  readonly sessions: readonly OfficialSessionRow[]
+}
+
 export interface RuntimePageModel {
   readonly product: string
   readonly installed: string
@@ -59,6 +72,9 @@ function shellDocument(title: string, body: string): string {
       .row { display: flex; gap: 8px; margin-top: 16px; }
       dt { color: #6d7686; font-size: 12px; }
       dd { margin: 0 0 10px; word-break: break-all; }
+      table { width: 100%; border-collapse: collapse; margin: 12px 0 4px; font: 12px/1.45 ui-monospace, SFMono-Regular, monospace; }
+      th, td { text-align: left; padding: 6px 8px 6px 0; border-bottom: 1px solid #2a303b; word-break: break-all; }
+      th { color: #6d7686; font-weight: 500; }
     </style>
   </head>
   <body>
@@ -114,6 +130,35 @@ export function renderAboutPage(model: AboutPageModel): string {
      <script>
        document.getElementById('retry')?.addEventListener('click', () => {
          window.dshCommunity?.restartHost()
+       })
+       document.getElementById('back')?.addEventListener('click', () => {
+         window.dshCommunity?.openOfficial()
+       })
+     </script>`,
+  )
+}
+
+export function renderOfficialSessionsPage(model: OfficialSessionsPageModel): string {
+  const rows = model.sessions.length === 0
+    ? '<p>官方 <code>~/.dsh/sessions</code> 里还没有 session。TUI / Web / 本窗口共用这一份，不会另建目录。</p>'
+    : `<table>
+         <thead><tr><th>session</th><th>project</th></tr></thead>
+         <tbody>${model.sessions.map((session) =>
+           `<tr><td><code>${escapeHtml(session.id)}</code></td><td><code>${escapeHtml(session.projectKey)}</code></td></tr>`,
+         ).join('')}</tbody>
+       </table>`
+  return shellDocument(
+    `${model.product} · 官方 Session`,
+    `<h1>官方 Session</h1>
+     <p>只读列出官方 <code>${escapeHtml(model.officialHome)}</code>${model.isolated ? '（隔离）' : ''} 下的 <code>sessions/</code>。恢复对话走官方 Web 或 <code>dsh-community-tui --resume &lt;id&gt;</code>。</p>
+     ${rows}
+     <div class="row">
+       <button id="open">打开官方 Web</button>
+       <button class="secondary" id="back">返回会话</button>
+     </div>
+     <script>
+       document.getElementById('open')?.addEventListener('click', () => {
+         window.dshCommunity?.openOfficial()
        })
        document.getElementById('back')?.addEventListener('click', () => {
          window.dshCommunity?.openOfficial()

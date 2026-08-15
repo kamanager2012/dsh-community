@@ -36,7 +36,13 @@ import { resolveLatestTestedPath } from './contracts-path.ts'
 import { appendHostDiagnostics } from './host-log.ts'
 import { IPC } from './ipc-channels.ts'
 import { readJsonFile, writeJsonFile } from './json-file.ts'
-import { renderAboutPage, renderErrorPage, renderLoadingPage, renderRuntimePage } from './pages.ts'
+import {
+  renderAboutPage,
+  renderErrorPage,
+  renderLoadingPage,
+  renderOfficialSessionsPage,
+  renderRuntimePage,
+} from './pages.ts'
 import { assertHostLaunchPaths, resolveHostLaunchPaths } from './paths.ts'
 import { buildRuntimeView, readLatestTested } from './runtime-view.ts'
 import { DEFAULT_DESKTOP_SETTINGS, parseDesktopSettings, type DesktopSettings } from './settings.ts'
@@ -180,8 +186,26 @@ function runtimeModel() {
   return { product: COMMUNITY_PRODUCT_NAME, ...view }
 }
 
+function officialSessionsModel() {
+  const home = officialHome()
+  return {
+    product: COMMUNITY_PRODUCT_NAME,
+    officialHome: home,
+    isolated: isolatedDesktopRequested(),
+    sessions: listOfficialSessions(officialSessionRoot(home)).map((session) => ({
+      id: session.id,
+      projectKey: session.projectKey,
+      transcript: session.transcript,
+    })),
+  }
+}
+
 async function showAbout(): Promise<void> {
   await showHtml(renderAboutPage(aboutModel()))
+}
+
+async function showOfficialSessions(): Promise<void> {
+  await showHtml(renderOfficialSessionsPage(officialSessionsModel()))
 }
 
 async function showRuntime(): Promise<void> {
@@ -229,6 +253,7 @@ function createTray(): Tray | undefined {
       { label: '显示窗口', click: () => revealWindow() },
       { label: '重新启动官方运行时', click: () => void restartOfficial().catch(showStartFailure) },
       { label: '运行时 / Version Manager', click: () => void showRuntime() },
+      { label: '官方 Session', click: () => void showOfficialSessions() },
       { label: '社区市场', click: () => { void shell.openExternal('https://github.com/kamanager2012/dsh-community-plugins') } },
       { label: '关于社区壳', click: () => void showAbout() },
       { type: 'separator' },
@@ -273,6 +298,7 @@ function installMenu(): void {
         { label: 'Show official UI', click: () => {
           if (origin !== '') void showOfficial(origin)
         } },
+        { label: 'Official sessions', click: () => void showOfficialSessions() },
         { type: 'separator' },
         { label: 'Runtime / Version Manager', click: () => void showRuntime() },
         { label: 'Pin latest-tested', click: () => pinLatestTested() },

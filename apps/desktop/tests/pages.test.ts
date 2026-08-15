@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { renderAboutPage, renderErrorPage, renderLoadingPage, renderRuntimePage } from '../src/pages.ts'
+import {
+  renderAboutPage,
+  renderErrorPage,
+  renderLoadingPage,
+  renderOfficialSessionsPage,
+  renderRuntimePage,
+} from '../src/pages.ts'
 
 describe('shell pages', () => {
   it('says the window is a shell around official dsh web', () => {
@@ -36,6 +42,27 @@ describe('shell pages', () => {
     expect(html).toMatch(/\/home\/dev\/\.dsh/)
     expect(html).toMatch(/dsh-community/)
     expect(html).toMatch(/3 sessions/)
+  })
+
+  it('lists official ~/.dsh sessions without a second store', () => {
+    const empty = renderOfficialSessionsPage({
+      product: 'DSH Community',
+      officialHome: '/home/dev/.dsh',
+      isolated: false,
+      sessions: [],
+    })
+    expect(empty).toMatch(/~\/\.dsh\/sessions/)
+    expect(empty).toMatch(/不会另建目录/)
+    const listed = renderOfficialSessionsPage({
+      product: 'DSH Community',
+      officialHome: '/home/dev/.dsh',
+      isolated: false,
+      sessions: [{ id: 'sess-abc', projectKey: '--tmp-proj--', transcript: '/home/dev/.dsh/sessions/--tmp-proj--/sess-abc/session.jsonl.zstd' }],
+    })
+    expect(listed).toMatch(/sess-abc/)
+    expect(listed).toMatch(/--tmp-proj--/)
+    expect(listed).toMatch(/dsh-community-tui --resume/)
+    expect(listed).not.toMatch(/\.dsh-cc/)
   })
 
   it('shows latest-tested instead of npm latest on the runtime page', () => {

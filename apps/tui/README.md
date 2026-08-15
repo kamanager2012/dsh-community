@@ -18,3 +18,9 @@ dsh-community-tui
 dsh-community-tui --list-sessions
 dsh-community-tui --resume <official-session-id>
 ```
+
+`--resume` 会校验官方 `~/.dsh/sessions`，再交给官方启动器：
+
+`dsh --profile dsh-community-tui --patch <community.patch> --resume <id>`
+
+这是官方 CLI 文档里的透传方式，不是 `~/.dsh-cc` 第二套 store。

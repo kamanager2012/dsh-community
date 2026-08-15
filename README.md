@@ -79,11 +79,12 @@ Windows / macOS 在对应系统上：`pnpm desktop:package -- --win` 或 `--mac`
 
 ```
 contracts/              官方表面快照 + compatibility matrix
-packages/dsh-bridge     解析 bin、生命周期、数据目录边界
+packages/dsh-bridge     解析官方 bin、生命周期、数据目录
 packages/tui-adapter    我们的 TUI 薄 patch + KPI
+packages/marketplace    社区目录；安装走官方 `dsh plugin add`
 packages/shared-types   社区自己的类型，不是官方 event fork
-apps/desktop            我们的 Desktop
-apps/tui                我们的 TUI 启动器（dsh-community-tui）
+apps/desktop            官方 `dsh web` 壳 + 官方 session 列表
+apps/tui                官方 `dsh --profile` / `--resume` 启动器
 tests/upstream-contract vendor=0、pin、CLI
 ```
 
