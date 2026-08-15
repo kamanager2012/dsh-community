@@ -1,0 +1,27 @@
+# Proposed TUI-owned patch after moving preset isolation out (33 → 8, then 5 here).
+# sandbox-policy / approval / session-persistence-jsonl still need their
+# upstream values copied — they are not restated as empty configs (that
+# would wipe official defaults).
+- id: system-prompt
+  config:
+    persona: !!js process.env.CC_TUI_PERSONA ?? 'You are a coding agent.'
+
+- id: llm-deepseek
+  config:
+    apiKeyEnv: 'DEEPSEEK_API_KEY'
+    baseURL: !!js process.env.DEEPSEEK_BASE_URL
+    thinking: enabled
+    reasoningEffort: max
+
+- id: agent-loop
+  config:
+    agents: []
+
+- insert:
+    - id: dsh-tui
+      name: '@deepseek-harness-tui/dsh-tui'
+      config:
+        fullscreen: false
+        effort: max
+    - id: working-activity
+      name: dsh-working-activity

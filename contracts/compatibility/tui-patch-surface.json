@@ -3,6 +3,9 @@
   "measuredAt": "dsh-TUI 0.6.1 against official @deepseek-ai/dsh@0.1.0-rc.6",
   "kpi": "patch-surface-reduction",
   "interventionCount": 33,
+  "communityTuiOwned": 8,
+  "communityTuiOwnedWritten": 5,
+  "presetIsolationRows": 25,
   "overrides": [
     "system-prompt",
     "llm-deepseek",

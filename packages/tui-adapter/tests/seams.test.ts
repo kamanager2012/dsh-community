@@ -19,6 +19,7 @@ describe('tui adapter reconstruction', () => {
 
   it('measures patch-surface reduction instead of promising a rewrite', () => {
     expect(tuiPatchKpi.current).toBe(33)
+    expect(tuiPatchKpi.communityTuiOwned).toBe(8)
     expect(tuiPatchKpi.milestones).toEqual([33, 15, 8, 2])
     expect(tuiPatchKpi.tuiOwnedInserts).toEqual(['dsh-tui', 'working-activity'])
   })

@@ -1,0 +1,45 @@
+{
+  "upstream": "dsh-TUI 0.6.1 cordis.patch.yml",
+  "officialTwin": "packages/bundle/web-app/cordis.patch.yml in deepseek-harness (preset isolation)",
+  "total": 33,
+  "presetIsolationDisables": [
+    "agent-instructions",
+    "command-compact",
+    "compaction-basic",
+    "plan-mode",
+    "skill-filesystem",
+    "tool-bash",
+    "tool-fs",
+    "tool-fs-search",
+    "tool-goal",
+    "tool-jobs",
+    "tool-pwsh",
+    "tool-ralph",
+    "tool-result-pruner",
+    "tool-skill",
+    "tool-str-replace-editor",
+    "tool-subagent",
+    "tool-subagent-control",
+    "tool-subagent-fork",
+    "tool-subagent-list-agents",
+    "tool-todo",
+    "tool-web",
+    "tool-workflow",
+    "workflow-worker-thread"
+  ],
+  "officialInserts": [
+    "agent-presets",
+    "cordis-host-runner"
+  ],
+  "tuiOwned": [
+    "system-prompt",
+    "llm-deepseek",
+    "agent-loop",
+    "sandbox-policy",
+    "approval",
+    "session-persistence-jsonl",
+    "dsh-tui",
+    "working-activity"
+  ],
+  "note": "The 23 disables are the same host-plane move official web-app already does for agent-presets. They should not live in the TUI file. First cut: 33 → 8 TUI-owned rows. Ink is unchanged."
+}

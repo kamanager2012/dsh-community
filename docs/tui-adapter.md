@@ -12,13 +12,24 @@
 
 ## KPI：Patch Surface Reduction
 
-当前 `cordis.patch.yml`（dsh-TUI 0.6.1 / 官方 rc.6）干预 **33** 个 rows：6 个 override、23 个 disable、4 个 insert。
+上游 `cordis.patch.yml`（dsh-TUI 0.6.1 / 官方 rc.6）仍是 **33** 行。
 
-目标不是“重写得更优雅”，而是把官方 row 交回去：
+对照官方 `dsh-web-app` 后：其中 **23 个 disable + 2 个官方 insert** 是 preset 隔离（和官方 Web 同一套路），不是 Ink/TUI 自己的面。
+
+本仓第一刀已经拆开：
+
+| 文件 | 行数 | 含义 |
+|---|---|---|
+| `patches/preset-isolation.cordis.patch.yml` | 25 | 与官方 web-app 相同的 host-plane 下沉 |
+| `patches/tui-owned.cordis.patch.yml` | 5 已写 + 3 待从上游搬配置 | TUI 自己的面，已低于 15 |
 
 ```
-33 → 15 → 8 → 只剩 TUI 自己的 insert（dsh-tui, working-activity）
+上游 33
+→ 社区 TUI-owned 8（第一档，已过 15）
+→ 只剩 insert dsh-tui / working-activity
 ```
+
+Ink 未动。上游 TUI 包仍会应用完整 33 行；社区文件是下一刀要让上游吃的目标 patch。
 
 理想终态大致是：
 

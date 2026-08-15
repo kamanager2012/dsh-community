@@ -15,6 +15,7 @@ const surface = JSON.parse(
   ),
 ) as {
   readonly interventionCount: number
+  readonly communityTuiOwned?: number
   readonly milestones: readonly number[]
   readonly tuiOwnedInserts: readonly string[]
   readonly target: string
@@ -51,6 +52,7 @@ export const tuiSeam = {
 
 export const tuiPatchKpi = {
   current: surface.interventionCount,
+  communityTuiOwned: surface.communityTuiOwned ?? surface.interventionCount,
   milestones: surface.milestones,
   tuiOwnedInserts: surface.tuiOwnedInserts,
   target: surface.target,
