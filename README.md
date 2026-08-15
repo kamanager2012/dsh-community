@@ -1,18 +1,6 @@
 # dsh-community
 
-**DSH 社区版(DeepSeek Harness Community Edition)—— 0.1.0-preview.**
-
-官方 Runtime 的社区发行层预览,不是官方客户端,也不是第二套 harness。
-
-| 发行面 | 命名 | 入口 |
-|---|---|---|
-| 终端 | **社区版·终端** | `dsh-community-tui` / `pnpm tui` |
-| 桌面 | **社区版·桌面** | `dsh-community`(Linux 解包) |
-| 插件市场 | **社区市场** | `dsh-community-tui marketplace list/search/info/install` |
-| 插件注册表 | [dsh-community-plugins](https://github.com/kamanager2012/dsh-community-plugins) | `catalog.json` + PR 收录流程 |
-
-> 命名红线:不叫 dsh-TUI / DeepSeek Harness Desktop(那是参考物),不在 npm 冒用
-> `@deepseek-ai` 或 `dsh-tui` 的包名。
+**0.1.0-preview.** 社区发行层预览，不是官方客户端，也不是 TUI 替代品。
 
 [仓库](https://github.com/kamanager2012/dsh-community) · [Release](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.0-preview)
 

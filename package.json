@@ -13,8 +13,8 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "pnpm --filter @dsh-community/shared-types --filter @dsh-community/dsh-bridge --filter @dsh-community/marketplace --filter @dsh-community/desktop build",
-    "typecheck": "pnpm --filter @dsh-community/shared-types --filter @dsh-community/dsh-bridge --filter @dsh-community/marketplace build && pnpm --filter @dsh-community/tui-adapter --filter @dsh-community/tui --filter @dsh-community/desktop --filter @dsh-community/marketplace --filter @dsh-community/upstream-contract typecheck",
+    "build": "pnpm --filter @dsh-community/shared-types --filter @dsh-community/dsh-bridge --filter @dsh-community/desktop build",
+    "typecheck": "pnpm --filter @dsh-community/shared-types build && pnpm --filter @dsh-community/dsh-bridge build && pnpm --filter @dsh-community/tui-adapter --filter @dsh-community/tui --filter @dsh-community/desktop --filter @dsh-community/upstream-contract typecheck",
     "test": "vitest run",
     "test:watch": "vitest",
     "desktop": "pnpm --filter @dsh-community/desktop start",

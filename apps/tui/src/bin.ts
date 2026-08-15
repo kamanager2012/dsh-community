@@ -12,17 +12,10 @@ import {
   resolveOfficialDsh,
   resolveOfficialDshHome,
 } from '@dsh-community/dsh-bridge'
-import { runMarketplaceCli } from '@dsh-community/marketplace'
 import { composeCommunityTuiPatch } from './compose-patch.js'
 import { installProfileDeps, profileNeedsInstall } from './install.js'
 import { officialAppArgs, officialTuiArgv, parseCommunityLaunch, resumeEnv } from './launch.js'
-import { COMMUNITY_TUI_PROFILE, ensureCommunityTuiProfile } from './profile.js'
-
-// Community catalog. Official dsh remains the plugin/runtime host after install.
-if (process.argv[2] === 'marketplace') {
-  const status = await runMarketplaceCli({ args: process.argv.slice(3), profile: COMMUNITY_TUI_PROFILE })
-  process.exit(status)
-}
+import { ensureCommunityTuiProfile } from './profile.js'
 
 const dshHome = resolveOfficialDshHome(process.env, homedir())
 const launch = (() => {

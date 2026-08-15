@@ -14,7 +14,6 @@
   },
   "dependencies": {
     "@deepseek-ai/dsh": "0.1.0-rc.6",
-    "@dsh-community/dsh-bridge": "workspace:*",
-    "@dsh-community/marketplace": "workspace:*"
+    "@dsh-community/dsh-bridge": "workspace:*"
   }
 }
