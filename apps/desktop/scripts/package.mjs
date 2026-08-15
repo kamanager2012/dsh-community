@@ -128,6 +128,7 @@ const packManifest = {
       category: 'Development',
       icon: join(desktop, 'resources/tray.png'),
       executableName: 'dsh-community',
+      desktopName: 'dev.dshcommunity.desktop',
     },
     win: {
       target: [{ target: 'dir', arch: ['x64'] }],
