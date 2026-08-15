@@ -94,6 +94,7 @@ const packManifest = {
   build: {
     appId: 'dev.dshcommunity.desktop',
     productName: 'DSH Community',
+    artifactName: 'dsh-community-${version}.${ext}',
     copyright: 'Copyright 2026 dsh-community contributors',
     electronDist: join(electronDir, 'dist'),
     electronVersion,
