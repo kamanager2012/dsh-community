@@ -12,5 +12,6 @@ This is a community launcher/adapter workspace for official DeepSeek Harness.
 - Desktop KPI is Official Source Ownership = 0.
 - Recommend latest tested from contracts/compatibility, not npm latest.
 - Window state, catalog, and host.log live in Electron userData. Never write those under ~/.dsh.
+- Publish only to https://github.com/kamanager2012/dsh-community. Do not merge this tree into another community DSH suite.
 
 Read `ARCHITECTURE.md` and `docs/upgrade.md` before changing layout.

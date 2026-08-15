@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 /**
  * Our third-party TUI. Official dsh is the development foundation and runtime.
- * Marketplace is a community distribution command; chat/sessions stay on official dsh.
  */
 
 import { spawnSync } from 'node:child_process'
@@ -14,7 +13,13 @@ import {
 } from '@dsh-community/dsh-bridge'
 import { composeCommunityTuiPatch } from './compose-patch.js'
 import { installProfileDeps, profileNeedsInstall } from './install.js'
-import { officialAppArgs, officialTuiArgv, parseCommunityLaunch, resumeEnv } from './launch.js'
+import {
+  COMMUNITY_TUI_HELP,
+  officialAppArgs,
+  officialTuiArgv,
+  parseCommunityLaunch,
+  resumeEnv,
+} from './launch.js'
 import { ensureCommunityTuiProfile } from './profile.js'
 
 const dshHome = resolveOfficialDshHome(process.env, homedir())
@@ -26,6 +31,11 @@ const launch = (() => {
     process.exit(2)
   }
 })()
+
+if (launch.kind === 'help') {
+  process.stdout.write(COMMUNITY_TUI_HELP)
+  process.exit(0)
+}
 
 if (launch.kind === 'list') {
   const root = officialSessionRoot(dshHome)

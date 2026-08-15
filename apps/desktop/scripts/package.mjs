@@ -16,7 +16,9 @@ const packRoot = join(desktop, '.pack-root')
 const releaseDir = join(desktop, 'release')
 const electronDir = join(desktop, 'node_modules/electron')
 const require = createRequire(join(desktop, 'package.json'))
+const desktopManifest = require('./package.json')
 const electronVersion = require('electron/package.json').version
+const packVersion = typeof desktopManifest.version === 'string' ? desktopManifest.version : '0.1.1'
 const builderCli = join(desktop, 'node_modules/electron-builder/cli.js')
 
 async function exists(path) {
@@ -84,7 +86,7 @@ const linuxTarget = targetFlag === 'appimage'
 
 const packManifest = {
   name: 'dsh-community-desktop',
-  version: '0.1.0',
+  version: packVersion,
   private: true,
   type: 'module',
   main: 'dist/main.js',

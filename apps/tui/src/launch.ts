@@ -9,11 +9,29 @@ export function officialTuiArgv(patchPath: string, extra: readonly string[] = []
 }
 
 export type CommunityLaunch =
+  | { readonly kind: 'help' }
   | { readonly kind: 'list' }
   | { readonly kind: 'resume'; readonly id: string; readonly rest: readonly string[] }
   | { readonly kind: 'run'; readonly rest: readonly string[] }
 
+export const COMMUNITY_TUI_HELP = `dsh-community-tui — community terminal on official @deepseek-ai/dsh
+
+Usage:
+  dsh-community-tui
+  dsh-community-tui --list-sessions
+  dsh-community-tui --resume <official-session-id>
+
+  --list-sessions     read-only list of official ~/.dsh/sessions
+  --resume <id>       official dsh --profile … --resume <id>
+  -h, --help          this help
+
+Other args are passed through to official dsh after --profile/--patch.
+Session store is official ~/.dsh, shared with Desktop and official Web.
+This binary is not dsh-tui and is not published as @deepseek-ai/*.
+`
+
 export function parseCommunityLaunch(argv: readonly string[]): CommunityLaunch {
+  if (argv[0] === '--help' || argv[0] === '-h') return { kind: 'help' }
   if (argv[0] === '--list-sessions') return { kind: 'list' }
   if (argv[0] === '--resume') {
     const id = argv[1]
@@ -26,7 +44,7 @@ export function parseCommunityLaunch(argv: readonly string[]): CommunityLaunch {
 }
 
 /** Official app args after launcher flags. */
-export function officialAppArgs(launch: Exclude<CommunityLaunch, { kind: 'list' }>): string[] {
+export function officialAppArgs(launch: Extract<CommunityLaunch, { kind: 'resume' } | { kind: 'run' }>): string[] {
   if (launch.kind === 'resume') return ['--resume', launch.id, ...launch.rest]
   return [...launch.rest]
 }

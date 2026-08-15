@@ -15,6 +15,7 @@ dsh-community-tui
 需要 TTY 和 `DEEPSEEK_API_KEY`。Session 仍在官方 `~/.dsh`，和 Desktop / 官方 Web 同一真源。
 
 ```sh
+dsh-community-tui --help
 dsh-community-tui --list-sessions
 dsh-community-tui --resume <official-session-id>
 ```

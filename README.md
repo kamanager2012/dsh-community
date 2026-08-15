@@ -1,8 +1,19 @@
 # dsh-community
 
-**0.1.0-preview.** 社区发行层预览，不是官方客户端，也不是 TUI 替代品。
+**DSH 社区版（DeepSeek Harness Community Edition）—— 0.1.1-preview.**
 
-[仓库](https://github.com/kamanager2012/dsh-community) · [Release](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.0-preview)
+只发布在 [github.com/kamanager2012/dsh-community](https://github.com/kamanager2012/dsh-community)。官方 Runtime 的社区发行层，不是官方客户端，也不是第二套 harness。
+
+[![ci](https://github.com/kamanager2012/dsh-community/actions/workflows/ci.yml/badge.svg)](https://github.com/kamanager2012/dsh-community/actions/workflows/ci.yml)
+
+| 发行面 | 命名 | 入口 |
+|---|---|---|
+| 终端 | **社区版·终端** | `dsh-community-tui` / `pnpm tui` |
+| 桌面 | **社区版·桌面** | Linux AppImage / `pnpm desktop` |
+
+> 命名红线：不叫 dsh-TUI / DeepSeek Harness Desktop（那是参考物），不在 npm 冒用 `@deepseek-ai` 或 `dsh-tui` 的包名。
+
+[仓库](https://github.com/kamanager2012/dsh-community) · [Release](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.1-preview)
 
 开发基础是官方 DeepSeek Harness（`@deepseek-ai/dsh`）。我们在这上面做 Terminal / Desktop 发行和契约层，不另写一套 harness。
 
@@ -13,31 +24,40 @@
 | 你要什么 | 用谁 |
 |---|---|
 | 真正跑 agent | 官方 [`npx @deepseek-ai/dsh web`](https://github.com/deepseek-ai/deepseek-harness) |
-| 终端 TUI | 我们的 `pnpm tui`（参考 Ink，自己的薄 profile） |
-| 下载即用的桌面安装包 | 第三方 Desktop 目前更完整；本仓 Desktop 是从源码跑的薄壳预览 |
+| 终端 TUI | 本仓 `pnpm tui`（官方 profile + 薄 patch，Ink 只当挂载的插件） |
+| Linux 桌面预览 | [0.1.1-preview AppImage](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.1-preview) 或 `pnpm desktop` |
 | 官方表面快照 / 升 rc 契约 | **本仓** |
 
 不要把本仓发到 npm 当 `@deepseek-ai/dsh` 或 `dsh-tui` 的替代。
 
-## 从源码跑 Desktop 预览
+## 从源码跑
 
 需要 Node 22+ 和 pnpm。
 
 ```sh
-git clone <this-repo> dsh-community
+git clone https://github.com/kamanager2012/dsh-community.git
 cd dsh-community
 pnpm install
 pnpm test
-pnpm desktop
+pnpm desktop          # 官方 dsh web + 薄壳
+pnpm tui              # 官方 dsh --profile dsh-community-tui
 ```
 
-会拉起已发布的 `@deepseek-ai/dsh@0.1.0-rc.6`（`dsh web`），默认共用官方 `~/.dsh`。
+会拉起已发布的 `@deepseek-ai/dsh@0.1.0-rc.6`，默认共用官方 `~/.dsh`。
 
-打 Linux 解包目录（预览，未签名）：
+```sh
+dsh-community-tui --help
+dsh-community-tui --list-sessions
+dsh-community-tui --resume <official-session-id>
+```
+
+打 Linux 解包目录或 AppImage（预览，未签名）：
 
 ```sh
 pnpm desktop:package
 ./apps/desktop/release/linux-unpacked/dsh-community
+
+pnpm desktop:package -- --appimage
 ```
 
 Windows / macOS 在对应系统上：`pnpm desktop:package -- --win` 或 `--mac`。不要 `npm publish` 本仓的 workspace 包。发布顺序见 [docs/release.md](docs/release.md)。
@@ -69,7 +89,6 @@ Windows / macOS 在对应系统上：`pnpm desktop:package -- --win` 或 `--mac`
 contracts/              官方表面快照 + compatibility matrix
 packages/dsh-bridge     解析官方 bin、生命周期、数据目录
 packages/tui-adapter    我们的 TUI 薄 patch + KPI
-packages/marketplace    社区目录；安装走官方 `dsh plugin add`
 packages/shared-types   社区自己的类型，不是官方 event fork
 apps/desktop            官方 `dsh web` 壳 + 官方 session 列表
 apps/tui                官方 `dsh --profile` / `--resume` 启动器

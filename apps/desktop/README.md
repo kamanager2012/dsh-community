@@ -10,6 +10,8 @@ pnpm --filter @dsh-community/desktop start
 
 Version Manager 在菜单 **Host → Runtime**。它读 `contracts/compatibility/latest-tested.json`，把 pin 写进 Desktop `userData`，不改官方 session 目录。
 
+官方 Session 列表在 **Host → Official sessions** / 托盘「官方 Session」，只读 `~/.dsh/sessions`。
+
 运行时行为：
 
 1. 解析已发布的 `@deepseek-ai/dsh`（开发态用真正的 Node，不用 Electron 二进制去跑 CLI）。

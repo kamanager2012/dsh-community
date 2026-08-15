@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { composeCommunityTuiPatch } from '../src/compose-patch.ts'
 import {
+  COMMUNITY_TUI_HELP,
   isCommunityListSessions,
   officialAppArgs,
   officialTuiArgv,
@@ -44,6 +45,9 @@ describe('our TUI profile', () => {
   it('lists official sessions without launching Ink', () => {
     expect(isCommunityListSessions(['--list-sessions'])).toBe(true)
     expect(isCommunityListSessions(['--help'])).toBe(false)
+    expect(parseCommunityLaunch(['--help'])).toEqual({ kind: 'help' })
+    expect(COMMUNITY_TUI_HELP).toMatch(/official @deepseek-ai\/dsh/)
+    expect(COMMUNITY_TUI_HELP).toMatch(/--list-sessions/)
   })
 
   it('resumes from an official session id, not a second store', () => {
