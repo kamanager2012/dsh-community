@@ -40,6 +40,15 @@ importers:
         specifier: ^0.25.9
         version: 0.25.12
 
+  apps/tui:
+    dependencies:
+      '@deepseek-ai/dsh':
+        specifier: 0.1.0-rc.6
+        version: 0.1.0-rc.6(a43018480dab2c670309792231469e46)
+      '@dsh-community/dsh-bridge':
+        specifier: workspace:*
+        version: link:../../packages/dsh-bridge
+
   packages/dsh-bridge:
     dependencies:
       '@deepseek-ai/dsh':

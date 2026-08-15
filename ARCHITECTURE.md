@@ -18,7 +18,7 @@ Community **distribution + compatibility** around official DeepSeek Harness. Not
                         │
              ┌──────────┴──────────┐
              │                     │
-          dsh-TUI              DSH Desktop
+     our TUI (apps/tui)     our Desktop
              │                     │
       Terminal UX             Distribution UX
 ```

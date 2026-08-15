@@ -20,6 +20,7 @@ describe('official pin consistency', () => {
     const manifests = [
       'packages/dsh-bridge/package.json',
       'apps/desktop/package.json',
+      'apps/tui/package.json',
       'tests/upstream-contract/package.json',
     ]
     for (const rel of manifests) {

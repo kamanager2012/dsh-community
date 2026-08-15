@@ -1,59 +1,31 @@
-# TUI adapter
+# 我们的 TUI
 
-官方当前发行面是 `cli` 和 `web`。社区 TUI（`@deepseek-harness-tui/dsh-tui`）是 Cordis 插件：profile + `cordis.patch.yml` + Ink。
+官方 DSH 是上游。参考仓 `dsh-TUI` 是第三方 Ink 实现，**不是**我们要提 PR 的上游。
 
-这不等于“官方永远不做 TUI”。架构决定仍然成立：第三方 TUI 走公开 seam（`ctx.agents` + `session/event` + `Agent.followup`），不 fork core。
+我们的产品是 `@dsh-community/tui`（命令 `dsh-community-tui` / `pnpm tui`）：
 
-本仓**不重写** Ink。`packages/tui-adapter` 只钉 seam 和 **patch-surface KPI**。
+- 运行时：官方 `dsh --profile dsh-community-tui`
+- 组合：官方 `dsh-base` + 我们的薄 patch
+- Ink：挂参考包 `@deepseek-harness-tui/dsh-tui` 当插件，**不**把它加成 `dsh.bundle`（否则会吃进它的 33 行 patch）
 
-## 官方契约
+## 为什么比参考物薄
 
-> Add UI or editor integration → drive `ctx.agents` and render from `session/event`.
+参考 `cordis.patch.yml` 有 33 行。其中 23 个 disable 是官方 web-app 已经在做的 preset 隔离，不是 TUI 能力。
 
-## KPI：Patch Surface Reduction
-
-上游 `cordis.patch.yml`（dsh-TUI 0.6.1 / 官方 rc.6）仍是 **33** 行。
-
-对照官方 `dsh-web-app` 后：其中 **23 个 disable + 2 个官方 insert** 是 preset 隔离（和官方 Web 同一套路），不是 Ink/TUI 自己的面。
-
-本仓第一刀已经拆开：
-
-| 文件 | 行数 | 含义 |
-|---|---|---|
-| `patches/preset-isolation.cordis.patch.yml` | 25 | 与官方 web-app 相同的 host-plane 下沉 |
-| `patches/tui-owned.cordis.patch.yml` | 5 已写 + 3 待从上游搬配置 | TUI 自己的面，已低于 15 |
+我们拆成自己的两层：隔离 25 行 + TUI 自有 8 行目标（已写出 5 行）。KPI 是**我们产品的 patch 面**，不是去改别人的仓库。
 
 ```
-上游 33
-→ 社区 TUI-owned 8（第一档，已过 15）
-→ 只剩 insert dsh-tui / working-activity
+参考物 33
+我们 TUI-owned 8（已过 15 档）
+终态：只 insert 我们的 TUI 插件 + 工作状态行
 ```
 
-Ink 未动。上游 TUI 包仍会应用完整 33 行；社区文件是下一刀要让上游吃的目标 patch。
+Ink 屏幕仍来自参考实现，直到我们自己换渲染器。换渲染器也是我们仓里的事。
 
-理想终态大致是：
-
-```yaml
-- insert:
-    - id: dsh-tui
-      name: '@deepseek-harness-tui/dsh-tui'
-    - id: tui-working-activity
-      name: '@…/dsh-working-activity'
-```
-
-| 能力 | 应归谁 |
-|---|---|
-| permission | 官方 preset |
-| agent | 官方 preset |
-| session | 官方 persistence（`~/.dsh`） |
-| LLM | 官方 provider |
-| compaction | 官方 |
-
-见 `contracts/compatibility/tui-patch-surface.json`。
-
-## 启动方式
+## 启动
 
 ```sh
-dsh plugin --profile tui add @deepseek-harness-tui/dsh-tui
-dsh --profile tui
+pnpm tui
 ```
+
+需要 TTY 和 `DEEPSEEK_API_KEY`。Session 在官方 `~/.dsh`。

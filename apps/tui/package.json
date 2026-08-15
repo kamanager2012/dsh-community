@@ -1,0 +1,19 @@
+{
+  "name": "@dsh-community/tui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Our third-party TUI distribution. Official dsh is the runtime; reference TUI is Ink we mount.",
+  "bin": {
+    "dsh-community-tui": "./dist/bin.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "pnpm build && node dist/bin.js"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh": "0.1.0-rc.6",
+    "@dsh-community/dsh-bridge": "workspace:*"
+  }
+}

@@ -13,7 +13,7 @@
 | 你要什么 | 用谁 |
 |---|---|
 | 真正跑 agent | 官方 [`npx @deepseek-ai/dsh web`](https://github.com/deepseek-ai/deepseek-harness) |
-| 终端 Ink TUI | 上游 [`@deepseek-harness-tui/dsh-tui`](https://github.com/ccch1mneyyy/dsh-TUI) |
+| 终端 TUI | 我们的 `pnpm tui`（参考 Ink，自己的薄 profile） |
 | 下载即用的桌面安装包 | 第三方 Desktop 目前更完整；本仓 Desktop 是从源码跑的薄壳预览 |
 | 官方表面快照 / 升 rc 契约 | **本仓** |
 
@@ -61,16 +61,17 @@ Windows / macOS 在对应系统上：`pnpm desktop:package -- --win` 或 `--mac`
 5. TUI / Desktop / 官方 Web 能共享同一 Session 真源
 6. 新版本兼容问题首先在 contract CI 爆
 
-当前：1 / 3 / 5 按设计成立；2 未在上游 TUI 仓落地；4 还没做过一次真实 rc bump；6 有本地测试和 GitHub Actions，还不是完整的兼容矩阵产品。
+当前：1 / 3 / 5 按设计成立；2 我们的 TUI 产品已拆到 8 行自有面（参考物仍是 33）；4 还没做过一次真实 rc bump。
 
 ## 仓库布局
 
 ```
 contracts/              官方表面快照 + compatibility matrix
 packages/dsh-bridge     解析 bin、生命周期、数据目录边界
-packages/tui-adapter    seam + patch-surface KPI（无 Ink）
+packages/tui-adapter    我们的 TUI 薄 patch + KPI
 packages/shared-types   社区自己的类型，不是官方 event fork
-apps/desktop            托盘 / 薄壳 / Version Manager（latest-tested）
+apps/desktop            我们的 Desktop
+apps/tui                我们的 TUI 启动器（dsh-community-tui）
 tests/upstream-contract vendor=0、pin、CLI
 ```
 

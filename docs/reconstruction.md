@@ -4,7 +4,7 @@
 
 是围绕官方 DSH Runtime，建立 **Terminal Distribution**、**Desktop Distribution** 和 **Compatibility Infrastructure** 三块社区资产。
 
-第三方 Desktop 把官方 monorepo 拷进来。第三方 TUI 是合法插件，但 patch 面太大。本仓按**能力**重写壳和契约层，不粘贴官方 `packages/*`，也不维护一套自己的 DSH event model。
+官方 DSH 是唯一上游。第三方 Desktop / TUI 只是**参考物**。我们的 Desktop 和 TUI 也是第三方产品，目标是**超过参考物**（更薄的组合、官方 source = 0、同一 Session 真源），不是给参考仓提补丁。
 
 ## 官方 TUI 现状（不要写死）
 
@@ -28,9 +28,9 @@ DSH 的数据继续归 DSH（默认 `~/.dsh`）。Desktop 自己的数据归 Des
 
 ## TUI 的 KPI
 
-不是把 Ink 写得更漂亮。是 **Patch Surface Reduction**：
+参考 TUI 的 33 行 patch 是对照基线。我们自己的 TUI 产品要把**我们的**覆盖面压到：
 
-`33 → 15 → 8 → 只剩 dsh-tui / working-activity`。
+`33（参考）→ 15 → 8 → 只剩我们挂上的 TUI 插件`。
 
 权限、agent preset、session persistence、LLM、compaction 都该回到官方。
 
