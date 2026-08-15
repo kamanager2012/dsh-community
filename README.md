@@ -29,6 +29,8 @@ to do, deterministically and fail-closed, at the point of action.
 > Status: `1.0.0`. The command layer is hardened and covered by an
 > adversarial test suite that asserts both what it stops and what it does not.
 
+Project overview: [Kama Projects](https://kamanager2012.github.io/).
+
 ---
 
 ## Why

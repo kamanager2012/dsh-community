@@ -3,17 +3,15 @@ name: CI
 on:
   push:
     branches: ["**"]
-    paths:
-      - "aigov/**"
-      - ".github/workflows/ci.yml"
   pull_request:
-    paths:
-      - "aigov/**"
-      - ".github/workflows/ci.yml"
+    branches: ["**"]
 
-defaults:
-  run:
-    working-directory: aigov
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
@@ -29,9 +27,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
+          cache: npm
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Type-check & build
         run: npm run build
