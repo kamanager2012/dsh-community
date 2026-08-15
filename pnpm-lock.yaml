@@ -48,6 +48,9 @@ importers:
       '@dsh-community/dsh-bridge':
         specifier: workspace:*
         version: link:../../packages/dsh-bridge
+      '@dsh-community/marketplace':
+        specifier: workspace:*
+        version: link:../../packages/marketplace
 
   packages/dsh-bridge:
     dependencies:
@@ -57,6 +60,12 @@ importers:
       '@dsh-community/shared-types':
         specifier: workspace:*
         version: link:../shared-types
+
+  packages/marketplace:
+    dependencies:
+      '@dsh-community/dsh-bridge':
+        specifier: workspace:*
+        version: link:../dsh-bridge
 
   packages/shared-types: {}
 

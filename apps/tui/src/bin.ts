@@ -12,10 +12,17 @@ import {
   resolveOfficialDsh,
   resolveOfficialDshHome,
 } from '@dsh-community/dsh-bridge'
+import { runMarketplaceCli } from '@dsh-community/marketplace'
 import { composeCommunityTuiPatch } from './compose-patch.js'
 import { installProfileDeps, profileNeedsInstall } from './install.js'
 import { isCommunityListSessions, officialTuiArgv } from './launch.js'
-import { ensureCommunityTuiProfile } from './profile.js'
+import { COMMUNITY_TUI_PROFILE, ensureCommunityTuiProfile } from './profile.js'
+
+// 社区市场:我们自己的发行层命令,不经过官方 dsh。
+if (process.argv[2] === 'marketplace') {
+  const status = await runMarketplaceCli({ args: process.argv.slice(3), profile: COMMUNITY_TUI_PROFILE })
+  process.exit(status)
+}
 
 const dshHome = resolveOfficialDshHome(process.env, homedir())
 

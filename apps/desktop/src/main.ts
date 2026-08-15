@@ -11,6 +11,7 @@ import {
   Menu,
   nativeImage,
   session,
+  shell,
   Tray,
   type BrowserWindow,
 } from 'electron'
@@ -228,6 +229,7 @@ function createTray(): Tray | undefined {
       { label: '显示窗口', click: () => revealWindow() },
       { label: '重新启动官方运行时', click: () => void restartOfficial().catch(showStartFailure) },
       { label: '运行时 / Version Manager', click: () => void showRuntime() },
+      { label: '社区市场', click: () => { void shell.openExternal('https://github.com/kamanager2012/dsh-community-plugins') } },
       { label: '关于社区壳', click: () => void showAbout() },
       { type: 'separator' },
       { label: '退出', click: () => app.quit() },
