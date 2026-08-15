@@ -15,6 +15,7 @@ describe('our TUI profile', () => {
     const manifest = buildProfileManifest()
     expect(manifest.dsh?.profile?.bundles).toEqual([...COMMUNITY_TUI_BUNDLES])
     expect(manifest.dependencies?.['@deepseek-harness-tui/dsh-tui']).toBe('0.6.1')
+    expect(manifest.dependencies?.['dsh-working-activity']).toBeUndefined()
     expect(manifest.dsh?.profile?.bundles).not.toContain('@deepseek-harness-tui/dsh-tui')
   })
 

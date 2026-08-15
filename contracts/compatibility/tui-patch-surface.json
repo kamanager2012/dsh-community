@@ -4,7 +4,7 @@
   "kpi": "patch-surface-reduction",
   "interventionCount": 33,
   "communityTuiOwned": 8,
-  "communityTuiOwnedWritten": 5,
+  "communityTuiOwnedWritten": 8,
   "presetIsolationRows": 25,
   "overrides": [
     "system-prompt",

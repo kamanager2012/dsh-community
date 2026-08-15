@@ -15,7 +15,6 @@ export const COMMUNITY_TUI_BUNDLES = ['@deepseek-ai/dsh-base'] as const
 
 export const COMMUNITY_TUI_PLUGIN_DEPS: Record<string, string> = {
   '@deepseek-harness-tui/dsh-tui': '0.6.1',
-  'dsh-working-activity': '0.2.4',
 }
 
 export function profileDir(dshHome: string, name = COMMUNITY_TUI_PROFILE): string {
