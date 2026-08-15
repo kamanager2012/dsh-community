@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Our third-party TUI. Official dsh is the runtime.
- * Reference dsh-TUI supplies Ink; we own profile + thin patch.
+ * Our third-party TUI. Official dsh is the development foundation and runtime.
+ * Marketplace is a community distribution command; chat/sessions stay on official dsh.
  */
 
 import { spawnSync } from 'node:child_process'
@@ -15,18 +15,26 @@ import {
 import { runMarketplaceCli } from '@dsh-community/marketplace'
 import { composeCommunityTuiPatch } from './compose-patch.js'
 import { installProfileDeps, profileNeedsInstall } from './install.js'
-import { isCommunityListSessions, officialTuiArgv } from './launch.js'
+import { officialTuiArgv, parseCommunityLaunch, resumeEnv } from './launch.js'
 import { COMMUNITY_TUI_PROFILE, ensureCommunityTuiProfile } from './profile.js'
 
-// 社区市场:我们自己的发行层命令,不经过官方 dsh。
+// Community catalog. Official dsh remains the plugin/runtime host after install.
 if (process.argv[2] === 'marketplace') {
   const status = await runMarketplaceCli({ args: process.argv.slice(3), profile: COMMUNITY_TUI_PROFILE })
   process.exit(status)
 }
 
 const dshHome = resolveOfficialDshHome(process.env, homedir())
+const launch = (() => {
+  try {
+    return parseCommunityLaunch(process.argv.slice(2))
+  } catch (error) {
+    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`)
+    process.exit(2)
+  }
+})()
 
-if (isCommunityListSessions(process.argv.slice(2))) {
+if (launch.kind === 'list') {
   const root = officialSessionRoot(dshHome)
   const sessions = listOfficialSessions(root)
   if (sessions.length === 0) {
@@ -52,10 +60,13 @@ if (profileNeedsInstall(dir)) {
   }
 }
 
+const extra = launch.rest
+const env = launch.kind === 'resume' ? resumeEnv(process.env, launch.id) : process.env
+
 const install = resolveOfficialDsh({ from: import.meta.url })
 const result = spawnSync(
   process.execPath,
-  [install.binPath, ...officialTuiArgv(patchPath, process.argv.slice(2))],
-  { stdio: 'inherit', cwd: dir, env: process.env },
+  [install.binPath, ...officialTuiArgv(patchPath, extra)],
+  { stdio: 'inherit', cwd: dir, env },
 )
 process.exit(result.status ?? 1)

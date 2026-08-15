@@ -16,7 +16,7 @@
 
 [仓库](https://github.com/kamanager2012/dsh-community) · [Release](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.0-preview)
 
-围绕官方 DeepSeek Harness Runtime：Terminal Distribution 契约、Desktop 薄壳、Compatibility Infrastructure。不是超级客户端，也不是第二套 harness。
+开发基础是官方 DeepSeek Harness（`@deepseek-ai/dsh`）。我们在这上面做 Terminal / Desktop 发行和契约层，不另写一套 harness。
 
 中文 | [Architecture](ARCHITECTURE.md) · [重构说明](docs/reconstruction.md) · [Upgrade](docs/upgrade.md) · [TUI adapter](docs/tui-adapter.md) · [contracts](contracts/README.md) · [Version Manager](docs/version-manager.md)
 
@@ -61,7 +61,7 @@ Windows / macOS 在对应系统上：`pnpm desktop:package -- --win` 或 `--mac`
 | 依赖已发布的 `@deepseek-ai/dsh` | 不 vendor 官方 `packages/*`（Official Source Ownership = 0） |
 | Desktop 子进程启动 `dsh web`，只管理生命周期 | 不把 stdout 解析成业务协议 |
 | 默认共用官方 `~/.dsh` session 真源 | 不把 DSH 数据迁进 Desktop AppData |
-| TUI 保留上游 Ink，KPI 是减少官方 row 覆盖 | 不重写 TUI，不断言“官方永远不做 TUI” |
+| 我们的 TUI 自己组合、自己列官方 session | 不把参考 TUI 当上游，不维护第二套 session log |
 | `contracts/` 快照官方表面 | 不维护一套社区 `event-types.ts` |
 
 ## 成功标准
@@ -73,7 +73,7 @@ Windows / macOS 在对应系统上：`pnpm desktop:package -- --win` 或 `--mac`
 5. TUI / Desktop / 官方 Web 能共享同一 Session 真源
 6. 新版本兼容问题首先在 contract CI 爆
 
-当前：1 / 3 / 5 按设计成立；2 我们的 TUI 产品已拆到 8 行自有面（参考物仍是 33）；4 还没做过一次真实 rc bump。
+当前：1 / 3 / 5 按设计成立；2 我们的 TUI 自有面 8 行（参考物 33）。第 4 条是官方发新包时的回归，不挡我们继续做发行面。
 
 ## 仓库布局
 

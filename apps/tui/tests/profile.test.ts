@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { composeCommunityTuiPatch } from '../src/compose-patch.ts'
-import { isCommunityListSessions } from '../src/launch.ts'
+import { isCommunityListSessions, parseCommunityLaunch, resumeEnv } from '../src/launch.ts'
 import {
   COMMUNITY_TUI_BUNDLES,
   COMMUNITY_TUI_PROFILE,
@@ -38,5 +38,15 @@ describe('our TUI profile', () => {
   it('lists official sessions without launching Ink', () => {
     expect(isCommunityListSessions(['--list-sessions'])).toBe(true)
     expect(isCommunityListSessions(['--help'])).toBe(false)
+  })
+
+  it('resumes from an official session id, not a second store', () => {
+    expect(parseCommunityLaunch(['--resume', 'sess-abc'])).toEqual({
+      kind: 'resume',
+      id: 'sess-abc',
+      rest: [],
+    })
+    expect(resumeEnv({}, 'sess-abc').DSH_TUI_RESUME_SESSION).toBe('sess-abc')
+    expect(() => parseCommunityLaunch(['--resume'])).toThrow(/session id/)
   })
 })

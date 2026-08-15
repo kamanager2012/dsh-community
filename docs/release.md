@@ -1,14 +1,12 @@
 # Preview release order
 
-Do these in order. Stop when the next item needs another machine or the upstream TUI repo.
+Official `@deepseek-ai/dsh` is the **development foundation**. We build TUI and Desktop on the pinned official runtime. A newer official rc is an upgrade of that foundation (pin + contract extract), not a gate that pauses product work.
 
-1. **GitHub preview repo** — done: https://github.com/kamanager2012/dsh-community (`main` + Actions).
-2. **Linux AppImage** — done: [v0.1.0-preview](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.0-preview). Rebuild: `pnpm desktop:package -- --appimage`.
-3. **Windows / macOS artifacts** — `pnpm desktop:package -- --win` or `--mac` on those OSes. No signing in this preview.
-4. **Do not npm-publish** workspace packages. They stay `private`.
-5. **Our TUI** (`pnpm tui`) owns composition. Reference dsh-TUI is Ink we mount, not an upstream to patch.
-6. **Official `dsh web` lifecycle smoke** — spawn / ready URL / GET / shutdown (`official-web.smoke.test.ts`).
-7. **First real official rc bump** — still blocked while npm latest is `0.1.0-rc.6`.
+1. **GitHub preview repo** — done: https://github.com/kamanager2012/dsh-community
+2. **Linux AppImage** — done: [v0.1.0-preview](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.0-preview)
+3. **Our TUI / Desktop on official dsh** — thin patch, official `~/.dsh/sessions`, `--list-sessions` / `--resume`.
+4. **Windows / macOS artifacts** — when we sit on those OSes.
+5. **Do not npm-publish** workspace packages.
 
 GitHub Release (when you have an artifact):
 

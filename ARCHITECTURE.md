@@ -4,9 +4,10 @@ Community **distribution + compatibility** around official DeepSeek Harness. Not
 
 ```
                   DeepSeek Harness
-                 OFFICIAL UPSTREAM
+              OFFICIAL FOUNDATION
+             (our development base)
                         │
-              pinned npm/runtime
+              pinned @deepseek-ai/dsh
                         │
                ┌────────┴────────┐
                │                 │
