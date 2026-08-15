@@ -24,6 +24,7 @@ describe('shell pages', () => {
       desktopRoot: '/home/dev/.config/dsh-community',
       isolated: false,
       latestTested: '0.1.0-rc.6',
+      officialSessionCount: 3,
       origin: 'http://127.0.0.1:4310',
       phase: 'ready',
       pid: '12',
@@ -34,6 +35,7 @@ describe('shell pages', () => {
     expect(html).toMatch(/同一批 Session/)
     expect(html).toMatch(/\/home\/dev\/\.dsh/)
     expect(html).toMatch(/dsh-community/)
+    expect(html).toMatch(/3 sessions/)
   })
 
   it('shows latest-tested instead of npm latest on the runtime page', () => {

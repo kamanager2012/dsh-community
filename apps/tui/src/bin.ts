@@ -6,13 +6,32 @@
 
 import { spawnSync } from 'node:child_process'
 import { homedir } from 'node:os'
-import { resolveOfficialDsh, resolveOfficialDshHome } from '@dsh-community/dsh-bridge'
+import {
+  listOfficialSessions,
+  officialSessionRoot,
+  resolveOfficialDsh,
+  resolveOfficialDshHome,
+} from '@dsh-community/dsh-bridge'
 import { composeCommunityTuiPatch } from './compose-patch.js'
 import { installProfileDeps, profileNeedsInstall } from './install.js'
-import { officialTuiArgv } from './launch.js'
+import { isCommunityListSessions, officialTuiArgv } from './launch.js'
 import { ensureCommunityTuiProfile } from './profile.js'
 
 const dshHome = resolveOfficialDshHome(process.env, homedir())
+
+if (isCommunityListSessions(process.argv.slice(2))) {
+  const root = officialSessionRoot(dshHome)
+  const sessions = listOfficialSessions(root)
+  if (sessions.length === 0) {
+    process.stdout.write(`no official sessions under ${root}\n`)
+    process.exit(0)
+  }
+  for (const session of sessions) {
+    process.stdout.write(`${session.id}\t${session.projectKey}\t${session.transcript}\n`)
+  }
+  process.exit(0)
+}
+
 const { dir, patchPath } = ensureCommunityTuiProfile({
   dshHome,
   communityPatch: composeCommunityTuiPatch(),

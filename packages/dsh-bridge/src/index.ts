@@ -55,6 +55,14 @@ export {
   type DesktopAppLayout,
 } from './data-dirs.js'
 export {
+  dumpUsesOfficialSessionRoot,
+  listOfficialSessions,
+  officialSessionRoot,
+  OFFICIAL_SESSION_DIR,
+  OFFICIAL_SESSION_FILES,
+  type OfficialSessionRef,
+} from './session-store.js'
+export {
   emptyRuntimeCatalog,
   hydrateCatalog,
   parseRuntimeCatalog,

@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { composeCommunityTuiPatch } from '../src/compose-patch.ts'
+import { isCommunityListSessions } from '../src/launch.ts'
 import {
   COMMUNITY_TUI_BUNDLES,
   COMMUNITY_TUI_PROFILE,
@@ -32,5 +33,10 @@ describe('our TUI profile', () => {
       dsh: { profile: { bundles: string[] } }
     }
     expect(pkg.dsh.profile.bundles).toEqual(['@deepseek-ai/dsh-base'])
+  })
+
+  it('lists official sessions without launching Ink', () => {
+    expect(isCommunityListSessions(['--list-sessions'])).toBe(true)
+    expect(isCommunityListSessions(['--help'])).toBe(false)
   })
 })

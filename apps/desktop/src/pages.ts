@@ -9,6 +9,7 @@ export interface AboutPageModel {
   readonly desktopRoot: string
   readonly isolated: boolean
   readonly latestTested: string
+  readonly officialSessionCount: number
   readonly origin: string
   readonly phase: string
   readonly pid: string
@@ -100,7 +101,7 @@ export function renderAboutPage(model: AboutPageModel): string {
        <dt>官方包</dt><dd><code>${escapeHtml(model.officialPackage)}@${escapeHtml(model.officialVersion)}</code></dd>
        <dt>契约 latest-tested</dt><dd><code>${escapeHtml(model.latestTested)}</code></dd>
        <dt>官方 bin</dt><dd><code>${escapeHtml(model.officialBin)}</code></dd>
-       <dt>官方数据</dt><dd><code>${escapeHtml(model.officialHome)}</code>${model.isolated ? '（隔离）' : ''}</dd>
+       <dt>官方数据</dt><dd><code>${escapeHtml(model.officialHome)}</code>${model.isolated ? '（隔离）' : ''} · ${String(model.officialSessionCount)} sessions</dd>
        <dt>Desktop 数据</dt><dd><code>${escapeHtml(model.desktopRoot)}</code></dd>
        <dt>就绪 origin</dt><dd><code>${escapeHtml(model.origin || '—')}</code></dd>
        <dt>Host</dt><dd>${escapeHtml(model.phase)} · pid ${escapeHtml(model.pid)}</dd>
