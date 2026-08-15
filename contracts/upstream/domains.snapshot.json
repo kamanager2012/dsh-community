@@ -1,0 +1,33 @@
+{
+  "pin": "0.1.0-rc.6",
+  "note": "Required official rows for community surfaces. Snapshot of official dump, not a community event model.",
+  "session": {
+    "mustExist": [
+      "session",
+      "session-persistence-jsonl",
+      "session-projection",
+      "session-checkpoint-policy"
+    ]
+  },
+  "agent": {
+    "mustExist": [
+      "agent",
+      "agent-loop",
+      "agent-presets",
+      "subagent"
+    ]
+  },
+  "approval": {
+    "mustExist": [
+      "approval",
+      "permission",
+      "sandbox-policy"
+    ]
+  },
+  "plugin": {
+    "mustExist": [
+      "plugin-inventory",
+      "cordis-host-runner"
+    ]
+  }
+}

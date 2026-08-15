@@ -1,0 +1,15 @@
+{
+  "name": "@dsh-community/upstream-contract",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "echo 'run tests from the workspace root'"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh": "0.1.0-rc.6",
+    "@dsh-community/dsh-bridge": "workspace:*",
+    "@dsh-community/shared-types": "workspace:*"
+  }
+}

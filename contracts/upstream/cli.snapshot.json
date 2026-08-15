@@ -1,0 +1,16 @@
+{
+  "pin": "0.1.0-rc.6",
+  "version": "0.1.0-rc.6",
+  "helpMustContain": [
+    "--profile",
+    "--dump-config",
+    "--dump-default-config",
+    "web",
+    "plugin"
+  ],
+  "webHelpMustContain": [
+    "--host",
+    "--port"
+  ],
+  "readinessPrefix": "dsh web: "
+}

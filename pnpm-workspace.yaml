@@ -1,0 +1,22 @@
+packages:
+  - packages/*
+  - apps/*
+  - tests/*
+
+onlyBuiltDependencies:
+  - '@deepseek-ai/dsh-subprocess-local'
+  - electron
+  - esbuild
+  - koffi
+  - node-pty
+  - protobufjs
+
+allowBuilds:
+  '@deepseek-ai/dsh-subprocess-local': true
+  '@google/genai': false
+  electron: true
+  electron-winstaller: false
+  esbuild: true
+  koffi: true
+  node-pty: true
+  protobufjs: true

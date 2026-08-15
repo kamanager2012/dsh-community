@@ -1,0 +1,31 @@
+{
+  "name": "dsh-community",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Community preview distribution around official DeepSeek Harness. Not an official client.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kamanager2012/dsh-community.git"
+  },
+  "type": "module",
+  "packageManager": "pnpm@11.21.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "pnpm --filter @dsh-community/shared-types --filter @dsh-community/dsh-bridge --filter @dsh-community/desktop build",
+    "typecheck": "pnpm --filter @dsh-community/shared-types build && pnpm --filter @dsh-community/dsh-bridge --filter @dsh-community/tui-adapter --filter @dsh-community/desktop --filter @dsh-community/upstream-contract typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "desktop": "pnpm --filter @dsh-community/desktop start",
+    "desktop:package": "pnpm --filter @dsh-community/desktop package",
+    "official:help": "pnpm --filter @dsh-community/dsh-bridge exec dsh --help",
+    "official:version": "pnpm --filter @dsh-community/dsh-bridge exec dsh --version",
+    "contracts:extract": "node scripts/extract-official-contracts.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.0",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
+}

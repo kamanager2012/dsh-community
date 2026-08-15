@@ -1,0 +1,31 @@
+{
+  "pin": "0.1.0-rc.6",
+  "source": "https://github.com/deepseek-ai/deepseek-harness/blob/main/docs/architecture.md",
+  "note": "Frozen extract of documented official seams at this pin. Not a community event model — do not add Desktop/TUI events here.",
+  "uiInstruction": "drive ctx.agents and render from session/event",
+  "sessionBroadcast": "session/event",
+  "documentedDurable": [
+    "turn/start",
+    "turn/end",
+    "step/start",
+    "step/end",
+    "user/message",
+    "assistant/chunk",
+    "assistant/message",
+    "tool/call",
+    "tool/result"
+  ],
+  "documentedLiveAgent": [
+    "agent/pre-step",
+    "agent/request",
+    "agent/turn-stopping"
+  ],
+  "ctxKeys": {
+    "sessions": "ctx.sessions",
+    "agents": "ctx.agents",
+    "agentLoop": "ctx.agentLoop",
+    "systemPrompt": "ctx.systemPrompt",
+    "tools": "ctx.tools",
+    "llm": "ctx.llm"
+  }
+}

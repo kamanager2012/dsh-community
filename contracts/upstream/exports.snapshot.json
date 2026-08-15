@@ -1,0 +1,13 @@
+{
+  "pin": "0.1.0-rc.6",
+  "packageName": "@deepseek-ai/dsh",
+  "version": "0.1.0-rc.6",
+  "bin": {
+    "dsh": "lib/bin.js"
+  },
+  "type": "module",
+  "files": [
+    "lib/*.js",
+    "config"
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "policy": "Recommend latest tested, not latest published.",
+  "runtimes": {
+    "0.1.0-rc.6": {
+      "desktop": "tested",
+      "tui": "unverified",
+      "contracts": "snapshotted",
+      "notes": "First community pin. Desktop spawns official dsh web."
+    }
+  }
+}

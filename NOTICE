@@ -1,0 +1,13 @@
+dsh-community
+Copyright 2026 dsh-community contributors
+
+This project is a community distribution layer. The agent runtime is the
+published official package `@deepseek-ai/dsh` (MIT), DeepSeek AI:
+
+  https://github.com/deepseek-ai/deepseek-harness
+
+Official third-party notices ship with that package. Do not treat this
+repository as an official DeepSeek product.
+
+Packaged Desktop builds also include Electron and other dependencies;
+see the corresponding license files in those packages.

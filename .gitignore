@@ -1,0 +1,13 @@
+node_modules
+dist
+*.log
+*.tsbuildinfo
+.DS_Store
+.vite
+coverage
+apps/desktop/release
+apps/desktop/runtime-stage
+apps/desktop/runtime-host
+apps/desktop/.pack-root
+.idea
+.vscode

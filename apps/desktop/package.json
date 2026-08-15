@@ -1,0 +1,71 @@
+{
+  "name": "@dsh-community/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/main.js",
+  "description": "Community reconstruction of a desktop shell around official `dsh web`.",
+  "scripts": {
+    "icons": "node scripts/write-tray-icon.mjs",
+    "build": "node scripts/write-tray-icon.mjs && node scripts/build.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "pnpm build && electron .",
+    "stage-host": "node scripts/stage-official-runtime.mjs",
+    "package": "node scripts/package.mjs"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh": "0.1.0-rc.6",
+    "@dsh-community/dsh-bridge": "workspace:*",
+    "@dsh-community/shared-types": "workspace:*"
+  },
+  "devDependencies": {
+    "electron": "43.4.0",
+    "electron-builder": "26.15.3",
+    "esbuild": "^0.25.9"
+  },
+  "build": {
+    "appId": "dev.dshcommunity.desktop",
+    "productName": "DSH Community",
+    "npmRebuild": false,
+    "nodeGypRebuild": false,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**",
+      "resources/**",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "runtime-host/node_modules",
+        "to": "host/node_modules"
+      },
+      {
+        "from": "../../contracts/compatibility/latest-tested.json",
+        "to": "contracts/latest-tested.json"
+      },
+      {
+        "from": "../../contracts/compatibility/matrix.json",
+        "to": "contracts/matrix.json"
+      }
+    ],
+    "linux": {
+      "target": [
+        "dir"
+      ],
+      "category": "Development",
+      "icon": "resources/tray.png"
+    },
+    "mac": {
+      "target": [
+        "dir"
+      ]
+    },
+    "win": {
+      "target": [
+        "dir"
+      ]
+    }
+  }
+}
