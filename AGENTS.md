@@ -1,5 +1,7 @@
 # Agent notes for dsh-community
 
+**Read `ECOSYSTEM.md` first** — six-repo strategy, hard boundaries, and Reality Gate rules. This repo is the only canonical product; user downloads come only from `dsh-community/releases/latest`.
+
 This is a community launcher/adapter workspace for official DeepSeek Harness.
 
 - Runtime: published `@deepseek-ai/dsh` only. Pin is `packages/dsh-bridge/src/pin.ts`.
