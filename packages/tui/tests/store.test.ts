@@ -25,6 +25,12 @@ describe('store interaction flows', () => {
     ])
   })
 
+  it('shows help as a system item', () => {
+    const store = createStore()
+    store.showHelp('帮助文本')
+    expect(store.state.items).toEqual([{ kind: 'help', id: '0', text: '帮助文本' }])
+  })
+
   it('resolves an approval prompt to the allowed outcome', async () => {
     const store = createStore()
     const pending = store.askApproval({ toolName: 'bash' })

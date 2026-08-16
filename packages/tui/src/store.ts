@@ -1,6 +1,7 @@
 import type { UserQuestionAnswer, UserQuestionRequest } from './types.ts'
 
 export type UiItem =
+  | { readonly kind: 'help'; readonly id: string; readonly text: string }
   | { readonly kind: 'user'; readonly id: string; readonly text: string }
   | { readonly kind: 'assistant'; readonly id: string; readonly text: string; readonly reasoning: string; readonly final: boolean }
   | { readonly kind: 'tool'; readonly id: string; readonly name: string; readonly args: string; readonly done: boolean; readonly summary: string }
@@ -80,6 +81,7 @@ export interface UiStore {
   setStatus(status: string): void
   setModel(model: string): void
   setFatal(message: string): void
+  showHelp(text: string): void
   askApproval(prompt: ApprovalPrompt): Promise<string>
   resolveApproval(outcome: string): void
   askQuestions(request: UserQuestionRequest): Promise<UserQuestionAnswer>
@@ -196,6 +198,9 @@ export function createStore(): UiStore {
     },
     setFatal(message) {
       set({ fatal: message })
+    },
+    showHelp(text) {
+      set({ items: [...state.items, { kind: 'help', id: String(state.items.length), text }] })
     },
     askApproval(prompt) {
       set({ approval: prompt })

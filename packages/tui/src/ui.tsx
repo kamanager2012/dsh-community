@@ -18,7 +18,12 @@ const MUTED = '#6d7686'
 const ACCENT = '#6ea8fe'
 const TEXT = '#d9dee8'
 
-function renderItem(item: UiItem): ReturnType<typeof createElement> {
+function renderItem(item: UiItem, thinkingOpen: boolean): ReturnType<typeof createElement> {
+  if (item.kind === 'help') {
+    return createElement(Box, { key: item.id, borderStyle: 'round', borderColor: MUTED, flexDirection: 'column', paddingX: 1, marginBottom: 1 },
+      createElement(Text, { color: MUTED }, item.text),
+    )
+  }
   if (item.kind === 'user') {
     return createElement(Box, { key: item.id, flexDirection: 'column', marginBottom: 1 },
       createElement(Text, { color: ACCENT, bold: true }, '你'),
@@ -32,25 +37,38 @@ function renderItem(item: UiItem): ReturnType<typeof createElement> {
         item.done ? `✓ ${item.name} — ${item.summary}` : `⚙ ${item.name}${args}`),
     )
   }
+  const reasoning = thinkingOpen
+    ? createElement(Text, { color: MUTED }, item.reasoning)
+    : item.reasoning !== ''
+      ? createElement(Text, { color: MUTED }, `思考 ${item.reasoning.length} 字 · Tab 展开`)
+      : null
   return createElement(Box, { key: item.id, flexDirection: 'column', marginBottom: 1 },
     createElement(Text, { color: '#8fbc8f', bold: true }, '助手'),
-    item.reasoning !== '' ? createElement(Text, { color: MUTED }, item.reasoning) : null,
+    reasoning,
     createElement(Text, null, item.text),
   )
 }
 
-const Transcript: FC<{ store: UiStore }> = ({ store }) => {
+const Transcript: FC<{ store: UiStore; thinkingOpen: boolean }> = ({ store, thinkingOpen }) => {
   const state = useSyncExternalStore(store.subscribe, () => store.state)
   if (state.fatal !== undefined) {
     return createElement(Text, { color: 'red' }, `启动失败：${state.fatal}`)
   }
   return createElement(Box, { flexDirection: 'column' },
-    ...state.items.map((item) => renderItem(item)),
+    ...state.items.map((item) => renderItem(item, thinkingOpen)),
     state.status === 'running'
       ? createElement(Text, { color: MUTED }, '…')
       : null,
   )
 }
+
+const HELP_TEXT = `dsh-community-tui 帮助
+  /help   显示本帮助
+  /exit   退出
+  Esc     打断当前回答
+  Tab     展开/折叠思考过程
+  y/n     审批弹窗:允许一次/拒绝
+  数字键  提问弹窗:选择选项`
 
 const InputBar: FC<{ store: UiStore; onSend: (text: string) => void }> = ({ store, onSend }) => {
   const [value, setValue] = useState('')
@@ -63,6 +81,7 @@ const InputBar: FC<{ store: UiStore; onSend: (text: string) => void }> = ({ stor
       const trimmed = text.trim()
       setValue('')
       if (trimmed === '/exit') process.exit(0)
+      else if (trimmed === '/help') store.showHelp(HELP_TEXT)
       else if (trimmed !== '') onSend(trimmed)
     },
     placeholder: '输入任务，回车发送（/help /exit）',
@@ -116,7 +135,12 @@ const QuestionsView: FC<{ store: UiStore }> = ({ store }) => {
 
 export const App: FC<AppProps> = ({ store, onSend, onCancel, onExit }) => {
   const { exit } = useApp()
+  const [thinkingOpen, setThinkingOpen] = useState(false)
   useInput((input, key) => {
+    if (key.tab) {
+      setThinkingOpen((open) => !open)
+      return
+    }
     const state = store.state
     if (state.approval !== undefined) {
       if (input === 'y') store.resolveApproval('allowed-once')
@@ -142,7 +166,7 @@ export const App: FC<AppProps> = ({ store, onSend, onCancel, onExit }) => {
   })
 
   return createElement(Box, { flexDirection: 'column', padding: 1 },
-    createElement(Transcript, { store }),
+    createElement(Transcript, { store, thinkingOpen }),
     createElement(ApprovalView, { store }),
     createElement(QuestionsView, { store }),
     createElement(Box, { marginTop: 1 },
