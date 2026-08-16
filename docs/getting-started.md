@@ -10,7 +10,7 @@
 | --- | --- | --- |
 | 直接使用官方 Runtime | [`npx @deepseek-ai/dsh web`](https://github.com/deepseek-ai/deepseek-harness) | 官方产品路径 |
 | 使用社区终端 / TUI | 本仓库 `dsh-community` 或源码中的 `pnpm tui` | 社区 UX，执行核心仍是官方 Runtime |
-| 下载桌面包 | [Community Releases](https://github.com/kamanager2012/dsh-community/releases) | 当前以 Preview 为测试入口；三平台门禁未全绿前不要宣称跨平台 Stable |
+| 下载桌面包 | [Community Releases](https://github.com/kamanager2012/dsh-community/releases) | 当前以 Preview 为测试入口；最新 Actions 已生成三平台 artifact，但仍要等 tag 发布到 GitHub Release |
 | 查完整操作手册 | [DeepSeek Harness Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/) | Provider、Session、安全、自动化和验收 |
 
 不要从 Suite、Marketplace、Plugins 或 Edition 下载正式客户端。它们分别是实验舱、发现体验、兼容注册表和历史归档。
