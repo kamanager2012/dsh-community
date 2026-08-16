@@ -1,0 +1,18 @@
+# dsh-community-tui bundle patch: the community-owned terminal surface over
+# the dsh-base layer. One insert (our plugin) plus the two official
+# interaction services an interactive terminal needs.
+#
+# Everything here is our own surface code; the official rows below are
+# official packages the base already carries, configured for interactivity.
+
+- insert:
+    - id: dsh-community-tui
+      name: '@dsh-community/tui'
+
+- id: user-questions
+  name: '@deepseek-ai/dsh-user-questions'
+
+- id: approval
+  name: '@deepseek-ai/dsh-user-approval'
+  config:
+    policy: ask

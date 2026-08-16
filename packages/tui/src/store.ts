@@ -1,0 +1,196 @@
+import type { UserQuestionAnswer, UserQuestionRequest } from './types.ts'
+
+export type UiItem =
+  | { readonly kind: 'user'; readonly id: string; readonly text: string }
+  | { readonly kind: 'assistant'; readonly id: string; readonly text: string; readonly reasoning: string; readonly final: boolean }
+  | { readonly kind: 'tool'; readonly id: string; readonly name: string; readonly args: string; readonly done: boolean; readonly summary: string }
+
+export interface ApprovalPrompt {
+  readonly toolName: string
+  readonly callId?: string
+  readonly reason?: string
+}
+
+export interface QuestionPrompt {
+  readonly request: UserQuestionRequest
+}
+
+export interface UiState {
+  readonly items: readonly UiItem[]
+  readonly status: string
+  readonly model: string
+  readonly approval: ApprovalPrompt | undefined
+  readonly questions: QuestionPrompt | undefined
+  readonly fatal: string | undefined
+}
+
+const EMPTY: UiState = {
+  items: [],
+  status: 'idle',
+  model: 'default',
+  approval: undefined,
+  questions: undefined,
+  fatal: undefined,
+}
+
+function textOfBlocks(blocks: unknown): string {
+  if (!Array.isArray(blocks)) return ''
+  return blocks
+    .filter((block): block is { type: 'text'; text?: unknown } =>
+      typeof block === 'object' && block !== null && (block as { type?: unknown }).type === 'text',
+    )
+    .map((block) => String(block.text ?? ''))
+    .join('\n')
+}
+
+function summaryOfToolResult(event: Record<string, unknown>): string {
+  const meta = event.meta
+  if (typeof meta === 'object' && meta !== null) {
+    const summary = (meta as Record<string, unknown>).summary
+    if (typeof summary === 'string' && summary !== '') return summary
+  }
+  const content = event.content
+  if (Array.isArray(content)) {
+    const text = content
+      .filter((block): block is { type: 'text'; text?: unknown } =>
+        typeof block === 'object' && block !== null && (block as { type?: unknown }).type === 'text',
+      )
+      .map((block) => String(block.text ?? ''))
+      .join(' ')
+      .trim()
+    if (text !== '') {
+      const clipped = text.replaceAll(/\s+/gu, ' ')
+      return clipped.length > 160 ? `${clipped.slice(0, 160)}…` : clipped
+    }
+  }
+  return 'done'
+}
+
+export interface UiStore {
+  readonly state: UiState
+  subscribe(listener: () => void): () => void
+  applySessionEvent(event: Record<string, unknown>): void
+  setStatus(status: string): void
+  setModel(model: string): void
+  setFatal(message: string): void
+  askApproval(prompt: ApprovalPrompt): Promise<string>
+  resolveApproval(outcome: string): void
+  askQuestions(request: UserQuestionRequest): Promise<UserQuestionAnswer>
+  resolveQuestions(answer: UserQuestionAnswer): void
+}
+
+export function createStore(): UiStore {
+  let state: UiState = EMPTY
+  const listeners = new Set<() => void>()
+  let approvalWaiter: ((outcome: string) => void) | undefined
+  let questionWaiter: ((answer: UserQuestionAnswer) => void) | undefined
+
+  const emit = (): void => {
+    for (const listener of listeners) listener()
+  }
+
+  const set = (patch: Partial<UiState>): void => {
+    state = { ...state, ...patch }
+    emit()
+  }
+
+  const patchLast = (kind: UiItem['kind'], update: (item: UiItem) => UiItem): void => {
+    const index = state.items.map((item) => item.kind).lastIndexOf(kind)
+    if (index < 0) return
+    const next = state.items.slice()
+    next[index] = update(next[index]!)
+    state = { ...state, items: next }
+    emit()
+  }
+
+  return {
+    get state() {
+      return state
+    },
+    subscribe(listener) {
+      listeners.add(listener)
+      return () => listeners.delete(listener)
+    },
+    applySessionEvent(event) {
+      const type = event.type
+      if (type === 'user/message') {
+        const message = event.message as { content?: unknown } | undefined
+        const text = textOfBlocks(message?.content)
+        if (text === '') return
+        set({ items: [...state.items, { kind: 'user', id: String(event.seq ?? state.items.length), text }] })
+        return
+      }
+      if (type === 'assistant/chunk') {
+        const chunk = event.chunk as Record<string, unknown> | undefined
+        if (chunk === undefined) return
+        const last = state.items[state.items.length - 1]
+        if (last?.kind !== 'assistant' || last.final) {
+          set({ items: [...state.items, { kind: 'assistant', id: String(chunk.index ?? state.items.length), text: '', reasoning: '', final: false }] })
+        }
+        if (chunk.type === 'text-delta') {
+          patchLast('assistant', (item) => item.kind === 'assistant' ? { ...item, text: item.text + String(chunk.text ?? '') } : item)
+        } else if (chunk.type === 'reasoning-delta') {
+          patchLast('assistant', (item) => item.kind === 'assistant' ? { ...item, reasoning: item.reasoning + String(chunk.text ?? '') } : item)
+        } else if (chunk.type === 'tool-call-delta') {
+          const callId = String(chunk.id ?? chunk.index ?? 'call')
+          if (!state.items.some((item) => item.kind === 'tool' && item.id === callId)) {
+            set({ items: [...state.items, { kind: 'tool', id: callId, name: String(chunk.name ?? 'tool'), args: String(chunk.argumentsDelta ?? ''), done: false, summary: '' }] })
+          }
+        }
+        return
+      }
+      if (type === 'assistant/message') {
+        patchLast('assistant', (item) => item.kind === 'assistant' ? { ...item, final: true } : item)
+        return
+      }
+      if (type === 'tool/call') {
+        const callId = String(event.callId ?? 'call')
+        if (!state.items.some((item) => item.kind === 'tool' && item.id === callId)) {
+          set({ items: [...state.items, { kind: 'tool', id: callId, name: String(event.name ?? 'tool'), args: String(event.arguments ?? ''), done: false, summary: '' }] })
+        }
+        return
+      }
+      if (type === 'tool/result') {
+        const callId = String(event.callId ?? 'call')
+        const summary = summaryOfToolResult(event)
+        set({
+          items: state.items.map((item) =>
+            item.kind === 'tool' && item.id === callId ? { ...item, done: true, summary } : item,
+          ),
+        })
+        return
+      }
+    },
+    setStatus(status) {
+      set({ status })
+    },
+    setModel(model) {
+      set({ model })
+    },
+    setFatal(message) {
+      set({ fatal: message })
+    },
+    askApproval(prompt) {
+      set({ approval: prompt })
+      return new Promise<string>((resolve) => {
+        approvalWaiter = resolve
+      })
+    },
+    resolveApproval(outcome) {
+      set({ approval: undefined })
+      approvalWaiter?.(outcome)
+      approvalWaiter = undefined
+    },
+    askQuestions(request) {
+      set({ questions: { request } })
+      return new Promise<UserQuestionAnswer>((resolve) => {
+        questionWaiter = resolve
+      })
+    },
+    resolveQuestions(answer) {
+      set({ questions: undefined })
+      questionWaiter?.(answer)
+      questionWaiter = undefined
+    },
+  }
+}
