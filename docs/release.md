@@ -21,7 +21,7 @@ node scripts/release.mjs v0.1.3-preview
 The script checks a clean tree, a free tag, and a matching CHANGELOG section, then builds the AppImage locally as a sanity check and pushes the tag. The tag push starts the 3-OS `release` workflow:
 
 1. **Linux** — typecheck + test + AppImage + sha256
-2. **Windows** — NSIS installer (`DSH Community Setup x.y.z.exe`) + zip + sha256
+2. **Windows** — NSIS installer (`DSH Community Setup x.y.z.exe`) + sha256. Portable zip is deferred until NSIS is reliably green.
 3. **macOS** — dmg + sha256
 
 The `publish` job collects all assets and creates the GitHub Release with the CHANGELOG section as notes. `-preview` tags are marked pre-release; plain tags become Latest.

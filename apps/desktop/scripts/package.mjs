@@ -85,16 +85,23 @@ async function ensureElectronDist() {
   }
 }
 
+function phase(message) {
+  process.stdout.write(`[pack ${new Date().toISOString()}] ${message}\n`)
+}
+
 await ensureElectronDist()
 
 // Call the scripts with node. Do not spawn `pnpm` here — on Windows that is
 // pnpm.cmd and spawnSync without a shell exits with status null.
-process.stdout.write('building desktop main/preload…\n')
+phase('building desktop main/preload')
 runCommand(process.execPath, [join(desktop, 'scripts/write-tray-icon.mjs')], { cwd: desktop })
 runCommand(process.execPath, [join(desktop, 'scripts/build.mjs')], { cwd: desktop })
 
 if (!await exists(join(desktop, 'runtime-host/node_modules/@deepseek-ai/dsh/lib/bin.js'))) {
+  phase('staging official runtime')
   runCommand(process.execPath, [join(desktop, 'scripts/stage-official-runtime.mjs')], { cwd: desktop })
+} else {
+  phase('official runtime already staged')
 }
 
 await rm(packRoot, { recursive: true, force: true })
@@ -186,13 +193,16 @@ await writeFile(join(packRoot, 'pnpm-workspace.yaml'), 'packages:\n  - "."\n')
 await mkdir(join(packRoot, 'node_modules'), { recursive: true })
 
 const builderArgs = ['--publish', 'never', '--config.npmRebuild=false']
-if (targetFlag === 'win') builderArgs.unshift('--win', 'nsis', 'zip')
+// Windows first ship is NSIS only. A second zip pass of the official runtime
+// is what has been hanging GHA for 20+ minutes.
+if (targetFlag === 'win') builderArgs.unshift('--win', 'nsis')
 else if (targetFlag === 'mac') builderArgs.unshift('--mac', 'dir', 'dmg')
 else builderArgs.unshift('--linux', targetFlag === 'appimage' ? 'AppImage' : 'dir')
 
 await rm(releaseDir, { recursive: true, force: true })
-process.stdout.write(`electron-builder ${builderArgs.join(' ')}\n`)
+phase(`electron-builder ${builderArgs.join(' ')}`)
 runCommand(process.execPath, [builderCli, ...builderArgs], { cwd: packRoot })
+phase('electron-builder finished')
 
 if (targetFlag === 'appimage') {
   const images = (await readdir(releaseDir)).filter((name) => name.endsWith('.AppImage'))
@@ -202,15 +212,14 @@ if (targetFlag === 'appimage') {
   const names = await readdir(releaseDir)
   const exe = names.find((name) => name.endsWith('.exe') && name.includes('Setup'))
     ?? names.find((name) => name.endsWith('.exe'))
-  const zip = names.find((name) => name.endsWith('.zip'))
   if (exe === undefined) throw new Error(`Windows installer missing in ${releaseDir}`)
-  if (zip === undefined) throw new Error(`Windows zip missing in ${releaseDir}`)
   const bin = join(releaseDir, 'win-unpacked', 'DSH Community.exe')
   const officialPath = join(releaseDir, 'win-unpacked', 'resources/host/node_modules/@deepseek-ai/dsh/lib/bin.js')
   if (!await exists(bin)) throw new Error(`packaged executable missing: ${bin}`)
   if (!await exists(officialPath)) throw new Error(`staged official dsh missing: ${officialPath}`)
   process.stdout.write(`packaged ${join(releaseDir, exe)}\n`)
-  process.stdout.write(`packaged ${join(releaseDir, zip)}\n`)
+  const zip = names.find((name) => name.endsWith('.zip'))
+  if (zip !== undefined) process.stdout.write(`packaged ${join(releaseDir, zip)}\n`)
 } else if (targetFlag === 'mac') {
   const dmg = (await readdir(releaseDir)).find((name) => name.endsWith('.dmg'))
   if (dmg === undefined) throw new Error(`macOS dmg missing in ${releaseDir}`)
