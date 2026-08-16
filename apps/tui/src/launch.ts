@@ -1,11 +1,9 @@
-import { COMMUNITY_TUI_PROFILE } from './profile.js'
-
 /**
- * Official launcher argv. `dsh` owns --profile/--patch; everything after
- * reaches the booted app. Official help: `dsh --profile tui --resume <session>`.
+ * Official launcher argv. Terminal boots official headless, not a
+ * third-party Ink TUI. `dsh` owns --profile/--patch.
  */
 export function officialTuiArgv(patchPath: string, extra: readonly string[] = []): string[] {
-  return ['--profile', COMMUNITY_TUI_PROFILE, '--patch', patchPath, ...extra]
+  return ['--profile', 'headless', '--patch', patchPath, ...extra]
 }
 
 export type CommunityLaunch =
@@ -21,12 +19,14 @@ export type CommunityLaunch =
   | { readonly kind: 'resume'; readonly id: string; readonly rest: readonly string[] }
   | { readonly kind: 'run'; readonly rest: readonly string[] }
 
-export const COMMUNITY_TUI_HELP = `dsh-community — 社区发行层，跑在官方 @deepseek-ai/dsh 上
+export const COMMUNITY_TUI_HELP = `dsh-community — 社区发行层，跑官方 @deepseek-ai/dsh
 
-先这样用：
+终端启动官方：dsh --profile headless
+不安装、不挂第三方 TUI。
+
   dsh-community                     有对话就接着最近一条，否则开新的
-  dsh-community new                 强制开新对话
-  dsh-community resume last         明确接着最近一条
+  dsh-community new [任务]          官方 headless 开新对话
+  dsh-community resume last         接着最近一条
   dsh-community sessions            看官方 ~/.dsh 里的对话
   dsh-community version             客户端版本 + 官方 pin
   dsh-community doctor              自检（不打印密钥）
@@ -41,8 +41,6 @@ export const COMMUNITY_TUI_HELP = `dsh-community — 社区发行层，跑在官
   --doctor / doctor
   --desktop / desktop
   -h, --help
-
-dsh-community-tui 是同一入口。安装走官方 dsh plugin add。不叫 dsh-tui，不发 npm。
 `
 
 function peelLauncher(argv: readonly string[]): string[] {

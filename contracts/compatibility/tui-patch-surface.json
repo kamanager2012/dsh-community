@@ -3,8 +3,8 @@
   "measuredAt": "dsh-TUI 0.6.1 against official @deepseek-ai/dsh@0.1.0-rc.6",
   "kpi": "patch-surface-reduction",
   "interventionCount": 33,
-  "communityTuiOwned": 8,
-  "communityTuiOwnedWritten": 8,
+  "communityTuiOwned": 6,
+  "communityTuiOwnedWritten": 6,
   "presetIsolationRows": 25,
   "overrides": [
     "system-prompt",
@@ -41,14 +41,9 @@
   ],
   "inserts": [
     "agent-presets",
-    "cordis-host-runner",
-    "dsh-tui",
-    "working-activity"
+    "cordis-host-runner"
   ],
-  "tuiOwnedInserts": [
-    "dsh-tui",
-    "working-activity"
-  ],
-  "milestones": [33, 15, 8, 2],
-  "target": "only TUI-owned inserts; official permission/agent/session/llm/compaction rows stay official"
+  "tuiOwnedInserts": [],
+  "milestones": [33, 15, 8, 6],
+  "target": "official dsh --profile headless; no third-party TUI plugin"
 }

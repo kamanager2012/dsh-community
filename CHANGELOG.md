@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- 终端不再安装或挂载 `@deepseek-harness-tui/dsh-tui`。入口只启动官方 `dsh --profile headless`。第三方 TUI 只许参考。
+
 ## 0.1.6 — 2026-08-16
 
 Release: https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.6

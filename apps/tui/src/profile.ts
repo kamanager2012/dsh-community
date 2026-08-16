@@ -10,12 +10,10 @@ export interface ProfileManifest {
   dsh?: { profile?: { bundles?: string[] } }
 }
 
-/** Official base only. Do not list the reference TUI package as a bundle. */
-export const COMMUNITY_TUI_BUNDLES = ['@deepseek-ai/dsh-base'] as const
+/** Official headless only. No third-party TUI package. */
+export const COMMUNITY_TUI_BUNDLES = ['@deepseek-ai/dsh-headless'] as const
 
-export const COMMUNITY_TUI_PLUGIN_DEPS: Record<string, string> = {
-  '@deepseek-harness-tui/dsh-tui': '0.6.1',
-}
+export const COMMUNITY_TUI_PLUGIN_DEPS: Record<string, string> = {}
 
 export function profileDir(dshHome: string, name = COMMUNITY_TUI_PROFILE): string {
   return join(dshHome, 'profiles', name)

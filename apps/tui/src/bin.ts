@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Our third-party TUI. Official dsh is the development foundation and runtime.
+ * Community launcher. Official dsh is the runtime. No third-party TUI.
  */
 
 import { spawnSync } from 'node:child_process'
@@ -23,7 +23,6 @@ import {
   type OfficialSessionRef,
 } from '@dsh-community/dsh-bridge'
 import { composeCommunityTuiPatch } from './compose-patch.js'
-import { installProfileDeps, profileNeedsInstall } from './install.js'
 import {
   COMMUNITY_TUI_HELP,
   officialAppArgs,
@@ -32,7 +31,7 @@ import {
   resumeEnv,
 } from './launch.js'
 import { communityClientVersion, formatClientIdentity } from './version.js'
-import { ensureCommunityTuiProfile, profileDir } from './profile.js'
+import { ensureCommunityTuiProfile } from './profile.js'
 import {
   formatHumanSessions,
   formatPorcelainSessions,
@@ -57,7 +56,7 @@ function writeDoctor(): boolean {
     sessionCount: listOfficialSessions(officialSessionRoot(dshHome)).length,
     apiKeyPresent: officialApiKeyPresent(),
     tty: Boolean(process.stdout.isTTY),
-    profileReady: !profileNeedsInstall(profileDir(dshHome)),
+    profileReady: true,
   }))
   return officialApiKeyPresent()
 }
@@ -185,14 +184,6 @@ if (continuing !== undefined) {
   )
 } else if (sessions.length > 0 && (launch.kind === 'new' || launch.kind === 'run')) {
   process.stderr.write(`新对话。接着最近一条：dsh-community\n`)
-}
-
-if (profileNeedsInstall(dir)) {
-  process.stderr.write('dsh-community: 第一次启动，正在安装终端插件（只要一次）…\n')
-  const pnpm = installProfileDeps(dir)
-  if (!pnpm.ok) {
-    fail('dsh-community-tui: 官方 profile 目录里 pnpm install 失败', pnpm.status ?? 1)
-  }
 }
 
 const extra = resumeId === undefined

@@ -4,8 +4,8 @@ import { fileURLToPath } from 'node:url'
 import { OFFICIAL_UI_CONTRACT } from '@dsh-community/shared-types'
 
 /**
- * Reconstruction target for `dsh-TUI`.
- * Keep Ink. KPI is patch-surface reduction, not a rewrite.
+ * Official Runtime is the foundation. Third-party TUI is reference only —
+ * do not install or mount it.
  */
 
 const surface = JSON.parse(
@@ -22,25 +22,21 @@ const surface = JSON.parse(
 }
 
 export const TUI_KEEP = [
-  'src/ink',
-  'screens',
-  'theme',
-  'activity line',
-  'Esc-Esc undo',
-  'i18n',
+  'official dsh --profile headless',
+  'official ~/.dsh sessions',
 ] as const
 
 export const TUI_MUST_NOT = [
   'implement AgentLoop',
   'write a second session log',
   'vendor official packages/core',
-  'rewrite Ink',
-  'claim official will never ship a TUI',
+  'install @deepseek-harness-tui/dsh-tui',
+  'mount a third-party TUI as our product',
 ] as const
 
 export const TUI_BOOT = {
-  install: 'dsh plugin --profile tui add @deepseek-harness-tui/dsh-tui',
-  run: 'dsh --profile tui',
+  install: 'none — official @deepseek-ai/dsh only',
+  run: 'dsh --profile headless',
 } as const
 
 export const tuiSeam = {

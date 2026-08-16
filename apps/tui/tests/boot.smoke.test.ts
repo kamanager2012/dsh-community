@@ -5,24 +5,20 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { resolveOfficialDsh } from '@dsh-community/dsh-bridge'
 import { composeCommunityTuiPatch } from '../src/compose-patch.ts'
-import { installProfileDeps } from '../src/install.ts'
 import { officialTuiArgv } from '../src/launch.ts'
 import { ensureCommunityTuiProfile } from '../src/profile.ts'
 
 /**
- * No TTY: compose our profile, install the Ink plugin as a dependency,
- * dump the official tree. Proves we boot official dsh without the
- * reference 33-row bundle layer.
+ * No TTY: compose our overlay and dump official headless.
+ * Must not install or mention a third-party TUI package.
  */
-describe('community TUI profile boot', () => {
-  it('installs plugins and dumps a tree that includes our TUI row', { timeout: 180_000 }, () => {
+describe('community official-headless boot', () => {
+  it('dumps official headless without a third-party TUI plugin', { timeout: 180_000 }, () => {
     const home = mkdtempSync(join(tmpdir(), 'dsh-community-tui-boot-'))
     const { dir, patchPath } = ensureCommunityTuiProfile({
       dshHome: home,
       communityPatch: composeCommunityTuiPatch(),
     })
-    const installed = installProfileDeps(dir)
-    expect(installed.ok).toBe(true)
 
     const dsh = resolveOfficialDsh({ from: import.meta.url })
     const dump = execFileSync(
@@ -35,10 +31,10 @@ describe('community TUI profile boot', () => {
         env: { ...process.env, DSH_HOME: home },
       },
     )
-    expect(dump).toMatch(/id: dsh-tui/)
-    expect(dump).toMatch(/@deepseek-harness-tui\/dsh-tui/)
+    expect(dump).not.toMatch(/@deepseek-harness-tui\/dsh-tui/)
+    expect(dump).not.toMatch(/id: dsh-tui/)
     expect(dump).toMatch(/id: session/)
     expect(dump).toMatch(/id: agent/)
-    expect(dump).toMatch(/id: tool-bash[\s\S]*disabled: true/)
+    expect(dump).toMatch(/headless/)
   })
 })

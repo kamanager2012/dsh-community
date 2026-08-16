@@ -37,9 +37,7 @@
     "agent-loop",
     "sandbox-policy",
     "approval",
-    "session-persistence-jsonl",
-    "dsh-tui",
-    "working-activity"
+    "session-persistence-jsonl"
   ],
-  "note": "The 23 disables are the same host-plane move official web-app already does for agent-presets. They should not live in the TUI file. First cut: 33 → 8 TUI-owned rows. Ink is unchanged."
+  "note": "Official foundation only. Third-party TUI rows (dsh-tui, working-activity) are not mounted."
 }

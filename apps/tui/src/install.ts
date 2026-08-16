@@ -1,9 +1,7 @@
 import { spawnSync } from 'node:child_process'
-import { existsSync } from 'node:fs'
-import { join } from 'node:path'
 
-export function profileNeedsInstall(dir: string): boolean {
-  return !existsSync(join(dir, 'node_modules', '@deepseek-harness-tui', 'dsh-tui'))
+export function profileNeedsInstall(_dir: string): boolean {
+  return false
 }
 
 export function installProfileDeps(dir: string): { readonly ok: boolean; readonly status: number | null } {

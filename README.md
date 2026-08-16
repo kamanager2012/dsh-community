@@ -40,7 +40,7 @@
 | 你要什么 | 用谁 |
 |---|---|
 | 真正跑 agent | 官方 [`npx @deepseek-ai/dsh web`](https://github.com/deepseek-ai/deepseek-harness) |
-| 终端 TUI | 本仓 `pnpm tui`（官方 profile + 薄 patch，Ink 只当挂载的插件） |
+| 终端 | 本仓 `dsh-community`（启动官方 `dsh --profile headless`，不挂第三方 TUI） |
 | 下载安装包 | [v0.1.6](https://github.com/kamanager2012/dsh-community/releases/latest) |
 | 已验证能装的社区插件 | Desktop 市场页 · [`dsh-marketplace`](https://github.com/kamanager2012/dsh-marketplace) · [验证注册表](https://github.com/kamanager2012/dsh-community-plugins)（不是 awesome 目录） |
 | 官方表面快照 / 升 rc 契约 | **本仓** |
@@ -119,7 +119,7 @@ Windows / macOS 安装包由 GitHub Actions(`release` workflow)在对应系统�
 5. WSL/Linux TUI、Windows/macOS Desktop 与官方 Web 能共享同一 Session 真源
 6. 新版本兼容问题首先在 contract CI 爆
 
-当前：1 / 3 / 5 按设计成立；2 我们的 TUI 自有面 8 行（参考物 33）。第 4 条是官方发新包时的回归，不挡我们继续做发行面。
+当前：1 / 3 / 5 按设计成立；2 社区 overlay 只改官方行，不挂第三方 TUI。第 4 条是官方发新包时的回归。
 
 ## 仓库布局
 

@@ -3,7 +3,7 @@
   "version": "0.1.6",
   "private": true,
   "type": "module",
-  "description": "Our third-party TUI distribution. Official dsh is the runtime; reference TUI is Ink we mount.",
+  "description": "Community launcher around official dsh --profile headless. Not a third-party TUI.",
   "bin": {
     "dsh-community": "./dist/bin.js",
     "dsh-community-tui": "./dist/bin.js"

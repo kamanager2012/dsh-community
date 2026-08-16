@@ -19,12 +19,11 @@ import {
 } from '../src/profile.ts'
 
 describe('our TUI profile', () => {
-  it('uses official base only — reference TUI is a dependency, not a bundle', () => {
+  it('uses official headless only — no third-party TUI package', () => {
     const manifest = buildProfileManifest()
     expect(manifest.dsh?.profile?.bundles).toEqual([...COMMUNITY_TUI_BUNDLES])
-    expect(manifest.dependencies?.['@deepseek-harness-tui/dsh-tui']).toBe('0.6.1')
-    expect(manifest.dependencies?.['dsh-working-activity']).toBeUndefined()
-    expect(manifest.dsh?.profile?.bundles).not.toContain('@deepseek-harness-tui/dsh-tui')
+    expect(manifest.dependencies?.['@deepseek-harness-tui/dsh-tui']).toBeUndefined()
+    expect(manifest.dsh?.profile?.bundles).toEqual(['@deepseek-ai/dsh-headless'])
   })
 
   it('writes our patch into the official home profiles dir', () => {
@@ -33,13 +32,13 @@ describe('our TUI profile', () => {
     const result = ensureCommunityTuiProfile({ dshHome: home, communityPatch: patch })
     expect(result.dir).toBe(join(home, 'profiles', COMMUNITY_TUI_PROFILE))
     const written = readFileSync(result.patchPath, 'utf8')
-    expect(written).toMatch(/dsh-community TUI composition/)
+    expect(written).toMatch(/official dsh/)
     expect(written).toMatch(/tool-bash/)
-    expect(written).toMatch(/dsh-tui/)
+    expect(written).not.toMatch(/@deepseek-harness-tui\/dsh-tui/)
     const pkg = JSON.parse(readFileSync(join(result.dir, 'package.json'), 'utf8')) as {
       dsh: { profile: { bundles: string[] } }
     }
-    expect(pkg.dsh.profile.bundles).toEqual(['@deepseek-ai/dsh-base'])
+    expect(pkg.dsh.profile.bundles).toEqual(['@deepseek-ai/dsh-headless'])
   })
 
   it('lists official sessions without launching Ink', () => {
@@ -80,7 +79,7 @@ describe('our TUI profile', () => {
     ])
     expect(officialTuiArgv('/tmp/community.patch.yml', officialAppArgs(launch as Extract<typeof launch, { kind: 'resume' }>))).toEqual([
       '--profile',
-      COMMUNITY_TUI_PROFILE,
+      'headless',
       '--patch',
       '/tmp/community.patch.yml',
       '--resume',

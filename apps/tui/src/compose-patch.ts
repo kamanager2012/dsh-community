@@ -10,8 +10,8 @@ export function communityPatchDir(): string {
 export function composeCommunityTuiPatch(patchDir = communityPatchDir()): string {
   const isolation = readFileSync(join(patchDir, 'preset-isolation.cordis.patch.yml'), 'utf8')
   const owned = readFileSync(join(patchDir, 'tui-owned.cordis.patch.yml'), 'utf8')
-  return `# dsh-community TUI composition. We own this file.
-# Reference TUI (dsh-TUI) is an Ink implementation we mount, not a repo we patch.
+  return `# dsh-community overlay on official dsh. Official foundation only.
+# Do not mount third-party TUI packages.
 ${isolation.trim()}
 
 ${owned.trim()}

@@ -22,8 +22,8 @@ describe('TUI patch-surface reduction', () => {
     expect(classification.total).toBe(33)
     expect(classification.presetIsolationDisables).toHaveLength(23)
     expect(classification.officialInserts).toHaveLength(2)
-    expect(classification.tuiOwned).toHaveLength(8)
-    expect(23 + 2 + 8).toBe(33)
+    expect(classification.tuiOwned).toHaveLength(6)
+    expect(classification.tuiOwned).not.toContain('dsh-tui')
   })
 
   it('keeps the TUI-owned file at or below the 15 milestone', () => {
@@ -32,7 +32,8 @@ describe('TUI patch-surface reduction', () => {
     expect(countPatchIds(owned)).toBeLessThanOrEqual(15)
     expect(countPatchIds(owned)).toBeGreaterThanOrEqual(2)
     expect(countPatchIds(isolation)).toBe(25)
-    expect(owned).toMatch(/dsh-tui/)
+    expect(owned).not.toMatch(/dsh-tui/)
+    expect(owned).not.toMatch(/@deepseek-harness-tui/)
     expect(owned).not.toMatch(/tool-bash/)
     expect(owned).not.toMatch(/compaction-basic/)
     expect(isolation).toMatch(/tool-bash/)

@@ -9,7 +9,7 @@ Publish and open PRs only against **this** repository: [kamanager2012/dsh-commun
 1. Official `@deepseek-ai/dsh` is the development foundation and the only runtime. Do not copy official `packages/*` into this tree.
 2. UI hangs on `session/event` and `ctx.agents`. Do not add an agent loop, tool pipeline, or model adapter here.
 3. Prefer spawning the official CLI. In-process Cordis embed is out of scope.
-4. Our TUI is `apps/tui` (`dsh-community-tui`). Mount reference Ink as a plugin; do not add it as a `dsh.bundle`. Do not send patches to the reference TUI repo.
+4. Terminal is `apps/tui` (`dsh-community`). Boot official `dsh --profile headless`. Do not install or mount `@deepseek-harness-tui/dsh-tui`.
 5. Desktop capabilities (tray, hide-on-close, host restart, official session list) are rewritten here. Do not paste third-party `apps/desktop` sources.
 6. Do not add IPC or stdout parsers for agent/tool/session state. Snapshot official contracts; do not fork them.
 

@@ -3,7 +3,7 @@
   "version": "0.1.6",
   "private": true,
   "type": "module",
-  "description": "Reconstruction of the TUI coupling layer: official seams only, no Ink rewrite.",
+  "description": "Official-only terminal overlay. Do not mount third-party TUI packages.",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",

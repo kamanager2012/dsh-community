@@ -11,17 +11,15 @@ describe('tui adapter reconstruction', () => {
     expect(tuiSeam.contract.noSecondLoop).toBe(true)
     expect(tuiSeam.sessionChannel).toBe('session/event')
     expect(tuiSeam.submitTurn).toBe('Agent.followup')
-    expect(TUI_KEEP).toContain('src/ink')
-    expect(TUI_MUST_NOT).toContain('rewrite Ink')
+    expect(TUI_KEEP).toContain('official dsh --profile headless')
+    expect(TUI_MUST_NOT).toContain('install @deepseek-harness-tui/dsh-tui')
     expect(TUI_MUST_NOT).toContain('implement AgentLoop')
-    expect(TUI_MUST_NOT).toContain('claim official will never ship a TUI')
+    expect(TUI_MUST_NOT).toContain('mount a third-party TUI as our product')
   })
 
-  it('measures patch-surface reduction instead of promising a rewrite', () => {
-    expect(tuiPatchKpi.current).toBe(33)
-    expect(tuiPatchKpi.communityTuiOwned).toBe(8)
-    expect(tuiPatchKpi.milestones).toEqual([33, 15, 8, 2])
-    expect(tuiPatchKpi.tuiOwnedInserts).toEqual(['dsh-tui', 'working-activity'])
+  it('does not mount a third-party TUI plugin', () => {
+    expect(tuiPatchKpi.tuiOwnedInserts).toEqual([])
+    expect(tuiPatchKpi.communityTuiOwned).toBe(6)
   })
 
   it('does not contain an Ink tree', () => {
