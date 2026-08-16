@@ -193,9 +193,9 @@ Stable                  releases/latest
 当前用户下载事实：
 
 ```text
-Stable          Linux AppImage（已知：官方 dsh web 在该包里起不来）
-Preview         修复了上述启动问题的 Linux AppImage
-Windows / macOS release workflow 已写，3-OS Gate 未全绿前不要宣称可下
+Stable          v0.1.2  — Linux AppImage / macOS dmg / Windows NSIS
+Preview         v0.1.2-preview（旧，仅 Linux）
+不要再推 v0.1.1 AppImage（官方 dsh web 起不来）
 ```
 
 Windows / macOS 也必须只从 `dsh-community` 发布，不能改去 Suite 或 Edition。
