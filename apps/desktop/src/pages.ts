@@ -175,11 +175,14 @@ function shellDocument(title: string, body: string): string {
 </html>`
 }
 
-export function renderLoadingPage(): string {
+export function renderLoadingPage(detail?: string): string {
+  const extra = detail === undefined || detail.length === 0
+    ? ''
+    : `<p>${escapeHtml(detail)}</p>`
   return shellDocument(
     COMMUNITY_PRODUCT_NAME,
     `<h1>${escapeHtml(COMMUNITY_PRODUCT_NAME)}</h1>
-     <p>正在启动官方 <code>dsh web</code>。本窗口只做壳，不跑第二套 agent loop。</p>`,
+     <p>正在启动官方 <code>dsh web</code>。本窗口只做壳，不跑第二套 agent loop。</p>${extra}`,
   )
 }
 

@@ -66,7 +66,9 @@ import {
 import { formatSessionMtime } from './session-view.ts'
 import {
   ensureOfficialHostExtracted,
+  isOfficialHostReady,
   officialHostArchive,
+  officialHostBin,
   officialHostRoot,
 } from './host-extract.ts'
 import { assertHostLaunchPaths, resolveHostLaunchPaths } from './paths.ts'
@@ -672,48 +674,26 @@ function bindIpc(): void {
   })
 }
 
-async function boot(): Promise<void> {
-  if (app.isPackaged) {
-    const extracted = ensureOfficialHostExtracted({
-      archivePath: officialHostArchive(process.resourcesPath),
-      destRoot: officialHostRoot(app.getPath('userData'), PINNED_DSH_VERSION),
-    })
-    process.env.DSH_COMMUNITY_BIN = extracted
+async function preparePackagedRuntime(): Promise<void> {
+  if (!app.isPackaged) return
+  const dest = officialHostRoot(app.getPath('userData'), PINNED_DSH_VERSION)
+  if (isOfficialHostReady(dest)) {
+    process.env.DSH_COMMUNITY_BIN = officialHostBin(dest)
+    return
   }
-  const paths = launchPaths()
-  assertHostLaunchPaths(paths)
-  const install = resolveOfficialDsh({ from: import.meta.url })
-  const loaded = loadDesktopState(install.version)
+  await showHtml(renderLoadingPage('第一次启动，正在解开官方 Runtime，只做一次。'))
+  process.env.DSH_COMMUNITY_BIN = ensureOfficialHostExtracted({
+    archivePath: officialHostArchive(process.resourcesPath),
+    destRoot: dest,
+  })
+}
+
+async function boot(): Promise<void> {
+  const loaded = loadDesktopState(PINNED_DSH_VERSION)
   settings = loaded.settings
   catalog = loaded.catalog
   persistCatalog()
   writeJsonFile(desktopLayout().desktopSettings, settings)
-
-  const layout = desktopLayout()
-  host = createOfficialHost({
-    spawn: () => {
-      const next = launchPaths()
-      assertHostLaunchPaths(next)
-      return spawnOfficialWeb({
-        nodeExecutable: next.nodeExecutable,
-        cliEntry: next.cliEntry,
-        cwd: next.cwd,
-        env: next.env,
-        bind: { host: '127.0.0.1', port: 0 },
-        electronRunAsNode: next.electronRunAsNode,
-      })
-    },
-    onLog: (chunk) => {
-      process.stderr.write(chunk)
-      appendHostDiagnostics(layout.logs, chunk)
-    },
-  })
-
-  host.onChange((snapshot) => {
-    if (snapshot.phase !== 'failed') return
-    if (decideHostCrash(quitting) === 'ignore') return
-    void showHtml(renderErrorPage(snapshot.error))
-  })
 
   tray = createTray()
   window = createDesktopWindow({
@@ -753,10 +733,38 @@ async function boot(): Promise<void> {
   })
 
   try {
+    await preparePackagedRuntime()
+    const paths = launchPaths()
+    assertHostLaunchPaths(paths)
+    const install = resolveOfficialDsh({ from: import.meta.url })
+    const layout = desktopLayout()
+    host = createOfficialHost({
+      spawn: () => {
+        const next = launchPaths()
+        assertHostLaunchPaths(next)
+        return spawnOfficialWeb({
+          nodeExecutable: next.nodeExecutable,
+          cliEntry: next.cliEntry,
+          cwd: next.cwd,
+          env: next.env,
+          bind: { host: '127.0.0.1', port: 0 },
+          electronRunAsNode: next.electronRunAsNode,
+        })
+      },
+      onLog: (chunk) => {
+        process.stderr.write(chunk)
+        appendHostDiagnostics(layout.logs, chunk)
+      },
+    })
+    host.onChange((snapshot) => {
+      if (snapshot.phase !== 'failed') return
+      if (decideHostCrash(quitting) === 'ignore') return
+      void showHtml(renderErrorPage(snapshot.error))
+    })
     await startOfficial()
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    await showHtml(renderErrorPage(`${message}\n\nofficial ${install.packageName}@${install.version}`))
+    await showHtml(renderErrorPage(message))
   }
 }
 

@@ -13,6 +13,7 @@ describe('shell pages', () => {
   it('says the window is a shell around official dsh web', () => {
     expect(renderLoadingPage()).toMatch(/dsh web/)
     expect(renderLoadingPage()).toMatch(/不跑第二套/)
+    expect(renderLoadingPage('第一次启动，正在解开官方 Runtime，只做一次。')).toMatch(/解开官方 Runtime/)
   })
 
   it('gives a restart action when the official child fails', () => {
