@@ -1,10 +1,12 @@
 # dsh-community
 
-**DSH 社区版（DeepSeek Harness Community Edition）**
+**One Harness. Three Surfaces.**
+
+官方 DeepSeek Harness 的社区发行版：同一套 Runtime、同一套 `~/.dsh` 会话、同一套官方插件。官方 Web、社区 Desktop、社区 Terminal 进的是同一个世界。不是官方客户端，也不是第二套 Harness。
+
+你今天在官方 Web 开的对话，关掉以后用 `dsh-community` 终端可以接着聊；再打开 Desktop，还是同一条会话。
 
 [English](README.en.md) | 简体中文
-
-只发布在 [github.com/kamanager2012/dsh-community](https://github.com/kamanager2012/dsh-community)。官方 Runtime 的社区发行层，不是官方客户端，也不是第二套 harness。
 
 [![ci](https://github.com/kamanager2012/dsh-community/actions/workflows/ci.yml/badge.svg)](https://github.com/kamanager2012/dsh-community/actions/workflows/ci.yml)
 
@@ -13,18 +15,19 @@
 | **Stable** | [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) |
 | **Preview** | [Releases](https://github.com/kamanager2012/dsh-community/releases) 里最新的 Pre-release |
 
-代码版本看根目录 `package.json`，不要把开发号、Preview tag 和 Stable Latest 混成一个数。桌面请走 **Preview**：当前 Stable 的 Linux AppImage 有已知问题（打包里的官方 `dsh web` 起不来）。Windows / macOS 安装包由 `release` 工作流构建，3-OS 全绿之前 Preview 仍以 Linux 为主。
+代码版本看根目录 `package.json`，不要把开发号、Preview tag 和 Stable Latest 混成一个数。桌面请走 **Preview**：当前 Stable 的 Linux AppImage 有已知问题（打包里的官方 `dsh web` 起不来）。Linux / macOS 安装包已经能在 `release` 工作流里打出来；Windows 还在收口，没绿之前不要当正式下载。
 
 | 发行面 | 命名 | 入口 |
 |---|---|---|
+| 官方 Web | 官方 Runtime | [`npx @deepseek-ai/dsh web`](https://github.com/deepseek-ai/deepseek-harness) |
 | 终端 | **社区版·终端** | `dsh-community` / `dsh-community-tui` / `pnpm tui` |
 | 桌面 | **社区版·桌面** | [Releases](https://github.com/kamanager2012/dsh-community/releases) 的安装包，或 `pnpm desktop` |
 
-> 命名红线：不叫 dsh-TUI / DeepSeek Harness Desktop（那是参考物），不在 npm 冒用 `@deepseek-ai` 或 `dsh-tui` 的包名。
+> 命名红线：不叫 dsh-TUI / DeepSeek Harness Desktop（那是别人的产品名），不在 npm 冒用 `@deepseek-ai` 或 `dsh-tui` 的包名。我们是发行版，不是再造一个桌面壳。
 
-[仓库](https://github.com/kamanager2012/dsh-community) · [Stable](https://github.com/kamanager2012/dsh-community/releases/latest) · [Releases](https://github.com/kamanager2012/dsh-community/releases) · [插件市场](https://github.com/kamanager2012/dsh-community-plugins)
+[仓库](https://github.com/kamanager2012/dsh-community) · [Stable](https://github.com/kamanager2012/dsh-community/releases/latest) · [Releases](https://github.com/kamanager2012/dsh-community/releases) · [已验证插件](https://github.com/kamanager2012/dsh-community-plugins)
 
-开发基础是官方 DeepSeek Harness（`@deepseek-ai/dsh`）。我们在这上面做 Terminal / Desktop 发行和契约层，不另写一套 harness。
+开发基础是已发布的 `@deepseek-ai/dsh`。我们不 vendor 官方源码，也不用 `patch-package` 改官方 UI。扩展走外围发行层、契约层和插件验证层。
 
 中文 | [Architecture](ARCHITECTURE.md) · [重构说明](docs/reconstruction.md) · [Upgrade](docs/upgrade.md) · [TUI adapter](docs/tui-adapter.md) · [contracts](contracts/README.md) · [Version Manager](docs/version-manager.md)
 
@@ -35,27 +38,24 @@
 | 真正跑 agent | 官方 [`npx @deepseek-ai/dsh web`](https://github.com/deepseek-ai/deepseek-harness) |
 | 终端 TUI | 本仓 `pnpm tui`（官方 profile + 薄 patch，Ink 只当挂载的插件） |
 | 下载安装包 | [Releases](https://github.com/kamanager2012/dsh-community/releases)：桌面用 Preview；Stable Latest 的 AppImage 有已知启动问题。Win/mac 等 3-OS 工作流全绿后再当正式下载 |
-| 浏览 / 安装社区插件 | Desktop 社区市场页 · [`dsh-marketplace`](https://github.com/kamanager2012/dsh-marketplace) CLI · [注册表](https://github.com/kamanager2012/dsh-community-plugins) |
+| 已验证能装的社区插件 | Desktop 市场页 · [`dsh-marketplace`](https://github.com/kamanager2012/dsh-marketplace) · [验证注册表](https://github.com/kamanager2012/dsh-community-plugins)（不是 awesome 目录） |
 | 官方表面快照 / 升 rc 契约 | **本仓** |
 
 不要把本仓发到 npm 当 `@deepseek-ai/dsh` 或 `dsh-tui` 的替代。
 
 ## 社区生态导航
 
-本仓是官方 Runtime 之上的唯一 Canonical Product。普通用户只需要从
-[最新 Release](https://github.com/kamanager2012/dsh-community/releases/latest)
-下载本仓；其他仓库提供实验、知识、插件兼容性、发现体验或历史归档，不是第二个客户端。
+本仓是唯一用户下载入口。六仓是发行版需要的**角色边界**，不是已经转起来的生态闭环。现在没有完整插件市场，也不和 awesome 列表比收录数量。注册表做验证：哪些插件真能 `dsh plugin add`、在 pin 的官方版本上能 compose。
 
-| 仓库 | 定位 | 入口 |
+| 仓库 | 角色 | 现在实际是 |
 |---|---|---|
-| [`deepseek-harness-suite`](https://github.com/kamanager2012/deepseek-harness-suite) | Community Labs，实验性 Bridge、SDK、安全和 UX | 维护者 / 实验开发者 |
-| [`deepseek-harness-handbook`](https://github.com/kamanager2012/deepseek-harness-handbook) | Knowledge / Evidence，使用、验收和运维手册 | [在线文档](https://kamanager2012.github.io/deepseek-harness-handbook/) |
-| [`dsh-community-plugins`](https://github.com/kamanager2012/dsh-community-plugins) | 插件兼容性注册表 | 插件作者 / 维护者 |
-| [`dsh-marketplace`](https://github.com/kamanager2012/dsh-marketplace) | 浏览、搜索和安装体验 | `dsh-marketplace` CLI |
-| [`dsh-community-edition`](https://github.com/kamanager2012/dsh-community-edition) | Merge & Archive，已冻结，不要从那里下载 | 只读参考 |
+| [`deepseek-harness-suite`](https://github.com/kamanager2012/deepseek-harness-suite) | Labs | 实验源，不是下载渠道 |
+| [`deepseek-harness-handbook`](https://github.com/kamanager2012/deepseek-harness-handbook) | 手册 | 知识 / 证据，还在追代码 |
+| [`dsh-community-plugins`](https://github.com/kamanager2012/dsh-community-plugins) | 验证注册表 | 7 个已在 rc.6 上验证，不扩目录 |
+| [`dsh-marketplace`](https://github.com/kamanager2012/dsh-marketplace) | 发现 / 安装 UX | 初期，安装仍走官方 `dsh plugin add` |
+| [`dsh-community-edition`](https://github.com/kamanager2012/dsh-community-edition) | 已归档 | 不要从那里下载 |
 
-官方执行核心仍是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)。
-社区层不重新实现 Agent loop、官方 Session persistence、Tool execution 或官方 core packages。
+官方执行核心仍是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)。社区层不重新实现 Agent loop、不另建 session 目录、不用 patch 改官方 UI。
 
 ## 从源码跑
 

@@ -15,6 +15,7 @@ Promote stable launcher UX from the archived edition line. Marketplace and offic
 - README / ECOSYSTEM 不再把产品写成单一 “0.1.1”：Stable = `releases/latest`，Preview = 最新 Pre-release，代码版本看 `package.json`
 - Windows 打包：子进程 stdin 关闭，避免 `pnpm deploy` 在 CI 上挂死；NSIS/zip 用 normal 压缩，不再额外打一份 dir
 - Windows 打包：`.pack-root` 自成 pnpm workspace，避免 electron-builder 扫整个 monorepo；CI 关闭 Defender 实时扫描
+- 定位改成社区发行版（One Harness. Three Surfaces.）：共享 `~/.dsh`、不 patch 官方 UI、注册表是验证层不是目录；不再把六仓说成已闭环生态
 
 ## 0.1.2-preview — 2026-08-16
 

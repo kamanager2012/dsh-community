@@ -21,7 +21,25 @@
 > 第三方项目可以参考架构、交互和方法,但不复制代码和产品;
 > 所有功能必须以真实代码和真实运行结果为准,不允许用 README 描述代替实际能力。
 
-最终目标不是搞很多仓库,而是形成一个围绕官方 DeepSeek Harness 的社区生态。
+最终目标不是搞很多仓库,而是形成一个围绕官方 DeepSeek Harness 的社区发行版。
+
+**角色边界搭出来了 ≠ 生态闭环已经转起来。** 现在产品初期、用户接近 0、已验证插件 7 个。不要对外说“完整生态闭环”，也不要和 awesome 列表比插件数量。
+
+真正对用户能感知的差异不是 “Zero Vendoring” 或 “架构更干净”，而是：
+
+```text
+Official Web  ↔  Community Desktop  ↔  Community TUI
+                    same ~/.dsh
+                    same official plugins
+```
+
+概括成：**One Harness. Three Surfaces.**
+
+和愿意 `patch-package` 改官方 UI、并把 session 放进 Electron userData 的 Desktop 产品，走的是两条路。对方短期产品速度更快；我们不改官方表面，用外围发行层 / 契约 / 验证插件扩展，长期 drift 成本更低。没有谁天然高级。工程原则不是用户价值。
+
+Registry 的目标是验证层，不是最大目录：能装、能跑、适配当前 pin、申请了什么权限。Awesome 做发现，我们做 trust。
+
+节奏必须双轨，不能等 Win/mac/SDK/手册 100% 再开口：工程继续收 0.1.2 三系统 Stable，同时把“社区发行版、同一套会话”讲清楚。
 
 ---
 
@@ -1425,7 +1443,7 @@ REAL
 
 ## 三十三、整个生态一句话定义
 
-> **DeepSeek Harness Community 不是 DeepSeek Harness 的 fork,而是以官方 Runtime 为唯一执行核心、围绕兼容性、发行体验、插件生态、知识体系和安全实验构建的社区增强层。**
+> **DeepSeek Harness Community 不是 DeepSeek Harness 的 fork，也不是功能最多的 Desktop 壳。它是以官方 Runtime 为 kernel 的社区发行版：同一套会话、三个入口、可验证插件、契约盯上游。六仓是角色，不是已经转起来的生态闭环。**
 
 ---
 

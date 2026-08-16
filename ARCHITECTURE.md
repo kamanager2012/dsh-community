@@ -1,6 +1,6 @@
 # Architecture
 
-Community **distribution + compatibility** around official DeepSeek Harness. Not a second harness.
+Community **distribution** around official DeepSeek Harness: one runtime, one `~/.dsh`, three surfaces. Not a second harness and not a Desktop fork.
 
 ```
                   DeepSeek Harness

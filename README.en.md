@@ -1,29 +1,36 @@
 # DSH Community
 
-**The canonical community distribution around the official DeepSeek Harness Runtime.**
+**One Harness. Three Surfaces.**
+
+The community **distribution** around official DeepSeek Harness: one runtime, one
+`~/.dsh` session store, one official plugin chain. Official Web, Community Desktop,
+and Community Terminal share that world. This is not the official client and not a
+second Harness.
+
+A conversation you start in official Web is the same conversation you resume in
+`dsh-community` and then open again in Desktop.
 
 [简体中文](README.md) | **English**
 
 [![CI](https://github.com/kamanager2012/dsh-community/actions/workflows/ci.yml/badge.svg)](https://github.com/kamanager2012/dsh-community/actions/workflows/ci.yml)
+
 | Channel | Download |
 |---|---|
 | **Stable** | [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) |
 | **Preview** | newest Pre-release on [Releases](https://github.com/kamanager2012/dsh-community/releases) |
 
-The number in `package.json` is the in-tree development version. Do not treat it as the user download. Desktop testers should use **Preview**: the current Stable Linux AppImage cannot start official `dsh web`. Windows / macOS installers come from the `release` workflow and are not a user download until that gate is green.
+The number in `package.json` is the in-tree development version. Do not treat it as the user download. Desktop testers should use **Preview**: the current Stable Linux AppImage cannot start official `dsh web`. Linux and macOS artifacts already build in CI; Windows packaging is still being closed and is not a user download yet.
 
 [Official Runtime](https://github.com/deepseek-ai/deepseek-harness)
 
 ## What this repository is
 
-`dsh-community` is the only canonical user-facing product in the DeepSeek Harness
-Community ecosystem. It provides the Desktop and Terminal / TUI distribution layer,
-diagnostics, compatibility checks, and release packaging around the published
-`@deepseek-ai/dsh` Runtime.
+`dsh-community` is the only download entry. It is a distribution, not another
+Desktop shell: thin adapters and contracts around published `@deepseek-ai/dsh`,
+with official source ownership = 0 and no `patch-package` on official UI.
 
-It is not the official DeepSeek client and it is not a second Harness Runtime.
-The official Runtime remains responsible for the Agent loop, model execution, tool
-execution, official Session persistence, and core lifecycle.
+Official Runtime still owns the Agent loop, model execution, tool execution,
+session persistence, and core lifecycle.
 
 ## Choose an entry
 
@@ -34,26 +41,26 @@ execution, official Session persistence, and core lifecycle.
 | Use the Terminal / TUI | `pnpm tui` or `dsh-community` after a source install |
 | Use the Desktop shell | `pnpm desktop`, or a Preview installer once the 3-OS workflow is green |
 | Read operational guidance | [DeepSeek Harness Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/) |
-| Browse community plugins | [`dsh-marketplace`](https://github.com/kamanager2012/dsh-marketplace) and the [compatibility registry](https://github.com/kamanager2012/dsh-community-plugins) |
+| Verified community plugins | [`dsh-marketplace`](https://github.com/kamanager2012/dsh-marketplace) and the [verification registry](https://github.com/kamanager2012/dsh-community-plugins) — not an awesome list |
 
-Only this repository is the normal download entry. Suite, Edition, Marketplace,
-Plugins, and the Handbook are supporting repositories, not competing products.
+Only this repository is the download entry. The other repos are roles (labs, docs,
+verification, discovery, archive), not a finished ecosystem loop and not competing
+products.
 
 ## Current release status
 
-Keep these three layers separate:
+Keep these three layers separate. Do not hardcode them in the title.
 
-| Layer | Value | Meaning |
-|---|---|---|
-| Code line | `0.1.2` | Current `package.json` / main development line |
-| Preview | [`v0.1.2-preview`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.2-preview) | Test release with Web startup, system-Node preference, readiness polling, `doctor`, and official plugin lifecycle fixes |
-| Stable | [`v0.1.1`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.1) | Current Stable; the Linux AppImage has a known official `dsh web` startup issue |
+| Layer | Where |
+|---|---|
+| Code line | root `package.json` |
+| Preview | newest Pre-release on [Releases](https://github.com/kamanager2012/dsh-community/releases) |
+| Stable | [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) |
 
-The latest preview is closer to usable than the current Stable, but the three-OS release
-gate is not closed yet: Linux packaging is green, while the latest observed Windows and
-macOS packaging jobs are red and publish is skipped. Do not describe Windows/macOS
-assets as verified merely because the workflow exists. See the [Handbook release status](https://kamanager2012.github.io/deepseek-harness-handbook/content/11-operations/community-release-status/)
-for the dated evidence snapshot.
+Preview is closer to usable than current Stable (the Stable AppImage cannot start
+official `dsh web`). Linux and macOS packages now build in the `release` workflow;
+Windows is still the open 3-OS gate. Do not advertise Windows installers until that
+job is green.
 
 ## From source
 
@@ -95,9 +102,9 @@ exists, use it; add community code only where a verified gap remains.
 | [`dsh-community`](https://github.com/kamanager2012/dsh-community) | Canonical Product | **唯一正式下载入口 / only official community download** |
 | [`deepseek-harness-suite`](https://github.com/kamanager2012/deepseek-harness-suite) | Community Labs | Experimental source; not a release channel |
 | [`deepseek-harness-handbook`](https://github.com/kamanager2012/deepseek-harness-handbook) | Knowledge / Evidence | Documentation and operational evidence |
-| [`dsh-community-plugins`](https://github.com/kamanager2012/dsh-community-plugins) | Compatibility Registry | Plugin metadata and verification status |
-| [`dsh-marketplace`](https://github.com/kamanager2012/dsh-marketplace) | Discovery / Distribution UX | Browse and install front end |
-| [`dsh-community-edition`](https://github.com/kamanager2012/dsh-community-edition) | Merge & Archive | Historical reference; no second product line |
+| [`dsh-community-plugins`](https://github.com/kamanager2012/dsh-community-plugins) | Verification registry | 7 plugins proven on the pinned rc via `dsh plugin add`; not an awesome catalog |
+| [`dsh-marketplace`](https://github.com/kamanager2012/dsh-marketplace) | Discovery / install UX | Early; install still goes through official `dsh plugin add` |
+| [`dsh-community-edition`](https://github.com/kamanager2012/dsh-community-edition) | Archived | Do not download from here |
 
 ## Layout and further reading
 
