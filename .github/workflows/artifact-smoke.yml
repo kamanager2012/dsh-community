@@ -13,13 +13,14 @@ jobs:
   windows-exact:
     runs-on: windows-latest
     timeout-minutes: 25
+    env:
+      TAG: ${{ github.event.inputs.tag || 'v0.1.2' }}
     steps:
       - name: Download the exact release installer + sha256
         shell: pwsh
         run: |
-          $tag = '${{ github.event.inputs.tag || 'v0.1.2' }}'
-          Invoke-WebRequest -Uri "https://github.com/kamanager2012/dsh-community/releases/download/$tag/DSH.Community.Setup.$($tag.TrimStart('v')).exe" -OutFile setup.exe
-          Invoke-WebRequest -Uri "https://github.com/kamanager2012/dsh-community/releases/download/$tag/DSH.Community.Setup.$($tag.TrimStart('v')).exe.sha256" -OutFile setup.exe.sha256
+          curl.exe -sL -o setup.exe "https://github.com/kamanager2012/dsh-community/releases/download/$env:TAG/DSH.Community.Setup.$($env:TAG.TrimStart('v')).exe"
+          curl.exe -sL -o setup.exe.sha256 "https://github.com/kamanager2012/dsh-community/releases/download/$env:TAG/DSH.Community.Setup.$($env:TAG.TrimStart('v')).exe.sha256"
           $expected = (Get-Content setup.exe.sha256).Split(' ')[0].ToLower()
           $actual = (Get-FileHash setup.exe -Algorithm SHA256).Hash.ToLower()
           if ($expected -ne $actual) { throw "sha256 mismatch: $actual vs $expected" }
@@ -85,7 +86,7 @@ jobs:
           for i in $(seq 1 120); do
             sleep 1
             if [ -f "$LOGDIR/host.log" ]; then
-              PORT=$(grep -oP 'http://127\.0\.0\.1:\K\d+' "$LOGDIR/host.log" | head -1)
+              PORT=$(sed -n 's/.*http:\/\/127\.0\.0\.1:\([0-9]*\).*/\1/p' "$LOGDIR/host.log" | head -1)
               [ -n "$PORT" ] && break
             fi
           done
