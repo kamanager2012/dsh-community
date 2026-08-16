@@ -23,6 +23,7 @@ import {
   type OfficialSessionRef,
 } from '@dsh-community/dsh-bridge'
 import { composeCommunityTuiPatch } from './compose-patch.js'
+import { installProfileDeps, profileNeedsInstall } from './install.js'
 import {
   COMMUNITY_TUI_HELP,
   officialAppArgs,
@@ -176,6 +177,15 @@ const { dir, patchPath } = ensureCommunityTuiProfile({
   dshHome,
   communityPatch: composeCommunityTuiPatch(),
 })
+
+if (profileNeedsInstall(dir)) {
+  process.stdout.write('dsh-community: 第一次启动，正在安装终端插件（只要一次）…\n')
+  const pnpm = installProfileDeps(dir)
+  if (!pnpm.ok) {
+    process.stderr.write('dsh-community-tui: 官方 profile 目录里 pnpm install 失败\n')
+    process.exit(pnpm.status ?? 1)
+  }
+}
 
 const continuing = resumeId === undefined ? undefined : sessions.find((session) => session.id === resumeId)
 if (continuing !== undefined) {
