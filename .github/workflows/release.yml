@@ -26,6 +26,8 @@ jobs:
           pnpm test
       - name: Package AppImage
         run: pnpm desktop:package -- --appimage
+      - name: Asar vendor=0 guard
+        run: pnpm vitest run apps/desktop/tests/asar-purity.test.ts
       - name: Checksum
         run: node scripts/checksum-release.mjs apps/desktop/release/*.AppImage
       - uses: actions/upload-artifact@v4
