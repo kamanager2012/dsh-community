@@ -19,11 +19,20 @@
 
 代码版本看根目录 `package.json`，不要把开发号、Preview tag 和 Stable Latest 混成一个数。当前正式下载是 **v0.1.2 Stable**：GitHub Release 已包含 Linux AppImage、macOS dmg 和 Windows NSIS；`v0.1.2-preview` 只作为旧 Preview 保留。不要再推广 v0.1.1 AppImage。
 
+## Stable 基线与当前 main
+
+`v0.1.2` tag 是第一个三系统 Stable 的固定发布基线。当前 `main` 是发布后的可靠性修复线，不能把 main 源码测试结果直接当成已发布安装包的验证结果。当前 main 已包含：
+
+- [`918f004`](https://github.com/kamanager2012/dsh-community/commit/918f004)：Windows 暂存改为完整依赖树 hoist、解引用、压平，并增加 ready stamp，避免半截解压被误认为成功；
+- [`e487cf0`](https://github.com/kamanager2012/dsh-community/commit/e487cf0)：首次启动先显示加载页，再在后台解压官方 Runtime。
+
+这两个修复属于发布后的 main 线，除非新的 Release 明确包含它们，否则不要声称 `v0.1.2` 安装包已经包含这些改动。验证 Stable 时必须下载 GitHub Release 页面上的原始资产。
+
 | 发行面 | 命名 | 入口 |
 |---|---|---|
 | 官方 Web | 官方 Runtime | [`npx @deepseek-ai/dsh web`](https://github.com/deepseek-ai/deepseek-harness) |
 | 终端 | **社区版·终端** | `dsh-community` / `dsh-community-tui` / `pnpm tui` |
-| 桌面 | **社区版·桌面** | [Releases](https://github.com/kamanager2012/dsh-community/releases) 的安装包，或 `pnpm desktop` |
+| 桌面 | **社区版·桌面** | [v0.1.2 Stable](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.2) 安装包，或 `pnpm desktop` |
 
 > 命名红线：不叫 dsh-TUI / DeepSeek Harness Desktop（那是别人的产品名），不在 npm 冒用 `@deepseek-ai` 或 `dsh-tui` 的包名。我们是发行版，不是再造一个桌面壳。
 

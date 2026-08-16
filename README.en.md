@@ -21,6 +21,19 @@ A conversation you start in official Web is the same conversation you resume in
 
 The number in `package.json` is the in-tree development version. The current formal download is **v0.1.2 Stable**, whose GitHub Release includes the Linux AppImage, macOS dmg, and Windows NSIS installer. `v0.1.2-preview` is retained as an older Preview record; do not promote the v0.1.1 AppImage.
 
+## Stable baseline vs current main
+
+The `v0.1.2` tag is the fixed release baseline for the first three-platform Stable.
+Current `main` is a post-release reliability line; a main-source test is not proof
+that the published installer contains the same fix. At this snapshot, main includes:
+
+- [`918f004`](https://github.com/kamanager2012/dsh-community/commit/918f004): Windows staging now hoists, dereferences, and flattens the complete dependency tree and writes a ready stamp so partial extraction is not accepted;
+- [`e487cf0`](https://github.com/kamanager2012/dsh-community/commit/e487cf0): the first-launch loading window appears before the official Runtime is extracted in the background.
+
+These are post-release main-line fixes. Unless a new Release explicitly includes them,
+do not claim that the `v0.1.2` installer contains them. Validate Stable with the exact
+assets downloaded from the GitHub Release page.
+
 [Official Runtime](https://github.com/deepseek-ai/deepseek-harness)
 
 ## What this repository is

@@ -31,8 +31,13 @@ jobs:
       - name: First launch and official runtime readiness
         shell: pwsh
         run: |
-          $exe = "$env:LOCALAPPDATA\Programs\DSH Community\DSH Community.exe"
-          if (!(Test-Path $exe)) { throw "installed exe missing: $exe" }
+          $found = Get-ChildItem "$env:LOCALAPPDATA\Programs" -Recurse -Filter '*.exe' -ErrorAction SilentlyContinue | Where-Object { $_.Name -match 'DSH' } | Select-Object -First 1
+          if (!$found) {
+            Write-Host "Programs tree:"; Get-ChildItem "$env:LOCALAPPDATA\Programs" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 30 | ForEach-Object { Write-Host $_.FullName }
+            throw "installed exe not found under $env:LOCALAPPDATA\Programs"
+          }
+          $exe = $found.FullName
+          Write-Host "launching: $exe"
           $env:DSH_COMMUNITY_ISOLATED = '1'
           $proc = Start-Process -FilePath $exe -PassThru
           $logDir = "$env:APPDATA\DSH Community\logs"

@@ -49,6 +49,23 @@ All "download Community" links in every repo point at:
 https://github.com/kamanager2012/dsh-community/releases/latest
 ```
 
+## Distribution Reality Gate
+
+`v0.1.2` is the first three-platform Stable release baseline. A later `main` commit
+may contain reliability fixes that are not in the already published assets. Validate
+the exact Release downloads separately from source or CI:
+
+```text
+Windows clean VM  → EXE install → first launch → key setup → new/resume → plugin → restart
+macOS clean host  → dmg install → first launch → key setup → new/resume → plugin → restart
+Linux clean host  → AppImage    → first launch → key setup → new/resume → plugin → restart
+```
+
+The gate must also cover uninstall/reinstall, upgrade, missing key, bad network, and
+broken or interrupted Runtime extraction. Record Web ↔ Desktop ↔ TUI Session sharing
+and the exact asset filename plus SHA256. A green build or a main-source smoke test is
+not evidence that the published Stable artifact passes this gate.
+
 ## Rules
 
 - Never publish workspace packages to npm.

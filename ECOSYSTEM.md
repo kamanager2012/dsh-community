@@ -198,6 +198,20 @@ Preview         v0.1.2-preview（旧，仅 Linux）
 不要再推 v0.1.1 AppImage（官方 dsh web 起不来）
 ```
 
+### Stable 发布基线与 main 修复线
+
+`v0.1.2` 是第一个三系统 Stable 的固定发布基线。当前 `main` 已进入发布后可靠性修复线：
+
+```text
+v0.1.2 tag
+    ↓
+exact Release assets
+    ↓
+main: Windows staging + first-launch reliability fixes
+```
+
+[`918f004`](https://github.com/kamanager2012/dsh-community/commit/918f004) 修复 Windows 完整依赖树暂存、压平和 ready stamp；[`e487cf0`](https://github.com/kamanager2012/dsh-community/commit/e487cf0) 让首次启动先显示加载页。它们不自动属于已经发布的 `v0.1.2` 资产。后续必须对 Release 页面真实下载的包做干净环境验证。
+
 Windows / macOS 也必须只从 `dsh-community` 发布，不能改去 Suite 或 Edition。
 
 **绝不能因为 Suite 有更先进功能,就让 Windows 用户或者高级用户去下载 Suite。**
