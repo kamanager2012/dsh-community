@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
+  parseInstalledPluginNames,
   parseMarketplaceCatalog,
   parseMarketplaceSnapshot,
+  parsePluginActionRequest,
+  pluginActionArgv,
 } from '../src/marketplace.ts'
 import { renderMarketplacePage } from '../src/pages.ts'
 
@@ -39,6 +42,8 @@ function marketplacePageModel(overrides: Record<string, unknown> = {}) {
     source: 'live' as const,
     fetchedAt: '2026-08-16T01:00:00.000Z',
     registryUrl: 'https://github.com/kamanager2012/dsh-community-plugins',
+    installed: ['dsh-voice'],
+    profile: 'web',
     ...overrides,
   }
 }
@@ -121,6 +126,44 @@ describe('marketplace snapshot cache', () => {
   })
 })
 
+describe('installed plugins in the official profile', () => {
+  it('reads dependency keys as installed names', () => {
+    expect(parseInstalledPluginNames({
+      name: 'test',
+      dependencies: {
+        'dsh-plugin-hello': '^0.1.0',
+        'dsh-voice': '^0.1.0',
+      },
+    })).toEqual(['dsh-plugin-hello', 'dsh-voice'])
+    expect(parseInstalledPluginNames({ name: 'no-deps' })).toEqual([])
+    expect(parseInstalledPluginNames(null)).toEqual([])
+    expect(parseInstalledPluginNames('junk')).toEqual([])
+  })
+
+  it('validates renderer plugin action requests', () => {
+    expect(parsePluginActionRequest({ name: 'dsh-voice', action: 'install' })).toEqual({
+      name: 'dsh-voice',
+      action: 'install',
+    })
+    expect(parsePluginActionRequest({ name: 'dsh-voice', action: 'remove' })).toEqual({
+      name: 'dsh-voice',
+      action: 'remove',
+    })
+    expect(parsePluginActionRequest({ name: '', action: 'install' })).toBeUndefined()
+    expect(parsePluginActionRequest({ name: 'x', action: 'rm -rf' })).toBeUndefined()
+    expect(parsePluginActionRequest('install')).toBeUndefined()
+  })
+
+  it('spells official dsh plugin argv, not a homegrown installer', () => {
+    expect(pluginActionArgv({ profile: 'web', action: 'install', name: 'dsh-voice' })).toEqual([
+      'plugin', '--profile', 'web', 'add', 'dsh-voice',
+    ])
+    expect(pluginActionArgv({ profile: 'web', action: 'remove', name: 'dsh-voice' })).toEqual([
+      'plugin', '--profile', 'web', 'remove', 'dsh-voice',
+    ])
+  })
+})
+
 describe('marketplace page', () => {
   it('renders plugin cards grouped by category', () => {
     const html = renderMarketplacePage(marketplacePageModel())
@@ -163,6 +206,38 @@ describe('marketplace page', () => {
     expect(html).toMatch(/目录还没有内容/)
     expect(html).toMatch(/无法抓取目录/)
     expect(html).toMatch(/目录不可用/)
+  })
+
+  it('shows installed state and official plugin action buttons', () => {
+    const html = renderMarketplacePage(marketplacePageModel())
+    expect(html).toMatch(/已装/)
+    expect(html).toMatch(/data-plugin-action="remove"/)
+    expect(html).toMatch(/data-plugin-action="install"/)
+    expect(html).toMatch(/pluginAction/)
+    expect(html).toMatch(/dsh plugin --profile web add\|remove/)
+    expect(html).toMatch(/已装 1 个（web profile）/)
+  })
+
+  it('disables actions while a plugin task is busy', () => {
+    const html = renderMarketplacePage(marketplacePageModel({
+      busy: { plugin: 'dsh-plugin-hello', action: 'install' },
+    }))
+    expect(html).toMatch(/正在安装 dsh-plugin-hello/)
+    expect(html).toMatch(/disabled/)
+  })
+
+  it('shows a success result with a restart hint, and failure logs', () => {
+    const ok = renderMarketplacePage(marketplacePageModel({
+      result: { plugin: 'dsh-plugin-hello', action: 'install', ok: true, log: '' },
+    }))
+    expect(ok).toMatch(/安装完成/)
+    expect(ok).toMatch(/重启官方运行时后生效/)
+    expect(ok).toMatch(/restartHost/)
+    const failed = renderMarketplacePage(marketplacePageModel({
+      result: { plugin: 'dsh-plugin-hello', action: 'remove', ok: false, log: 'pnpm failed' },
+    }))
+    expect(failed).toMatch(/卸载失败/)
+    expect(failed).toMatch(/pnpm failed/)
   })
 
   it('escapes plugin metadata instead of trusting the registry', () => {

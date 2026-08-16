@@ -132,3 +132,45 @@ export function parseMarketplaceSnapshot(raw: unknown): MarketplaceSnapshot | un
     ...(typeof value.error === 'string' && value.error !== '' ? { error: value.error } : {}),
   })
 }
+
+/**
+ * Installed plugin names in an official profile. `dsh plugin add <name>`
+ * writes dependencies into `<DSH_HOME>/profiles/<name>/package.json`, so the
+ * dependency keys are the install truth — no second store.
+ */
+export function parseInstalledPluginNames(raw: unknown): readonly string[] {
+  if (raw === null || typeof raw !== 'object') return []
+  const value = raw as Record<string, unknown>
+  const dependencies = value.dependencies
+  if (dependencies === null || typeof dependencies !== 'object') return []
+  return Object.keys(dependencies as Record<string, unknown>).sort()
+}
+
+export type PluginAction = 'install' | 'remove'
+
+export interface PluginActionRequest {
+  readonly name: string
+  readonly action: PluginAction
+}
+
+/** Renderer-side request validation. The plugin name must come from the catalog. */
+export function parsePluginActionRequest(raw: unknown): PluginActionRequest | undefined {
+  if (raw === null || typeof raw !== 'object') return undefined
+  const value = raw as Record<string, unknown>
+  const { name, action } = value
+  if (typeof name !== 'string' || name === '') return undefined
+  if (action !== 'install' && action !== 'remove') return undefined
+  return { name, action }
+}
+
+/**
+ * Official `dsh plugin` argv. It forwards `add` / `remove` to pnpm in the
+ * profile directory — Desktop spawns it, it does not implement an installer.
+ */
+export function pluginActionArgv(input: {
+  readonly profile: string
+  readonly action: PluginAction
+  readonly name: string
+}): readonly string[] {
+  return ['plugin', '--profile', input.profile, input.action === 'install' ? 'add' : 'remove', input.name]
+}

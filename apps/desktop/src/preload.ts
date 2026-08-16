@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld('dshCommunity', {
     ipcRenderer.invoke(DESKTOP_IPC.applySettings, patch),
   showSessions: () => ipcRenderer.invoke(DESKTOP_IPC.showSessions),
   showMarketplace: () => ipcRenderer.invoke(DESKTOP_IPC.showMarketplace),
+  pluginAction: (name: string, action: string) =>
+    ipcRenderer.invoke(DESKTOP_IPC.pluginAction, { name, action }),
   showSettings: () => ipcRenderer.invoke(DESKTOP_IPC.showSettings),
   showDiagnostics: () => ipcRenderer.invoke(DESKTOP_IPC.showDiagnostics),
   showRuntime: () => ipcRenderer.invoke(DESKTOP_IPC.showRuntime),

@@ -4,6 +4,7 @@ import {
   PLUGIN_CATEGORY_LABELS,
   type MarketplaceCatalog,
   type MarketplaceSource,
+  type PluginAction,
 } from './marketplace.ts'
 
 export interface AboutPageModel {
@@ -75,6 +76,15 @@ export interface MarketplacePageModel {
   readonly fetchedAt: string
   readonly error?: string
   readonly registryUrl: string
+  readonly installed: readonly string[]
+  readonly profile: string
+  readonly busy?: { readonly plugin: string; readonly action: PluginAction }
+  readonly result?: {
+    readonly plugin: string
+    readonly action: PluginAction
+    readonly ok: boolean
+    readonly log: string
+  }
 }
 
 function escapeHtml(value: string): string {
@@ -104,6 +114,10 @@ function shellDocument(title: string, body: string): string {
       button { appearance: none; border: 0; border-radius: 8px; padding: 8px 14px;
         background: #2f6fed; color: white; font: inherit; cursor: pointer; }
       button.secondary { background: #2a303b; }
+      button.small { padding: 4px 10px; font-size: 13px; }
+      button:disabled { opacity: 0.5; cursor: not-allowed; }
+      pre.ok { background: #0b1a12; border: 1px solid #1d4a2c; }
+      .chip.ok { color: #7ee2a8; border-color: #2f6fed; }
       .row { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
       nav.nav { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 18px; }
       nav.nav button { font-size: 13px; padding: 6px 10px; }
@@ -312,25 +326,46 @@ export function renderMarketplacePage(model: MarketplacePageModel): string {
   const errorBlock = model.error === undefined
     ? ''
     : `<pre>${escapeHtml(model.error)}</pre>`
+  const busy = model.busy
+  const busyBlock = busy === undefined
+    ? ''
+    : `<pre>正在${busy.action === 'install' ? '安装' : '卸载'} ${escapeHtml(busy.plugin)}（官方 dsh plugin 在跑，可能需要一分钟）…</pre>`
+  const result = model.result
+  const resultBlock = result === undefined
+    ? ''
+    : result.ok
+      ? `<pre class="ok">${result.action === 'install' ? '安装' : '卸载'}完成：${escapeHtml(result.plugin)}。重启官方运行时后生效。</pre>
+         <div class="row">
+           <button id="restart">重启官方运行时</button>
+         </div>`
+      : `<pre>${result.action === 'install' ? '安装' : '卸载'}失败：${escapeHtml(result.plugin)}\n\n${escapeHtml(result.log)}</pre>`
   const plugins = model.catalog?.plugins ?? []
+  const installedSet = new Set(model.installed)
+  const disabled = busy === undefined ? '' : ' disabled'
   const sections = PLUGIN_CATEGORIES.map((category) => {
     const members = plugins.filter((plugin) => plugin.category === category)
     if (members.length === 0) return ''
     const rows = members.map((plugin) => {
+      const installed = installedSet.has(plugin.name)
       const chips = plugin.versions.map((version) => {
         const note = version.notes === undefined ? '' : ` · ${escapeHtml(version.notes)}`
         return `<span class="chip">v${escapeHtml(version.version)} · 验证线 ${escapeHtml(version.testedDsh)}${note}</span>`
       }).join('')
+      const actionButton = installed
+        ? `<button class="secondary small${disabled}" data-plugin-action="remove" data-plugin-name="${escapeHtml(plugin.name)}">卸载</button>`
+        : `<button class="small${disabled}" data-plugin-action="install" data-plugin-name="${escapeHtml(plugin.name)}">安装到 web profile</button>`
       return `<li>
         <div class="plugin-head">
           <code class="plugin-name">${escapeHtml(plugin.name)}</code>
           <span class="author">by ${escapeHtml(plugin.author)}</span>
+          ${installed ? '<span class="chip ok">已装</span>' : ''}
         </div>
         <p>${escapeHtml(plugin.description)}</p>
         <div class="chips">${chips}</div>
         <div class="plugin-actions">
           <a href="${escapeHtml(plugin.repo)}">源码仓库</a>
           <code>dsh plugin add ${escapeHtml(plugin.name)}</code>
+          ${actionButton}
         </div>
       </li>`
     }).join('')
@@ -343,17 +378,30 @@ export function renderMarketplacePage(model: MarketplacePageModel): string {
   return shellDocument(
     `${model.product} · 社区市场`,
     `<h1>社区市场</h1>
-     <p>只读浏览 <a href="${escapeHtml(model.registryUrl)}">dsh-community-plugins</a> 的插件目录。安装走官方 <code>dsh plugin add &lt;name&gt;</code> 或 <code>dsh-marketplace install &lt;name&gt;</code> 客户端；本窗口不做第二套安装器。</p>
-     <p class="meta">${escapeHtml(sourceLine)} · 抓取时间 ${escapeHtml(model.fetchedAt || '—')}</p>
+     <p>浏览 <a href="${escapeHtml(model.registryUrl)}">dsh-community-plugins</a> 的插件目录。安装/卸载按钮唤起官方 <code>dsh plugin --profile ${escapeHtml(model.profile)} add|remove</code>（写完 profile 后重启官方运行时生效）；本窗口不自己实现安装器。TUI profile 的安装仍走 <code>dsh-marketplace install &lt;name&gt;</code> 或上面这行官方命令。</p>
+     <p class="meta">${escapeHtml(sourceLine)} · 抓取时间 ${escapeHtml(model.fetchedAt || '—')} · 已装 ${String(model.installed.length)} 个（${escapeHtml(model.profile)} profile）</p>
      ${errorBlock}
      <div class="row">
-       <button id="refresh">刷新目录</button>
+       <button id="refresh"${disabled}>刷新目录</button>
        <button class="secondary" data-go="official">返回会话</button>
      </div>
+     ${busyBlock}
+     ${resultBlock}
      ${body}
      <script>
        document.getElementById('refresh')?.addEventListener('click', () => {
          window.dshCommunity?.refreshMarketplace()
+       })
+       document.getElementById('restart')?.addEventListener('click', () => {
+         window.dshCommunity?.restartHost()
+       })
+       document.querySelectorAll('[data-plugin-action]').forEach((btn) => {
+         btn.addEventListener('click', () => {
+           window.dshCommunity?.pluginAction(
+             btn.getAttribute('data-plugin-name') ?? '',
+             btn.getAttribute('data-plugin-action') ?? '',
+           )
+         })
        })
      </script>`,
   )

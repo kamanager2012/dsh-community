@@ -24,6 +24,7 @@ export const DESKTOP_IPC = {
   showDiagnostics: 'dsh:desktop:show-diagnostics',
   showRuntime: 'dsh:desktop:show-runtime',
   showAbout: 'dsh:desktop:show-about',
+  pluginAction: 'dsh:desktop:plugin-action',
 } as const
 
 export const IPC = { ...LIFECYCLE_IPC, ...DESKTOP_IPC }
@@ -45,4 +46,5 @@ export const DESKTOP_IPC_KEYS = [
   'dsh:desktop:show-diagnostics',
   'dsh:desktop:show-runtime',
   'dsh:desktop:show-about',
+  'dsh:desktop:plugin-action',
 ] as const

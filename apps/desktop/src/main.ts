@@ -5,6 +5,7 @@
 
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { spawn } from 'node:child_process'
 import {
   app,
   clipboard,
@@ -43,9 +44,13 @@ import {
   MARKETPLACE_CATALOG_URL,
   MARKETPLACE_REGISTRY_URL,
   marketplaceSnapshot,
+  parseInstalledPluginNames,
   parseMarketplaceCatalog,
   parseMarketplaceSnapshot,
+  parsePluginActionRequest,
+  pluginActionArgv,
   type MarketplaceSnapshot,
+  type PluginAction,
 } from './marketplace.ts'
 import {
   renderAboutPage,
@@ -94,8 +99,11 @@ let quitting = false
 let settings = DEFAULT_DESKTOP_SETTINGS
 let catalog: RuntimeCatalog | undefined
 let marketplace: MarketplaceSnapshot | undefined
+let pluginTask: { readonly plugin: string; readonly action: PluginAction } | undefined
+let pluginResult: { readonly plugin: string; readonly action: PluginAction; readonly ok: boolean; readonly log: string } | undefined
 
 const MARKETPLACE_CACHE_TTL_MS = 10 * 60 * 1000
+const MARKETPLACE_PROFILE = 'web'
 
 function trayAvailable(): boolean {
   return tray !== undefined && !tray.isDestroyed()
@@ -308,7 +316,56 @@ function marketplaceModel() {
     fetchedAt: snapshot?.fetchedAt ?? '',
     ...(snapshot?.error === undefined ? {} : { error: snapshot.error }),
     registryUrl: MARKETPLACE_REGISTRY_URL,
+    installed: installedPluginNames(),
+    profile: MARKETPLACE_PROFILE,
+    ...(pluginTask === undefined ? {} : { busy: pluginTask }),
+    ...(pluginResult === undefined ? {} : { result: pluginResult }),
   }
+}
+
+/** Installed names in the official web profile. No second store. */
+function installedPluginNames(): readonly string[] {
+  const profilePackage = join(officialHome(), 'profiles', MARKETPLACE_PROFILE, 'package.json')
+  return parseInstalledPluginNames(readJsonFile(profilePackage))
+}
+
+async function runPluginAction(request: { name: string; action: PluginAction }): Promise<void> {
+  if (pluginTask !== undefined) return
+  const known = (marketplace?.catalog?.plugins ?? []).some((plugin) => plugin.name === request.name)
+  if (!known) return
+  pluginTask = { plugin: request.name, action: request.action }
+  pluginResult = undefined
+  await showHtml(renderMarketplacePage(marketplaceModel()))
+  const paths = launchPaths()
+  const install = resolveOfficialDsh({ from: import.meta.url })
+  const child = spawn(
+    paths.nodeExecutable,
+    [install.binPath, ...pluginActionArgv({ profile: MARKETPLACE_PROFILE, action: request.action, name: request.name })],
+    {
+      cwd: paths.cwd,
+      env: paths.env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    },
+  )
+  const chunks: string[] = []
+  child.stdout?.on('data', (chunk: Buffer | string) => chunks.push(chunk.toString()))
+  child.stderr?.on('data', (chunk: Buffer | string) => chunks.push(chunk.toString()))
+  child.on('error', (error) => {
+    pluginResult = { plugin: request.name, action: request.action, ok: false, log: error.message }
+    pluginTask = undefined
+    void showHtml(renderMarketplacePage(marketplaceModel()))
+  })
+  child.on('exit', (code) => {
+    pluginResult = {
+      plugin: request.name,
+      action: request.action,
+      ok: code === 0,
+      log: chunks.join(''),
+    }
+    pluginTask = undefined
+    void showHtml(renderMarketplacePage(marketplaceModel()))
+  })
 }
 
 async function fetchLiveMarketplace(): Promise<
@@ -551,6 +608,11 @@ function bindIpc(): void {
   })
   ipcMain.handle(DESKTOP_IPC.showMarketplace, async () => {
     await showMarketplace()
+  })
+  ipcMain.handle(DESKTOP_IPC.pluginAction, async (_event, raw: unknown) => {
+    const request = parsePluginActionRequest(raw)
+    if (request === undefined) return
+    await runPluginAction(request)
   })
   ipcMain.handle(DESKTOP_IPC.showSettings, async () => {
     await showSettings()
