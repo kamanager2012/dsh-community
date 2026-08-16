@@ -92,6 +92,7 @@ const packManifest = {
   main: 'dist/main.js',
   description: 'Community preview shell around official DeepSeek Harness.',
   author: 'dsh-community contributors',
+  desktopName: 'dsh-community.desktop',
   dependencies: {},
   build: {
     appId: 'dev.dshcommunity.desktop',
@@ -130,6 +131,7 @@ const packManifest = {
       category: 'Development',
       icon: join(desktop, 'resources/tray.png'),
       executableName: 'dsh-community',
+      syncDesktopName: true,
     },
     win: {
       target: [{ target: 'dir', arch: ['x64'] }],

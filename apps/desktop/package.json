@@ -5,6 +5,7 @@
   "type": "module",
   "main": "dist/main.js",
   "description": "Community reconstruction of a desktop shell around official `dsh web`.",
+  "desktopName": "dsh-community.desktop",
   "scripts": {
     "icons": "node scripts/write-tray-icon.mjs",
     "build": "node scripts/write-tray-icon.mjs && node scripts/build.mjs",
@@ -55,7 +56,8 @@
         "dir"
       ],
       "category": "Development",
-      "icon": "resources/tray.png"
+      "icon": "resources/tray.png",
+      "syncDesktopName": true
     },
     "mac": {
       "target": [

@@ -23,7 +23,7 @@ describe('distribution preflight', () => {
       tty: false,
     })
     expect(text).toMatch(/未设置 DEEPSEEK_API_KEY/)
-    expect(text).toMatch(/--list-sessions/)
+    expect(text).toMatch(/dsh-community sessions/)
     expect(text).not.toMatch(/sk-/)
   })
 })

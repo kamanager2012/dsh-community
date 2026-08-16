@@ -34,7 +34,7 @@ import {
   type OfficialHost,
   type RuntimeCatalog,
 } from '@dsh-community/dsh-bridge'
-import { COMMUNITY_PRODUCT_NAME, WINDOW_TITLE } from './branding.ts'
+import { COMMUNITY_APP_ID, COMMUNITY_PRODUCT_NAME, WINDOW_TITLE } from './branding.ts'
 import { renderChromePage, type ChromeActive } from './chrome.ts'
 import { resolveLatestTestedPath } from './contracts-path.ts'
 import { appendHostDiagnostics } from './host-log.ts'
@@ -753,6 +753,9 @@ async function boot(): Promise<void> {
 }
 
 app.setName(COMMUNITY_PRODUCT_NAME)
+if (process.platform === 'win32') {
+  app.setAppUserModelId(COMMUNITY_APP_ID)
+}
 
 const gotLock = app.requestSingleInstanceLock()
 if (!gotLock) {

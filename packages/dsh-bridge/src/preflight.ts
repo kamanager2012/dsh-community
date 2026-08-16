@@ -7,6 +7,7 @@ export function officialApiKeyPresent(env: NodeJS.ProcessEnv = process.env): boo
 }
 
 export interface DistributionPreflight {
+  readonly clientVersion?: string
   readonly officialPackage: string
   readonly officialVersion: string
   readonly officialBin: string
@@ -14,18 +15,23 @@ export interface DistributionPreflight {
   readonly sessionCount: number
   readonly apiKeyPresent: boolean
   readonly tty: boolean
+  readonly profileReady?: boolean
 }
 
 export function formatPreflightReport(report: DistributionPreflight): string {
   const lines = [
     'dsh-community 自检（不启动对话，也不打印密钥）',
     '',
+    ...(report.clientVersion === undefined ? [] : [`  客户端     ${report.clientVersion}`]),
     `  官方包     ${report.officialPackage}@${report.officialVersion}`,
     `  官方 bin   ${report.officialBin}`,
     `  数据目录   ${report.officialHome}`,
     `  对话       ${String(report.sessionCount)} 条`,
     `  交互终端   ${report.tty ? '是' : '否 — 列表可用，开聊要 TTY'}`,
     `  API 密钥   ${report.apiKeyPresent ? '已设置' : `未设置 ${OFFICIAL_API_KEY_ENV}`}`,
+    ...(report.profileReady === undefined
+      ? []
+      : [`  TUI 插件   ${report.profileReady ? '已装进官方 profile' : '第一次开聊时会安装'}`]),
     '',
   ]
   if (!report.apiKeyPresent) {
@@ -33,7 +39,7 @@ export function formatPreflightReport(report: DistributionPreflight): string {
     lines.push('')
   }
   if (!report.tty) {
-    lines.push('没有 TTY 时：dsh-community-tui --list-sessions')
+    lines.push('没有 TTY 时：dsh-community sessions')
     lines.push('')
   }
   return lines.join('\n')

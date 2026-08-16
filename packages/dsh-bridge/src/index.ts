@@ -81,3 +81,14 @@ export {
   OFFICIAL_API_KEY_ENV,
   type DistributionPreflight,
 } from './preflight.js'
+export {
+  COMMUNITY_PLUGIN_CATALOG_REPO,
+  COMMUNITY_PLUGIN_CATALOG_URL,
+  fetchPluginCatalog,
+  formatPluginCatalog,
+  HANDBOOK_REPO,
+  officialPluginAddCommand,
+  parsePluginCatalog,
+  type CatalogPlugin,
+  type PluginCatalog,
+} from './plugin-catalog.js'

@@ -33,24 +33,30 @@
 
 ## 从源码跑
 
-需要 Node 22+ 和 pnpm。
+需要 Node 22+、pnpm，以及 `DEEPSEEK_API_KEY`。对话在官方 `~/.dsh`。没密钥不会闷头进 Ink。
 
 ```sh
 git clone https://github.com/kamanager2012/dsh-community.git
 cd dsh-community
 pnpm install
-pnpm test
-pnpm desktop          # 官方 dsh web + 薄壳
-pnpm tui              # 官方 dsh --profile dsh-community-tui
+export DEEPSEEK_API_KEY=...
+pnpm start              # 有对话就接着最近一条，否则开新的
+pnpm new                # 强制开新对话
+pnpm desktop            # 桌面壳（含社区市场页）
+pnpm doctor             # 自检
 ```
 
-会拉起已发布的 `@deepseek-ai/dsh@0.1.0-rc.6`，默认共用官方 `~/.dsh`。
+同一入口也叫 `dsh-community`（`dsh-community-tui` 仍可用）：
 
 ```sh
-dsh-community-tui --help
-dsh-community-tui --list-sessions
-dsh-community-tui --resume <official-session-id>
-dsh-community-tui --doctor      # 自检：官方包 / TTY / 密钥（不打印密钥）
+dsh-community                 # 有对话就接着最近一条
+dsh-community new
+dsh-community resume last
+dsh-community sessions
+dsh-community doctor
+dsh-community version
+dsh-community plugins         # 只读目录；安装仍走官方 dsh plugin add / 桌面市场页
+dsh-community desktop
 ```
 
 打 Linux 解包目录或 AppImage（预览，未签名）：

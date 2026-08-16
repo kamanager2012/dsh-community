@@ -10,39 +10,67 @@ export function officialTuiArgv(patchPath: string, extra: readonly string[] = []
 
 export type CommunityLaunch =
   | { readonly kind: 'help' }
+  | { readonly kind: 'version' }
   | { readonly kind: 'doctor' }
-  | { readonly kind: 'list' }
+  | { readonly kind: 'desktop' }
+  | { readonly kind: 'plugins'; readonly porcelain: boolean }
+  | { readonly kind: 'list'; readonly porcelain: boolean }
+  | { readonly kind: 'pick' }
+  | { readonly kind: 'default' }
+  | { readonly kind: 'new'; readonly rest: readonly string[] }
   | { readonly kind: 'resume'; readonly id: string; readonly rest: readonly string[] }
   | { readonly kind: 'run'; readonly rest: readonly string[] }
 
-export const COMMUNITY_TUI_HELP = `dsh-community-tui — community terminal on official @deepseek-ai/dsh
+export const COMMUNITY_TUI_HELP = `dsh-community — 社区发行层，跑在官方 @deepseek-ai/dsh 上
 
-Usage:
-  dsh-community-tui
-  dsh-community-tui --list-sessions
-  dsh-community-tui --resume <official-session-id>
-  dsh-community-tui --doctor
+先这样用：
+  dsh-community                     有对话就接着最近一条，否则开新的
+  dsh-community new                 强制开新对话
+  dsh-community resume last         明确接着最近一条
+  dsh-community sessions            看官方 ~/.dsh 里的对话
+  dsh-community version             客户端版本 + 官方 pin
+  dsh-community doctor              自检（不打印密钥）
+  dsh-community plugins             只读插件目录
+  dsh-community desktop             打开桌面壳
 
-  --list-sessions     read-only list: id, project, mtime, transcript
-  --resume <id>       official dsh --profile … --resume <id>
-  --doctor            self-check: official package / TTY / key (never prints the key)
-  -h, --help          this help
+  --new / new
+  --resume last|<id>  /  resume last|<id>
+  --list-sessions / sessions / -l
+  --plugins / plugins
+  --version / version
+  --doctor / doctor
+  --desktop / desktop
+  -h, --help
 
-Other args are passed through to official dsh after --profile/--patch.
-Session store is official ~/.dsh, shared with Desktop and official Web.
-This binary is not dsh-tui and is not published as @deepseek-ai/*.
+dsh-community-tui 是同一入口。安装走官方 dsh plugin add。不叫 dsh-tui，不发 npm。
 `
 
-export function parseCommunityLaunch(argv: readonly string[]): CommunityLaunch {
+function peelLauncher(argv: readonly string[]): string[] {
   const args = argv[0] === '--' ? argv.slice(1) : [...argv]
-  if (args[0] === '--help' || args[0] === '-h') return { kind: 'help' }
-  if (args[0] === '--doctor') return { kind: 'doctor' }
-  if (args[0] === '--list-sessions') return { kind: 'list' }
-  if (args[0] === '--resume') {
+  if (args[0] === 'tui' || args[0] === 'start') return args.slice(1)
+  return args
+}
+
+export function parseCommunityLaunch(argv: readonly string[]): CommunityLaunch {
+  const args = peelLauncher(argv)
+  const head = args[0]
+  if (head === undefined || head === 'chat') return { kind: 'default' }
+  if (head === '--new' || head === 'new') return { kind: 'new', rest: args.slice(1) }
+  if (head === '--help' || head === '-h' || head === 'help') return { kind: 'help' }
+  if (head === '--version' || head === '-v' || head === 'version') return { kind: 'version' }
+  if (head === '--doctor' || head === 'doctor') return { kind: 'doctor' }
+  if (head === '--desktop' || head === 'desktop') return { kind: 'desktop' }
+  if (head === '--plugins' || head === 'plugins') {
+    return { kind: 'plugins', porcelain: args.includes('--porcelain') }
+  }
+  if (
+    head === '--list-sessions' || head === '-l' || head === 'sessions' || head === 'list'
+  ) {
+    return { kind: 'list', porcelain: args.includes('--porcelain') }
+  }
+  if (head === '--resume' || head === 'resume') {
     const id = args[1]
-    if (id === undefined || id.length === 0 || id.startsWith('-')) {
-      throw new Error('dsh-community-tui --resume needs an official session id (see --list-sessions)')
-    }
+    if (id === undefined || id.length === 0 || id.startsWith('-')) return { kind: 'pick' }
     return { kind: 'resume', id, rest: args.slice(2) }
   }
   return { kind: 'run', rest: args }

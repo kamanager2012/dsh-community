@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+Promote stable launcher UX from the archived edition line. Marketplace and official-plugin install stay as they are.
+
+- `dsh-community` / `pnpm start`: continue newest official `~/.dsh` session; `new` starts fresh
+- Subcommands: `doctor`, `sessions`, `version`, `plugins` (read-only catalog), `desktop`
+- Missing `DEEPSEEK_API_KEY` prints doctor and exits instead of launching Ink
+- Linux `desktopName` so the AppImage window maps to the `.desktop` entry
+
 ## 0.1.2-preview — 2026-08-16
 
 Release: https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.2-preview
