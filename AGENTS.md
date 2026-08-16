@@ -13,5 +13,6 @@ This is a community launcher/adapter workspace for official DeepSeek Harness.
 - Recommend latest tested from contracts/compatibility, not npm latest.
 - Window state, catalog, and host.log live in Electron userData. Never write those under ~/.dsh.
 - Publish only to https://github.com/kamanager2012/dsh-community. Do not merge this tree into another community DSH suite.
+- Stability first: ship the minimal stable client. Capabilities plugins can carry (billing, auto-update, workspace/search panels) belong to the registry / plugin ecosystem, not to this repo.
 
 Read `ARCHITECTURE.md` and `docs/upgrade.md` before changing layout.

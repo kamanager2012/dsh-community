@@ -17,11 +17,28 @@ describe('resolveHostLaunchPaths', () => {
     expect(paths.cliEntry).toMatch(/@deepseek-ai\/dsh\/lib\/bin\.js$/)
   })
 
-  it('runs Electron as Node against a staged official CLI when packaged', () => {
+  it('prefers a real Node over Electron-as-node when packaged', () => {
+    const realNode = process.execPath
     const paths = resolveHostLaunchPaths({
       isPackaged: true,
       from: import.meta.url,
-      env: { ...process.env },
+      env: { ...process.env, DSH_DESKTOP_NODE_EXECUTABLE: realNode },
+      execPath: '/opt/Electron',
+      resourcesPath: '/tmp/does-not-exist-resources',
+      homedir: '/home/dev',
+      cwd: '/tmp/project',
+    })
+    expect(paths.nodeExecutable).toBe(realNode)
+    expect(paths.electronRunAsNode).toBe(false)
+    expect(paths.cwd).toBe('/home/dev')
+    expect(paths.env.NODE_PATH).toMatch(/host\/node_modules/)
+  })
+
+  it('falls back to Electron-as-node when no real Node is available', () => {
+    const paths = resolveHostLaunchPaths({
+      isPackaged: true,
+      from: import.meta.url,
+      env: { ...process.env, PATH: '/nonexistent-bin' },
       execPath: '/opt/Electron',
       resourcesPath: '/tmp/does-not-exist-resources',
       homedir: '/home/dev',
@@ -29,7 +46,6 @@ describe('resolveHostLaunchPaths', () => {
     })
     expect(paths.nodeExecutable).toBe('/opt/Electron')
     expect(paths.electronRunAsNode).toBe(true)
-    expect(paths.cwd).toBe('/home/dev')
     expect(paths.env.NODE_PATH).toMatch(/host\/node_modules/)
   })
 })

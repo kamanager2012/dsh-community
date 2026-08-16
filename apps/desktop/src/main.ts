@@ -6,6 +6,7 @@
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawn } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import {
   app,
   clipboard,
@@ -63,7 +64,7 @@ import {
   renderSettingsPage,
 } from './pages.ts'
 import { formatSessionMtime } from './session-view.ts'
-import { assertHostLaunchPaths, resolveHostLaunchPaths } from './paths.ts'
+import { assertHostLaunchPaths, resolveHostLaunchPaths, stagedOfficialBin } from './paths.ts'
 import { buildRuntimeView, readLatestTested } from './runtime-view.ts'
 import {
   applyDesktopSettingsPatch,
@@ -101,6 +102,7 @@ let catalog: RuntimeCatalog | undefined
 let marketplace: MarketplaceSnapshot | undefined
 let pluginTask: { readonly plugin: string; readonly action: PluginAction } | undefined
 let pluginResult: { readonly plugin: string; readonly action: PluginAction; readonly ok: boolean; readonly log: string } | undefined
+let pluginChild: ReturnType<typeof spawn> | undefined
 
 const MARKETPLACE_CACHE_TTL_MS = 10 * 60 * 1000
 const MARKETPLACE_PROFILE = 'web'
@@ -204,11 +206,41 @@ function chromeModel(active: ChromeActive) {
   }
 }
 
+/** A newer page load can abort the previous one; that is normal, not a failure. */
+async function loadWindowSafely(url: string): Promise<void> {
+  if (window === undefined || window.isDestroyed()) return
+  try {
+    await window.loadURL(url)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (message.includes('ERR_ABORTED')) return
+    throw error
+  }
+}
+
+/**
+ * The readiness line can appear before the socket accepts connections, and
+ * the official web can answer 502 while its backend warms up. Poll briefly
+ * so the view does not land on ERR_CONNECTION_REFUSED.
+ */
+async function waitForOfficialWeb(url: string, timeoutMs: number): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(1_500) })
+      if (response.status < 500) return
+    } catch {
+      // not listening yet
+    }
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 300))
+  }
+}
+
 async function showHtml(html: string): Promise<void> {
   if (window === undefined || window.isDestroyed()) return
   showingOfficial = false
   layoutOfficial()
-  await window.loadURL(dataUrl(html))
+  await loadWindowSafely(dataUrl(html))
   if (!window.isVisible() && !quitting) window.show()
 }
 
@@ -216,10 +248,15 @@ async function showOfficial(nextOrigin: string): Promise<void> {
   if (window === undefined || window.isDestroyed() || officialView === undefined) return
   origin = nextOrigin
   showingOfficial = true
-  await window.loadURL(dataUrl(renderChromePage(chromeModel('official'))))
+  await loadWindowSafely(dataUrl(renderChromePage(chromeModel('official'))))
   const current = officialView.webContents.getURL()
   if (current !== nextOrigin && !current.startsWith(`${nextOrigin}/`)) {
-    await officialView.webContents.loadURL(nextOrigin)
+    try {
+      await officialView.webContents.loadURL(nextOrigin)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      if (!message.includes('ERR_ABORTED')) throw error
+    }
   }
   layoutOfficial()
   if (!window.isVisible() && !quitting) window.show()
@@ -330,7 +367,7 @@ function installedPluginNames(): readonly string[] {
 }
 
 async function runPluginAction(request: { name: string; action: PluginAction }): Promise<void> {
-  if (pluginTask !== undefined) return
+  if (pluginTask !== undefined || quitting) return
   const known = (marketplace?.catalog?.plugins ?? []).some((plugin) => plugin.name === request.name)
   if (!known) return
   pluginTask = { plugin: request.name, action: request.action }
@@ -338,34 +375,34 @@ async function runPluginAction(request: { name: string; action: PluginAction }):
   await showHtml(renderMarketplacePage(marketplaceModel()))
   const paths = launchPaths()
   const install = resolveOfficialDsh({ from: import.meta.url })
+  const env = paths.electronRunAsNode
+    ? { ...paths.env, ELECTRON_RUN_AS_NODE: '1' }
+    : paths.env
   const child = spawn(
     paths.nodeExecutable,
     [install.binPath, ...pluginActionArgv({ profile: MARKETPLACE_PROFILE, action: request.action, name: request.name })],
     {
       cwd: paths.cwd,
-      env: paths.env,
+      env,
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
     },
   )
+  pluginChild = child
   const chunks: string[] = []
   child.stdout?.on('data', (chunk: Buffer | string) => chunks.push(chunk.toString()))
   child.stderr?.on('data', (chunk: Buffer | string) => chunks.push(chunk.toString()))
-  child.on('error', (error) => {
-    pluginResult = { plugin: request.name, action: request.action, ok: false, log: error.message }
+  const finish = (ok: boolean, log: string): void => {
+    pluginResult = { plugin: request.name, action: request.action, ok, log }
     pluginTask = undefined
-    void showHtml(renderMarketplacePage(marketplaceModel()))
-  })
-  child.on('exit', (code) => {
-    pluginResult = {
-      plugin: request.name,
-      action: request.action,
-      ok: code === 0,
-      log: chunks.join(''),
-    }
-    pluginTask = undefined
-    void showHtml(renderMarketplacePage(marketplaceModel()))
-  })
+    pluginChild = undefined
+    if (!quitting) void showHtml(renderMarketplacePage(marketplaceModel()))
+  }
+  child.on('error', (error) => finish(false, error.message))
+  child.on('exit', (code, signal) => finish(
+    code === 0,
+    signal === null ? chunks.join('') : `${chunks.join('')}\n终止于 ${signal}`,
+  ))
 }
 
 async function fetchLiveMarketplace(): Promise<
@@ -452,6 +489,7 @@ async function startOfficial(): Promise<void> {
   if (host === undefined) throw new Error('official host is not created')
   await showHtml(renderLoadingPage())
   const next = await host.start()
+  await waitForOfficialWeb(next, 8_000)
   await showOfficial(next)
 }
 
@@ -460,6 +498,7 @@ async function restartOfficial(then: 'official' | 'settings' = 'official'): Prom
   await showHtml(renderLoadingPage())
   const next = await host.restart()
   origin = next
+  await waitForOfficialWeb(next, 8_000)
   if (then === 'settings') await showSettings()
   else await showOfficial(next)
 }
@@ -629,6 +668,10 @@ function bindIpc(): void {
 }
 
 async function boot(): Promise<void> {
+  if (app.isPackaged) {
+    const staged = stagedOfficialBin(process.resourcesPath)
+    if (existsSync(staged)) process.env.DSH_COMMUNITY_BIN = staged
+  }
   const paths = launchPaths()
   assertHostLaunchPaths(paths)
   const install = resolveOfficialDsh({ from: import.meta.url })
@@ -733,6 +776,7 @@ if (!gotLock) {
     }
     event.preventDefault()
     quitting = true
+    pluginChild?.kill('SIGTERM')
     void host.shutdown().finally(() => {
       app.quit()
     })
@@ -742,5 +786,9 @@ if (!gotLock) {
     installMenu()
     bindIpc()
     return boot()
+  }).catch((error) => {
+    const message = error instanceof Error ? error.message : String(error)
+    process.stderr.write(`dsh-community desktop failed to boot: ${message}\n`)
+    app.quit()
   })
 }

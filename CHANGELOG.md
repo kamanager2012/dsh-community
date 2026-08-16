@@ -4,6 +4,10 @@
 
 - `dsh-community-tui --doctor`：自检官方包 / bin / 数据目录 / session 数 / TTY / API 密钥存在性，不启动对话、不打印密钥，密钥缺失时退出码 2
 - Desktop 社区市场页支持一键安装 / 卸载：唤起官方 `dsh plugin --profile web add|remove`（不自造安装器），已装状态读官方 profile 的 package.json，完成后提示重启官方运行时生效
+- 稳定性：打包版优先用系统 Node 启动官方 `dsh web`（Electron-as-node 下官方服务不绑定端口，v0.1.1 AppImage 受影响）；Electron-as-node 仅作回退
+- 稳定性：打包版主进程通过 `DSH_COMMUNITY_BIN` 定位暂存的官方包，启动失败不再静默
+- 稳定性：官方 Web 就绪后轮询端口（容忍 502 预热），避免 ERR_CONNECTION_REFUSED；页面加载竞态的 ERR_ABORTED 不再产生未处理 rejection
+- 稳定性：退出时终止插件安装子进程，不再遗留孤儿 pnpm 进程
 
 ## 0.1.1 — 2026-08-16
 

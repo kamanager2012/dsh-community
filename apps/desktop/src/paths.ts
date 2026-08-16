@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
 import { join } from 'node:path'
 import { resolveOfficialDsh, type OfficialDshInstall } from '@dsh-community/dsh-bridge'
 
@@ -26,6 +27,28 @@ function devNodeExecutable(input: ResolveHostLaunchInput): string {
   const npmNode = input.env.npm_node_execpath
   if (npmNode !== undefined && npmNode !== '' && existsSync(npmNode)) return npmNode
   return 'node'
+}
+
+/**
+ * Packaged builds prefer a real Node over Electron-as-node. The official
+ * web server does not reliably bind its socket when launched through
+ * Electron-as-node, so a system Node is the stable path; Electron-as-node
+ * stays as the last resort for machines without Node.
+ */
+function packagedNodeExecutable(input: ResolveHostLaunchInput): string {
+  const override = input.env.DSH_DESKTOP_NODE_EXECUTABLE
+  if (override !== undefined && override !== '' && existsSync(override)) return override
+  try {
+    const probe = spawnSync('node', ['--version'], {
+      env: input.env,
+      stdio: 'ignore',
+      timeout: 5_000,
+    })
+    if (probe.status === 0) return 'node'
+  } catch {
+    // fall through to Electron-as-node
+  }
+  return input.execPath
 }
 
 function stagedOfficialBin(resourcesPath: string): string {
@@ -60,20 +83,21 @@ export function resolveHostLaunchPaths(input: ResolveHostLaunchInput): HostLaunc
   const cliEntry = existsSync(staged)
     ? staged
     : resolveOfficialDsh({ from: input.from, env: input.env }).binPath
+  const nodeExecutable = packagedNodeExecutable(input)
   const nodePath = join(input.resourcesPath, 'host', 'node_modules')
   const delimiter = process.platform === 'win32' ? ';' : ':'
   const nodePathValue = input.env.NODE_PATH === undefined || input.env.NODE_PATH === ''
     ? nodePath
     : `${nodePath}${delimiter}${input.env.NODE_PATH}`
   return {
-    nodeExecutable: input.execPath,
+    nodeExecutable,
     cliEntry,
     cwd: input.env.DSH_DESKTOP_CWD ?? input.homedir,
     env: {
       ...input.env,
       NODE_PATH: nodePathValue,
     },
-    electronRunAsNode: true,
+    electronRunAsNode: nodeExecutable === input.execPath,
   }
 }
 
