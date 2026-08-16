@@ -15,7 +15,10 @@ if (tag === undefined || !/^v\d+\.\d+\.\d+(-preview)?$/.test(tag)) {
 }
 
 function run(command, args) {
-  const result = spawnSync(command, args, { stdio: 'inherit' })
+  const result = spawnSync(command, args, {
+    stdio: 'inherit',
+    env: { ...process.env, CI: 'true' },
+  })
   if (result.status !== 0) throw new Error(`${command} ${args.join(' ')} failed (${String(result.status)})`)
 }
 
@@ -50,6 +53,7 @@ function productRemote() {
 const remote = productRemote()
 
 process.stdout.write('1/4 typecheck + test\n')
+run('pnpm', ['install', '--frozen-lockfile'])
 run('pnpm', ['typecheck'])
 run('pnpm', ['test'])
 

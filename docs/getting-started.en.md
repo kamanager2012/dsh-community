@@ -10,7 +10,7 @@
 | --- | --- | --- |
 | Use the official Runtime directly | [`npx @deepseek-ai/dsh web`](https://github.com/deepseek-ai/deepseek-harness) | Official product path |
 | Use the community Terminal / TUI | `dsh-community` or `pnpm tui` from source | Community UX around the official Runtime |
-| Download a desktop build | [Community Releases](https://github.com/kamanager2012/dsh-community/releases) | Use Preview for testing; the latest Actions run built three-platform artifacts, but a tag is still required before they become GitHub Release downloads |
+| Download a desktop build | [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) | Linux AppImage / macOS dmg / Windows NSIS. Do not keep using v0.1.1 |
 | Read the full operational guide | [DeepSeek Harness Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/en/) | Providers, Sessions, security, automation, and acceptance |
 
 Do not download a formal client from Suite, Marketplace, Plugins, or Edition. They are respectively the labs, discovery UX, compatibility registry, and historical archive.

@@ -1,10 +1,10 @@
 /**
- * Stage the published official CLI as one portable tar.
- * Do not extraResource a pnpm node_modules tree — Windows NSIS dies on
- * tens of thousands of small files.
+ * Stage the published official CLI as one portable tar of real files.
+ * Do not extraResource a live pnpm tree — Windows NSIS dies on tens of
+ * thousands of tiny files, and Windows tars must not keep symlinks.
  */
 
-import { existsSync, lstatSync, realpathSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, writeFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { cp, mkdir, readdir, rm } from 'node:fs/promises'
 import { createRequire } from 'node:module'
@@ -31,77 +31,45 @@ writeFileSync(join(stageRoot, 'package.json'), `${JSON.stringify({
   private: true,
   dependencies: { '@deepseek-ai/dsh': pin },
 }, null, 2)}\n`)
+writeFileSync(join(stageRoot, '.npmrc'), 'node-linker=hoisted\n')
+writeFileSync(join(stageRoot, 'pnpm-workspace.yaml'), 'onlyBuiltDependencies:\n  - node-pty\n')
 
-if (process.platform === 'win32') {
-  /**
-   * pnpm's hoisted linker creates symlinks on Windows CI, which need
-   * Developer Mode. Copy the already-installed workspace package with
-   * symlinks dereferenced instead — no links survive into the tar.
-   */
-  const workspaceInstall = realpathSync(join(appRoot, 'node_modules/@deepseek-ai/dsh'))
-  await mkdir(join(stageRoot, 'node_modules/@deepseek-ai'), { recursive: true })
-  process.stdout.write(`copying official @deepseek-ai/dsh@${pin} (dereferenced)…\n`)
-  await cp(workspaceInstall, join(stageRoot, 'node_modules/@deepseek-ai/dsh'), {
-    recursive: true,
-    dereference: true,
-  })
-} else {
-  /**
-   * node-pty only ships prebuilds for darwin/win32; on Linux its install
-   * script compiles pty.node from source. Allow exactly that one build.
-   */
-  writeFileSync(join(stageRoot, '.npmrc'), 'node-linker=hoisted\n')
-  writeFileSync(join(stageRoot, 'pnpm-workspace.yaml'), 'onlyBuiltDependencies:\n  - node-pty\n')
-  writeFileSync(join(stageRoot, 'package.json'), `${JSON.stringify({
-    name: 'dsh-community-host',
-    private: true,
-    dependencies: { '@deepseek-ai/dsh': pin },
-  }, null, 2)}\n`)
-  process.stdout.write(`staging official @deepseek-ai/dsh@${pin} (hoisted)…\n`)
-  const installed = spawnSync('pnpm', ['install', '--prod', '--ignore-workspace'], {
-    cwd: stageRoot,
-    stdio: 'inherit',
-    env: { ...process.env, CI: 'true' },
-    shell: process.platform === 'win32',
-    windowsHide: true,
-  })
-  if (installed.error) throw new Error(`pnpm install failed: ${installed.error.message}`)
-  if (!existsSync(join(stageRoot, 'node_modules/@deepseek-ai/dsh/lib/bin.js'))) {
-    throw new Error(`pnpm install left no official bin (status ${String(installed.status)})`)
-  }
-  if (installed.status !== 0) {
-    process.stdout.write(`pnpm install exited ${String(installed.status)} after placing the tree (ignored builds are expected)\n`)
-  }
-  const ptyEntries = await readdir(join(stageRoot, 'node_modules/.pnpm'))
-  const ptyName = ptyEntries.find((name) => name.startsWith('node-pty@'))
-  if (ptyName === undefined) throw new Error('node-pty missing from the staged tree')
-  const ptyDir = join(stageRoot, 'node_modules/.pnpm', ptyName, 'node_modules/node-pty')
-  const ptyPlatform = process.platform === 'darwin' ? 'darwin' : 'linux'
-  const ptyArch = process.arch === 'arm64' ? 'arm64' : 'x64'
-  const ptyBinary = join(ptyDir, 'prebuilds', `${ptyPlatform}-${ptyArch}`, 'pty.node')
-  if (!existsSync(ptyBinary)) {
-    /**
-     * Linux pty.node is compiled during the workspace install (dev deps
-     * provide node-gyp). The --prod stage cannot rebuild it, so copy the
-     * already-compiled binary from the workspace virtual store.
-     */
-    const workspacePty = join(workspaceRoot, 'node_modules/.pnpm', ptyName, 'node_modules/node-pty')
-    const workspaceBinary = join(workspacePty, 'build/Release/pty.node')
-    if (existsSync(workspaceBinary)) {
-      process.stdout.write('copying compiled node-pty from the workspace…\n')
-      await mkdir(join(ptyDir, 'build/Release'), { recursive: true })
-      await cp(workspaceBinary, join(ptyDir, 'build/Release/pty.node'))
-    }
-    if (!existsSync(ptyBinary) && !existsSync(join(ptyDir, 'build/Release/pty.node'))) {
-      throw new Error(`node-pty binary missing for ${ptyPlatform}-${ptyArch}`)
-    }
-  }
+process.stdout.write(`staging official @deepseek-ai/dsh@${pin} (hoisted)…\n`)
+const installed = spawnSync('pnpm', ['install', '--prod', '--ignore-workspace'], {
+  cwd: stageRoot,
+  stdio: 'inherit',
+  env: { ...process.env, CI: 'true' },
+  shell: process.platform === 'win32',
+  windowsHide: true,
+})
+if (installed.error) throw new Error(`pnpm install failed: ${installed.error.message}`)
+if (!existsSync(join(stageRoot, 'node_modules/@deepseek-ai/dsh/lib/bin.js'))) {
+  throw new Error(`pnpm install left no official bin (status ${String(installed.status)})`)
+}
+if (installed.status !== 0) {
+  process.stdout.write(`pnpm install exited ${String(installed.status)} after placing the tree (ignored native builds are ok)\n`)
 }
 
-const officialBin = join(stageRoot, 'node_modules/@deepseek-ai/dsh/lib/bin.js')
-if (!existsSync(officialBin)) throw new Error(`staged official bin missing: ${officialBin}`)
-if (lstatSync(officialBin).isSymbolicLink()) {
-  throw new Error(`staged official bin is a symlink: ${officialBin}`)
+const ptyStore = join(stageRoot, 'node_modules/.pnpm')
+if (existsSync(ptyStore)) {
+  const ptyEntries = await readdir(ptyStore)
+  const ptyName = ptyEntries.find((name) => name.startsWith('node-pty@'))
+  if (ptyName !== undefined) {
+    const ptyDir = join(ptyStore, ptyName, 'node_modules/node-pty')
+    const ptyPlatform = process.platform === 'darwin' ? 'darwin' : process.platform === 'win32' ? 'win32' : 'linux'
+    const ptyArch = process.arch === 'arm64' ? 'arm64' : 'x64'
+    const prebuilt = join(ptyDir, 'prebuilds', `${ptyPlatform}-${ptyArch}`, 'pty.node')
+    const compiled = join(ptyDir, 'build/Release/pty.node')
+    if (!existsSync(prebuilt) && !existsSync(compiled)) {
+      const workspacePty = join(workspaceRoot, 'node_modules/.pnpm', ptyName, 'node_modules/node-pty')
+      const workspaceBinary = join(workspacePty, 'build/Release/pty.node')
+      if (existsSync(workspaceBinary)) {
+        process.stdout.write('copying compiled node-pty from the workspace…\n')
+        await mkdir(join(ptyDir, 'build/Release'), { recursive: true })
+        await cp(workspaceBinary, compiled)
+      }
+    }
+  }
 }
 
 const leaked = ['apps/cli', 'packages/core', 'vendor/deepseek-harness']
@@ -109,14 +77,30 @@ const names = await readdir(stageRoot)
 const hit = leaked.filter((rel) => names.includes(rel))
 if (hit.length > 0) throw new Error(`stage looks like a vendored official tree: ${hit.join(', ')}`)
 
+const flatRoot = join(stageRoot, 'flat')
+const flatModules = join(flatRoot, 'node_modules')
+await mkdir(flatModules, { recursive: true })
+process.stdout.write('flattening staged node_modules (no symlinks)…\n')
+for (const name of await readdir(join(stageRoot, 'node_modules'))) {
+  if (name === '.pnpm' || name.startsWith('.')) continue
+  await cp(join(stageRoot, 'node_modules', name), join(flatModules, name), {
+    recursive: true,
+    dereference: true,
+  })
+}
+
+const officialBin = join(flatModules, '@deepseek-ai/dsh/lib/bin.js')
+if (!existsSync(officialBin)) throw new Error(`flattened official bin missing: ${officialBin}`)
+if (lstatSync(officialBin).isSymbolicLink()) {
+  throw new Error(`flattened official bin is still a symlink: ${officialBin}`)
+}
+
 await rm(extra, { recursive: true, force: true })
 await mkdir(extra, { recursive: true })
 process.stdout.write('archiving official runtime to a single tar…\n')
-runCommand('tar', ['-cf', archive, 'node_modules'], { cwd: stageRoot })
+runCommand('tar', ['-cf', archive, 'node_modules'], { cwd: flatRoot })
 if (!existsSync(archive)) throw new Error(`official dsh archive missing: ${archive}`)
 
-// pnpm stores real packages under node_modules/.pnpm and links top-level names.
-// List the @deepseek-ai subtree so the check works for both real and link entries.
 const listed = runCommand('tar', ['-tf', archive, 'node_modules/@deepseek-ai'], {
   cwd: extra,
   stdio: 'pipe',

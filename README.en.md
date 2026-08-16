@@ -19,7 +19,7 @@ A conversation you start in official Web is the same conversation you resume in
 | **Stable** | [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) |
 | **Preview** | newest Pre-release on [Releases](https://github.com/kamanager2012/dsh-community/releases) |
 
-The number in `package.json` is the in-tree development version. Do not treat it as the user download. Desktop testers should use **Preview**: the current Stable Linux AppImage cannot start official `dsh web`. The `release` workflow now builds Linux AppImage, macOS dmg, and Windows NSIS; those files stay on Actions until a tag publishes them. Do not advertise them as user downloads before they are on a GitHub Release.
+The number in `package.json` is the in-tree development version. Do not treat it as the user download. Users should take **Stable** at [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest): Linux AppImage, macOS dmg, and Windows NSIS. Do not keep using the v0.1.1 AppImage.
 
 [Official Runtime](https://github.com/deepseek-ai/deepseek-harness)
 
@@ -37,9 +37,9 @@ session persistence, and core lifecycle.
 | Goal | Use |
 |---|---|
 | Run the official Runtime directly | [`npx @deepseek-ai/dsh web`](https://github.com/deepseek-ai/deepseek-harness) |
-| Download the community product | [Releases](https://github.com/kamanager2012/dsh-community/releases) — Preview for desktop; do not push the current Stable AppImage |
+| Download the community product | [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) — Linux / macOS / Windows |
 | Use the Terminal / TUI | `pnpm tui` or `dsh-community` after a source install |
-| Use the Desktop shell | `pnpm desktop`, or a Preview installer once the 3-OS workflow is green |
+| Use the Desktop shell | `pnpm desktop`, or the installer from [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) |
 | Read operational guidance | [DeepSeek Harness Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/) |
 | Verified community plugins | [`dsh-marketplace`](https://github.com/kamanager2012/dsh-marketplace) and the [verification registry](https://github.com/kamanager2012/dsh-community-plugins) — not an awesome list |
 
@@ -57,9 +57,7 @@ Keep these three layers separate. Do not hardcode them in the title.
 | Preview | newest Pre-release on [Releases](https://github.com/kamanager2012/dsh-community/releases) |
 | Stable | [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) |
 
-Preview is closer to usable than current Stable (the Stable AppImage cannot start
-official `dsh web`). The 3-OS packaging jobs are green on Actions. User-facing
-Windows/macOS files appear only after a tagged GitHub Release.
+Stable at `releases/latest` is the three-OS build. Preview is an older testing channel.
 
 ## From source
 

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- README / 使用指南改为指向 `releases/latest` 的三系统 Stable，不再劝人用 Preview
+- Windows 暂存改为完整 hoisted 树再解引用压平，不再只拷 `@deepseek-ai/dsh` 本体
+- 官方 runtime 解压写 ready stamp，半截失败会重解
+
 ## 0.1.2 — 2026-08-16
 
 Release: https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.2
