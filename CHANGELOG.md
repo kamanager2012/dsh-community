@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.1.4 — 2026-08-16
+
+Release: https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.4
+
+Windows flatten 必须带上 `.pnpm`。v0.1.3 跳过它之后安装包又缩到 99MB，官方依赖可能不完整。本版解引用拷完整虚拟店，并校验 tar 至少 80MB。
+
 ## 0.1.3 — 2026-08-16
 
 Release: https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.3

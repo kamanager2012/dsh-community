@@ -4,7 +4,7 @@
  * thousands of tiny files, and Windows tars must not keep symlinks.
  */
 
-import { existsSync, lstatSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, statSync, writeFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { cp, mkdir, readdir, rm } from 'node:fs/promises'
 import { createRequire } from 'node:module'
@@ -82,7 +82,8 @@ const flatModules = join(flatRoot, 'node_modules')
 await mkdir(flatModules, { recursive: true })
 process.stdout.write('flattening staged node_modules (no symlinks)…\n')
 for (const name of await readdir(join(stageRoot, 'node_modules'))) {
-  if (name === '.pnpm' || name.startsWith('.')) continue
+  // Keep .pnpm. Windows hoisted installs still leave most packages there.
+  if (name.startsWith('.') && name !== '.pnpm') continue
   await cp(join(stageRoot, 'node_modules', name), join(flatModules, name), {
     recursive: true,
     dereference: true,
@@ -111,6 +112,16 @@ const listing = String(listed.stdout ?? '')
 if (!listing.includes('@deepseek-ai/dsh')) {
   throw new Error('official dsh archive does not contain @deepseek-ai/dsh')
 }
-
+const hasDep = existsSync(join(flatModules, 'commander'))
+  || existsSync(join(flatModules, '@deepseek-ai/dsh-app-boot'))
+  || existsSync(join(flatModules, '.pnpm'))
+if (!hasDep) {
+  throw new Error('flattened official tree is missing dsh dependencies (commander / dsh-app-boot / .pnpm)')
+}
+const bytes = statSync(archive).size
+if (bytes < 80_000_000) {
+  throw new Error(`official dsh archive too small to hold the runtime: ${String(bytes)} bytes`)
+}
+process.stdout.write(`official dsh archive ${String(bytes)} bytes\n`)
 process.stdout.write(`${archive}\n`)
 process.stdout.write(`${officialBin}\n`)
