@@ -20,18 +20,11 @@ A conversation you start in official Web is the same conversation you resume in
 | **Stable** | [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) |
 | **Preview** | newest Pre-release on [Releases](https://github.com/kamanager2012/dsh-community/releases) |
 
-The number in `package.json` is the in-tree development version. Current Latest is
-**[v0.1.2](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.2)**.
-`v0.1.4` and `v0.1.3` are Pre-releases — do not download those desktop builds. On a
-clean macOS host, v0.1.4 extracted a tree that cannot resolve
-`@deepseek-ai/dsh-app-boot`, so official Web never starts.
-
-## Stable baseline vs current main
-
-`v0.1.2` is the current downloadable Latest. `v0.1.4` built, but exact-artifact
-smoke proved the packaged official tree is not Node-resolvable; it was marked
-Pre-release. Staging fixes on `main` are not a published Release. A main-source
-test is not proof that a GitHub installer works.
+The community product version is **0.1.6** — root, Desktop, TUI, and workspace
+packages share that number. Official Runtime remains `@deepseek-ai/dsh@0.1.0-rc.6`;
+that pin is upstream, not our version. Download only
+[releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest)
+(`v0.1.6`). Do not download `v0.1.3`, `v0.1.4`, or `v0.1.5`.
 
 [Official Runtime](https://github.com/deepseek-ai/deepseek-harness)
 
@@ -49,10 +42,10 @@ session persistence, and core lifecycle.
 | Goal | Use |
 |---|---|
 | Run the official Runtime directly | [`npx @deepseek-ai/dsh web`](https://github.com/deepseek-ai/deepseek-harness) |
-| Download the community product | [v0.1.2 Latest](https://github.com/kamanager2012/dsh-community/releases/latest). Do not download v0.1.4 desktop builds |
+| Download the community product | [v0.1.6](https://github.com/kamanager2012/dsh-community/releases/latest) |
 | Use the WSL/Linux Terminal / TUI | `pnpm tui` or `dsh-community` after a source install |
-| Use the Windows Desktop shell | [`v0.1.2 Latest`](https://github.com/kamanager2012/dsh-community/releases/latest) NSIS installer, or `pnpm desktop` |
-| Use the macOS Desktop shell | [`v0.1.2 Latest`](https://github.com/kamanager2012/dsh-community/releases/latest) dmg, or `pnpm desktop` |
+| Use the Windows Desktop shell | [v0.1.6](https://github.com/kamanager2012/dsh-community/releases/latest) Setup.exe, or `pnpm desktop` |
+| Use the macOS Desktop shell | [v0.1.6](https://github.com/kamanager2012/dsh-community/releases/latest) dmg, or `pnpm desktop` |
 | Read operational guidance | [DeepSeek Harness Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/) |
 | Verified community plugins | [`dsh-marketplace`](https://github.com/kamanager2012/dsh-marketplace) and the [verification registry](https://github.com/kamanager2012/dsh-community-plugins) — not an awesome list |
 
@@ -62,18 +55,11 @@ products.
 
 ## Current release status
 
-Keep these three layers separate. Do not hardcode them in the title.
-
-| Layer | Where |
-|---|---|
-| Code line | root `package.json` |
-| Preview | newest Pre-release on [Releases](https://github.com/kamanager2012/dsh-community/releases) |
-| Stable | [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) |
-
-The current Latest is [`v0.1.2`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.2).
-`v0.1.4` and `v0.1.3` are Pre-releases. The Linux AppImage remains optional; the
-primary Linux endpoint is the WSL/Linux Terminal. Official Web is an upstream
-companion, not a Community endpoint.
+Community version is one number: **0.1.6** in `package.json` and on
+[releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest).
+Official Runtime pin is a different number (`0.1.0-rc.6`). The Linux AppImage is
+optional; the primary Linux endpoint is the WSL/Linux Terminal. Official Web is
+an upstream companion, not a Community endpoint.
 
 ## From source
 

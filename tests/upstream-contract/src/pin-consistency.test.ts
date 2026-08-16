@@ -11,9 +11,31 @@ import {
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '../../..')
 
-function readJson(rel: string): { dependencies?: Record<string, string> } {
-  return JSON.parse(readFileSync(join(repoRoot, rel), 'utf8')) as { dependencies?: Record<string, string> }
+function readManifest(rel: string): { version?: string; dependencies?: Record<string, string> } {
+  return JSON.parse(readFileSync(join(repoRoot, rel), 'utf8')) as {
+    version?: string
+    dependencies?: Record<string, string>
+  }
 }
+
+describe('community product version', () => {
+  it('every workspace package.json uses the same community version', () => {
+    const manifests = [
+      'package.json',
+      'apps/desktop/package.json',
+      'apps/tui/package.json',
+      'packages/dsh-bridge/package.json',
+      'packages/shared-types/package.json',
+      'packages/tui-adapter/package.json',
+      'tests/upstream-contract/package.json',
+    ]
+    const root = readManifest('package.json').version
+    expect(root).toMatch(/^\d+\.\d+\.\d+$/)
+    for (const rel of manifests) {
+      expect(readManifest(rel).version, rel).toBe(root)
+    }
+  })
+})
 
 describe('official pin consistency', () => {
   it('every workspace package that depends on official dsh uses the exact pin', () => {
@@ -24,7 +46,7 @@ describe('official pin consistency', () => {
       'tests/upstream-contract/package.json',
     ]
     for (const rel of manifests) {
-      const pin = readJson(rel).dependencies?.[OFFICIAL_DSH_PACKAGE]
+      const pin = readManifest(rel).dependencies?.[OFFICIAL_DSH_PACKAGE]
       expect(pin, rel).toBe(PINNED_DSH_VERSION)
     }
   })

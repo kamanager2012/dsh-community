@@ -51,29 +51,23 @@ https://github.com/kamanager2012/dsh-community/releases/latest
 
 ## Distribution Reality Gate
 
-`v0.1.2` is the current downloadable Latest. `v0.1.4` is a Pre-release: clean
-macOS extract cannot resolve `@deepseek-ai/dsh-app-boot`. Do not send users to
-those desktop assets.
-The current code line is `0.1.4`; later `main` commits may contain documentation or
-verification fixes that are not in the already published assets. Validate the exact
-Release downloads separately from source or CI:
+Community version is **0.1.6**. Official Runtime pin is `@deepseek-ai/dsh@0.1.0-rc.6`.
+Do not send users to `v0.1.3`, `v0.1.4`, or `v0.1.5`. Validate the exact Release
+downloads separately from source or CI:
 
 | Endpoint | Exact artifact / path | Required flow |
 |---|---|---|
-| Windows Desktop | `DSH.Community.Setup.0.1.4.exe` | clean VM → install → first launch → key → new/resume → plugin → restart |
-| macOS Desktop | `dsh-community-0.1.4.dmg` | clean host → install → first launch → key → new/resume → plugin → restart |
+| Windows Desktop | `DSH.Community.Setup.0.1.6.exe` | clean VM → install → first launch → key → new/resume → plugin → restart |
+| macOS Desktop | `dsh-community-0.1.6.dmg` | clean host → install → first launch → key → new/resume → plugin → restart |
 | WSL/Linux Terminal | `dsh-community` / `pnpm tui` | clean WSL/Linux → key → new/resume → plugin → restart |
-| Linux AppImage | `dsh-community-0.1.4.AppImage` | optional artifact smoke; not the primary Linux endpoint |
+| Linux AppImage | `dsh-community-0.1.6.AppImage` | optional artifact smoke; not the primary Linux endpoint |
 
 The gate must also cover uninstall/reinstall, upgrade, missing key, bad network, and
 broken or interrupted Runtime extraction. Record Web ↔ Desktop ↔ TUI Session sharing
 and the exact asset filename plus SHA256. `artifact-smoke` covers only install / first-ready / missing-key on the three
-Community endpoints. It is not a full user loop. The previous Windows job
-([31935679026](https://github.com/kamanager2012/dsh-community/actions/runs/31935679026))
-looked for the exe immediately after `/S` and defaulted to `v0.1.2`; that is
-not evidence that the `v0.1.4` Setup is broken. The gate remains `[UNVERIFIED]`
-until a later smoke run on Latest plus a real-machine loop pass. A green unit
-test or a main-source smoke is not that evidence.
+Community endpoints. It is not a full user loop. The gate remains `[UNVERIFIED]`
+until a smoke run on the `v0.1.6` assets plus a real-machine loop pass. A green
+unit test or a main-source smoke is not that evidence.
 
 ## Rules
 

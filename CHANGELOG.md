@@ -2,7 +2,15 @@
 
 ## Unreleased
 
-- v0.1.4 桌面端 exact-artifact 失败：解压后只有 `@deepseek-ai/dsh`，Node 找不到 `dsh-app-boot`。已标 Pre-release，Latest 回退到 v0.1.2。官方 runtime 改用 npm 打成经典 `node_modules`，解压时校验 `dsh-app-boot`。`v0.1.5` tag 仍是旧暂存，发布已取消，不要把它当 Latest。
+## 0.1.6 — 2026-08-16
+
+Release: https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.6
+
+社区产品号统一为 **0.1.6**。根目录、Desktop、TUI 和 workspace 包同一数字。官方 Runtime 仍是 `@deepseek-ai/dsh@0.1.0-rc.6`，那是上游 pin，不是我们的版本。
+
+- 官方 runtime 用 npm 打成 Node 能解析的经典 `node_modules`，解压校验 `@deepseek-ai/dsh-app-boot`
+- v0.1.3 / v0.1.4 桌面端不可用，保持 Pre-release；v0.1.5 tag 未发布，不要下载
+- 三个社区端：WSL/Linux Terminal、Windows Desktop、macOS Desktop
 
 ## 0.1.5 — 2026-08-16
 

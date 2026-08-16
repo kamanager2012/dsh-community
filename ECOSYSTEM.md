@@ -55,7 +55,7 @@ Official Web (upstream companion)
 
 Registry 的目标是验证层，不是最大目录：能装、能跑、适配当前 pin、申请了什么权限。Awesome 做发现，我们做 trust。
 
-节奏必须双轨，不能等 Win/mac/SDK/手册 100% 再开口：`v0.1.2` 是当前 Latest；`v0.1.4` 桌面端 exact-artifact 失败已标 Pre-release。工程继续修官方 runtime 暂存，同时把“三个社区端、同一套会话”讲清楚。
+节奏必须双轨，不能等 Win/mac/SDK/手册 100% 再开口：社区产品号统一为 `0.1.6`，官方 pin 仍是 `0.1.0-rc.6`。同时把“三个社区端、同一套会话”讲清楚。
 
 ---
 
@@ -102,7 +102,7 @@ Repo topology 完整 ≠ Ecosystem 完整。现在真实成熟度:产品初期�
 
 ```text
 Engineering:               Distribution:
-0.1.4 stable 三平台发布      定位叙事 + 架构文章
+0.1.6 产品号统一             定位叙事 + 架构文章
 win/mac 打包收口           插件验证 / 对比 / demo
 Session consistency        用户反馈回流
 release reproducibility
@@ -203,23 +203,23 @@ kamanager2012/dsh-community/releases/latest
 版本是三层，不要把 `package.json` 里的开发号写成“用户下载版本”：
 
 ```text
-main / package.json     当前代码线 0.1.4
-Latest                  v0.1.2 / releases/latest
-Preview                 v0.1.4、v0.1.3（不要当正式下载）
+社区产品号            0.1.6   （根目录 / Desktop / TUI / workspace 同一数字）
+官方 Runtime pin      0.1.0-rc.6   （上游，不是我们的版本）
+Latest                v0.1.6 / releases/latest
+不要下载              v0.1.3 / v0.1.4 / v0.1.5
 ```
 
 当前用户下载事实：
 
 ```text
-Latest          v0.1.2  — Windows NSIS / macOS dmg
-v0.1.4          Pre-release：桌面解压后缺 @deepseek-ai/dsh-app-boot，不要下
+Latest          v0.1.6  — Windows Setup.exe / macOS dmg
 Linux 主力端    WSL/Linux Terminal / TUI
 官方 Web        上游兼容入口，不是 Community 发行端
 ```
 
 ### Latest 与 Reality Gate
 
-`v0.1.2` 是当前可下载 Latest。`v0.1.4` 在干净 macOS 上解压后 Node 无法解析官方包，已标 Pre-release。main 上的 npm classic 暂存修复还不是新 Release。用户现实门禁仍是 `[UNVERIFIED]`。
+产品号已经统一为 0.1.6。干净环境用户闭环仍要单独验证，不能把发版成功写成 Reality Gate 已过。
 
 Windows / macOS 也必须只从 `dsh-community` 发布，不能改去 Suite 或 Edition。
 
@@ -1427,7 +1427,7 @@ Labs 成熟功能分批晋升 Community
 
 ## 三十一、当前最重要的产品工作是 Distribution Reality Gate
 
-`v0.1.2` 仍是当前 Latest。`v0.1.4` 没过 exact-artifact 桌面门禁。现在要验证的是：一个没有参与开发的人，下载 Latest 页面上的真实安装包后能否完成用户闭环。
+产品号是 0.1.6。现在要验证的是：一个没有参与开发的人，下载 Latest 页面上的真实安装包后能否完成用户闭环。
 
 必须直接测试 exact release artifact，而不是 main 源码或 CI artifact:
 

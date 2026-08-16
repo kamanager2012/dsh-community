@@ -10,31 +10,28 @@
 | --- | --- | --- |
 | 直接使用官方 Runtime | [`npx @deepseek-ai/dsh web`](https://github.com/deepseek-ai/deepseek-harness) | 官方产品路径 |
 | 使用社区终端 / TUI | 本仓库 `dsh-community` 或源码中的 `pnpm tui` | 社区 UX，执行核心仍是官方 Runtime |
-| 下载 Windows 桌面包 | [v0.1.2 Latest](https://github.com/kamanager2012/dsh-community/releases/latest) | 不要下 v0.1.4 |
-| 下载 macOS 桌面包 | [v0.1.2 Latest](https://github.com/kamanager2012/dsh-community/releases/latest) | 不要下 v0.1.4 |
+| 下载 Windows 桌面包 | [v0.1.6](https://github.com/kamanager2012/dsh-community/releases/latest) | `DSH Community Setup 0.1.6.exe` |
+| 下载 macOS 桌面包 | [v0.1.6](https://github.com/kamanager2012/dsh-community/releases/latest) | `dsh-community-0.1.6.dmg` |
 | 使用 WSL/Linux 终端 | `dsh-community` / `pnpm tui` | Linux 的主力 Community endpoint |
 | 查完整操作手册 | [DeepSeek Harness Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/) | Provider、Session、安全、自动化和验收 |
 
-不要从 Suite、Marketplace、Plugins 或 Edition 下载正式客户端。它们分别是实验舱、发现体验、兼容注册表和历史归档。当前 Latest 是 `v0.1.2`。`v0.1.4` 桌面端解压后缺官方依赖，已标 Pre-release，不要下。官方 Web 是上游兼容入口，不是 Community 发行端；Linux AppImage 是可选/次要产物。
+不要从 Suite、Marketplace、Plugins 或 Edition 下载正式客户端。它们分别是实验舱、发现体验、兼容注册表和历史归档。当前产品号是 **0.1.6**。不要下 `v0.1.3` / `v0.1.4` / `v0.1.5`。官方 Web 是上游兼容入口，不是 Community 发行端；Linux AppImage 是可选/次要产物。
 
-## 当前 Stable 下载资产
+## 当前下载资产
 
-[`v0.1.4`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.4) 已发布：
+[`v0.1.6`](https://github.com/kamanager2012/dsh-community/releases/latest)：
 
-- `dsh-community-0.1.4.AppImage`（可选/次要 Linux 产物）
-- `dsh-community-0.1.4.dmg`
-- `DSH.Community.Setup.0.1.4.exe`
+- `DSH.Community.Setup.0.1.6.exe` — Windows
+- `dsh-community-0.1.6.dmg` — macOS
+- `dsh-community-0.1.6.AppImage` — 次要 Linux 产物
 
-每个安装包都有对应的 `.sha256` 文件。`v0.1.3` 是最新 Preview；`v0.1.2` 是历史 Stable 基线。
-
-当前 exact-artifact smoke 的 macOS job 已通过、Windows job 失败，因此用户现实门禁仍是 `[UNVERIFIED]`；不要把发布链通过写成干净环境安装闭环已通过。
-
-Windows / macOS 包**未签名、未公证**。Windows 可能弹出 SmartScreen「未知发布者」：选「更多信息 → 仍要运行」，然后用 sidecar 校验：
+每个文件都有对应的 `.sha256`。Windows / macOS 包**未签名、未公证**。Windows 可能弹出 SmartScreen「未知发布者」：选「更多信息 → 仍要运行」，然后用 sidecar 校验：
 
 ```sh
-sha256sum -c dsh-community-0.1.4.AppImage.sha256
 # Windows PowerShell:
-Get-FileHash 'DSH.Community.Setup.0.1.4.exe' -Algorithm SHA256
+Get-FileHash 'DSH Community Setup 0.1.6.exe' -Algorithm SHA256
+# macOS / Linux:
+shasum -a 256 -c dsh-community-0.1.6.dmg.sha256
 ```
 
 第一次打开桌面会解一份官方 Runtime 到用户数据目录，只做一次。对话仍在官方 `~/.dsh`。
@@ -107,7 +104,7 @@ dsh-community-plugins/catalog.json
 | `dsh-community: command not found` | 先用源码命令，或确认安装包 PATH | 不要把本仓库发布成 `@deepseek-ai/dsh` |
 | 没有模型响应 | `DEEPSEEK_API_KEY`、Provider 配置和 `dsh web --help` | 不要把 `doctor` 通过当成模型调用通过 |
 | 端口被占用 | `doctor` 输出和官方 `dsh web` 进程 | 不要用 `killall node` 误杀其他项目 |
-| 不知道下载哪个版本 | 下载 [v0.1.2 Latest](https://github.com/kamanager2012/dsh-community/releases/latest) | 不要下 v0.1.4 桌面包，不要把 `package.json` 开发号当 Latest |
+| 不知道下载哪个版本 | [v0.1.6](https://github.com/kamanager2012/dsh-community/releases/latest) | 不要下 v0.1.3 / v0.1.4 / v0.1.5 |
 | 想试最新 SDK / Checkpoint | 进入 [Community Labs](https://github.com/kamanager2012/deepseek-harness-suite) | 不要把 Labs 当正式发行渠道 |
 
 ## 继续阅读
