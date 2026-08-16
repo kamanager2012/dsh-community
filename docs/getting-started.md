@@ -6,38 +6,35 @@
 
 ## 先选正确入口
 
-社区只发行三个端。端定义见 [community-endpoints.md](community-endpoints.md)。
-
-| 你在哪 | 社区端 | 入口 |
+| 目标 | 入口 | 说明 |
 | --- | --- | --- |
-| WSL / Linux | Terminal | 本仓库 `dsh-community` 或源码里的 `pnpm tui` |
-| Windows | Desktop | [Latest](https://github.com/kamanager2012/dsh-community/releases/latest) 的 `DSH Community Setup.exe` |
-| macOS | Desktop | [Latest](https://github.com/kamanager2012/dsh-community/releases/latest) 的 `dsh-community-*.dmg` |
-| 想用官方 Web | 不是我们的端 | [`npx @deepseek-ai/dsh web`](https://github.com/deepseek-ai/deepseek-harness)，共用 `~/.dsh` |
-| 查完整操作手册 | Handbook | [DeepSeek Harness Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/) |
+| 直接使用官方 Runtime | [`npx @deepseek-ai/dsh web`](https://github.com/deepseek-ai/deepseek-harness) | 官方产品路径 |
+| 使用社区终端 / TUI | 本仓库 `dsh-community` 或源码中的 `pnpm tui` | 社区 UX，执行核心仍是官方 Runtime |
+| 下载 Windows 桌面包 | [v0.1.4 Stable Release](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.4) | 当前正式 Windows Desktop 下载入口 |
+| 下载 macOS 桌面包 | [v0.1.4 Stable Release](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.4) | 当前正式 macOS Desktop 下载入口 |
+| 使用 WSL/Linux 终端 | `dsh-community` / `pnpm tui` | Linux 的主力 Community endpoint |
+| 查完整操作手册 | [DeepSeek Harness Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/) | Provider、Session、安全、自动化和验收 |
 
-不要从 Suite、Marketplace、Plugins 或 Edition 下载正式客户端。它们分别是实验舱、发现体验、兼容注册表和历史归档。不要把 Linux AppImage 当成 Linux 主入口。`v0.1.3` 是 Pre-release，不要下。
+不要从 Suite、Marketplace、Plugins 或 Edition 下载正式客户端。它们分别是实验舱、发现体验、兼容注册表和历史归档。当前 Stable 是 `v0.1.4`，最新 Preview 是 `v0.1.3`。官方 Web 是上游兼容入口，不是 Community 发行端；Linux AppImage 是可选/次要产物。
 
-## 当前 Latest 下载资产
+## 当前 Stable 下载资产
 
-[`v0.1.4`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.4) 是当前 Latest。主下载：
+[`v0.1.4`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.4) 已发布：
 
-- `DSH.Community.Setup.0.1.4.exe` — Windows 社区端
-- `dsh-community-0.1.4.dmg` — macOS 社区端
+- `dsh-community-0.1.4.AppImage`（可选/次要 Linux 产物）
+- `dsh-community-0.1.4.dmg`
+- `DSH.Community.Setup.0.1.4.exe`
 
-次要产物（不是第四个产品端）：
+每个安装包都有对应的 `.sha256` 文件。`v0.1.3` 是最新 Preview；`v0.1.2` 是历史 Stable 基线。
 
-- `dsh-community-0.1.4.AppImage`
-
-每个文件都有对应的 `.sha256`。`v0.1.2` 是第一个三系统基线；需要旧行为回归时再看 [`v0.1.2-preview`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.2-preview)。
+当前 exact-artifact smoke 的 macOS job 已通过、Windows job 失败，因此用户现实门禁仍是 `[UNVERIFIED]`；不要把发布链通过写成干净环境安装闭环已通过。
 
 Windows / macOS 包**未签名、未公证**。Windows 可能弹出 SmartScreen「未知发布者」：选「更多信息 → 仍要运行」，然后用 sidecar 校验：
 
 ```sh
+sha256sum -c dsh-community-0.1.4.AppImage.sha256
 # Windows PowerShell:
-Get-FileHash 'DSH Community Setup 0.1.4.exe' -Algorithm SHA256
-# macOS / Linux:
-shasum -a 256 -c dsh-community-0.1.4.dmg.sha256
+Get-FileHash 'DSH.Community.Setup.0.1.4.exe' -Algorithm SHA256
 ```
 
 第一次打开桌面会解一份官方 Runtime 到用户数据目录，只做一次。对话仍在官方 `~/.dsh`。
@@ -110,7 +107,7 @@ dsh-community-plugins/catalog.json
 | `dsh-community: command not found` | 先用源码命令，或确认安装包 PATH | 不要把本仓库发布成 `@deepseek-ai/dsh` |
 | 没有模型响应 | `DEEPSEEK_API_KEY`、Provider 配置和 `dsh web --help` | 不要把 `doctor` 通过当成模型调用通过 |
 | 端口被占用 | `doctor` 输出和官方 `dsh web` 进程 | 不要用 `killall node` 误杀其他项目 |
-| 不知道下载哪个版本 | Windows 下 Setup.exe，macOS 下 dmg，Linux 用终端；当前 Latest 是 [v0.1.4](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.4) | 不要把 AppImage 当 Linux 主端，不要下 v0.1.3，不要把 `package.json` 开发号当 Latest |
+| 不知道下载哪个版本 | 下载 [v0.1.4 Stable](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.4)，再看[当前发行状态](https://kamanager2012.github.io/deepseek-harness-handbook/content/11-operations/community-release-status/) | 不要把 Preview 或 `package.json` 开发号当当前 Stable |
 | 想试最新 SDK / Checkpoint | 进入 [Community Labs](https://github.com/kamanager2012/deepseek-harness-suite) | 不要把 Labs 当正式发行渠道 |
 
 ## 继续阅读

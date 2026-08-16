@@ -18,6 +18,15 @@ export interface SpawnOfficialWebOptions {
   readonly bind?: OfficialWebBind
   /** When the Node executable is Electron itself. */
   readonly electronRunAsNode?: boolean
+  /**
+   * Node flags prepended to the official CLI entry.
+   *
+   * Electron-as-node does not expose the internals that upstream
+   * `cordis-plugin-hmr` probes; without `--expose-internals` the plugin tree
+   * aborts while the same closure boots fine under plain node. Callers pass
+   * this on the Electron-as-node fallback path.
+   */
+  readonly execArgv?: readonly string[]
 }
 
 function streamAdapter(stream: NodeJS.ReadableStream): HostChild['stdout'] {
@@ -65,15 +74,41 @@ export function adaptNodeChild(child: ChildProcess): HostChild {
  * "OS picks a free port" flag — Desktop uses that so it does not fight a
  * browser already on 3080.
  */
+/** Launcher argv the contract tests lock. */
+export function officialWebArgv(bind: OfficialWebBind = { host: '127.0.0.1', port: 0 }): readonly string[] {
+  return ['web', '--host', bind.host, '--port', String(bind.port)]
+}
+
+/** Full child argv: optional Node flags, then the official CLI entry. */
+export function officialHostArgs(input: {
+  readonly cliEntry: string
+  readonly bind?: OfficialWebBind
+  readonly execArgv?: readonly string[]
+}): readonly string[] {
+  const host = input.bind?.host ?? '127.0.0.1'
+  const port = input.bind?.port ?? 0
+  return [
+    ...(input.execArgv ?? []),
+    input.cliEntry,
+    'web',
+    '--host',
+    host,
+    '--port',
+    String(port),
+  ]
+}
+
 export function spawnOfficialWeb(options: SpawnOfficialWebOptions): HostChild {
-  const host = options.bind?.host ?? '127.0.0.1'
-  const port = options.bind?.port ?? 0
   const env = options.electronRunAsNode
     ? { ...options.env, ELECTRON_RUN_AS_NODE: '1' }
     : { ...options.env }
   const child = spawn(
     options.nodeExecutable,
-    [options.cliEntry, 'web', '--host', host, '--port', String(port)],
+    [...officialHostArgs({
+      cliEntry: options.cliEntry,
+      ...(options.bind === undefined ? {} : { bind: options.bind }),
+      ...(options.execArgv === undefined ? {} : { execArgv: options.execArgv }),
+    })],
     {
       cwd: options.cwd,
       env,
@@ -82,9 +117,4 @@ export function spawnOfficialWeb(options: SpawnOfficialWebOptions): HostChild {
     },
   )
   return adaptNodeChild(child)
-}
-
-/** Launcher argv the contract tests lock. */
-export function officialWebArgv(bind: OfficialWebBind = { host: '127.0.0.1', port: 0 }): readonly string[] {
-  return ['web', '--host', bind.host, '--port', String(bind.port)]
 }

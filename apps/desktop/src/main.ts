@@ -749,6 +749,7 @@ async function boot(): Promise<void> {
           env: next.env,
           bind: { host: '127.0.0.1', port: 0 },
           electronRunAsNode: next.electronRunAsNode,
+          execArgv: next.electronRunAsNode ? ['--expose-internals'] : [],
         })
       },
       onLog: (chunk) => {

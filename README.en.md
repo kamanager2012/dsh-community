@@ -2,27 +2,16 @@
 
 **One Harness. Three Community Endpoints.**
 
-The community **distribution** around official DeepSeek Harness. We ship three
-Community endpoints, not official Web:
+The community **distribution** around official DeepSeek Harness: one runtime, one
+`~/.dsh` session store, one official plugin chain. Our three community endpoints
+are the **WSL/Linux terminal, Windows Desktop, and macOS Desktop**. Official Web
+is the compatibility target — not a surface we ship — but it lives in the same
+world. This is not the official client and not a second Harness.
 
-```text
-                    Official DeepSeek Harness Runtime
-                                │
-               ┌────────────────┼────────────────┐
-               │                │                │
-               ▼                ▼                ▼
-        WSL / Linux TUI    Windows Desktop   macOS Desktop
-         dsh-community        Setup.exe            dmg
-```
+A conversation you start in official Web is the same conversation you resume in
+`dsh-community` and then open again in Desktop.
 
-One runtime, one `~/.dsh` session store, one official plugin chain. Official Web
-is DeepSeek's own entry and shares that world; **it is not our fourth product**.
-The Linux AppImage may still be attached to a Release as a secondary artifact.
-It is not a primary Community endpoint.
-
-This is not the official client and not a second Harness.
-
-[简体中文](README.md) | **English** | [Endpoint definition](docs/community-endpoints.md)
+[简体中文](README.md) | **English**
 
 [![CI](https://github.com/kamanager2012/dsh-community/actions/workflows/ci.yml/badge.svg)](https://github.com/kamanager2012/dsh-community/actions/workflows/ci.yml)
 
@@ -31,10 +20,25 @@ This is not the official client and not a second Harness.
 | **Stable** | [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) |
 | **Preview** | newest Pre-release on [Releases](https://github.com/kamanager2012/dsh-community/releases) |
 
-The number in `package.json` is the in-tree development version. Current Latest is
-**[v0.1.4](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.4)**.
-`v0.1.2` is the first three-OS baseline; `v0.1.3` is a Pre-release — do not download
-it. Do not promote the v0.1.1 AppImage. A green CI run is not a User Reality Gate.
+The number in `package.json` is the in-tree development version. The current formal download is **v0.1.4 Stable** and the latest Preview is **v0.1.3**. `v0.1.4` publishes a Linux AppImage, macOS dmg, and Windows NSIS installer, each with a matching `.sha256` file. `v0.1.2` is the historical baseline for the first three-platform Stable, not the current download.
+
+## Stable baseline vs current main
+
+`v0.1.4` is the current Stable release baseline. The root `package.json` and current
+`main` code line are `0.1.4`. Current `main` may continue to receive post-release
+documentation, diagnostics, and verification fixes; a main-source test is not proof
+that the published installer contains the same fix.
+
+The `v0.1.4` published assets are:
+
+- `dsh-community-0.1.4.AppImage`
+- `dsh-community-0.1.4.dmg`
+- `DSH.Community.Setup.0.1.4.exe`
+
+Each asset has a matching `.sha256` file. The latest exact-artifact smoke run passed
+on macOS but failed on Windows, so the Release build is published while the user-reality
+gate remains `[UNVERIFIED]`. Validate Stable with the exact assets downloaded from the
+GitHub Release page, not a main build.
 
 [Official Runtime](https://github.com/deepseek-ai/deepseek-harness)
 
@@ -47,21 +51,16 @@ with official source ownership = 0 and no `patch-package` on official UI.
 Official Runtime still owns the Agent loop, model execution, tool execution,
 session persistence, and core lifecycle.
 
-## Three Community endpoints
+## Choose an entry
 
-| Endpoint | For | Use |
-|---|---|---|
-| **WSL / Linux Terminal** | Developers, CLI users, WSL2, Linux servers | `dsh-community` / `pnpm tui` |
-| **Windows Desktop** | Windows users who should not install Node first | [`DSH Community Setup.exe`](https://github.com/kamanager2012/dsh-community/releases/latest) |
-| **macOS Desktop** | macOS users on the same path | [`dsh-community-*.dmg`](https://github.com/kamanager2012/dsh-community/releases/latest) |
-
-Official Web ([`npx @deepseek-ai/dsh web`](https://github.com/deepseek-ai/deepseek-harness))
-is official, not ours. Linux AppImage is a secondary artifact; the Linux product is
-the Terminal.
-
-| Also | Use |
+| Goal | Use |
 |---|---|
-| Operational guidance | [DeepSeek Harness Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/) |
+| Run the official Runtime directly | [`npx @deepseek-ai/dsh web`](https://github.com/deepseek-ai/deepseek-harness) |
+| Download the community product | [v0.1.4 Stable Release](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.4) — Windows/macOS Desktop and an optional Linux AppImage |
+| Use the WSL/Linux Terminal / TUI | `pnpm tui` or `dsh-community` after a source install |
+| Use the Windows Desktop shell | [`v0.1.4 Stable`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.4) NSIS installer, or `pnpm desktop` |
+| Use the macOS Desktop shell | [`v0.1.4 Stable`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.4) dmg, or `pnpm desktop` |
+| Read operational guidance | [DeepSeek Harness Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/) |
 | Verified community plugins | [`dsh-marketplace`](https://github.com/kamanager2012/dsh-marketplace) and the [verification registry](https://github.com/kamanager2012/dsh-community-plugins) — not an awesome list |
 
 Only this repository is the download entry. The other repos are roles (labs, docs,
@@ -78,11 +77,11 @@ Keep these three layers separate. Do not hardcode them in the title.
 | Preview | newest Pre-release on [Releases](https://github.com/kamanager2012/dsh-community/releases) |
 | Stable | [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) |
 
-Current Latest is [`v0.1.4`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.4).
-Primary downloads are the Windows NSIS installer and the macOS dmg. The Linux
-AppImage is attached as a secondary artifact. Each file has a matching `.sha256`.
-`v0.1.3` is a Pre-release. `v0.1.2-preview` is retained only for older-behavior
-regression checks.
+The current Stable is [`v0.1.4`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.4).
+The latest Preview is [`v0.1.3`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.3).
+The Linux AppImage remains an optional/secondary artifact; the primary Linux endpoint
+is the WSL/Linux Terminal. Official Web is an upstream companion, not a Community
+endpoint, and all four entry points use the official `~/.dsh` Session source.
 
 ## From source
 
