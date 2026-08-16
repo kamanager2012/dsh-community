@@ -25,7 +25,7 @@
 |---|---|
 | 真正跑 agent | 官方 [`npx @deepseek-ai/dsh web`](https://github.com/deepseek-ai/deepseek-harness) |
 | 终端 TUI | 本仓 `pnpm tui`（官方 profile + 薄 patch，Ink 只当挂载的插件） |
-| Linux 桌面 | [0.1.1 AppImage](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.1) 或 `pnpm desktop`（含内嵌社区市场页） |
+| 下载安装包 | [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest)：Linux AppImage / Windows 安装包与 zip / macOS dmg |
 | 浏览 / 安装社区插件 | Desktop 社区市场页 · [`dsh-marketplace`](https://github.com/kamanager2012/dsh-marketplace) CLI · [注册表](https://github.com/kamanager2012/dsh-community-plugins) |
 | 官方表面快照 / 升 rc 契约 | **本仓** |
 
@@ -68,7 +68,7 @@ pnpm desktop:package
 pnpm desktop:package -- --appimage
 ```
 
-Windows / macOS 在对应系统上：`pnpm desktop:package -- --win` 或 `--mac`。不要 `npm publish` 本仓的 workspace 包。发布顺序见 [docs/release.md](docs/release.md)。
+Windows / macOS 安装包由 GitHub Actions(`release` workflow)在对应系统构建,本地无需坐在那些 OS 上。不要 `npm publish` 本仓的 workspace 包。发布顺序见 [docs/release.md](docs/release.md)。
 
 ## 硬边界
 

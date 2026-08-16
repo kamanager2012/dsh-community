@@ -148,8 +148,8 @@ const packManifest = {
 await writeFile(join(packRoot, 'package.json'), `${JSON.stringify(packManifest, null, 2)}\n`)
 
 const builderArgs = ['--publish', 'never', '--config.npmRebuild=false']
-if (targetFlag === 'win') builderArgs.unshift('--win', 'dir')
-else if (targetFlag === 'mac') builderArgs.unshift('--mac', 'dir')
+if (targetFlag === 'win') builderArgs.unshift('--win', 'dir', 'nsis', 'zip')
+else if (targetFlag === 'mac') builderArgs.unshift('--mac', 'dir', 'dmg')
 else builderArgs.unshift('--linux', targetFlag === 'appimage' ? 'AppImage' : 'dir')
 
 await rm(releaseDir, { recursive: true, force: true })
@@ -159,6 +159,25 @@ if (targetFlag === 'appimage') {
   const images = (await readdir(releaseDir)).filter((name) => name.endsWith('.AppImage'))
   if (images.length === 0) throw new Error(`AppImage missing in ${releaseDir}`)
   process.stdout.write(`packaged ${join(releaseDir, images[0] ?? '')}\n`)
+} else if (targetFlag === 'win') {
+  const exe = (await readdir(releaseDir)).find((name) => name.endsWith('.exe'))
+  const zip = (await readdir(releaseDir)).find((name) => name.endsWith('.zip'))
+  if (exe === undefined) throw new Error(`Windows installer missing in ${releaseDir}`)
+  if (zip === undefined) throw new Error(`Windows zip missing in ${releaseDir}`)
+  const bin = join(releaseDir, 'win-unpacked', 'DSH Community.exe')
+  const officialPath = join(releaseDir, 'win-unpacked', 'resources/host/node_modules/@deepseek-ai/dsh/lib/bin.js')
+  if (!await exists(bin)) throw new Error(`packaged executable missing: ${bin}`)
+  if (!await exists(officialPath)) throw new Error(`staged official dsh missing: ${officialPath}`)
+  process.stdout.write(`packaged ${join(releaseDir, exe)}\n`)
+  process.stdout.write(`packaged ${join(releaseDir, zip)}\n`)
+} else if (targetFlag === 'mac') {
+  const dmg = (await readdir(releaseDir)).find((name) => name.endsWith('.dmg'))
+  if (dmg === undefined) throw new Error(`macOS dmg missing in ${releaseDir}`)
+  const bin = join(releaseDir, 'mac', 'DSH Community.app')
+  const officialPath = join(releaseDir, 'mac', 'DSH Community.app/Contents/Resources/host/node_modules/@deepseek-ai/dsh/lib/bin.js')
+  if (!await exists(bin)) throw new Error(`packaged executable missing: ${bin}`)
+  if (!await exists(officialPath)) throw new Error(`staged official dsh missing: ${officialPath}`)
+  process.stdout.write(`packaged ${join(releaseDir, dmg)}\n`)
 } else {
   const unpackedRoot = targetFlag === 'win'
     ? join(releaseDir, 'win-unpacked')

@@ -1,33 +1,56 @@
-# Preview release order
+# Release order
 
 Official `@deepseek-ai/dsh` is the **development foundation**. We build TUI and Desktop on the pinned official runtime. A newer official rc is an upgrade of that foundation (pin + contract extract), not a gate that pauses product work.
 
-Publish **only** from this repository:
+## Channels
 
-https://github.com/kamanager2012/dsh-community
+| Channel | Tag | Notes |
+|---|---|---|
+| Stable | `vX.Y.Z` | Full release, marked Latest |
+| Preview / Beta | `vX.Y.Z-preview` | Pre-release, AppImage + installers |
 
-Do not fold this tree into another community DSH suite, and do not npm-publish `@dsh-community/*` as a replacement for official or reference packages.
+Windows / macOS artifacts are built by GitHub Actions (`release` workflow) — nobody needs to sit on those OSes.
 
-1. **GitHub preview repo** — this repo
-2. **Linux AppImage** — [v0.1.1-preview](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.1-preview)
-3. **TUI / Desktop on official dsh** — official `~/.dsh/sessions`, `--list-sessions` / `--resume`
-4. **Windows / macOS artifacts** — when we sit on those OSes
-5. **Do not npm-publish** workspace packages
+## Cut a release
 
 ```sh
-pnpm test
-pnpm typecheck
-pnpm desktop:package -- --appimage
-sha256sum apps/desktop/release/dsh-community-*.AppImage \
-  | tee apps/desktop/release/dsh-community-0.1.1.AppImage.sha256
-
-gh release create v0.1.1-preview \
-  --repo kamanager2012/dsh-community \
-  --title "0.1.1-preview" \
-  --prerelease \
-  --notes-file CHANGELOG.md \
-  apps/desktop/release/dsh-community-0.1.1.AppImage \
-  apps/desktop/release/dsh-community-0.1.1.AppImage.sha256
+pnpm typecheck && pnpm test          # gate
+node scripts/release.mjs v0.1.3-preview
 ```
 
-Prefer attaching an AppImage or a zip of `linux-unpacked` over committing the unpacked tree.
+The script checks a clean tree, a free tag, and a matching CHANGELOG section, then builds the AppImage locally as a sanity check and pushes the tag. The tag push starts the 3-OS `release` workflow:
+
+1. **Linux** — typecheck + test + AppImage + sha256
+2. **Windows** — NSIS installer (`DSH Community Setup x.y.z.exe`) + zip + sha256
+3. **macOS** — dmg + sha256
+
+The `publish` job collects all assets and creates the GitHub Release with the CHANGELOG section as notes. `-preview` tags are marked pre-release; plain tags become Latest.
+
+## Artifact naming
+
+```text
+dsh-community-x.y.z.AppImage        Linux
+DSH Community Setup x.y.z.exe       Windows installer
+dsh-community-x.y.z-win-x64.zip     Windows portable
+dsh-community-x.y.z.dmg             macOS (unsigned preview)
+```
+
+Every artifact ships a `<file>.sha256` sidecar.
+
+## Manual checks after a release
+
+```sh
+curl -sL https://api.github.com/repos/kamanager2012/dsh-community/releases/latest | head
+```
+
+All "download Community" links in every repo point at:
+
+```text
+https://github.com/kamanager2012/dsh-community/releases/latest
+```
+
+## Rules
+
+- Never publish workspace packages to npm.
+- Do not attach the 600MB `linux-unpacked` tree; attach the AppImage / installers.
+- A failed platform job does not block the others; fix it in a follow-up patch release.
