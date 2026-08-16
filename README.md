@@ -6,6 +6,8 @@
 
 你今天在官方 Web 开的对话，关掉以后用 `dsh-community` 终端可以接着聊；再打开 Desktop，还是同一条会话。
 
+> **One Harness. Three Surfaces.** 官方 DeepSeek Harness Runtime 之上的社区发行版：同一套 Runtime、同一套 Session、同一套插件，Web / Desktop / Terminal 三个入口。不重写 Harness，不 patch 官方表面。
+
 [English](README.en.md) | 简体中文
 
 [![ci](https://github.com/kamanager2012/dsh-community/actions/workflows/ci.yml/badge.svg)](https://github.com/kamanager2012/dsh-community/actions/workflows/ci.yml)

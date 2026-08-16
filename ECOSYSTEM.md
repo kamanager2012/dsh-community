@@ -43,6 +43,57 @@ Registry 的目标是验证层，不是最大目录：能装、能跑、适配�
 
 ---
 
+## 一·五、我们是什么:Community Distribution,不是 Desktop 壳
+
+项目一句话定位:
+
+> **我们没有再造 DeepSeek Harness。我们在官方 Harness 外面建立一个长期可维护的 Community Distribution:同一套 Runtime、同一套 Session、同一套插件,Web / Desktop / Terminal 三个入口。**
+
+类比:
+
+```text
+DeepSeek Harness      = kernel / runtime
+DSH Community         = distribution
+Desktop / TUI         = surfaces
+Registry              = verified packages
+Marketplace           = package discovery
+Handbook              = docs
+Labs                  = unstable / testing
+```
+
+对外口号:
+
+> **One Harness. Three Surfaces.**
+
+真正的四层竞争优势(注意:都不是"架构干净"这类工程原则本身,而是它们落成的用户价值):
+
+1. **官方原生兼容** — Official DSH,without locking you into another fork。官方 Runtime、官方 Session、官方插件直接可用,不做 patch-package 改上游表面。
+2. **三个界面共享一个世界** — 官方 Web 里开的对话,关掉 Web,用 Community TUI 继续;再开 Desktop,还是同一个会话。Same workspace / same session / same plugins。
+3. **Verified Ecosystem** — 不跟 awesome 列表比插件数量(它 3000+ stars,比收录量没有意义)。我们做验证层:哪些插件真的能装、能跑、适配 rc.6、会申请什么权限。Awesome = discovery,Registry = trust,Marketplace = UX。
+4. **Upstream resilience** — DeepSeek 明天发 rc.7,我们比你先知道哪些东西坏了。Upstream changes → Contract CI → Compatibility Matrix → Community release。
+
+竞争现实(2026-08-16,如实记录,不粉饰):
+
+- Dataelement `dsh-desktop`:~337 stars / 39 forks,3 天;同样不重写 Harness,但用 patch-package 改官方 onboarding/preset/branding 表面,自带 Harness home(macOS 已签名公证)。它是 Desktop 产品。
+- `awesome-dsh-plugin`:~3289 stars / 657 forks,Discovery 目录。
+- 我们:0 stars。市场注意力正在形成第一次路径依赖,双轨推进(见下),不能再"全打磨完再传播"。
+
+Repo topology 完整 ≠ Ecosystem 完整。现在真实成熟度:产品初期、Labs 活跃、Registry 7 个验证插件、用户接近 0。对外必须用这个口径,不得写"完整生态闭环"。
+
+### 双轨节奏
+
+```text
+Engineering:               Distribution:
+0.1.2 stable 三平台发布      定位叙事 + 架构文章
+win/mac 打包收口           插件验证 / 对比 / demo
+Session consistency        用户反馈回流
+release reproducibility
+```
+
+两条轨道并行,不串行。
+
+---
+
 ## 二、六个仓库不是六个产品
 
 当前六仓最终定位如下:
