@@ -19,7 +19,7 @@ A conversation you start in official Web is the same conversation you resume in
 | **Stable** | [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) |
 | **Preview** | newest Pre-release on [Releases](https://github.com/kamanager2012/dsh-community/releases) |
 
-The number in `package.json` is the in-tree development version. Do not treat it as the user download. Users should take **Stable** at [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest): Linux AppImage, macOS dmg, and Windows NSIS. Do not keep using the v0.1.1 AppImage.
+The number in `package.json` is the in-tree development version. The current formal download is **v0.1.2 Stable**, whose GitHub Release includes the Linux AppImage, macOS dmg, and Windows NSIS installer. `v0.1.2-preview` is retained as an older Preview record; do not promote the v0.1.1 AppImage.
 
 [Official Runtime](https://github.com/deepseek-ai/deepseek-harness)
 
@@ -37,9 +37,9 @@ session persistence, and core lifecycle.
 | Goal | Use |
 |---|---|
 | Run the official Runtime directly | [`npx @deepseek-ai/dsh web`](https://github.com/deepseek-ai/deepseek-harness) |
-| Download the community product | [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) — Linux / macOS / Windows |
+| Download the community product | [v0.1.2 Stable Release](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.2) — Linux AppImage, macOS dmg, and Windows NSIS |
 | Use the Terminal / TUI | `pnpm tui` or `dsh-community` after a source install |
-| Use the Desktop shell | `pnpm desktop`, or the installer from [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) |
+| Use the Desktop shell | [`v0.1.2 Stable`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.2) installer, or `pnpm desktop` |
 | Read operational guidance | [DeepSeek Harness Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/) |
 | Verified community plugins | [`dsh-marketplace`](https://github.com/kamanager2012/dsh-marketplace) and the [verification registry](https://github.com/kamanager2012/dsh-community-plugins) — not an awesome list |
 
@@ -57,7 +57,10 @@ Keep these three layers separate. Do not hardcode them in the title.
 | Preview | newest Pre-release on [Releases](https://github.com/kamanager2012/dsh-community/releases) |
 | Stable | [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) |
 
-Stable at `releases/latest` is the three-OS build. Preview is an older testing channel.
+The current Stable is [`v0.1.2`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.2).
+It publishes the Linux AppImage, Windows NSIS installer, and macOS dmg, each with a
+matching `.sha256` file. `v0.1.2-preview` is retained only for older-behavior
+regression checks and is not the current download recommendation.
 
 ## From source
 

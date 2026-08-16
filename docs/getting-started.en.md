@@ -10,10 +10,20 @@
 | --- | --- | --- |
 | Use the official Runtime directly | [`npx @deepseek-ai/dsh web`](https://github.com/deepseek-ai/deepseek-harness) | Official product path |
 | Use the community Terminal / TUI | `dsh-community` or `pnpm tui` from source | Community UX around the official Runtime |
-| Download a desktop build | [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) | Linux AppImage / macOS dmg / Windows NSIS. Do not keep using v0.1.1 |
+| Download a desktop build | [v0.1.2 Stable Release](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.2) | Current formal download entry with Linux AppImage, macOS dmg, and Windows NSIS installer |
 | Read the full operational guide | [DeepSeek Harness Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/en/) | Providers, Sessions, security, automation, and acceptance |
 
-Do not download a formal client from Suite, Marketplace, Plugins, or Edition. They are respectively the labs, discovery UX, compatibility registry, and historical archive.
+Do not download a formal client from Suite, Marketplace, Plugins, or Edition. They are respectively the labs, discovery UX, compatibility registry, and historical archive. `v0.1.2-preview` is retained as an older Preview record.
+
+## Current Stable assets
+
+[`v0.1.2`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.2) is published with:
+
+- `dsh-community-0.1.2.AppImage`
+- `dsh-community-0.1.2.dmg`
+- `DSH.Community.Setup.0.1.2.exe`
+
+Each installer has a matching `.sha256` file. Use [`v0.1.2-preview`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.2-preview) only when reproducing older Preview behavior.
 
 ## Start from source in five minutes
 
@@ -83,7 +93,7 @@ The registry is not a security guarantee and does not replace the official insta
 | `dsh-community: command not found` | Use the source commands or fix the package PATH | Do not publish this repository as `@deepseek-ai/dsh` |
 | No model response | `DEEPSEEK_API_KEY`, Provider settings, and `dsh web --help` | Do not treat a passing `doctor` as a successful model call |
 | Port already in use | `doctor` output and the official `dsh web` process | Do not use `killall node` against unrelated projects |
-| Unsure which release to download | Read the [current release status](https://kamanager2012.github.io/deepseek-harness-handbook/en/11-operations/community-release-status/) | Do not treat the `package.json` code line as Stable |
+| Unsure which release to download | Download [v0.1.2 Stable](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.2), then read the [current release status](https://kamanager2012.github.io/deepseek-harness-handbook/en/11-operations/community-release-status/) | Do not treat the old Preview or `package.json` code line as the current Stable |
 | Want to try SDK / Checkpoint work | Enter [Community Labs](https://github.com/kamanager2012/deepseek-harness-suite) | Do not treat Labs as a release channel |
 
 ## Continue reading

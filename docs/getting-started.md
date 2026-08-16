@@ -10,10 +10,20 @@
 | --- | --- | --- |
 | 直接使用官方 Runtime | [`npx @deepseek-ai/dsh web`](https://github.com/deepseek-ai/deepseek-harness) | 官方产品路径 |
 | 使用社区终端 / TUI | 本仓库 `dsh-community` 或源码中的 `pnpm tui` | 社区 UX，执行核心仍是官方 Runtime |
-| 下载桌面包 | [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) | Linux AppImage / macOS dmg / Windows NSIS。不要再用 v0.1.1 |
+| 下载桌面包 | [v0.1.2 Stable Release](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.2) | 当前正式下载入口；包含 Linux AppImage、macOS dmg 和 Windows NSIS 安装包 |
 | 查完整操作手册 | [DeepSeek Harness Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/) | Provider、Session、安全、自动化和验收 |
 
-不要从 Suite、Marketplace、Plugins 或 Edition 下载正式客户端。它们分别是实验舱、发现体验、兼容注册表和历史归档。
+不要从 Suite、Marketplace、Plugins 或 Edition 下载正式客户端。它们分别是实验舱、发现体验、兼容注册表和历史归档。`v0.1.2-preview` 只保留为旧 Preview 记录。
+
+## 当前 Stable 下载资产
+
+[`v0.1.2`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.2) 已发布：
+
+- `dsh-community-0.1.2.AppImage`
+- `dsh-community-0.1.2.dmg`
+- `DSH.Community.Setup.0.1.2.exe`
+
+每个安装包都有对应的 `.sha256` 文件。需要旧版本回归时再查看 [`v0.1.2-preview`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.2-preview)。
 
 ## 五分钟从源码启动
 
@@ -83,7 +93,7 @@ dsh-community-plugins/catalog.json
 | `dsh-community: command not found` | 先用源码命令，或确认安装包 PATH | 不要把本仓库发布成 `@deepseek-ai/dsh` |
 | 没有模型响应 | `DEEPSEEK_API_KEY`、Provider 配置和 `dsh web --help` | 不要把 `doctor` 通过当成模型调用通过 |
 | 端口被占用 | `doctor` 输出和官方 `dsh web` 进程 | 不要用 `killall node` 误杀其他项目 |
-| 不知道下载哪个版本 | 看 [当前发行状态](https://kamanager2012.github.io/deepseek-harness-handbook/content/11-operations/community-release-status/) | 不要把 `package.json` 开发号当 Stable |
+| 不知道下载哪个版本 | 下载 [v0.1.2 Stable](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.2)，再看[当前发行状态](https://kamanager2012.github.io/deepseek-harness-handbook/content/11-operations/community-release-status/) | 不要把旧 Preview 或 `package.json` 开发号当当前 Stable |
 | 想试最新 SDK / Checkpoint | 进入 [Community Labs](https://github.com/kamanager2012/deepseek-harness-suite) | 不要把 Labs 当正式发行渠道 |
 
 ## 继续阅读

@@ -17,7 +17,7 @@
 | **Stable** | [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) |
 | **Preview** | [Releases](https://github.com/kamanager2012/dsh-community/releases) 里最新的 Pre-release |
 
-代码版本看根目录 `package.json`，不要把开发号、Preview tag 和 Stable Latest 混成一个数。用户下载走 **Stable**：[releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) 现在是三系统包（Linux AppImage / macOS dmg / Windows NSIS）。不要再用 v0.1.1 的 AppImage。
+代码版本看根目录 `package.json`，不要把开发号、Preview tag 和 Stable Latest 混成一个数。当前正式下载是 **v0.1.2 Stable**：GitHub Release 已包含 Linux AppImage、macOS dmg 和 Windows NSIS；`v0.1.2-preview` 只作为旧 Preview 保留。不要再推广 v0.1.1 AppImage。
 
 | 发行面 | 命名 | 入口 |
 |---|---|---|
@@ -39,7 +39,7 @@
 |---|---|
 | 真正跑 agent | 官方 [`npx @deepseek-ai/dsh web`](https://github.com/deepseek-ai/deepseek-harness) |
 | 终端 TUI | 本仓 `pnpm tui`（官方 profile + 薄 patch，Ink 只当挂载的插件） |
-| 下载安装包 | [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest)：Linux AppImage / macOS dmg / Windows NSIS |
+| 下载安装包 | [v0.1.2 Stable Release](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.2)：Linux AppImage、macOS dmg、Windows NSIS 均已发布 |
 | 已验证能装的社区插件 | Desktop 市场页 · [`dsh-marketplace`](https://github.com/kamanager2012/dsh-marketplace) · [验证注册表](https://github.com/kamanager2012/dsh-community-plugins)（不是 awesome 目录） |
 | 官方表面快照 / 升 rc 契约 | **本仓** |
 
