@@ -18,24 +18,20 @@ describe('TUI patch-surface reduction', () => {
     tuiOwned: string[]
   }
 
-  it('splits the 33-row upstream file into isolation vs TUI-owned', () => {
+  it('owns only config rows — no tool disables, no third-party names', () => {
     expect(classification.total).toBe(33)
-    expect(classification.presetIsolationDisables).toHaveLength(23)
-    expect(classification.officialInserts).toHaveLength(2)
+    expect(classification.presetIsolationDisables).toHaveLength(0)
+    expect(classification.officialInserts).toEqual(['dsh-community-tui'])
     expect(classification.tuiOwned).toHaveLength(6)
     expect(classification.tuiOwned).not.toContain('dsh-tui')
   })
 
-  it('keeps the TUI-owned file at or below the 15 milestone', () => {
+  it('keeps our overlay minimal and never disables official tools', () => {
     const owned = readFileSync(join(patches, 'tui-owned.cordis.patch.yml'), 'utf8')
-    const isolation = readFileSync(join(patches, 'preset-isolation.cordis.patch.yml'), 'utf8')
     expect(countPatchIds(owned)).toBeLessThanOrEqual(15)
     expect(countPatchIds(owned)).toBeGreaterThanOrEqual(2)
-    expect(countPatchIds(isolation)).toBe(25)
     expect(owned).not.toMatch(/dsh-tui/)
     expect(owned).not.toMatch(/@deepseek-harness-tui/)
-    expect(owned).not.toMatch(/tool-bash/)
-    expect(owned).not.toMatch(/compaction-basic/)
-    expect(isolation).toMatch(/tool-bash/)
+    expect(owned).not.toMatch(/disabled: true/)
   })
 })

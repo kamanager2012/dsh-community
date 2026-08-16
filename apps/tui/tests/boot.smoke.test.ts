@@ -40,6 +40,8 @@ describe('community TUI profile boot', () => {
     expect(dump).not.toMatch(/@deepseek-harness-tui\/dsh-tui/)
     expect(dump).toMatch(/id: session/)
     expect(dump).toMatch(/id: agent/)
-    expect(dump).toMatch(/id: tool-bash[\s\S]*disabled: true/)
+    expect(dump).toMatch(/id: tool-bash/)
+    const bashSection = dump.split('- id: tool-bash')[1]?.split('- id: ')[1] ?? ''
+    expect(bashSection).not.toContain('disabled: true')
   })
 })

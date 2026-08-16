@@ -33,7 +33,7 @@ describe('our TUI profile', () => {
     expect(result.dir).toBe(join(home, 'profiles', COMMUNITY_TUI_PROFILE))
     const written = readFileSync(result.patchPath, 'utf8')
     expect(written).toMatch(/dsh-community overlay/)
-    expect(written).toMatch(/tool-bash/)
+    expect(written).toMatch(/sandbox-policy/)
     expect(written).toMatch(/sandbox-policy/)
     expect(written).not.toMatch(/@deepseek-harness-tui\/dsh-tui/)
     const pkg = JSON.parse(readFileSync(join(result.dir, 'package.json'), 'utf8')) as {

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- TUI Ownership Closure 收尾：移除 preset-isolation 禁用层，官方工具(bash/fs 等)全部启用，执行与审批走官方瀑布；自研 UI 只做展示与交互
+- 真实 key 端到端验证：对话流(助手/思考/回复)、工具调用(tool 卡片 + 文件真实落地)全部通过
+- patch-surface KPI 更新：0 处工具禁用、6 处自有配置行、1 处自研 insert
+
 - TUI Ownership Closure：终端自研 `@dsh-community/tui`（官方 seam：ctx.agents / session/event / userQuestions / approval），彻底移除第三方 TUI 挂载；第三方只许参考，CI 强制（third-party-surface 守卫）
 
 ## 0.1.6 — 2026-08-16

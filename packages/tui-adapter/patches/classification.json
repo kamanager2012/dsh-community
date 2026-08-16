@@ -2,34 +2,9 @@
   "upstream": "dsh-TUI 0.6.1 cordis.patch.yml",
   "officialTwin": "packages/bundle/web-app/cordis.patch.yml in deepseek-harness (preset isolation)",
   "total": 33,
-  "presetIsolationDisables": [
-    "agent-instructions",
-    "command-compact",
-    "compaction-basic",
-    "plan-mode",
-    "skill-filesystem",
-    "tool-bash",
-    "tool-fs",
-    "tool-fs-search",
-    "tool-goal",
-    "tool-jobs",
-    "tool-pwsh",
-    "tool-ralph",
-    "tool-result-pruner",
-    "tool-skill",
-    "tool-str-replace-editor",
-    "tool-subagent",
-    "tool-subagent-control",
-    "tool-subagent-fork",
-    "tool-subagent-list-agents",
-    "tool-todo",
-    "tool-web",
-    "tool-workflow",
-    "workflow-worker-thread"
-  ],
+  "presetIsolationDisables": [],
   "officialInserts": [
-    "agent-presets",
-    "cordis-host-runner"
+    "dsh-community-tui"
   ],
   "tuiOwned": [
     "system-prompt",

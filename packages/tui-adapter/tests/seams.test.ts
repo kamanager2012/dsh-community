@@ -19,7 +19,7 @@ describe('tui adapter reconstruction', () => {
 
   it('does not mount a third-party TUI plugin', () => {
     expect(tuiPatchKpi.tuiOwnedInserts).toEqual([])
-    expect(tuiPatchKpi.communityTuiOwned).toBe(6)
+    expect(tuiPatchKpi.communityTuiOwned).toBe(7)
   })
 
   it('does not contain an Ink tree', () => {

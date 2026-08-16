@@ -2,10 +2,10 @@
   "source": "https://github.com/ccch1mneyyy/dsh-TUI/blob/main/cordis.patch.yml",
   "measuredAt": "dsh-TUI 0.6.1 against official @deepseek-ai/dsh@0.1.0-rc.6",
   "kpi": "patch-surface-reduction",
-  "interventionCount": 33,
-  "communityTuiOwned": 6,
-  "communityTuiOwnedWritten": 6,
-  "presetIsolationRows": 25,
+  "interventionCount": 7,
+  "communityTuiOwned": 7,
+  "communityTuiOwnedWritten": 7,
+  "presetIsolationRows": 0,
   "overrides": [
     "system-prompt",
     "llm-deepseek",
@@ -14,36 +14,18 @@
     "approval",
     "session-persistence-jsonl"
   ],
-  "disables": [
-    "agent-instructions",
-    "command-compact",
-    "compaction-basic",
-    "plan-mode",
-    "skill-filesystem",
-    "tool-bash",
-    "tool-fs",
-    "tool-fs-search",
-    "tool-goal",
-    "tool-jobs",
-    "tool-pwsh",
-    "tool-ralph",
-    "tool-result-pruner",
-    "tool-skill",
-    "tool-str-replace-editor",
-    "tool-subagent",
-    "tool-subagent-control",
-    "tool-subagent-fork",
-    "tool-subagent-list-agents",
-    "tool-todo",
-    "tool-web",
-    "tool-workflow",
-    "workflow-worker-thread"
-  ],
+  "disables": [],
   "inserts": [
     "agent-presets",
     "cordis-host-runner"
   ],
   "tuiOwnedInserts": [],
-  "milestones": [33, 15, 8, 6],
+  "milestones": [
+    33,
+    15,
+    8,
+    2,
+    7
+  ],
   "target": "official dsh --profile headless; no third-party TUI plugin"
 }
