@@ -117,7 +117,7 @@ apps/tui                Official profile / resume launcher
 tests/upstream-contract Compatibility and upstream contract checks
 ```
 
-Read [ARCHITECTURE.md](ARCHITECTURE.md), the [release guide](docs/release.md),
+Start with the [Getting Started guide](docs/getting-started.en.md). Then read [ARCHITECTURE.md](ARCHITECTURE.md), the [release guide](docs/release.md),
 the [contract snapshots](contracts/README.md), and the [Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/)
 before changing the runtime boundary.
 
