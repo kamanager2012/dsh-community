@@ -1,11 +1,17 @@
 # Changelog
 
-## Unreleased
+## 0.1.5 — 2026-08-16
 
-- 产品端钉死为三个社区端：WSL/Linux Terminal、Windows Desktop、macOS Desktop。官方 Web 是共享 `~/.dsh` 的官方入口，不是社区端。Linux AppImage 降为次要产物。
-- `artifact-smoke` 按三个社区端验 Latest：Windows Setup / macOS dmg / Linux 终端（不是 AppImage）。Windows 静默安装后轮询 exe，不再默认 v0.1.2。
-- 打包时官方 runtime tar 小于 80MB 会重打，避免复用残包。
+Release: https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.5
+
+在 v0.1.4(完整压平的 Windows 暂存)之上收口发布后可靠性修复,并作为新的 Stable Latest。
+
+- 产品端钉死为三个社区端:WSL/Linux Terminal、Windows Desktop、macOS Desktop。官方 Web 是共享 `~/.dsh` 的官方入口,不是社区端。Linux AppImage 降为次要产物。
+- `artifact-smoke` 按三个社区端验 Latest:Windows Setup / macOS dmg / Linux 终端(不是 AppImage)。Windows 静默安装后轮询 exe,不再默认 v0.1.2。
+- 打包时官方 runtime tar 小于 80MB 会重打,避免复用残包。
 - `pnpm start` / `doctor` / `tui` 会先编 workspace 依赖。干净 clone 后不再因为缺 `dsh-bridge` dist 而 tsc 失败。
+- Electron-as-node 回退路径加 `--expose-internals`,避免官方 `cordis-plugin-hmr` 静默中止插件树。
+- asar vendor=0 打包后护栏:发布流程打包后断言 asar 不含 `@deepseek-ai` / `node_modules`。
 
 ## 0.1.4 — 2026-08-16
 
