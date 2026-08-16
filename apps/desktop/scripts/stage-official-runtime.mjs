@@ -27,10 +27,11 @@ const forbidden = [
 await rm(stageRoot, { recursive: true, force: true })
 await mkdir(stageRoot, { recursive: true })
 
+process.stdout.write('staging official @deepseek-ai/dsh via pnpm deploy…\n')
 runCommand(
   'pnpm',
   ['--filter', '@dsh-community/desktop', 'deploy', '--prod', '--legacy', stageRoot],
-  { cwd: workspace, encoding: 'utf8', stdio: 'pipe' },
+  { cwd: workspace },
 )
 
 const names = await readdir(stageRoot)

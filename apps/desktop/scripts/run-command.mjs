@@ -8,11 +8,18 @@ function looksLikePath(command) {
   return command.includes('/') || command.includes('\\') || /\.(exe|cmd|bat|js)$/i.test(command)
 }
 
+function stdioWithoutStdin(stdio) {
+  if (stdio === undefined || stdio === 'inherit') return ['ignore', 'inherit', 'inherit']
+  if (stdio === 'pipe') return ['ignore', 'pipe', 'pipe']
+  if (Array.isArray(stdio)) return ['ignore', stdio[1] ?? 'inherit', stdio[2] ?? 'inherit']
+  return ['ignore', 'inherit', 'inherit']
+}
+
 export function runCommand(command, args, options = {}) {
   const win = process.platform === 'win32'
   const result = spawnSync(command, args, {
-    stdio: 'inherit',
     ...options,
+    stdio: stdioWithoutStdin(options.stdio),
     env: {
       ...process.env,
       CI: 'true',

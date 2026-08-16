@@ -89,6 +89,7 @@ await ensureElectronDist()
 
 // Call the scripts with node. Do not spawn `pnpm` here — on Windows that is
 // pnpm.cmd and spawnSync without a shell exits with status null.
+process.stdout.write('building desktop main/preload…\n')
 runCommand(process.execPath, [join(desktop, 'scripts/write-tray-icon.mjs')], { cwd: desktop })
 runCommand(process.execPath, [join(desktop, 'scripts/build.mjs')], { cwd: desktop })
 
@@ -127,6 +128,7 @@ const packManifest = {
     npmRebuild: false,
     nodeGypRebuild: false,
     asar: true,
+    compression: 'normal',
     icon: 'resources/icon.png',
     directories: {
       output: releaseDir,
@@ -179,11 +181,12 @@ const packManifest = {
 await writeFile(join(packRoot, 'package.json'), `${JSON.stringify(packManifest, null, 2)}\n`)
 
 const builderArgs = ['--publish', 'never', '--config.npmRebuild=false']
-if (targetFlag === 'win') builderArgs.unshift('--win', 'dir', 'nsis', 'zip')
+if (targetFlag === 'win') builderArgs.unshift('--win', 'nsis', 'zip')
 else if (targetFlag === 'mac') builderArgs.unshift('--mac', 'dir', 'dmg')
 else builderArgs.unshift('--linux', targetFlag === 'appimage' ? 'AppImage' : 'dir')
 
 await rm(releaseDir, { recursive: true, force: true })
+process.stdout.write(`electron-builder ${builderArgs.join(' ')}\n`)
 runCommand(process.execPath, [builderCli, ...builderArgs], { cwd: packRoot })
 
 if (targetFlag === 'appimage') {

@@ -10,4 +10,15 @@ describe('runCommand', () => {
     const result = runCommand(process.execPath, ['-e', 'process.exit(0)'], { stdio: 'pipe' })
     expect(result.status).toBe(0)
   })
+
+  it('closes stdin so a reader cannot hang waiting for input', () => {
+    const started = Date.now()
+    const result = runCommand(process.execPath, ['-e', `
+      process.stdin.resume()
+      process.stdin.on('end', () => process.exit(0))
+      setTimeout(() => process.exit(3), 4000)
+    `], { stdio: 'pipe' })
+    expect(result.status).toBe(0)
+    expect(Date.now() - started).toBeLessThan(3000)
+  })
 })
