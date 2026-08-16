@@ -17,7 +17,7 @@
 | **Stable** | [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) |
 | **Preview** | [Releases](https://github.com/kamanager2012/dsh-community/releases) 里最新的 Pre-release |
 
-代码版本看根目录 `package.json`，不要把开发号、Preview tag 和 Stable Latest 混成一个数。桌面请走 **Preview**：当前 Stable 的 Linux AppImage 有已知问题（打包里的官方 `dsh web` 起不来）。Linux / macOS 安装包已经能在 `release` 工作流里打出来；Windows 还在收口，没绿之前不要当正式下载。
+代码版本看根目录 `package.json`，不要把开发号、Preview tag 和 Stable Latest 混成一个数。桌面请走 **Preview**：当前 Stable 的 Linux AppImage 有已知问题（打包里的官方 `dsh web` 起不来）。`release` 工作流已经能打出 Linux AppImage、macOS dmg 和 Windows NSIS；这些产物还在 Actions artifact 里，要打 tag 才会进 GitHub Release。没上 Release 之前不要当正式下载。
 
 | 发行面 | 命名 | 入口 |
 |---|---|---|

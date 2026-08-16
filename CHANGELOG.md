@@ -18,6 +18,7 @@ Promote stable launcher UX from the archived edition line. Marketplace and offic
 - 定位改成社区发行版（One Harness. Three Surfaces.）：共享 `~/.dsh`、不 patch 官方 UI、注册表是验证层不是目录；不再把六仓说成已闭环生态
 - Windows 先只打 NSIS 安装包，zip 等安装包稳定后再加；打包过程打时间戳，方便看卡在哪一步
 - 官方 runtime 打成单个 `official-dsh.tar` 再进安装包，避免 NSIS 拷 3 万个小文件；第一次启动解到 userData
+- 3-OS `release` 工作流已打出 Linux AppImage / macOS dmg / Windows NSIS（Actions artifact；上 Release 还要打 tag）
 
 ## 0.1.2-preview — 2026-08-16
 

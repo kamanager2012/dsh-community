@@ -19,7 +19,7 @@ A conversation you start in official Web is the same conversation you resume in
 | **Stable** | [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) |
 | **Preview** | newest Pre-release on [Releases](https://github.com/kamanager2012/dsh-community/releases) |
 
-The number in `package.json` is the in-tree development version. Do not treat it as the user download. Desktop testers should use **Preview**: the current Stable Linux AppImage cannot start official `dsh web`. Linux and macOS artifacts already build in CI; Windows packaging is still being closed and is not a user download yet.
+The number in `package.json` is the in-tree development version. Do not treat it as the user download. Desktop testers should use **Preview**: the current Stable Linux AppImage cannot start official `dsh web`. The `release` workflow now builds Linux AppImage, macOS dmg, and Windows NSIS; those files stay on Actions until a tag publishes them. Do not advertise them as user downloads before they are on a GitHub Release.
 
 [Official Runtime](https://github.com/deepseek-ai/deepseek-harness)
 
@@ -58,9 +58,8 @@ Keep these three layers separate. Do not hardcode them in the title.
 | Stable | [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) |
 
 Preview is closer to usable than current Stable (the Stable AppImage cannot start
-official `dsh web`). Linux and macOS packages now build in the `release` workflow;
-Windows is still the open 3-OS gate. Do not advertise Windows installers until that
-job is green.
+official `dsh web`). The 3-OS packaging jobs are green on Actions. User-facing
+Windows/macOS files appear only after a tagged GitHub Release.
 
 ## From source
 
