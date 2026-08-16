@@ -3,6 +3,8 @@
 ## Unreleased
 
 - 产品端钉死为三个社区端：WSL/Linux Terminal、Windows Desktop、macOS Desktop。官方 Web 是共享 `~/.dsh` 的官方入口，不是社区端。Linux AppImage 降为次要产物。
+- `artifact-smoke` 按三个社区端验 Latest：Windows Setup / macOS dmg / Linux 终端（不是 AppImage）。Windows 静默安装后轮询 exe，不再默认 v0.1.2。
+- 打包时官方 runtime tar 小于 80MB 会重打，避免复用残包。
 
 ## 0.1.4 — 2026-08-16
 

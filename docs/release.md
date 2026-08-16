@@ -65,8 +65,13 @@ Release downloads separately from source or CI:
 
 The gate must also cover uninstall/reinstall, upgrade, missing key, bad network, and
 broken or interrupted Runtime extraction. Record Web ↔ Desktop ↔ TUI Session sharing
-and the exact asset filename plus SHA256. The latest exact-artifact run passed on macOS
-but failed on Windows (`artifact-smoke`, run [31935679026](https://github.com/kamanager2012/dsh-community/actions/runs/31935679026)); therefore the gate remains `[UNVERIFIED]`. A green build or a main-source smoke test is not evidence that the published Stable artifact passes this gate.
+and the exact asset filename plus SHA256. `artifact-smoke` covers only install / first-ready / missing-key on the three
+Community endpoints. It is not a full user loop. The previous Windows job
+([31935679026](https://github.com/kamanager2012/dsh-community/actions/runs/31935679026))
+looked for the exe immediately after `/S` and defaulted to `v0.1.2`; that is
+not evidence that the `v0.1.4` Setup is broken. The gate remains `[UNVERIFIED]`
+until a later smoke run on Latest plus a real-machine loop pass. A green unit
+test or a main-source smoke is not that evidence.
 
 ## Rules
 

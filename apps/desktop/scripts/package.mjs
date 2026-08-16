@@ -3,7 +3,7 @@
  * inside apps/desktop (that deletes Electron).
  */
 
-import { cp, mkdir, rm, writeFile, access, readdir } from 'node:fs/promises'
+import { cp, mkdir, rm, writeFile, access, readdir, stat } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -97,11 +97,13 @@ phase('building desktop main/preload')
 runCommand(process.execPath, [join(desktop, 'scripts/write-tray-icon.mjs')], { cwd: desktop })
 runCommand(process.execPath, [join(desktop, 'scripts/build.mjs')], { cwd: desktop })
 
-if (!await exists(join(desktop, 'runtime-host/official-dsh.tar'))) {
-  phase('staging official runtime')
+const stagedTar = join(desktop, 'runtime-host/official-dsh.tar')
+const stagedBytes = await exists(stagedTar) ? (await stat(stagedTar)).size : 0
+if (!await exists(stagedTar) || stagedBytes < 80_000_000) {
+  phase(stagedBytes > 0 ? `restaging official runtime (old tar ${String(stagedBytes)} bytes)` : 'staging official runtime')
   runCommand(process.execPath, [join(desktop, 'scripts/stage-official-runtime.mjs')], { cwd: desktop })
 } else {
-  phase('official runtime already staged')
+  phase(`official runtime already staged (${String(stagedBytes)} bytes)`)
 }
 
 await rm(packRoot, { recursive: true, force: true })
@@ -175,6 +177,9 @@ const packManifest = {
     nsis: {
       artifactName: 'DSH Community Setup ${version}.${ext}',
       shortcutName: 'DSH Community',
+      oneClick: true,
+      perMachine: false,
+      allowToChangeInstallationDirectory: false,
     },
     mac: {
       target: [{ target: 'dir' }],
