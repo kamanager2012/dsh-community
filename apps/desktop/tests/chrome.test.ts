@@ -24,6 +24,8 @@ describe('desktop chrome around official dsh web', () => {
     expect(html).toMatch(/共用 ~\/\.dsh/)
     expect(html).toMatch(/data-go="official"/)
     expect(html).toMatch(/data-go="sessions"/)
+    expect(html).toMatch(/data-go="marketplace"/)
+    expect(html).toMatch(/showMarketplace/)
     expect(html).toMatch(/data-active="true"/)
     expect(html).not.toMatch(/agent loop/)
   })

@@ -3,6 +3,7 @@ export const CHROME_HEIGHT = 48
 export type ChromeActive =
   | 'official'
   | 'sessions'
+  | 'marketplace'
   | 'runtime'
   | 'settings'
   | 'diagnostics'
@@ -69,6 +70,7 @@ export function renderChromePage(model: ChromeBarModel): string {
       <nav>
         <button data-go="official" data-active="${String(model.active === 'official')}">官方 Web</button>
         <button data-go="sessions" data-active="${String(model.active === 'sessions')}">Session</button>
+        <button data-go="marketplace" data-active="${String(model.active === 'marketplace')}">市场</button>
         <button data-go="runtime" data-active="${String(model.active === 'runtime')}">运行时</button>
         <button data-go="settings" data-active="${String(model.active === 'settings')}">设置</button>
         <button data-go="diagnostics" data-active="${String(model.active === 'diagnostics')}">诊断</button>
@@ -78,6 +80,7 @@ export function renderChromePage(model: ChromeBarModel): string {
       const go = {
         official: () => window.dshCommunity?.openOfficial(),
         sessions: () => window.dshCommunity?.showSessions(),
+        marketplace: () => window.dshCommunity?.showMarketplace(),
         runtime: () => window.dshCommunity?.showRuntime(),
         settings: () => window.dshCommunity?.showSettings(),
         diagnostics: () => window.dshCommunity?.showDiagnostics(),
