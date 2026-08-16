@@ -28,6 +28,8 @@ that pin is upstream, not our version. Download only
 
 [Official Runtime](https://github.com/deepseek-ai/deepseek-harness)
 
+Read the locked endpoint definition in [Community endpoints](docs/community-endpoints.en.md).
+
 ## What this repository is
 
 `dsh-community` is the only download entry. It is a distribution, not another

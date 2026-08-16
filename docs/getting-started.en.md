@@ -2,7 +2,7 @@
 
 > A task-oriented entry point for first-time users. Evidence snapshot: 2026-08-16.
 
-[简体中文](getting-started.md) · [Back to English README](../README.en.md) · [Online Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/en/)
+[简体中文](getting-started.md) · [Back to English README](../README.en.md) · [Community endpoints](community-endpoints.en.md) · [Online Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/en/)
 
 ## Choose the right entry
 

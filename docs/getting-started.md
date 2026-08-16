@@ -2,7 +2,7 @@
 
 > 面向第一次使用者的任务型入口。事实快照：2026-08-16。
 
-[English](getting-started.en.md) · [返回中文 README](../README.md) · [在线 Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/)
+[English](getting-started.en.md) · [返回中文 README](../README.md) · [三个社区端定义](community-endpoints.md) · [在线 Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/)
 
 ## 先选正确入口
 
