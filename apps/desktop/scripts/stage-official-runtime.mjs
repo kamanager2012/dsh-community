@@ -5,6 +5,7 @@
  */
 
 import { existsSync, lstatSync, writeFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
 import { mkdir, readdir, rm } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { dirname, join, resolve } from 'node:path'
@@ -32,7 +33,20 @@ writeFileSync(join(stageRoot, 'package.json'), `${JSON.stringify({
 writeFileSync(join(stageRoot, '.npmrc'), 'node-linker=hoisted\nignore-scripts=true\n')
 
 process.stdout.write(`staging official @deepseek-ai/dsh@${pin} (hoisted)…\n`)
-runCommand('pnpm', ['install', '--prod', '--ignore-workspace'], { cwd: stageRoot })
+const installed = spawnSync('pnpm', ['install', '--prod', '--ignore-workspace'], {
+  cwd: stageRoot,
+  stdio: 'inherit',
+  env: { ...process.env, CI: 'true' },
+  shell: process.platform === 'win32',
+  windowsHide: true,
+})
+if (installed.error) throw new Error(`pnpm install failed: ${installed.error.message}`)
+if (!existsSync(join(stageRoot, 'node_modules/@deepseek-ai/dsh/lib/bin.js'))) {
+  throw new Error(`pnpm install left no official bin (status ${String(installed.status)})`)
+}
+if (installed.status !== 0) {
+  process.stdout.write(`pnpm install exited ${String(installed.status)} after placing the tree (ignored native builds are ok)\n`)
+}
 
 const officialBin = join(stageRoot, 'node_modules/@deepseek-ai/dsh/lib/bin.js')
 if (!existsSync(officialBin)) throw new Error(`staged official bin missing: ${officialBin}`)
