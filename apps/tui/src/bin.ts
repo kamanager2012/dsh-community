@@ -108,7 +108,13 @@ if (launch.kind === 'doctor') {
 
 if (launch.kind === 'desktop') {
   const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../..')
-  const result = spawnSync('pnpm', ['desktop'], { cwd: root, stdio: 'inherit', env: process.env })
+  const result = spawnSync('pnpm', ['desktop'], {
+    cwd: root,
+    stdio: 'inherit',
+    env: process.env,
+    shell: process.platform === 'win32',
+    windowsHide: true,
+  })
   process.exit(result.status ?? 1)
 }
 

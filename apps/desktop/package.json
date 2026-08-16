@@ -56,7 +56,7 @@
         "dir"
       ],
       "category": "Development",
-      "icon": "resources/tray.png",
+      "icon": "resources/icon.png",
       "syncDesktopName": true
     },
     "mac": {

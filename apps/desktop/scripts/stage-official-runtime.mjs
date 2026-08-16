@@ -8,7 +8,7 @@ import { existsSync } from 'node:fs'
 import { cp, mkdir, readdir, rm } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { spawnSync } from 'node:child_process'
+import { runCommand } from './run-command.mjs'
 
 const appRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const workspace = resolve(appRoot, '../..')
@@ -27,16 +27,11 @@ const forbidden = [
 await rm(stageRoot, { recursive: true, force: true })
 await mkdir(stageRoot, { recursive: true })
 
-const deployed = spawnSync(
+runCommand(
   'pnpm',
   ['--filter', '@dsh-community/desktop', 'deploy', '--prod', '--legacy', stageRoot],
-  { cwd: workspace, encoding: 'utf8' },
+  { cwd: workspace, encoding: 'utf8', stdio: 'pipe' },
 )
-if (deployed.status !== 0) {
-  process.stderr.write(deployed.stdout)
-  process.stderr.write(deployed.stderr)
-  throw new Error('pnpm deploy of official runtime failed')
-}
 
 const names = await readdir(stageRoot)
 const leaked = forbidden.filter((rel) => names.includes(rel))

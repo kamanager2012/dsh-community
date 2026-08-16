@@ -32,6 +32,23 @@ if (!changelog.includes(`## ${tag.slice(1)}`)) {
   throw new Error(`CHANGELOG.md has no section for ${tag.slice(1)}`)
 }
 
+function productRemote() {
+  const out = spawnSync('git', ['remote', '-v'], { encoding: 'utf8' })
+  if (out.status !== 0) throw new Error('git remote -v failed')
+  for (const line of out.stdout.split('\n')) {
+    if (!line.includes('(push)')) continue
+    if (
+      /github\.com[/:]kamanager2012\/dsh-community(?:\.git)?(?:\s|$)/.test(line)
+      && !line.includes('dsh-community-edition')
+    ) {
+      return line.split(/\s+/)[0]
+    }
+  }
+  throw new Error('no push remote for kamanager2012/dsh-community (not the edition archive)')
+}
+
+const remote = productRemote()
+
 process.stdout.write('1/4 typecheck + test\n')
 run('pnpm', ['typecheck'])
 run('pnpm', ['test'])
@@ -42,6 +59,6 @@ run('pnpm', ['desktop:package', '--', '--appimage'])
 process.stdout.write('3/4 tag\n')
 run('git', ['tag', tag])
 
-process.stdout.write('4/4 push tag (starts the 3-OS release workflow)\n')
-run('git', ['push', 'origin', tag])
+process.stdout.write(`4/4 push tag to ${remote} (starts the 3-OS release workflow)\n`)
+run('git', ['push', remote, tag])
 process.stdout.write(`\n${tag} pushed. Watch https://github.com/kamanager2012/dsh-community/actions\n`)

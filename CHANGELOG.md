@@ -9,6 +9,7 @@ Promote stable launcher UX from the archived edition line. Marketplace and offic
 - Missing `DEEPSEEK_API_KEY` prints doctor and exits instead of launching Ink
 - Linux `desktopName` so the AppImage window maps to the `.desktop` entry
 - Phase 2 合流：从 community-edition 吸收 Session 选择器 UX——`--list-sessions --porcelain` 机器可读列表、`--resume last`、`--resume`（无参数列出并挑选）、人类可读列表带 mtime 与恢复提示；非 TTY 时给出明确指引
+- Phase 3 打包：Windows 不再 `spawnSync('pnpm')`（status null）；macOS 用 512×512 `icon.png`，并认 `mac-arm64` 产物；单平台失败不再挡住已打好的包发布
 
 ## 0.1.2-preview — 2026-08-16
 

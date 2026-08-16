@@ -53,9 +53,12 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
       - name: Package NSIS + zip
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         run: pnpm desktop:package -- --win
       - name: Checksum
-        run: node scripts/checksum-release.mjs apps/desktop/release/*.exe apps/desktop/release/*.zip
+        shell: bash
+        run: node scripts/checksum-release.mjs 'apps/desktop/release/*.exe' 'apps/desktop/release/*.zip'
       - uses: actions/upload-artifact@v4
         with:
           name: windows
@@ -82,9 +85,12 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
       - name: Package dmg
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         run: pnpm desktop:package -- --mac
       - name: Checksum
-        run: node scripts/checksum-release.mjs apps/desktop/release/*.dmg
+        shell: bash
+        run: node scripts/checksum-release.mjs 'apps/desktop/release/*.dmg'
       - uses: actions/upload-artifact@v4
         with:
           name: macos
@@ -94,7 +100,7 @@ jobs:
           if-no-files-found: error
 
   publish:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: ${{ startsWith(github.ref, 'refs/tags/v') && !cancelled() }}
     needs: [build-linux, build-windows, build-macos]
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -105,6 +111,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: dist-artifacts
+          merge-multiple: false
       - name: Prepare notes
         run: node scripts/release-notes.mjs "${GITHUB_REF_NAME}" > release-notes.md
       - name: Create release
@@ -114,14 +121,21 @@ jobs:
           TAG="${GITHUB_REF_NAME}"
           EXTRA=()
           if [[ "$TAG" == *-preview* ]]; then EXTRA+=(--prerelease); fi
+          shopt -s nullglob
+          assets=(
+            dist-artifacts/*/*.AppImage
+            dist-artifacts/*/*.exe
+            dist-artifacts/*/*.zip
+            dist-artifacts/*/*.dmg
+            dist-artifacts/*/*.sha256
+          )
+          if [[ ${#assets[@]} -eq 0 ]]; then
+            echo "no artifacts to publish"
+            exit 1
+          fi
+          printf 'publishing %s\n' "${assets[@]}"
           gh release create "$TAG" \
             --title "$TAG" \
             --notes-file release-notes.md \
             "${EXTRA[@]}" \
-            dist-artifacts/*/*.AppImage \
-            dist-artifacts/*/*.AppImage.sha256 \
-            dist-artifacts/*/*.exe \
-            dist-artifacts/*/*.zip \
-            dist-artifacts/*/*.sha256 \
-            dist-artifacts/*/*.dmg \
-            dist-artifacts/*/*.dmg.sha256
+            "${assets[@]}"
