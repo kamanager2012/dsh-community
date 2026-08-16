@@ -1,4 +1,10 @@
 import { COMMUNITY_PRODUCT_NAME } from './branding.ts'
+import {
+  PLUGIN_CATEGORIES,
+  PLUGIN_CATEGORY_LABELS,
+  type MarketplaceCatalog,
+  type MarketplaceSource,
+} from './marketplace.ts'
 
 export interface AboutPageModel {
   readonly product: string
@@ -62,6 +68,15 @@ export interface DiagnosticsPageModel {
   readonly logs: string
 }
 
+export interface MarketplacePageModel {
+  readonly product: string
+  readonly catalog?: MarketplaceCatalog
+  readonly source: MarketplaceSource
+  readonly fetchedAt: string
+  readonly error?: string
+  readonly registryUrl: string
+}
+
 function escapeHtml(value: string): string {
   return value
     .replaceAll('&', '&amp;')
@@ -99,6 +114,18 @@ function shellDocument(title: string, body: string): string {
       table { width: 100%; border-collapse: collapse; margin: 12px 0 4px; font: 12px/1.45 ui-monospace, SFMono-Regular, monospace; }
       th, td { text-align: left; padding: 6px 8px 6px 0; border-bottom: 1px solid #2a303b; word-break: break-all; }
       th { color: #6d7686; font-weight: 500; }
+      h2 { font-size: 1.05rem; font-weight: 600; color: #c6cdd9; margin: 20px 0 8px; }
+      ul.plugins { list-style: none; margin: 0; padding: 0; }
+      ul.plugins li { border: 1px solid #2a303b; border-radius: 8px; padding: 12px; margin: 0 0 10px; }
+      .plugin-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+      .plugin-name { font-weight: 600; color: #d9dee8; }
+      .author { color: #6d7686; font-size: 12px; }
+      .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
+      .chip { font: 11px/1.4 ui-monospace, SFMono-Regular, monospace; background: #0b0d12;
+        border: 1px solid #2a303b; border-radius: 999px; padding: 2px 10px; color: #9aa3b2; }
+      .plugin-actions { display: flex; align-items: center; gap: 12px; margin-top: 6px; flex-wrap: wrap; }
+      a { color: #6ea8fe; }
+      .meta { color: #6d7686; font-size: 12px; }
     </style>
   </head>
   <body>
@@ -106,6 +133,7 @@ function shellDocument(title: string, body: string): string {
       <nav class="nav">
         <button class="secondary" data-go="official">官方 Web</button>
         <button class="secondary" data-go="sessions">Session</button>
+        <button class="secondary" data-go="marketplace">市场</button>
         <button class="secondary" data-go="runtime">运行时</button>
         <button class="secondary" data-go="settings">设置</button>
         <button class="secondary" data-go="diagnostics">诊断</button>
@@ -116,6 +144,7 @@ function shellDocument(title: string, body: string): string {
       const go = {
         official: () => window.dshCommunity?.openOfficial(),
         sessions: () => window.dshCommunity?.showSessions(),
+        marketplace: () => window.dshCommunity?.showMarketplace(),
         runtime: () => window.dshCommunity?.showRuntime(),
         settings: () => window.dshCommunity?.showSettings(),
         diagnostics: () => window.dshCommunity?.showDiagnostics(),
@@ -269,6 +298,62 @@ export function renderSettingsPage(model: SettingsPageModel): string {
            hideToTray: document.getElementById('hideToTray')?.checked === true,
            isolated: ${model.envIsolated ? 'true' : 'document.getElementById(\'isolated\')?.checked === true'},
          })
+       })
+     </script>`,
+  )
+}
+
+export function renderMarketplacePage(model: MarketplacePageModel): string {
+  const sourceLine = model.source === 'live'
+    ? '实时目录'
+    : model.source === 'cache'
+      ? '缓存目录（网络不可用，展示最近一次抓取）'
+      : '目录不可用'
+  const errorBlock = model.error === undefined
+    ? ''
+    : `<pre>${escapeHtml(model.error)}</pre>`
+  const plugins = model.catalog?.plugins ?? []
+  const sections = PLUGIN_CATEGORIES.map((category) => {
+    const members = plugins.filter((plugin) => plugin.category === category)
+    if (members.length === 0) return ''
+    const rows = members.map((plugin) => {
+      const chips = plugin.versions.map((version) => {
+        const note = version.notes === undefined ? '' : ` · ${escapeHtml(version.notes)}`
+        return `<span class="chip">v${escapeHtml(version.version)} · 验证线 ${escapeHtml(version.testedDsh)}${note}</span>`
+      }).join('')
+      return `<li>
+        <div class="plugin-head">
+          <code class="plugin-name">${escapeHtml(plugin.name)}</code>
+          <span class="author">by ${escapeHtml(plugin.author)}</span>
+        </div>
+        <p>${escapeHtml(plugin.description)}</p>
+        <div class="chips">${chips}</div>
+        <div class="plugin-actions">
+          <a href="${escapeHtml(plugin.repo)}">源码仓库</a>
+          <code>dsh plugin add ${escapeHtml(plugin.name)}</code>
+        </div>
+      </li>`
+    }).join('')
+    return `<h2>${PLUGIN_CATEGORY_LABELS[category]} · ${String(members.length)}</h2>
+     <ul class="plugins">${rows}</ul>`
+  }).join('')
+  const body = plugins.length === 0
+    ? `<p>目录还没有内容，或抓取的 <code>catalog.json</code> 无法通过校验。</p>`
+    : sections
+  return shellDocument(
+    `${model.product} · 社区市场`,
+    `<h1>社区市场</h1>
+     <p>只读浏览 <a href="${escapeHtml(model.registryUrl)}">dsh-community-plugins</a> 的插件目录。安装走官方 <code>dsh plugin add &lt;name&gt;</code> 或 <code>dsh-marketplace install &lt;name&gt;</code> 客户端；本窗口不做第二套安装器。</p>
+     <p class="meta">${escapeHtml(sourceLine)} · 抓取时间 ${escapeHtml(model.fetchedAt || '—')}</p>
+     ${errorBlock}
+     <div class="row">
+       <button id="refresh">刷新目录</button>
+       <button class="secondary" data-go="official">返回会话</button>
+     </div>
+     ${body}
+     <script>
+       document.getElementById('refresh')?.addEventListener('click', () => {
+         window.dshCommunity?.refreshMarketplace()
        })
      </script>`,
   )

@@ -34,6 +34,7 @@ describe('do not invent a Desktop runtime protocol', () => {
       'dsh:lifecycle:snapshot',
       'dsh:lifecycle:diagnostics',
       'dsh:lifecycle:open-official',
+      'dsh:lifecycle:marketplace-refresh',
     ])
     expect([...DESKTOP_IPC_KEYS].every((key) => key.startsWith('dsh:desktop:'))).toBe(true)
     expect(DESKTOP_IPC_KEYS.join('\n')).not.toMatch(/agent|tool\/|approval/)

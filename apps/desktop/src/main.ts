@@ -40,10 +40,19 @@ import { appendHostDiagnostics } from './host-log.ts'
 import { readJsonFile, writeJsonFile } from './json-file.ts'
 import { DESKTOP_IPC, LIFECYCLE_IPC } from './ipc-channels.ts'
 import {
+  MARKETPLACE_CATALOG_URL,
+  MARKETPLACE_REGISTRY_URL,
+  marketplaceSnapshot,
+  parseMarketplaceCatalog,
+  parseMarketplaceSnapshot,
+  type MarketplaceSnapshot,
+} from './marketplace.ts'
+import {
   renderAboutPage,
   renderDiagnosticsPage,
   renderErrorPage,
   renderLoadingPage,
+  renderMarketplacePage,
   renderOfficialSessionsPage,
   renderRuntimePage,
   renderSettingsPage,
@@ -84,6 +93,9 @@ let showingOfficial = false
 let quitting = false
 let settings = DEFAULT_DESKTOP_SETTINGS
 let catalog: RuntimeCatalog | undefined
+let marketplace: MarketplaceSnapshot | undefined
+
+const MARKETPLACE_CACHE_TTL_MS = 10 * 60 * 1000
 
 function trayAvailable(): boolean {
   return tray !== undefined && !tray.isDestroyed()
@@ -283,6 +295,79 @@ async function showAbout(): Promise<void> {
   await showHtml(renderAboutPage(aboutModel()))
 }
 
+function marketplaceCachePath(): string {
+  return join(desktopLayout().root, 'marketplace-catalog.json')
+}
+
+function marketplaceModel() {
+  const snapshot = marketplace
+  return {
+    product: COMMUNITY_PRODUCT_NAME,
+    ...(snapshot?.catalog === undefined ? {} : { catalog: snapshot.catalog }),
+    source: snapshot?.source ?? 'none',
+    fetchedAt: snapshot?.fetchedAt ?? '',
+    ...(snapshot?.error === undefined ? {} : { error: snapshot.error }),
+    registryUrl: MARKETPLACE_REGISTRY_URL,
+  }
+}
+
+async function fetchLiveMarketplace(): Promise<
+  { catalog: NonNullable<MarketplaceSnapshot['catalog']>; fetchedAt: string } | undefined
+> {
+  try {
+    const response = await fetch(MARKETPLACE_CATALOG_URL, {
+      signal: AbortSignal.timeout(10_000),
+    })
+    if (!response.ok) return undefined
+    const raw: unknown = await response.json()
+    const catalog = parseMarketplaceCatalog(raw)
+    if (catalog === undefined) return undefined
+    return { catalog, fetchedAt: new Date().toISOString() }
+  } catch {
+    return undefined
+  }
+}
+
+async function refreshMarketplaceCatalog(force: boolean): Promise<void> {
+  const cached = parseMarketplaceSnapshot(readJsonFile(marketplaceCachePath()))
+  const cacheFresh = cached !== undefined
+    && !Number.isNaN(Date.parse(cached.fetchedAt))
+    && Date.now() - Date.parse(cached.fetchedAt) < MARKETPLACE_CACHE_TTL_MS
+  if (!force && cacheFresh) {
+    marketplace = cached
+    return
+  }
+  const live = await fetchLiveMarketplace()
+  if (live !== undefined) {
+    marketplace = marketplaceSnapshot({
+      catalog: live.catalog,
+      source: 'live',
+      fetchedAt: live.fetchedAt,
+    })
+    writeJsonFile(marketplaceCachePath(), marketplace)
+    return
+  }
+  if (cached !== undefined) {
+    marketplace = marketplaceSnapshot({
+      ...(cached.catalog === undefined ? {} : { catalog: cached.catalog }),
+      source: 'cache',
+      fetchedAt: cached.fetchedAt,
+      error: '在线抓取失败，展示最近一次缓存。',
+    })
+    return
+  }
+  marketplace = marketplaceSnapshot({
+    source: 'none',
+    fetchedAt: new Date().toISOString(),
+    error: `无法抓取目录:${MARKETPLACE_CATALOG_URL}`,
+  })
+}
+
+async function showMarketplace(force = false): Promise<void> {
+  await refreshMarketplaceCatalog(force)
+  await showHtml(renderMarketplacePage(marketplaceModel()))
+}
+
 async function showOfficialSessions(): Promise<void> {
   await showHtml(renderOfficialSessionsPage(officialSessionsModel()))
 }
@@ -364,6 +449,7 @@ function createTray(): Tray | undefined {
       { label: '重新启动官方运行时', click: () => void restartOfficial().catch(showStartFailure) },
       { label: '运行时 / Version Manager', click: () => void showRuntime() },
       { label: '官方 Session', click: () => void showOfficialSessions() },
+      { label: '社区市场', click: () => void showMarketplace() },
       { label: '设置', click: () => void showSettings() },
       { label: 'Host 诊断', click: () => void showDiagnostics() },
       { label: '关于社区壳', click: () => void showAbout() },
@@ -411,6 +497,7 @@ function installMenu(): void {
           if (origin !== '') void showOfficial(origin)
         } },
         { label: 'Official sessions', accelerator: 'CmdOrCtrl+Shift+S', click: () => void showOfficialSessions() },
+        { label: 'Community marketplace', accelerator: 'CmdOrCtrl+Shift+M', click: () => void showMarketplace() },
         { label: 'Host log', accelerator: 'CmdOrCtrl+Shift+L', click: () => void showDiagnostics() },
         { type: 'separator' },
         { label: 'Runtime / Version Manager', click: () => void showRuntime() },
@@ -452,12 +539,18 @@ function bindIpc(): void {
   ipcMain.handle(LIFECYCLE_IPC.openOfficial, async () => {
     if (origin !== '') await showOfficial(origin)
   })
+  ipcMain.handle(LIFECYCLE_IPC.refreshMarketplace, async () => {
+    await showMarketplace(true)
+  })
   ipcMain.handle(DESKTOP_IPC.copyText, (_event, text: unknown) => copyDesktopText(text))
   ipcMain.handle(DESKTOP_IPC.applySettings, async (_event, patch: unknown) => {
     await applySettings(patch)
   })
   ipcMain.handle(DESKTOP_IPC.showSessions, async () => {
     await showOfficialSessions()
+  })
+  ipcMain.handle(DESKTOP_IPC.showMarketplace, async () => {
+    await showMarketplace()
   })
   ipcMain.handle(DESKTOP_IPC.showSettings, async () => {
     await showSettings()
