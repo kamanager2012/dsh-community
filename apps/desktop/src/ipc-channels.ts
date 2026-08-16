@@ -2,8 +2,8 @@
  * Lifecycle IPC only.
  *
  * Allowed: restart, snapshot (pid/port/phase), diagnostics logs, show official UI.
- * Forbidden: agent-running, tool-start, session-changed, approval-request
- * as Desktop channels. Those belong to official HTTP / session/event.
+ * Forbidden as Desktop channels: agent-running, tool-start, approval-request.
+ * Those belong to official HTTP / session/event.
  */
 export const LIFECYCLE_IPC = {
   restartHost: 'dsh:lifecycle:restart',
@@ -12,11 +12,32 @@ export const LIFECYCLE_IPC = {
   openOfficial: 'dsh:lifecycle:open-official',
 } as const
 
-export const IPC = LIFECYCLE_IPC
+/** Desktop-owned shell chrome. Not a second harness protocol. */
+export const DESKTOP_IPC = {
+  copyText: 'dsh:desktop:copy-text',
+  applySettings: 'dsh:desktop:apply-settings',
+  showSessions: 'dsh:desktop:show-sessions',
+  showSettings: 'dsh:desktop:show-settings',
+  showDiagnostics: 'dsh:desktop:show-diagnostics',
+  showRuntime: 'dsh:desktop:show-runtime',
+  showAbout: 'dsh:desktop:show-about',
+} as const
+
+export const IPC = { ...LIFECYCLE_IPC, ...DESKTOP_IPC }
 
 export const LIFECYCLE_IPC_KEYS = [
   'dsh:lifecycle:restart',
   'dsh:lifecycle:snapshot',
   'dsh:lifecycle:diagnostics',
   'dsh:lifecycle:open-official',
+] as const
+
+export const DESKTOP_IPC_KEYS = [
+  'dsh:desktop:copy-text',
+  'dsh:desktop:apply-settings',
+  'dsh:desktop:show-sessions',
+  'dsh:desktop:show-settings',
+  'dsh:desktop:show-diagnostics',
+  'dsh:desktop:show-runtime',
+  'dsh:desktop:show-about',
 ] as const

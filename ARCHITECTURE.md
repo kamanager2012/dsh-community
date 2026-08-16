@@ -57,7 +57,7 @@ Desktop-owned         app userData     runtime-versions, window-state, logs, cra
 
 Default: do not rewrite `DSH_HOME`. TUI, official Web, and Desktop see the same session log.
 
-Isolated Desktop runtime is opt-in (`DSH_COMMUNITY_ISOLATED=1`).
+Isolated Desktop runtime is opt-in (`DSH_COMMUNITY_ISOLATED=1`, or Desktop Settings). Session list and `dsh web` then use `userData/isolated-dsh`.
 
 ## contracts/ snapshots official surface
 

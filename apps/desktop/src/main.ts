@@ -7,6 +7,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   app,
+  clipboard,
   ipcMain,
   Menu,
   nativeImage,
@@ -24,8 +25,8 @@ import {
   parseRuntimeCatalog,
   pinDefault,
   resolveDesktopAppLayout,
+  resolveEffectiveOfficialHome,
   resolveOfficialDsh,
-  resolveOfficialDshHome,
   spawnOfficialWeb,
   type OfficialHost,
   type RuntimeCatalog,
@@ -33,18 +34,28 @@ import {
 import { COMMUNITY_PRODUCT_NAME, WINDOW_TITLE } from './branding.ts'
 import { resolveLatestTestedPath } from './contracts-path.ts'
 import { appendHostDiagnostics } from './host-log.ts'
-import { IPC } from './ipc-channels.ts'
+
 import { readJsonFile, writeJsonFile } from './json-file.ts'
+import { DESKTOP_IPC, LIFECYCLE_IPC } from './ipc-channels.ts'
 import {
   renderAboutPage,
+  renderDiagnosticsPage,
   renderErrorPage,
   renderLoadingPage,
   renderOfficialSessionsPage,
   renderRuntimePage,
+  renderSettingsPage,
 } from './pages.ts'
+import { formatSessionMtime } from './session-view.ts'
 import { assertHostLaunchPaths, resolveHostLaunchPaths } from './paths.ts'
 import { buildRuntimeView, readLatestTested } from './runtime-view.ts'
-import { DEFAULT_DESKTOP_SETTINGS, parseDesktopSettings, type DesktopSettings } from './settings.ts'
+import {
+  applyDesktopSettingsPatch,
+  DEFAULT_DESKTOP_SETTINGS,
+  parseDesktopSettings,
+  readSettingsPatch,
+  type DesktopSettings,
+} from './settings.ts'
 import { decideHostCrash, decideWindowClose } from './shell-policy.ts'
 import {
   DEFAULT_WINDOW_STATE,
@@ -72,8 +83,17 @@ function desktopLayout() {
   return resolveDesktopAppLayout(app.getPath('userData'))
 }
 
+function isolatedNow(): boolean {
+  return settings.isolated || isolatedDesktopRequested()
+}
+
 function officialHome(): string {
-  return resolveOfficialDshHome(process.env, app.getPath('home'))
+  return resolveEffectiveOfficialHome({
+    env: process.env,
+    homedir: app.getPath('home'),
+    desktopUserData: app.getPath('userData'),
+    isolated: settings.isolated,
+  })
 }
 
 function hardenSession(): void {
@@ -93,6 +113,7 @@ function launchPaths() {
       env: process.env,
       homedir,
       desktopUserData: app.getPath('userData'),
+      isolated: settings.isolated,
     }),
     execPath: process.execPath,
     resourcesPath: process.resourcesPath,
@@ -161,7 +182,7 @@ function aboutModel() {
     officialBin: install.binPath,
     officialHome: officialHome(),
     desktopRoot: layout.root,
-    isolated: isolatedDesktopRequested(),
+    isolated: isolatedNow(),
     latestTested: catalog?.latestTested ?? install.version,
     officialSessionCount: listOfficialSessions(officialSessionRoot(officialHome())).length,
     origin,
@@ -180,7 +201,7 @@ function runtimeModel() {
     officialHome: officialHome(),
     desktopRoot: layout.root,
     catalogPath: layout.runtimeVersions,
-    isolated: isolatedDesktopRequested(),
+    isolated: isolatedNow(),
   })
   return { product: COMMUNITY_PRODUCT_NAME, ...view }
 }
@@ -190,12 +211,37 @@ function officialSessionsModel() {
   return {
     product: COMMUNITY_PRODUCT_NAME,
     officialHome: home,
-    isolated: isolatedDesktopRequested(),
+    isolated: isolatedNow(),
     sessions: listOfficialSessions(officialSessionRoot(home)).map((session) => ({
       id: session.id,
       projectKey: session.projectKey,
       transcript: session.transcript,
+      updatedAt: formatSessionMtime(session.mtimeMs),
     })),
+  }
+}
+
+function settingsModel() {
+  return {
+    product: COMMUNITY_PRODUCT_NAME,
+    hideToTray: settings.hideToTray,
+    isolated: isolatedNow(),
+    envIsolated: isolatedDesktopRequested(),
+    officialHome: officialHome(),
+    isolatedHome: desktopLayout().isolatedOfficialHome,
+  }
+}
+
+function diagnosticsModel() {
+  const snap = host?.snapshot()
+  return {
+    product: COMMUNITY_PRODUCT_NAME,
+    officialHome: officialHome(),
+    isolated: isolatedNow(),
+    origin,
+    phase: snap?.phase ?? 'idle',
+    pid: snap && 'pid' in snap && snap.pid !== undefined ? String(snap.pid) : '—',
+    logs: host?.logs() ?? '',
   }
 }
 
@@ -209,6 +255,14 @@ async function showOfficialSessions(): Promise<void> {
 
 async function showRuntime(): Promise<void> {
   await showHtml(renderRuntimePage(runtimeModel()))
+}
+
+async function showSettings(): Promise<void> {
+  await showHtml(renderSettingsPage(settingsModel()))
+}
+
+async function showDiagnostics(): Promise<void> {
+  await showHtml(renderDiagnosticsPage(diagnosticsModel()))
 }
 
 function pinLatestTested(): void {
@@ -225,11 +279,34 @@ async function startOfficial(): Promise<void> {
   await showOfficial(next)
 }
 
-async function restartOfficial(): Promise<void> {
+async function restartOfficial(then: 'official' | 'settings' = 'official'): Promise<void> {
   if (host === undefined) throw new Error('official host is not created')
   await showHtml(renderLoadingPage())
   const next = await host.restart()
-  await showOfficial(next)
+  origin = next
+  if (then === 'settings') await showSettings()
+  else await showOfficial(next)
+}
+
+function persistSettings(): void {
+  writeJsonFile(desktopLayout().desktopSettings, settings)
+}
+
+async function applySettings(raw: unknown): Promise<void> {
+  const previousIsolated = isolatedNow()
+  settings = applyDesktopSettingsPatch(settings, readSettingsPatch(raw))
+  persistSettings()
+  if (isolatedNow() !== previousIsolated) {
+    await restartOfficial('settings')
+    return
+  }
+  await showSettings()
+}
+
+function copyDesktopText(text: unknown): boolean {
+  if (typeof text !== 'string' || text.length === 0 || text.length > 16_384) return false
+  clipboard.writeText(text)
+  return true
 }
 
 function revealWindow(): void {
@@ -253,6 +330,8 @@ function createTray(): Tray | undefined {
       { label: '重新启动官方运行时', click: () => void restartOfficial().catch(showStartFailure) },
       { label: '运行时 / Version Manager', click: () => void showRuntime() },
       { label: '官方 Session', click: () => void showOfficialSessions() },
+      { label: '设置', click: () => void showSettings() },
+      { label: 'Host 诊断', click: () => void showDiagnostics() },
       { label: '关于社区壳', click: () => void showAbout() },
       { type: 'separator' },
       { label: '退出', click: () => app.quit() },
@@ -285,6 +364,7 @@ function installMenu(): void {
       label: 'File',
       submenu: [
         { label: 'About community shell', click: () => void showAbout() },
+        { label: 'Desktop settings', accelerator: 'CmdOrCtrl+,', click: () => void showSettings() },
         { type: 'separator' },
         { role: 'quit' },
       ],
@@ -292,11 +372,12 @@ function installMenu(): void {
     {
       label: 'Host',
       submenu: [
-        { label: 'Restart official dsh web', click: () => void restartOfficial().catch(showStartFailure) },
-        { label: 'Show official UI', click: () => {
+        { label: 'Restart official dsh web', accelerator: 'CmdOrCtrl+Shift+R', click: () => void restartOfficial().catch(showStartFailure) },
+        { label: 'Show official UI', accelerator: 'CmdOrCtrl+Shift+O', click: () => {
           if (origin !== '') void showOfficial(origin)
         } },
-        { label: 'Official sessions', click: () => void showOfficialSessions() },
+        { label: 'Official sessions', accelerator: 'CmdOrCtrl+Shift+S', click: () => void showOfficialSessions() },
+        { label: 'Host log', accelerator: 'CmdOrCtrl+Shift+L', click: () => void showDiagnostics() },
         { type: 'separator' },
         { label: 'Runtime / Version Manager', click: () => void showRuntime() },
         { label: 'Pin latest-tested', click: () => pinLatestTested() },
@@ -329,13 +410,32 @@ function installMenu(): void {
 }
 
 function bindIpc(): void {
-  ipcMain.handle(IPC.restartHost, async () => {
+  ipcMain.handle(LIFECYCLE_IPC.restartHost, async () => {
     await restartOfficial()
   })
-  ipcMain.handle(IPC.snapshot, () => host?.snapshot() ?? { phase: 'idle', generation: 0 })
-  ipcMain.handle(IPC.diagnostics, () => host?.logs() ?? '')
-  ipcMain.handle(IPC.openOfficial, async () => {
+  ipcMain.handle(LIFECYCLE_IPC.snapshot, () => host?.snapshot() ?? { phase: 'idle', generation: 0 })
+  ipcMain.handle(LIFECYCLE_IPC.diagnostics, () => host?.logs() ?? '')
+  ipcMain.handle(LIFECYCLE_IPC.openOfficial, async () => {
     if (origin !== '') await showOfficial(origin)
+  })
+  ipcMain.handle(DESKTOP_IPC.copyText, (_event, text: unknown) => copyDesktopText(text))
+  ipcMain.handle(DESKTOP_IPC.applySettings, async (_event, patch: unknown) => {
+    await applySettings(patch)
+  })
+  ipcMain.handle(DESKTOP_IPC.showSessions, async () => {
+    await showOfficialSessions()
+  })
+  ipcMain.handle(DESKTOP_IPC.showSettings, async () => {
+    await showSettings()
+  })
+  ipcMain.handle(DESKTOP_IPC.showDiagnostics, async () => {
+    await showDiagnostics()
+  })
+  ipcMain.handle(DESKTOP_IPC.showRuntime, async () => {
+    await showRuntime()
+  })
+  ipcMain.handle(DESKTOP_IPC.showAbout, async () => {
+    await showAbout()
   })
 }
 
@@ -351,14 +451,18 @@ async function boot(): Promise<void> {
 
   const layout = desktopLayout()
   host = createOfficialHost({
-    spawn: () => spawnOfficialWeb({
-      nodeExecutable: paths.nodeExecutable,
-      cliEntry: paths.cliEntry,
-      cwd: paths.cwd,
-      env: paths.env,
-      bind: { host: '127.0.0.1', port: 0 },
-      electronRunAsNode: paths.electronRunAsNode,
-    }),
+    spawn: () => {
+      const next = launchPaths()
+      assertHostLaunchPaths(next)
+      return spawnOfficialWeb({
+        nodeExecutable: next.nodeExecutable,
+        cliEntry: next.cliEntry,
+        cwd: next.cwd,
+        env: next.env,
+        bind: { host: '127.0.0.1', port: 0 },
+        electronRunAsNode: next.electronRunAsNode,
+      })
+    },
     onLog: (chunk) => {
       process.stderr.write(chunk)
       appendHostDiagnostics(layout.logs, chunk)

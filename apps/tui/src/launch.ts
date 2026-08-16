@@ -31,16 +31,17 @@ This binary is not dsh-tui and is not published as @deepseek-ai/*.
 `
 
 export function parseCommunityLaunch(argv: readonly string[]): CommunityLaunch {
-  if (argv[0] === '--help' || argv[0] === '-h') return { kind: 'help' }
-  if (argv[0] === '--list-sessions') return { kind: 'list' }
-  if (argv[0] === '--resume') {
-    const id = argv[1]
+  const args = argv[0] === '--' ? argv.slice(1) : [...argv]
+  if (args[0] === '--help' || args[0] === '-h') return { kind: 'help' }
+  if (args[0] === '--list-sessions') return { kind: 'list' }
+  if (args[0] === '--resume') {
+    const id = args[1]
     if (id === undefined || id.length === 0 || id.startsWith('-')) {
       throw new Error('dsh-community-tui --resume needs an official session id (see --list-sessions)')
     }
-    return { kind: 'resume', id, rest: argv.slice(2) }
+    return { kind: 'resume', id, rest: args.slice(2) }
   }
-  return { kind: 'run', rest: argv }
+  return { kind: 'run', rest: args }
 }
 
 /** Official app args after launcher flags. */

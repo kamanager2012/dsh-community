@@ -1,9 +1,17 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { IPC } from './ipc-channels.ts'
+import { DESKTOP_IPC, LIFECYCLE_IPC } from './ipc-channels.ts'
 
 contextBridge.exposeInMainWorld('dshCommunity', {
-  restartHost: () => ipcRenderer.invoke(IPC.restartHost),
-  hostSnapshot: () => ipcRenderer.invoke(IPC.snapshot),
-  hostLogs: () => ipcRenderer.invoke(IPC.diagnostics),
-  openOfficial: () => ipcRenderer.invoke(IPC.openOfficial),
+  restartHost: () => ipcRenderer.invoke(LIFECYCLE_IPC.restartHost),
+  hostSnapshot: () => ipcRenderer.invoke(LIFECYCLE_IPC.snapshot),
+  hostLogs: () => ipcRenderer.invoke(LIFECYCLE_IPC.diagnostics),
+  openOfficial: () => ipcRenderer.invoke(LIFECYCLE_IPC.openOfficial),
+  copyText: (text: string) => ipcRenderer.invoke(DESKTOP_IPC.copyText, text),
+  applySettings: (patch: { hideToTray?: boolean; isolated?: boolean }) =>
+    ipcRenderer.invoke(DESKTOP_IPC.applySettings, patch),
+  showSessions: () => ipcRenderer.invoke(DESKTOP_IPC.showSessions),
+  showSettings: () => ipcRenderer.invoke(DESKTOP_IPC.showSettings),
+  showDiagnostics: () => ipcRenderer.invoke(DESKTOP_IPC.showDiagnostics),
+  showRuntime: () => ipcRenderer.invoke(DESKTOP_IPC.showRuntime),
+  showAbout: () => ipcRenderer.invoke(DESKTOP_IPC.showAbout),
 })

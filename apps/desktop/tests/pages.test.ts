@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
   renderAboutPage,
+  renderDiagnosticsPage,
   renderErrorPage,
   renderLoadingPage,
   renderOfficialSessionsPage,
   renderRuntimePage,
+  renderSettingsPage,
 } from '../src/pages.ts'
 
 describe('shell pages', () => {
@@ -57,12 +59,49 @@ describe('shell pages', () => {
       product: 'DSH Community',
       officialHome: '/home/dev/.dsh',
       isolated: false,
-      sessions: [{ id: 'sess-abc', projectKey: '--tmp-proj--', transcript: '/home/dev/.dsh/sessions/--tmp-proj--/sess-abc/session.jsonl.zstd' }],
+      sessions: [{
+        id: 'sess-abc',
+        projectKey: '--tmp-proj--',
+        transcript: '/home/dev/.dsh/sessions/--tmp-proj--/sess-abc/session.jsonl.zstd',
+        updatedAt: '2026-08-16 00:31:15 UTC',
+      }],
     })
     expect(listed).toMatch(/sess-abc/)
     expect(listed).toMatch(/--tmp-proj--/)
+    expect(listed).toMatch(/2026-08-16 00:31:15 UTC/)
     expect(listed).toMatch(/dsh-community-tui --resume/)
+    expect(listed).toMatch(/复制 --resume/)
     expect(listed).not.toMatch(/\.dsh-cc/)
+  })
+
+  it('keeps settings on the desktop shell, not the official store', () => {
+    const html = renderSettingsPage({
+      product: 'DSH Community',
+      hideToTray: true,
+      isolated: false,
+      envIsolated: false,
+      officialHome: '/home/dev/.dsh',
+      isolatedHome: '/home/dev/.config/dsh-community/isolated-dsh',
+    })
+    expect(html).toMatch(/hideToTray/)
+    expect(html).toMatch(/isolated-dsh/)
+    expect(html).toMatch(/不再共用/)
+    expect(html).toMatch(/data-go="settings"/)
+  })
+
+  it('shows host logs as diagnostics only', () => {
+    const html = renderDiagnosticsPage({
+      product: 'DSH Community',
+      officialHome: '/home/dev/.dsh',
+      isolated: false,
+      origin: 'http://127.0.0.1:4310',
+      phase: 'ready',
+      pid: '12',
+      logs: 'dsh web: http://127.0.0.1:4310',
+    })
+    expect(html).toMatch(/dsh web: http:\/\/127\.0\.0\.1:4310/)
+    expect(html).toMatch(/不解析 agent/)
+    expect(html).toMatch(/copyText/)
   })
 
   it('shows latest-tested instead of npm latest on the runtime page', () => {

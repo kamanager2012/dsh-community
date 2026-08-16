@@ -47,10 +47,12 @@ export {
 export {
   hostProcessEnv,
   isolatedDesktopRequested,
+  isolationRequested,
   ISOLATED_DESKTOP_ENV,
   OFFICIAL_DSH_HOME_DIR,
   OFFICIAL_DSH_HOME_ENV,
   resolveDesktopAppLayout,
+  resolveEffectiveOfficialHome,
   resolveOfficialDshHome,
   type DesktopAppLayout,
 } from './data-dirs.js'

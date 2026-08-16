@@ -6,11 +6,13 @@
 pnpm --filter @dsh-community/desktop start
 ```
 
-默认共用官方 `~/.dsh`。IPC 只有生命周期（重启 / 快照 / 诊断日志）。不要在这里长业务协议。
+默认共用官方 `~/.dsh`。生命周期 IPC 只有重启 / 快照 / 诊断日志 / 打开官方 UI。壳自己的设置、复制 `--resume`、页面切换走 `dsh:desktop:*`，不要在这里长 agent 协议。
 
 Version Manager 在菜单 **Host → Runtime**。它读 `contracts/compatibility/latest-tested.json`，把 pin 写进 Desktop `userData`，不改官方 session 目录。
 
-官方 Session 列表在 **Host → Official sessions** / 托盘「官方 Session」，只读 `~/.dsh/sessions`。
+官方 Session 列表在 **Host → Official sessions** / 托盘「官方 Session」/ 壳顶栏 **Session**，只读当前官方 home 下的 `sessions/`。可复制 `dsh-community-tui --resume <id>`，不在 Desktop 里恢复对话。
+
+**File → Desktop settings**：关窗藏托盘；可选隔离官方数据到 `userData/isolated-dsh`（改这项会重启 `dsh web`）。环境变量 `DSH_COMMUNITY_ISOLATED=1` 仍然强制隔离。
 
 运行时行为：
 

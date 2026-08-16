@@ -6,6 +6,7 @@ import {
   OFFICIAL_DSH_HOME_DIR,
   OFFICIAL_DSH_HOME_ENV,
   resolveDesktopAppLayout,
+  resolveEffectiveOfficialHome,
   resolveOfficialDshHome,
 } from '@dsh-community/dsh-bridge'
 
@@ -35,5 +36,28 @@ describe('official data vs desktop data', () => {
       desktopUserData: '/tmp/desktop-app',
     })
     expect(isolated[OFFICIAL_DSH_HOME_ENV]).toBe('/tmp/desktop-app/isolated-dsh')
+  })
+
+  it('lists the isolated official home when Desktop asks for isolation', () => {
+    const fromSetting = resolveEffectiveOfficialHome({
+      env: {},
+      homedir: '/home/dev',
+      desktopUserData: '/tmp/desktop-app',
+      isolated: true,
+    })
+    expect(fromSetting).toBe('/tmp/desktop-app/isolated-dsh')
+    const shared = resolveEffectiveOfficialHome({
+      env: {},
+      homedir: '/home/dev',
+      desktopUserData: '/tmp/desktop-app',
+    })
+    expect(shared).toBe(join('/home/dev', OFFICIAL_DSH_HOME_DIR))
+    const child = hostProcessEnv({
+      env: {},
+      homedir: '/home/dev',
+      desktopUserData: '/tmp/desktop-app',
+      isolated: true,
+    })
+    expect(child[OFFICIAL_DSH_HOME_ENV]).toBe('/tmp/desktop-app/isolated-dsh')
   })
 })

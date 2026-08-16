@@ -2,7 +2,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { LIFECYCLE_IPC_KEYS } from '../../apps/desktop/src/ipc-channels.ts'
+import { DESKTOP_IPC_KEYS, LIFECYCLE_IPC_KEYS } from '../../apps/desktop/src/ipc-channels.ts'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '../..')
 
@@ -35,6 +35,8 @@ describe('do not invent a Desktop runtime protocol', () => {
       'dsh:lifecycle:diagnostics',
       'dsh:lifecycle:open-official',
     ])
+    expect([...DESKTOP_IPC_KEYS].every((key) => key.startsWith('dsh:desktop:'))).toBe(true)
+    expect(DESKTOP_IPC_KEYS.join('\n')).not.toMatch(/agent|tool\/|approval/)
   })
 
   it('does not parse agent/tool/session business out of stdout', () => {

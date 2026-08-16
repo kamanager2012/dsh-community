@@ -45,6 +45,27 @@ export function isolatedDesktopRequested(env: NodeJS.ProcessEnv = process.env): 
   return env[ISOLATED_DESKTOP_ENV] === '1'
 }
 
+/** Env force-on, or an explicit Desktop setting. Default remains shared ~/.dsh. */
+export function isolationRequested(
+  env: NodeJS.ProcessEnv = process.env,
+  isolated = false,
+): boolean {
+  return isolated === true || isolatedDesktopRequested(env)
+}
+
+export function resolveEffectiveOfficialHome(input: {
+  readonly env?: NodeJS.ProcessEnv
+  readonly homedir: string
+  readonly desktopUserData: string
+  readonly isolated?: boolean
+}): string {
+  const env = input.env ?? process.env
+  if (isolationRequested(env, input.isolated === true)) {
+    return resolveDesktopAppLayout(input.desktopUserData).isolatedOfficialHome
+  }
+  return resolveOfficialDshHome(env, input.homedir)
+}
+
 /**
  * Env for the official child. Default: pass DSH_HOME through so TUI / Web /
  * Desktop see the same session store. Isolated mode is explicit.
@@ -53,8 +74,9 @@ export function hostProcessEnv(input: {
   readonly env: NodeJS.ProcessEnv
   readonly homedir: string
   readonly desktopUserData: string
+  readonly isolated?: boolean
 }): NodeJS.ProcessEnv {
-  if (!isolatedDesktopRequested(input.env)) {
+  if (!isolationRequested(input.env, input.isolated === true)) {
     return { ...input.env }
   }
   const layout = resolveDesktopAppLayout(input.desktopUserData)

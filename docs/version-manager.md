@@ -20,7 +20,7 @@ Under Electron `userData`, never under `~/.dsh`:
 
 - `runtime-versions.json` — default pin, per-project pins
 - `window-state.json`
-- `desktop-settings.json`
+- `desktop-settings.json` — hide-to-tray, isolated official home (Desktop-owned)
 - `logs/host.log` — official stdout/stderr, diagnostics only
 
 `latestTested` is overwritten from the contract file on every boot. A user cannot forge it.

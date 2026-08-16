@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+Desktop shell polish on the same GitHub repo. No new Release tag.
+
+- Desktop settings: hide-to-tray, optional isolated official home (restarts `dsh web`)
+- Official session list shows mtime and copies `dsh-community-tui --resume <id>`
+- Host diagnostics page; shell nav on every chrome page
+- Isolated mode now lists and launches against `userData/isolated-dsh`, not `~/.dsh`
+- `dsh-community-tui` treats a leading `--` as a pnpm passthrough so `--help` / `--list-sessions` work
+
 ## 0.1.1-preview — 2026-08-16
 
 Release: https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.1-preview

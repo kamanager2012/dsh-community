@@ -20,6 +20,7 @@ export interface OfficialSessionRow {
   readonly id: string
   readonly projectKey: string
   readonly transcript: string
+  readonly updatedAt: string
 }
 
 export interface OfficialSessionsPageModel {
@@ -40,6 +41,25 @@ export interface RuntimePageModel {
   readonly desktopRoot: string
   readonly catalogPath: string
   readonly isolated: boolean
+}
+
+export interface SettingsPageModel {
+  readonly product: string
+  readonly hideToTray: boolean
+  readonly isolated: boolean
+  readonly envIsolated: boolean
+  readonly officialHome: string
+  readonly isolatedHome: string
+}
+
+export interface DiagnosticsPageModel {
+  readonly product: string
+  readonly officialHome: string
+  readonly isolated: boolean
+  readonly origin: string
+  readonly phase: string
+  readonly pid: string
+  readonly logs: string
 }
 
 function escapeHtml(value: string): string {
@@ -69,7 +89,11 @@ function shellDocument(title: string, body: string): string {
       button { appearance: none; border: 0; border-radius: 8px; padding: 8px 14px;
         background: #2f6fed; color: white; font: inherit; cursor: pointer; }
       button.secondary { background: #2a303b; }
-      .row { display: flex; gap: 8px; margin-top: 16px; }
+      .row { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
+      nav.nav { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 18px; }
+      nav.nav button { font-size: 13px; padding: 6px 10px; }
+      label.opt { display: flex; gap: 8px; align-items: flex-start; margin: 10px 0; color: #d9dee8; }
+      label.opt input { margin-top: 4px; }
       dt { color: #6d7686; font-size: 12px; }
       dd { margin: 0 0 10px; word-break: break-all; }
       table { width: 100%; border-collapse: collapse; margin: 12px 0 4px; font: 12px/1.45 ui-monospace, SFMono-Regular, monospace; }
@@ -78,7 +102,32 @@ function shellDocument(title: string, body: string): string {
     </style>
   </head>
   <body>
-    <main><div class="card">${body}</div></main>
+    <main><div class="card">
+      <nav class="nav">
+        <button class="secondary" data-go="official">官方 Web</button>
+        <button class="secondary" data-go="sessions">Session</button>
+        <button class="secondary" data-go="runtime">运行时</button>
+        <button class="secondary" data-go="settings">设置</button>
+        <button class="secondary" data-go="diagnostics">诊断</button>
+      </nav>
+      ${body}
+    </div></main>
+    <script>
+      const go = {
+        official: () => window.dshCommunity?.openOfficial(),
+        sessions: () => window.dshCommunity?.showSessions(),
+        runtime: () => window.dshCommunity?.showRuntime(),
+        settings: () => window.dshCommunity?.showSettings(),
+        diagnostics: () => window.dshCommunity?.showDiagnostics(),
+        about: () => window.dshCommunity?.showAbout(),
+      }
+      document.querySelectorAll('[data-go]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const key = btn.getAttribute('data-go')
+          if (key && key in go) go[key]()
+        })
+      })
+    </script>
   </body>
 </html>`
 }
@@ -125,14 +174,11 @@ export function renderAboutPage(model: AboutPageModel): string {
      <pre>${escapeHtml(model.logs || '(no host log yet)')}</pre>
      <div class="row">
        <button id="retry">重新启动官方运行时</button>
-       <button class="secondary" id="back">返回会话</button>
+       <button class="secondary" data-go="official">返回会话</button>
      </div>
      <script>
        document.getElementById('retry')?.addEventListener('click', () => {
          window.dshCommunity?.restartHost()
-       })
-       document.getElementById('back')?.addEventListener('click', () => {
-         window.dshCommunity?.openOfficial()
        })
      </script>`,
   )
@@ -142,26 +188,31 @@ export function renderOfficialSessionsPage(model: OfficialSessionsPageModel): st
   const rows = model.sessions.length === 0
     ? '<p>官方 <code>~/.dsh/sessions</code> 里还没有 session。TUI / Web / 本窗口共用这一份，不会另建目录。</p>'
     : `<table>
-         <thead><tr><th>session</th><th>project</th></tr></thead>
+         <thead><tr><th>session</th><th>project</th><th>updated</th><th></th></tr></thead>
          <tbody>${model.sessions.map((session) =>
-           `<tr><td><code>${escapeHtml(session.id)}</code></td><td><code>${escapeHtml(session.projectKey)}</code></td></tr>`,
+           `<tr>
+              <td><code>${escapeHtml(session.id)}</code></td>
+              <td><code>${escapeHtml(session.projectKey)}</code></td>
+              <td>${escapeHtml(session.updatedAt)}</td>
+              <td><button class="secondary" data-resume="${escapeHtml(session.id)}">复制 --resume</button></td>
+            </tr>`,
          ).join('')}</tbody>
        </table>`
   return shellDocument(
     `${model.product} · 官方 Session`,
     `<h1>官方 Session</h1>
-     <p>只读列出官方 <code>${escapeHtml(model.officialHome)}</code>${model.isolated ? '（隔离）' : ''} 下的 <code>sessions/</code>。恢复对话走官方 Web 或 <code>dsh-community-tui --resume &lt;id&gt;</code>。</p>
+     <p>只读列出官方 <code>${escapeHtml(model.officialHome)}</code>${model.isolated ? '（隔离）' : ''} 下的 <code>sessions/</code>。恢复对话走官方 Web 或 <code>dsh-community-tui --resume &lt;id&gt;</code>。本页不另建 session 目录。</p>
      ${rows}
      <div class="row">
-       <button id="open">打开官方 Web</button>
-       <button class="secondary" id="back">返回会话</button>
+       <button data-go="official">打开官方 Web</button>
+       <button class="secondary" data-go="sessions">刷新列表</button>
      </div>
      <script>
-       document.getElementById('open')?.addEventListener('click', () => {
-         window.dshCommunity?.openOfficial()
-       })
-       document.getElementById('back')?.addEventListener('click', () => {
-         window.dshCommunity?.openOfficial()
+       document.querySelectorAll('[data-resume]').forEach((btn) => {
+         btn.addEventListener('click', () => {
+           const id = btn.getAttribute('data-resume')
+           if (id) window.dshCommunity?.copyText('dsh-community-tui --resume ' + id)
+         })
        })
      </script>`,
   )
@@ -187,11 +238,64 @@ export function renderRuntimePage(model: RuntimePageModel): string {
      </dl>
      <p>${escapeHtml(rec)}</p>
      <div class="row">
-       <button class="secondary" id="back">返回会话</button>
+       <button class="secondary" data-go="official">返回会话</button>
+     </div>`,
+  )
+}
+
+export function renderSettingsPage(model: SettingsPageModel): string {
+  return shellDocument(
+    `${model.product} · 设置`,
+    `<h1>Desktop 设置</h1>
+     <p>只改壳自己的偏好。官方 session 仍在 <code>${escapeHtml(model.officialHome)}</code>${model.isolated ? '（隔离）' : ''}。</p>
+     <label class="opt">
+       <input type="checkbox" id="hideToTray" ${model.hideToTray ? 'checked' : ''} />
+       <span>关窗藏到托盘，官方 <code>dsh web</code> 继续跑</span>
+     </label>
+     <label class="opt">
+       <input type="checkbox" id="isolated" ${model.isolated ? 'checked' : ''} ${model.envIsolated ? 'disabled' : ''} />
+       <span>隔离官方数据到 <code>${escapeHtml(model.isolatedHome)}</code>（不再共用 <code>~/.dsh</code>）</span>
+     </label>
+     <p>${model.envIsolated
+       ? '环境变量 <code>DSH_COMMUNITY_ISOLATED=1</code> 已强制隔离，界面关不掉。'
+       : '默认不要开隔离。开了之后 TUI / 系统浏览器里的官方 session 不会出现在这个窗口。改这项会重启官方 <code>dsh web</code>。'}</p>
+     <div class="row">
+       <button id="save">保存</button>
+       <button class="secondary" data-go="official">返回会话</button>
      </div>
      <script>
-       document.getElementById('back')?.addEventListener('click', () => {
-         window.dshCommunity?.openOfficial()
+       document.getElementById('save')?.addEventListener('click', () => {
+         window.dshCommunity?.applySettings({
+           hideToTray: document.getElementById('hideToTray')?.checked === true,
+           isolated: ${model.envIsolated ? 'true' : 'document.getElementById(\'isolated\')?.checked === true'},
+         })
+       })
+     </script>`,
+  )
+}
+
+export function renderDiagnosticsPage(model: DiagnosticsPageModel): string {
+  return shellDocument(
+    `${model.product} · 诊断`,
+    `<h1>Host 诊断</h1>
+     <p>stdout / stderr 只当日志。这里不解析 agent 或工具状态。</p>
+     <dl>
+       <dt>官方数据</dt><dd><code>${escapeHtml(model.officialHome)}</code>${model.isolated ? '（隔离）' : ''}</dd>
+       <dt>就绪 origin</dt><dd><code>${escapeHtml(model.origin || '—')}</code></dd>
+       <dt>Host</dt><dd>${escapeHtml(model.phase)} · pid ${escapeHtml(model.pid)}</dd>
+     </dl>
+     <pre>${escapeHtml(model.logs || '(no host log yet)')}</pre>
+     <div class="row">
+       <button id="retry">重新启动官方运行时</button>
+       <button class="secondary" id="copy">复制日志</button>
+       <button class="secondary" data-go="official">返回会话</button>
+     </div>
+     <script>
+       document.getElementById('retry')?.addEventListener('click', () => {
+         window.dshCommunity?.restartHost()
+       })
+       document.getElementById('copy')?.addEventListener('click', () => {
+         window.dshCommunity?.copyText(${JSON.stringify(model.logs || '')})
        })
      </script>`,
   )

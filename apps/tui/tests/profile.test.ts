@@ -46,6 +46,8 @@ describe('our TUI profile', () => {
     expect(isCommunityListSessions(['--list-sessions'])).toBe(true)
     expect(isCommunityListSessions(['--help'])).toBe(false)
     expect(parseCommunityLaunch(['--help'])).toEqual({ kind: 'help' })
+    expect(parseCommunityLaunch(['--', '--help'])).toEqual({ kind: 'help' })
+    expect(parseCommunityLaunch(['--', '--list-sessions']).kind).toBe('list')
     expect(COMMUNITY_TUI_HELP).toMatch(/official @deepseek-ai\/dsh/)
     expect(COMMUNITY_TUI_HELP).toMatch(/--list-sessions/)
   })
