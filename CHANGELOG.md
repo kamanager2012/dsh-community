@@ -2,23 +2,20 @@
 
 ## Unreleased
 
-- Phase 3 Release：3-OS 发布工作流（`release` workflow）——Linux AppImage / Windows NSIS+zip / macOS dmg，全部带 sha256 侧车；`node scripts/release.mjs <tag>` 一键发版
+## 0.1.2 — 2026-08-16
 
-Promote stable launcher UX from the archived edition line. Marketplace and official-plugin install stay as they are.
+Release: https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.2
 
-- `dsh-community` / `pnpm start`：continue newest official `~/.dsh` session；`new` starts fresh
-- Subcommands：`doctor`、`sessions`、`version`、`plugins`（只读目录）、`desktop`
-- Missing `DEEPSEEK_API_KEY` prints doctor and exits instead of launching Ink
-- Linux `desktopName` so the AppImage window maps to the `.desktop` entry
-- Phase 2 合流：从 community-edition 吸收 Session 选择器 UX——`--list-sessions --porcelain` 机器可读列表、`--resume last`、`--resume`（无参数列出并挑选）、人类可读列表带 mtime 与恢复提示；非 TTY 时给出明确指引
-- Phase 3 打包：Windows 不再 `spawnSync('pnpm')`（status null）；macOS 用 512×512 `icon.png`，并认 `mac-arm64` 产物；单平台失败不再挡住已打好的包发布
-- README / ECOSYSTEM 不再把产品写成单一 “0.1.1”：Stable = `releases/latest`，Preview = 最新 Pre-release，代码版本看 `package.json`
-- Windows 打包：子进程 stdin 关闭，避免 `pnpm deploy` 在 CI 上挂死；NSIS/zip 用 normal 压缩，不再额外打一份 dir
-- Windows 打包：`.pack-root` 自成 pnpm workspace，避免 electron-builder 扫整个 monorepo；CI 关闭 Defender 实时扫描
-- 定位改成社区发行版（One Harness. Three Surfaces.）：共享 `~/.dsh`、不 patch 官方 UI、注册表是验证层不是目录；不再把六仓说成已闭环生态
-- Windows 先只打 NSIS 安装包，zip 等安装包稳定后再加；打包过程打时间戳，方便看卡在哪一步
-- 官方 runtime 打成单个 `official-dsh.tar` 再进安装包，避免 NSIS 拷 3 万个小文件；第一次启动解到 userData
-- 3-OS `release` 工作流已打出 Linux AppImage / macOS dmg / Windows NSIS（Actions artifact；上 Release 还要打 tag）
+第一个三系统 Stable。官方 Runtime 的社区发行版：同一套 `~/.dsh`，Web / Desktop / Terminal 三个入口。v0.1.1 AppImage 里官方 `dsh web` 起不来，本版连同启动修复一起发布。
+
+- Linux AppImage / macOS dmg / Windows NSIS（`DSH Community Setup 0.1.2.exe`），各带 sha256
+- 官方 runtime 打成单个 `official-dsh.tar` 放进安装包，第一次启动解到 userData；Windows 不再拷 3 万个小文件
+- 统一入口：`dsh-community` / `new` / `resume last` / `sessions` / `doctor` / `version` / `plugins` / `desktop`
+- 没密钥打印 doctor 后退出，不闷头进 Ink
+- 定位：One Harness. Three Surfaces. 不 patch 官方 UI，注册表是验证层不是目录
+- Edition 已归档，下载只走本仓 Releases
+
+Windows 安装包未签名；macOS dmg 未公证。portable zip 还没打。
 
 ## 0.1.2-preview — 2026-08-16
 
