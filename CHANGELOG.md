@@ -2,10 +2,16 @@
 
 ## Unreleased
 
-- README / 使用指南改为指向 `releases/latest` 的三系统 Stable，不再劝人用 Preview
-- Windows 暂存改为完整 hoisted 树再解引用压平，不再只拷 `@deepseek-ai/dsh` 本体
-- 官方 runtime 解压写 ready stamp，半截失败会重解
-- 打包版第一次启动先出加载页再解官方 Runtime，不再黑屏干等
+## 0.1.3 — 2026-08-16
+
+Release: https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.3
+
+补丁版。`v0.1.2` 的 tag 曾被挪到只拷官方包本体的 Windows 暂存上，Latest 上的 Setup 一度变成缺依赖的 99MB 包。本版从完整 hoisted 树解引用压平再打包。
+
+- Windows 暂存压平完整官方依赖树，不再只带 `@deepseek-ai/dsh` 本体
+- 第一次启动先出加载页再解官方 Runtime；解压写 ready stamp，半截失败会重解
+- 已发布 tag 禁止覆盖：publish job 发现 Release 已存在就失败
+- 使用指南写明未签名 / SmartScreen / sha256 校验
 
 ## 0.1.2 — 2026-08-16
 

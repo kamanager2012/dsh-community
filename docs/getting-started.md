@@ -25,6 +25,16 @@
 
 每个安装包都有对应的 `.sha256` 文件。需要旧版本回归时再查看 [`v0.1.2-preview`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.2-preview)。
 
+Windows / macOS 包**未签名、未公证**。Windows 可能弹出 SmartScreen「未知发布者」：选「更多信息 → 仍要运行」，然后用 sidecar 校验：
+
+```sh
+sha256sum -c dsh-community-0.1.2.AppImage.sha256
+# Windows PowerShell:
+Get-FileHash 'DSH Community Setup 0.1.2.exe' -Algorithm SHA256
+```
+
+第一次打开桌面会解一份官方 Runtime 到用户数据目录，只做一次。对话仍在官方 `~/.dsh`。
+
 ## 五分钟从源码启动
 
 需要 Node.js 22+、pnpm 和可用的 `DEEPSEEK_API_KEY`：

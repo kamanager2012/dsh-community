@@ -54,3 +54,4 @@ https://github.com/kamanager2012/dsh-community/releases/latest
 - Never publish workspace packages to npm.
 - Do not attach the 600MB `linux-unpacked` tree; attach the AppImage / installers.
 - A failed platform job does not block the others; fix it in a follow-up patch release.
+- Never move or retag a published `vX.Y.Z`. If the bits are wrong, cut `vX.Y.Z+1`. The publish job refuses to overwrite an existing GitHub Release.

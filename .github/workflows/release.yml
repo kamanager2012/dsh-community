@@ -140,6 +140,11 @@ jobs:
             exit 1
           fi
           printf 'publishing %s\n' "${assets[@]}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "release $TAG already exists; refusing to replace published assets"
+            echo "cut a new tag for a new build. do not move a published tag."
+            exit 1
+          fi
           gh release create "$TAG" \
             --title "$TAG" \
             --notes-file release-notes.md \

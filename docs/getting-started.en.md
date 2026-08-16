@@ -25,6 +25,16 @@ Do not download a formal client from Suite, Marketplace, Plugins, or Edition. Th
 
 Each installer has a matching `.sha256` file. Use [`v0.1.2-preview`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.2-preview) only when reproducing older Preview behavior.
 
+Windows / macOS builds are **unsigned and not notarized**. Windows SmartScreen may say “Unknown publisher”: More info → Run anyway, then check the sidecar hash:
+
+```sh
+sha256sum -c dsh-community-0.1.2.AppImage.sha256
+# Windows PowerShell:
+Get-FileHash 'DSH Community Setup 0.1.2.exe' -Algorithm SHA256
+```
+
+The first desktop launch unpacks the official runtime into user data once. Sessions stay in official `~/.dsh`.
+
 ## Start from source in five minutes
 
 You need Node.js 22+, pnpm, and a working `DEEPSEEK_API_KEY`:
