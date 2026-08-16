@@ -39,7 +39,7 @@ Official Web  ↔  Community Desktop  ↔  Community TUI
 
 Registry 的目标是验证层，不是最大目录：能装、能跑、适配当前 pin、申请了什么权限。Awesome 做发现，我们做 trust。
 
-节奏必须双轨，不能等 Win/mac/SDK/手册 100% 再开口：工程继续收 0.1.2 三系统 Stable，同时把“社区发行版、同一套会话”讲清楚。
+节奏必须双轨，不能等 Win/mac/SDK/手册 100% 再开口：`v0.1.2` 三系统 Stable 已发布，工程继续维护安装证据、上游契约和版本漂移，同时把“社区发行版、同一套会话”讲清楚。
 
 ---
 
@@ -185,9 +185,9 @@ kamanager2012/dsh-community/releases/latest
 版本是三层，不要把 `package.json` 里的开发号写成“用户下载版本”：
 
 ```text
-main / package.json     开发中的下一版
-Preview                 Releases 里最新 Pre-release
-Stable                  releases/latest
+main / package.json     当前代码线 0.1.2
+Stable                  v0.1.2 / releases/latest
+Preview                 v0.1.2-preview（历史回归记录）
 ```
 
 当前用户下载事实：
