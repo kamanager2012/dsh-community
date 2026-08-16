@@ -25,6 +25,26 @@ describe('store interaction flows', () => {
     ])
   })
 
+  it('holds typed draft and clears it', () => {
+    const store = createStore()
+    store.setDraft('hel')
+    expect(store.state.draft).toBe('hel')
+    store.setDraft('')
+    expect(store.state.draft).toBe('')
+  })
+
+  it('renders interactive user message from data.content shape', () => {
+    const store = createStore()
+    store.applySessionEvent({ log: [{ type: 'user/message', seq: 1, data: { content: [{ type: 'text', text: '只回复两个字:收到' }], source: { kind: 'user' } } }] })
+    expect(store.state.items).toEqual([{ kind: 'user', id: '1', text: '只回复两个字:收到' }])
+  })
+
+  it('ignores runtime-context user messages', () => {
+    const store = createStore()
+    store.applySessionEvent({ log: [{ type: 'user/message', seq: 1, data: { content: [{ type: 'text', text: 'context' }], source: { kind: 'context' } } }] })
+    expect(store.state.items).toHaveLength(0)
+  })
+
   it('shows help as a system item', () => {
     const store = createStore()
     store.showHelp('帮助文本')

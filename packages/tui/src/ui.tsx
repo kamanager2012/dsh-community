@@ -3,7 +3,6 @@
  */
 
 import { Box, Text, useInput, useApp } from 'ink'
-import TextInput from 'ink-text-input'
 import { createElement, useState, useSyncExternalStore, type FC } from 'react'
 import type { UiItem, UiStore } from './store.js'
 
@@ -70,22 +69,14 @@ const HELP_TEXT = `dsh-community-tui 帮助
   y/n     审批弹窗:允许一次/拒绝
   数字键  提问弹窗:选择选项`
 
-const InputBar: FC<{ store: UiStore; onSend: (text: string) => void }> = ({ store, onSend }) => {
-  const [value, setValue] = useState('')
+const InputBar: FC<{ store: UiStore }> = ({ store }) => {
+  const draft = useSyncExternalStore(store.subscribe, () => store.state.draft)
   const state = useSyncExternalStore(store.subscribe, () => store.state)
   if (state.approval !== undefined || state.questions !== undefined) return null
-  return createElement(TextInput, {
-    value,
-    onChange: setValue,
-    onSubmit: (text) => {
-      const trimmed = text.trim()
-      setValue('')
-      if (trimmed === '/exit') process.exit(0)
-      else if (trimmed === '/help') store.showHelp(HELP_TEXT)
-      else if (trimmed !== '') onSend(trimmed)
-    },
-    placeholder: '输入任务，回车发送（/help /exit）',
-  })
+  if (draft === '') {
+    return createElement(Text, { color: MUTED }, '输入任务，回车发送（/help /exit）')
+  }
+  return createElement(Text, null, '> ', draft, createElement(Text, { color: MUTED }, '█'))
 }
 
 const StatusBar: FC<{ store: UiStore }> = ({ store }) => {
@@ -107,8 +98,8 @@ const ApprovalView: FC<{ store: UiStore }> = ({ store }) => {
 }
 
 const QuestionsView: FC<{ store: UiStore }> = ({ store }) => {
-  const [text, setText] = useState('')
   const state = useSyncExternalStore(store.subscribe, () => store.state)
+  const draft = state.draft
   const questions = state.questions
   if (questions === undefined) return null
   const question = questions.request.questions[0]
@@ -118,15 +109,7 @@ const QuestionsView: FC<{ store: UiStore }> = ({ store }) => {
     createElement(Text, { bold: true, color: ACCENT }, `提问：${question.header ?? question.question}`),
     options.length > 0
       ? createElement(Text, null, options.map((option, index) => `${String(index + 1)}. ${option.label}`).join('  '))
-      : createElement(TextInput, {
-          value: text,
-          onChange: setText,
-          onSubmit: (answer) => {
-            store.resolveQuestions({ answers: [{ id: question.id, selected: [], ...(answer.trim() === '' ? {} : { custom: answer.trim() }) }] })
-            setText('')
-          },
-          placeholder: '输入答案后回车',
-        }),
+      : createElement(Text, null, draft === '' ? '输入答案后回车' : `> ${draft}█`),
     options.length > 0
       ? createElement(Text, null, '输入编号回车')
       : null,
@@ -137,31 +120,50 @@ export const App: FC<AppProps> = ({ store, onSend, onCancel, onExit }) => {
   const { exit } = useApp()
   const [thinkingOpen, setThinkingOpen] = useState(false)
   useInput((input, key) => {
-    if (key.tab) {
-      setThinkingOpen((open) => !open)
-      return
-    }
-    const state = store.state
-    if (state.approval !== undefined) {
-      if (input === 'y') store.resolveApproval('allowed-once')
-      else if (input === 'n') store.resolveApproval('rejected')
-      return
-    }
-    if (state.questions !== undefined) {
-      const question = state.questions.request.questions[0]
-      if (question !== undefined && key.return === false) {
-        const options = question.options ?? []
-        const index = Number(input) - 1
-        if (options.length > 0 && Number.isInteger(index) && index >= 0 && index < options.length) {
-          store.resolveQuestions({ answers: [{ id: question.id, selected: [options[index]!.label] }] })
-        }
+    const raw = typeof input === 'string' ? input : ''
+    const list = key.return ? ['\r'] : [...raw].map((ch) => ch === '\n' ? '\r' : ch)
+    for (const ch of list) {
+      const state = store.state
+      if (ch === '\r') {
+        const trimmed = state.draft.trim()
+        store.setDraft('')
+        if (trimmed === '/exit') process.exit(0)
+        else if (trimmed === '/help') store.showHelp(HELP_TEXT)
+        else if (trimmed !== '') onSend(trimmed)
+        continue
       }
-      return
-    }
-    if (key.escape) onCancel()
-    if (input === 'q' && key.ctrl) onExit()
-    if (input === '?' ) {
-      // help hint rendered inline via placeholder; keep minimal
+      if (state.approval !== undefined) {
+        if (ch === 'y') store.resolveApproval('allowed-once')
+        else if (ch === 'n') store.resolveApproval('rejected')
+        continue
+      }
+      if (state.questions !== undefined) {
+        const question = state.questions.request.questions[0]
+        if (question !== undefined) {
+          const options = question.options ?? []
+          if (options.length > 0) {
+            const index = Number(ch) - 1
+            if (Number.isInteger(index) && index >= 0 && index < options.length) {
+              store.resolveQuestions({ answers: [{ id: question.id, selected: [options[index]!.label] }] })
+            }
+          } else if (ch === '\r') {
+            const answer = state.draft.trim()
+            store.setDraft('')
+            store.resolveQuestions({ answers: [{ id: question.id, selected: [], ...(answer === '' ? {} : { custom: answer }) }] })
+          }
+        }
+        continue
+      }
+      if (ch === '\t') {
+        setThinkingOpen((open) => !open)
+        continue
+      }
+      if (ch === '\x1b' || key.escape) {
+        onCancel()
+        continue
+      }
+      if (ch === 'q' && key.ctrl) onExit()
+      if (ch >= ' ' && ch !== '\x7f') store.setDraft(state.draft + ch)
     }
   })
 
@@ -170,7 +172,7 @@ export const App: FC<AppProps> = ({ store, onSend, onCancel, onExit }) => {
     createElement(ApprovalView, { store }),
     createElement(QuestionsView, { store }),
     createElement(Box, { marginTop: 1 },
-      createElement(InputBar, { store, onSend }),
+      createElement(InputBar, { store }),
     ),
     createElement(StatusBar, { store }),
   )

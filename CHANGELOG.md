@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- 输入系统重写:移除 ink-text-input,自研按键处理(兼容 cooked/raw 模式整行输入)
+- 修复:交互键入消息(含中文)未渲染——user/message 形状适配 + runtime-context 快照过滤
+- 修复:draft 状态移入 store,消除 useInput 闭包状态丢失(修复 /help 与审批 y/n 失效)
+- 审批弹窗真实端到端验证:官方沙箱升级 → 弹窗 → y 放行 → 工作区外文件写入成功
+
 - 界面打磨：思考折叠(Tab 展开/收起)、/help 帮助面板、/exit 提示
 - 文档对齐：apps/tui README 与 docs/tui-adapter.md 反映自研终端面架构(官方工具启用、0 禁用、KPI 表)
 

@@ -17,6 +17,7 @@ export interface QuestionPrompt {
 }
 
 export interface UiState {
+  readonly draft: string
   readonly items: readonly UiItem[]
   readonly status: string
   readonly model: string
@@ -26,6 +27,7 @@ export interface UiState {
 }
 
 const EMPTY: UiState = {
+  draft: '',
   items: [],
   status: 'idle',
   model: 'default',
@@ -81,6 +83,7 @@ export interface UiStore {
   setStatus(status: string): void
   setModel(model: string): void
   setFatal(message: string): void
+  setDraft(text: string): void
   showHelp(text: string): void
   askApproval(prompt: ApprovalPrompt): Promise<string>
   resolveApproval(outcome: string): void
@@ -122,9 +125,12 @@ export function createStore(): UiStore {
     const data = event.data ?? {}
 
     if (type === 'user/message') {
-      const text = textOfBlocks(data.message !== undefined && typeof data.message === 'object'
-        ? (data.message as Record<string, unknown>).content
-        : undefined)
+      const message = data.message !== undefined && typeof data.message === 'object'
+        ? data.message as Record<string, unknown>
+        : data
+      const source = message.source
+      if (typeof source === 'object' && source !== null && (source as { kind?: unknown }).kind !== 'user') return
+      const text = textOfBlocks(message.content)
       if (text === '') return
       set({ items: [...state.items, { kind: 'user', id: String(seq), text }] })
       return
@@ -198,6 +204,9 @@ export function createStore(): UiStore {
     },
     setFatal(message) {
       set({ fatal: message })
+    },
+    setDraft(text) {
+      set({ draft: text })
     },
     showHelp(text) {
       set({ items: [...state.items, { kind: 'help', id: String(state.items.length), text }] })
