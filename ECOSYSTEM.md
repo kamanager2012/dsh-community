@@ -1427,7 +1427,7 @@ Labs 成熟功能分批晋升 Community
 
 ## 三十一、当前最重要的产品工作是 Distribution Reality Gate
 
-`v0.1.4` 已经完成构建和三系统发布门槛。现在要验证的是：一个没有参与开发的人，下载 Release 页面上的真实安装包后能否完成用户闭环。
+`v0.1.2` 仍是当前 Latest。`v0.1.4` 没过 exact-artifact 桌面门禁。现在要验证的是：一个没有参与开发的人，下载 Latest 页面上的真实安装包后能否完成用户闭环。
 
 必须直接测试 exact release artifact，而不是 main 源码或 CI artifact:
 
