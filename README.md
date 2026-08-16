@@ -1,6 +1,8 @@
 # dsh-community
 
-**DSH 社区版（DeepSeek Harness Community Edition）—— 0.1.1.**
+**DSH 社区版（DeepSeek Harness Community Edition）** — Stable 见 [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest)，Preview 见 [releases](https://github.com/kamanager2012/dsh-community/releases) 的 prerelease。
+
+[English](README.en.md) | 简体中文
 
 只发布在 [github.com/kamanager2012/dsh-community](https://github.com/kamanager2012/dsh-community)。官方 Runtime 的社区发行层，不是官方客户端，也不是第二套 harness。
 
@@ -13,7 +15,7 @@
 
 > 命名红线：不叫 dsh-TUI / DeepSeek Harness Desktop（那是参考物），不在 npm 冒用 `@deepseek-ai` 或 `dsh-tui` 的包名。
 
-[仓库](https://github.com/kamanager2012/dsh-community) · [Release](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.1) · [插件市场](https://github.com/kamanager2012/dsh-community-plugins)
+[仓库](https://github.com/kamanager2012/dsh-community) · [Release](https://github.com/kamanager2012/dsh-community/releases/latest) · [插件市场](https://github.com/kamanager2012/dsh-community-plugins)
 
 开发基础是官方 DeepSeek Harness（`@deepseek-ai/dsh`）。我们在这上面做 Terminal / Desktop 发行和契约层，不另写一套 harness。
 
@@ -30,6 +32,23 @@
 | 官方表面快照 / 升 rc 契约 | **本仓** |
 
 不要把本仓发到 npm 当 `@deepseek-ai/dsh` 或 `dsh-tui` 的替代。
+
+## 社区生态导航
+
+本仓是官方 Runtime 之上的唯一 Canonical Product。普通用户只需要从
+[最新 Release](https://github.com/kamanager2012/dsh-community/releases/latest)
+下载本仓；其他仓库提供实验、知识、插件兼容性、发现体验或历史归档，不是第二个客户端。
+
+| 仓库 | 定位 | 入口 |
+|---|---|---|
+| [`deepseek-harness-suite`](https://github.com/kamanager2012/deepseek-harness-suite) | Community Labs，实验性 Bridge、SDK、安全和 UX | 维护者 / 实验开发者 |
+| [`deepseek-harness-handbook`](https://github.com/kamanager2012/deepseek-harness-handbook) | Knowledge / Evidence，使用、验收和运维手册 | [在线文档](https://kamanager2012.github.io/deepseek-harness-handbook/) |
+| [`dsh-community-plugins`](https://github.com/kamanager2012/dsh-community-plugins) | 插件兼容性注册表 | 插件作者 / 维护者 |
+| [`dsh-marketplace`](https://github.com/kamanager2012/dsh-marketplace) | 浏览、搜索和安装体验 | `dsh-marketplace` CLI |
+| [`dsh-community-edition`](https://github.com/kamanager2012/dsh-community-edition) | Merge & Archive，历史发行线 | 只读参考 |
+
+官方执行核心仍是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)。
+社区层不重新实现 Agent loop、官方 Session persistence、Tool execution 或官方 core packages。
 
 ## 从源码跑
 
