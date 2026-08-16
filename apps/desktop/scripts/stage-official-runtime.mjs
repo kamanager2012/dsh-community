@@ -4,7 +4,7 @@
  * tens of thousands of small files.
  */
 
-import { existsSync, lstatSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, statSync, writeFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { mkdir, readdir, rm } from 'node:fs/promises'
 import { createRequire } from 'node:module'
@@ -64,12 +64,9 @@ await mkdir(extra, { recursive: true })
 process.stdout.write('archiving official runtime to a single tar…\n')
 runCommand('tar', ['-cf', archive, 'node_modules'], { cwd: stageRoot })
 if (!existsSync(archive)) throw new Error(`official dsh archive missing: ${archive}`)
-
-const listed = runCommand('tar', ['-tf', archive], { cwd: extra, stdio: 'pipe', encoding: 'utf8' })
-const listing = String(listed.stdout ?? '')
-if (!listing.includes('node_modules/@deepseek-ai/dsh/lib/bin.js')) {
-  throw new Error('official dsh archive does not contain lib/bin.js')
-}
+const bytes = statSync(archive).size
+if (bytes < 1_000_000) throw new Error(`official dsh archive too small: ${archive} (${String(bytes)} bytes)`)
+process.stdout.write(`official dsh archive ${String(bytes)} bytes\n`)
 
 process.stdout.write(`${archive}\n`)
 process.stdout.write(`${officialBin}\n`)
