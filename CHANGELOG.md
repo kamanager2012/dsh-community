@@ -1,15 +1,17 @@
 # Changelog
 
-## Unreleased
-
 ## 0.1.6 — 2026-08-16
 
 Release: https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.6
 
 社区产品号统一为 **0.1.6**。根目录、Desktop、TUI 和 workspace 包同一数字。官方 Runtime 仍是 `@deepseek-ai/dsh@0.1.0-rc.6`，那是上游 pin，不是我们的版本。
 
-- 官方 runtime 用 npm 打成 Node 能解析的经典 `node_modules`，解压校验 `@deepseek-ai/dsh-app-boot`
+- 官方 runtime 暂存**重写为纯 npm 经典 node_modules**：无符号链接、无虚拟店，Node 解压即可解析；安装时运行 postinstall，Linux 上 node-pty 原生编译，win/mac 用官方 prebuild
+- 暂存自检：`@deepseek-ai/dsh-app-boot` / `commander` 必须能 require.resolve；node-pty 二进制必须存在；tar ≥ 80MB
+- 本地全链路实测：首启解压 → 官方 Web 200 → 干净退出 → 二次启动不解压直接 200
 - v0.1.3 / v0.1.4 桌面端不可用，保持 Pre-release；v0.1.5 tag 未发布，不要下载
+
+## 0.1.4 — 2026-08-16
 - 三个社区端：WSL/Linux Terminal、Windows Desktop、macOS Desktop
 
 ## 0.1.5 — 2026-08-16
