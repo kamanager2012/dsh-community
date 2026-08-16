@@ -113,19 +113,23 @@ DSH Community
 kamanager2012/dsh-community/releases/latest
 ```
 
-当前正式 Stable:
+版本是三层，不要把 `package.json` 里的开发号写成“用户下载版本”：
 
 ```text
-v0.1.1
+main / package.json     开发中的下一版
+Preview                 Releases 里最新 Pre-release
+Stable                  releases/latest
 ```
 
-目前正式 Release 已有:
+当前用户下载事实：
 
 ```text
-Linux AppImage
+Stable          Linux AppImage（已知：官方 dsh web 在该包里起不来）
+Preview         修复了上述启动问题的 Linux AppImage
+Windows / macOS release workflow 已写，3-OS Gate 未全绿前不要宣称可下
 ```
 
-Windows / macOS 后续也应该统一由 `dsh-community` 发布。
+Windows / macOS 也必须只从 `dsh-community` 发布，不能改去 Suite 或 Edition。
 
 **绝不能因为 Suite 有更先进功能,就让 Windows 用户或者高级用户去下载 Suite。**
 

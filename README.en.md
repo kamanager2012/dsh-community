@@ -5,7 +5,13 @@
 [简体中文](README.md) | **English**
 
 [![CI](https://github.com/kamanager2012/dsh-community/actions/workflows/ci.yml/badge.svg)](https://github.com/kamanager2012/dsh-community/actions/workflows/ci.yml)
-[Latest release](https://github.com/kamanager2012/dsh-community/releases/latest) ·
+| Channel | Download |
+|---|---|
+| **Stable** | [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) |
+| **Preview** | newest Pre-release on [Releases](https://github.com/kamanager2012/dsh-community/releases) |
+
+The number in `package.json` is the in-tree development version. Do not treat it as the user download. Desktop testers should use **Preview**: the current Stable Linux AppImage cannot start official `dsh web`. Windows / macOS installers come from the `release` workflow and are not a user download until that gate is green.
+
 [Official Runtime](https://github.com/deepseek-ai/deepseek-harness)
 
 ## What this repository is
@@ -24,9 +30,9 @@ execution, official Session persistence, and core lifecycle.
 | Goal | Use |
 |---|---|
 | Run the official Runtime directly | [`npx @deepseek-ai/dsh web`](https://github.com/deepseek-ai/deepseek-harness) |
-| Download the community product | [Latest `dsh-community` release](https://github.com/kamanager2012/dsh-community/releases/latest) |
+| Download the community product | [Releases](https://github.com/kamanager2012/dsh-community/releases) — Preview for desktop; do not push the current Stable AppImage |
 | Use the Terminal / TUI | `pnpm tui` or `dsh-community` after a source install |
-| Use the Desktop shell | `pnpm desktop` or the platform asset in the latest release |
+| Use the Desktop shell | `pnpm desktop`, or a Preview installer once the 3-OS workflow is green |
 | Read operational guidance | [DeepSeek Harness Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/) |
 | Browse community plugins | [`dsh-marketplace`](https://github.com/kamanager2012/dsh-marketplace) and the [compatibility registry](https://github.com/kamanager2012/dsh-community-plugins) |
 
