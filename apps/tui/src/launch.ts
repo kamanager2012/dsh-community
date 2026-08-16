@@ -10,6 +10,7 @@ export function officialTuiArgv(patchPath: string, extra: readonly string[] = []
 
 export type CommunityLaunch =
   | { readonly kind: 'help' }
+  | { readonly kind: 'doctor' }
   | { readonly kind: 'list' }
   | { readonly kind: 'resume'; readonly id: string; readonly rest: readonly string[] }
   | { readonly kind: 'run'; readonly rest: readonly string[] }
@@ -20,9 +21,11 @@ Usage:
   dsh-community-tui
   dsh-community-tui --list-sessions
   dsh-community-tui --resume <official-session-id>
+  dsh-community-tui --doctor
 
   --list-sessions     read-only list: id, project, mtime, transcript
   --resume <id>       official dsh --profile … --resume <id>
+  --doctor            self-check: official package / TTY / key (never prints the key)
   -h, --help          this help
 
 Other args are passed through to official dsh after --profile/--patch.
@@ -33,6 +36,7 @@ This binary is not dsh-tui and is not published as @deepseek-ai/*.
 export function parseCommunityLaunch(argv: readonly string[]): CommunityLaunch {
   const args = argv[0] === '--' ? argv.slice(1) : [...argv]
   if (args[0] === '--help' || args[0] === '-h') return { kind: 'help' }
+  if (args[0] === '--doctor') return { kind: 'doctor' }
   if (args[0] === '--list-sessions') return { kind: 'list' }
   if (args[0] === '--resume') {
     const id = args[1]

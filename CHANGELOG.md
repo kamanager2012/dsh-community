@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- `dsh-community-tui --doctor`：自检官方包 / bin / 数据目录 / session 数 / TTY / API 密钥存在性，不启动对话、不打印密钥，密钥缺失时退出码 2
+
 ## 0.1.1 — 2026-08-16
 
 Release: https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.1

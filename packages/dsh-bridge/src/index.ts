@@ -75,3 +75,9 @@ export {
   runtimeSwitchAvailable,
   type RuntimeCatalog,
 } from './runtime-catalog.js'
+export {
+  formatPreflightReport,
+  officialApiKeyPresent,
+  OFFICIAL_API_KEY_ENV,
+  type DistributionPreflight,
+} from './preflight.js'

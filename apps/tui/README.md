@@ -18,7 +18,10 @@ dsh-community-tui
 dsh-community-tui --help
 dsh-community-tui --list-sessions
 dsh-community-tui --resume <official-session-id>
+dsh-community-tui --doctor
 ```
+
+`--doctor` 是自检：报告官方包 / bin / 数据目录 / session 数 / TTY / API 密钥是否存在，不启动对话、不打印密钥；密钥缺失时以退出码 2 结束。
 
 `--resume` 会校验官方 `~/.dsh/sessions`，再交给官方启动器：
 

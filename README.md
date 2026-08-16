@@ -50,6 +50,7 @@ pnpm tui              # 官方 dsh --profile dsh-community-tui
 dsh-community-tui --help
 dsh-community-tui --list-sessions
 dsh-community-tui --resume <official-session-id>
+dsh-community-tui --doctor      # 自检：官方包 / TTY / 密钥（不打印密钥）
 ```
 
 打 Linux 解包目录或 AppImage（预览，未签名）：

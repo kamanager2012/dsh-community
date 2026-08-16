@@ -7,7 +7,9 @@ import { spawnSync } from 'node:child_process'
 import { homedir } from 'node:os'
 import {
   formatOfficialSessionMtime,
+  formatPreflightReport,
   listOfficialSessions,
+  officialApiKeyPresent,
   officialSessionRoot,
   resolveOfficialDsh,
   resolveOfficialDshHome,
@@ -36,6 +38,21 @@ const launch = (() => {
 if (launch.kind === 'help') {
   process.stdout.write(COMMUNITY_TUI_HELP)
   process.exit(0)
+}
+
+if (launch.kind === 'doctor') {
+  const install = resolveOfficialDsh({ from: import.meta.url })
+  const root = officialSessionRoot(dshHome)
+  process.stdout.write(formatPreflightReport({
+    officialPackage: install.packageName,
+    officialVersion: install.version,
+    officialBin: install.binPath,
+    officialHome: dshHome,
+    sessionCount: listOfficialSessions(root).length,
+    apiKeyPresent: officialApiKeyPresent(),
+    tty: Boolean(process.stdout.isTTY),
+  }))
+  process.exit(officialApiKeyPresent() ? 0 : 2)
 }
 
 if (launch.kind === 'list') {

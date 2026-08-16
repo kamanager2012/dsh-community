@@ -48,8 +48,11 @@ describe('our TUI profile', () => {
     expect(parseCommunityLaunch(['--help'])).toEqual({ kind: 'help' })
     expect(parseCommunityLaunch(['--', '--help'])).toEqual({ kind: 'help' })
     expect(parseCommunityLaunch(['--', '--list-sessions']).kind).toBe('list')
+    expect(parseCommunityLaunch(['--doctor'])).toEqual({ kind: 'doctor' })
+    expect(parseCommunityLaunch(['--', '--doctor'])).toEqual({ kind: 'doctor' })
     expect(COMMUNITY_TUI_HELP).toMatch(/official @deepseek-ai\/dsh/)
     expect(COMMUNITY_TUI_HELP).toMatch(/--list-sessions/)
+    expect(COMMUNITY_TUI_HELP).toMatch(/--doctor/)
   })
 
   it('resumes from an official session id, not a second store', () => {
