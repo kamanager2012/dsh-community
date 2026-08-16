@@ -1,6 +1,6 @@
 {
   "name": "@dsh-community/tui",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "type": "module",
   "description": "Our third-party TUI distribution. Official dsh is the runtime; reference TUI is Ink we mount.",
