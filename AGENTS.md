@@ -11,6 +11,7 @@ This is a community launcher/adapter workspace for official DeepSeek Harness.
 - Snapshot official surface under contracts/upstream. Do not maintain event-types.ts.
 - Official `@deepseek-ai/dsh` is the development foundation. Third-party Desktop/TUI repos are references to beat, not remotes we patch.
 - Terminal is apps/tui (`dsh-community`) + our own surface packages/tui (`@dsh-community/tui-surface`) over official host seams. Official tools stay enabled; execution and approval run on the official waterfall. Never install or mount third-party TUI products; third-party TUIs are reference-only.
+- Terminal input arrives COOKED (the official CLI enables stdin raw mode first, then releases it): keyboard chunks come whole-line (`"y\r"`, `"/help\r"`). The surface normalizes chunks itself; never assume Ink raw-mode per-char delivery, and keep draft state in the store, not React state.
 - Desktop KPI is Official Source Ownership = 0.
 - Recommend latest tested from contracts/compatibility, not npm latest.
 - Window state, catalog, and host.log live in Electron userData. Never write those under ~/.dsh.

@@ -21,6 +21,20 @@ ctx.agents / session/event / userQuestions / approval (官方 seam)
 
 界面能力(自研):输入框、对话 transcript、思考折叠、工具卡片、审批/提问弹窗、状态栏;执行全部走官方。
 
+按键:
+
+```text
+回车     发送
+Esc      打断当前回答
+Tab      展开/收起思考
+y / n    审批弹窗:允许一次 / 拒绝
+数字键   提问弹窗:选择选项
+/help    显示按键帮助; /exit 退出
+```
+
+输入系统自研(不依赖 ink-text-input):官方 CLI 先占用 raw 模式,终端输入常以
+cooked 整行(`"y\r"` 这种)送达——按键层按字符规范化,raw/cooked 两种模式都兼容。
+
 ```sh
 dsh-community                 # 有对话就接着最近一条,否则开新
 dsh-community new "任务"      # 新对话
@@ -29,6 +43,11 @@ dsh-community sessions        # 官方 session 列表
 dsh-community doctor          # 自检(不打印密钥)
 ```
 
-调试/脚本:`DSH_TUI_FIRST_PROMPT="任务"` 启动后直接发送一条消息(非交互场景)。
+调试/脚本:
+
+```text
+DSH_TUI_FIRST_PROMPT="任务"   启动后直接发送一条消息(非交互场景)
+DSH_TUI_DEBUG=1               事件流/按键调试输出(stderr)
+```
 
 Session 仍在官方 `~/.dsh`。
