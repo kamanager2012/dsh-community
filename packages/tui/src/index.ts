@@ -11,6 +11,9 @@
  * are imported, mounted, or patched.
  */
 
+import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { SessionId } from '@deepseek-ai/dsh-session'
+import { installModelSelection } from '@deepseek-ai/dsh-agent'
 import { render, type Instance } from 'ink'
 import { createElement } from 'react'
 import { randomUUID } from 'node:crypto'
@@ -24,7 +27,7 @@ const RESUME_ENV = ['DSH_TUI_RESUME_SESSION', 'DSH_CC_RESUME_SESSION'] as const
 
 export const name = 'dsh-community-tui'
 
-export const inject = ['agents', 'userQuestions'] as const
+export const inject = ['agents', 'userQuestions', 'agentDefaultModel'] as const
 
 interface ApprovalRequestLike {
   readonly agent?: { readonly id?: string }
@@ -59,15 +62,33 @@ export function apply(ctx: CordisContext): (() => void) | void {
   })
 
   const run = async (): Promise<void> => {
+    const loader = ctx.get('loader')
+    if (loader !== undefined && typeof (loader as { await?: unknown }).await === 'function') {
+      await (loader as { await(): Promise<void> }).await()
+    }
+    const defaultModel = ctx.agentDefaultModel
+    const selection = defaultModel.currentSelection()
+
     let handle: AgentHandleLike
     if (resumeId !== undefined) {
-      handle = await ctx.agents.resume({ resumeSessionId: resumeId })
+      handle = await ctx.agents.resume({
+        resumeSessionId: resumeId,
+        agentOptions: { provider: selection.provider, model: selection.model },
+        setup: (agentCtx: unknown) => {
+          installModelSelection(agentCtx as never, { current: selection, assembled: undefined })
+        },
+      })
     } else {
       handle = await ctx.agents.create({
-        sessionId: randomUUID(),
+        sessionId: SessionId(`session-${randomUUID()}`),
         meta: { cwd: process.cwd() },
+        agentOptions: { provider: selection.provider, model: selection.model },
+        setup: (agentCtx: unknown) => {
+          installModelSelection(agentCtx as never, { current: selection, assembled: undefined })
+        },
       })
     }
+    await handle.agent.whenIdle()
     current = handle
 
     const agent = handle.agent
@@ -77,6 +98,14 @@ export function apply(ctx: CordisContext): (() => void) | void {
     agent.ctx.on('session/event', (event: Record<string, unknown>) => {
       store.applySessionEvent(event)
     })
+
+    const firstPrompt = process.env.DSH_TUI_FIRST_PROMPT?.trim()
+    if (firstPrompt !== undefined && firstPrompt !== '') {
+      agent.followup(createUserMessage({
+        content: [{ type: 'text', text: firstPrompt }],
+        source: { kind: 'user' },
+      }))
+    }
     agent.ctx.on('agent/status', (payload: { status?: string }) => {
       store.setStatus(payload.status ?? 'idle')
     })
@@ -84,12 +113,10 @@ export function apply(ctx: CordisContext): (() => void) | void {
     const ui = render(createElement(App, {
       store,
       onSend: (text: string) => {
-        agent.followup({
-          id: randomUUID(),
-          role: 'user',
+        agent.followup(createUserMessage({
           content: [{ type: 'text', text }],
           source: { kind: 'user' },
-        })
+        }))
       },
       onCancel: () => agent.cancel('user-interrupt'),
       onExit: () => {

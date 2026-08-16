@@ -3,13 +3,6 @@
   config:
     persona: !!js process.env.DSH_TUI_PERSONA ?? 'You are a coding agent.'
 
-- id: llm-deepseek
-  config:
-    apiKeyEnv: 'DEEPSEEK_API_KEY'
-    baseURL: !!js process.env.DEEPSEEK_BASE_URL
-    thinking: enabled
-    reasoningEffort: max
-
 - id: agent-loop
   config:
     agents: []

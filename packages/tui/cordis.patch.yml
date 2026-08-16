@@ -1,9 +1,14 @@
-# dsh-community-tui bundle patch: the community-owned terminal surface over
-# the dsh-base layer. One insert (our plugin) plus the two official
-# interaction services an interactive terminal needs.
+# dsh-community-tui-surface bundle patch: the community-owned terminal surface
+# over the dsh-base layer. One insert (our plugin) plus the official rows an
+# interactive terminal needs:
+#   - code-runtime: the official agent execution runtime (headless ships the
+#     same row; a surface without it can compose but never executes a turn)
+#   - user-questions / approval: official interaction services
 #
-# Everything here is our own surface code; the official rows below are
-# official packages the base already carries, configured for interactivity.
+# Everything else stays official. No third-party harness products are mounted.
+
+- id: hmr
+  disabled: true
 
 - insert:
     - id: dsh-community-tui

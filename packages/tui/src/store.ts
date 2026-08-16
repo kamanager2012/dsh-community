@@ -33,6 +33,13 @@ const EMPTY: UiState = {
   fatal: undefined,
 }
 
+/** One durable session event inside the `session/event` log batch. */
+interface SessionEventLike {
+  readonly type?: unknown
+  readonly seq?: unknown
+  readonly data?: Record<string, unknown>
+}
+
 function textOfBlocks(blocks: unknown): string {
   if (!Array.isArray(blocks)) return ''
   return blocks
@@ -43,13 +50,13 @@ function textOfBlocks(blocks: unknown): string {
     .join('\n')
 }
 
-function summaryOfToolResult(event: Record<string, unknown>): string {
-  const meta = event.meta
+function summaryOfToolResult(data: Record<string, unknown>): string {
+  const meta = data.meta
   if (typeof meta === 'object' && meta !== null) {
     const summary = (meta as Record<string, unknown>).summary
     if (typeof summary === 'string' && summary !== '') return summary
   }
-  const content = event.content
+  const content = data.content
   if (Array.isArray(content)) {
     const text = content
       .filter((block): block is { type: 'text'; text?: unknown } =>
@@ -69,7 +76,7 @@ function summaryOfToolResult(event: Record<string, unknown>): string {
 export interface UiStore {
   readonly state: UiState
   subscribe(listener: () => void): () => void
-  applySessionEvent(event: Record<string, unknown>): void
+  applySessionEvent(payload: unknown): void
   setStatus(status: string): void
   setModel(model: string): void
   setFatal(message: string): void
@@ -81,6 +88,7 @@ export interface UiStore {
 
 export function createStore(): UiStore {
   let state: UiState = EMPTY
+  let lastSeq = -1
   const listeners = new Set<() => void>()
   let approvalWaiter: ((outcome: string) => void) | undefined
   let questionWaiter: ((answer: UserQuestionAnswer) => void) | undefined
@@ -103,6 +111,65 @@ export function createStore(): UiStore {
     emit()
   }
 
+  const applyEvent = (event: SessionEventLike): void => {
+    const type = event.type
+    if (typeof type !== 'string') return
+    const seq = typeof event.seq === 'number' ? event.seq : lastSeq + 1
+    if (seq <= lastSeq) return
+    lastSeq = seq
+    const data = event.data ?? {}
+
+    if (type === 'user/message') {
+      const text = textOfBlocks(data.message !== undefined && typeof data.message === 'object'
+        ? (data.message as Record<string, unknown>).content
+        : undefined)
+      if (text === '') return
+      set({ items: [...state.items, { kind: 'user', id: String(seq), text }] })
+      return
+    }
+    if (type === 'assistant/chunk') {
+      const chunk = data.chunk
+      if (typeof chunk !== 'object' || chunk === null) return
+      const c = chunk as Record<string, unknown>
+      const last = state.items[state.items.length - 1]
+      if (last?.kind !== 'assistant' || last.final) {
+        set({ items: [...state.items, { kind: 'assistant', id: String(seq), text: '', reasoning: '', final: false }] })
+      }
+      if (c.type === 'text-delta') {
+        patchLast('assistant', (item) => item.kind === 'assistant' ? { ...item, text: item.text + String(c.text ?? '') } : item)
+      } else if (c.type === 'reasoning-delta') {
+        patchLast('assistant', (item) => item.kind === 'assistant' ? { ...item, reasoning: item.reasoning + String(c.text ?? '') } : item)
+      } else if (c.type === 'tool-call-delta') {
+        const callId = String(c.id ?? 'call')
+        if (!state.items.some((item) => item.kind === 'tool' && item.id === callId)) {
+          set({ items: [...state.items, { kind: 'tool', id: callId, name: String(c.name ?? 'tool'), args: String(c.argumentsDelta ?? ''), done: false, summary: '' }] })
+        }
+      }
+      return
+    }
+    if (type === 'assistant/message') {
+      patchLast('assistant', (item) => item.kind === 'assistant' ? { ...item, final: true } : item)
+      return
+    }
+    if (type === 'tool/call') {
+      const callId = String(data.callId ?? 'call')
+      if (!state.items.some((item) => item.kind === 'tool' && item.id === callId)) {
+        set({ items: [...state.items, { kind: 'tool', id: callId, name: String(data.name ?? 'tool'), args: String(data.arguments ?? ''), done: false, summary: '' }] })
+      }
+      return
+    }
+    if (type === 'tool/result') {
+      const callId = String(data.callId ?? 'call')
+      const summary = summaryOfToolResult(data)
+      set({
+        items: state.items.map((item) =>
+          item.kind === 'tool' && item.id === callId ? { ...item, done: true, summary } : item,
+        ),
+      })
+      return
+    }
+  }
+
   return {
     get state() {
       return state
@@ -111,54 +178,14 @@ export function createStore(): UiStore {
       listeners.add(listener)
       return () => listeners.delete(listener)
     },
-    applySessionEvent(event) {
-      const type = event.type
-      if (type === 'user/message') {
-        const message = event.message as { content?: unknown } | undefined
-        const text = textOfBlocks(message?.content)
-        if (text === '') return
-        set({ items: [...state.items, { kind: 'user', id: String(event.seq ?? state.items.length), text }] })
-        return
-      }
-      if (type === 'assistant/chunk') {
-        const chunk = event.chunk as Record<string, unknown> | undefined
-        if (chunk === undefined) return
-        const last = state.items[state.items.length - 1]
-        if (last?.kind !== 'assistant' || last.final) {
-          set({ items: [...state.items, { kind: 'assistant', id: String(chunk.index ?? state.items.length), text: '', reasoning: '', final: false }] })
+    applySessionEvent(payload) {
+      if (typeof payload !== 'object' || payload === null) return
+      const log = (payload as Record<string, unknown>).log
+      if (!Array.isArray(log)) return
+      for (const item of log) {
+        if (typeof item === 'object' && item !== null) {
+          applyEvent(item as SessionEventLike)
         }
-        if (chunk.type === 'text-delta') {
-          patchLast('assistant', (item) => item.kind === 'assistant' ? { ...item, text: item.text + String(chunk.text ?? '') } : item)
-        } else if (chunk.type === 'reasoning-delta') {
-          patchLast('assistant', (item) => item.kind === 'assistant' ? { ...item, reasoning: item.reasoning + String(chunk.text ?? '') } : item)
-        } else if (chunk.type === 'tool-call-delta') {
-          const callId = String(chunk.id ?? chunk.index ?? 'call')
-          if (!state.items.some((item) => item.kind === 'tool' && item.id === callId)) {
-            set({ items: [...state.items, { kind: 'tool', id: callId, name: String(chunk.name ?? 'tool'), args: String(chunk.argumentsDelta ?? ''), done: false, summary: '' }] })
-          }
-        }
-        return
-      }
-      if (type === 'assistant/message') {
-        patchLast('assistant', (item) => item.kind === 'assistant' ? { ...item, final: true } : item)
-        return
-      }
-      if (type === 'tool/call') {
-        const callId = String(event.callId ?? 'call')
-        if (!state.items.some((item) => item.kind === 'tool' && item.id === callId)) {
-          set({ items: [...state.items, { kind: 'tool', id: callId, name: String(event.name ?? 'tool'), args: String(event.arguments ?? ''), done: false, summary: '' }] })
-        }
-        return
-      }
-      if (type === 'tool/result') {
-        const callId = String(event.callId ?? 'call')
-        const summary = summaryOfToolResult(event)
-        set({
-          items: state.items.map((item) =>
-            item.kind === 'tool' && item.id === callId ? { ...item, done: true, summary } : item,
-          ),
-        })
-        return
       }
     },
     setStatus(status) {
