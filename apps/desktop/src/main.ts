@@ -6,7 +6,6 @@
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawn } from 'node:child_process'
-import { existsSync } from 'node:fs'
 import {
   app,
   clipboard,
@@ -26,6 +25,7 @@ import {
   listOfficialSessions,
   officialSessionRoot,
   parseRuntimeCatalog,
+  PINNED_DSH_VERSION,
   pinDefault,
   resolveDesktopAppLayout,
   resolveEffectiveOfficialHome,
@@ -64,7 +64,12 @@ import {
   renderSettingsPage,
 } from './pages.ts'
 import { formatSessionMtime } from './session-view.ts'
-import { assertHostLaunchPaths, resolveHostLaunchPaths, stagedOfficialBin } from './paths.ts'
+import {
+  ensureOfficialHostExtracted,
+  officialHostArchive,
+  officialHostRoot,
+} from './host-extract.ts'
+import { assertHostLaunchPaths, resolveHostLaunchPaths } from './paths.ts'
 import { buildRuntimeView, readLatestTested } from './runtime-view.ts'
 import {
   applyDesktopSettingsPatch,
@@ -669,8 +674,11 @@ function bindIpc(): void {
 
 async function boot(): Promise<void> {
   if (app.isPackaged) {
-    const staged = stagedOfficialBin(process.resourcesPath)
-    if (existsSync(staged)) process.env.DSH_COMMUNITY_BIN = staged
+    const extracted = ensureOfficialHostExtracted({
+      archivePath: officialHostArchive(process.resourcesPath),
+      destRoot: officialHostRoot(app.getPath('userData'), PINNED_DSH_VERSION),
+    })
+    process.env.DSH_COMMUNITY_BIN = extracted
   }
   const paths = launchPaths()
   assertHostLaunchPaths(paths)

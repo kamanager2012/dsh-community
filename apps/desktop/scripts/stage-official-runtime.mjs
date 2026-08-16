@@ -1,53 +1,61 @@
 /**
- * Stage the published official CLI for packaging.
- * Copies a production deploy of this app's dependencies — never a git checkout
- * of deepseek-ai/deepseek-harness.
+ * Stage the published official CLI as one portable tar.
+ * Do not extraResource a pnpm node_modules tree — Windows NSIS dies on
+ * tens of thousands of small files.
  */
 
-import { existsSync } from 'node:fs'
-import { cp, mkdir, readdir, rm } from 'node:fs/promises'
+import { existsSync, lstatSync, writeFileSync } from 'node:fs'
+import { mkdir, readdir, rm } from 'node:fs/promises'
+import { createRequire } from 'node:module'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { runCommand } from './run-command.mjs'
 
 const appRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const workspace = resolve(appRoot, '../..')
 const stageRoot = resolve(appRoot, 'runtime-stage')
-const forbidden = [
-  'apps/cli',
-  'apps/web',
-  'packages/core',
-  'packages/session',
-  'packages/agent',
-  'packages/llm',
-  'packages/bundle',
-  'vendor/deepseek-harness',
-]
+const extra = resolve(appRoot, 'runtime-host')
+const archive = join(extra, 'official-dsh.tar')
+const require = createRequire(join(appRoot, 'package.json'))
+const desktopManifest = require('./package.json')
+const pin = desktopManifest.dependencies['@deepseek-ai/dsh']
+if (typeof pin !== 'string' || pin.length === 0) {
+  throw new Error('apps/desktop/package.json is missing @deepseek-ai/dsh')
+}
 
 await rm(stageRoot, { recursive: true, force: true })
 await mkdir(stageRoot, { recursive: true })
+writeFileSync(join(stageRoot, 'package.json'), `${JSON.stringify({
+  name: 'dsh-community-host',
+  private: true,
+  dependencies: { '@deepseek-ai/dsh': pin },
+}, null, 2)}\n`)
+writeFileSync(join(stageRoot, '.npmrc'), 'node-linker=hoisted\nignore-scripts=true\n')
 
-process.stdout.write('staging official @deepseek-ai/dsh via pnpm deploy…\n')
-runCommand(
-  'pnpm',
-  ['--filter', '@dsh-community/desktop', 'deploy', '--prod', '--legacy', stageRoot],
-  { cwd: workspace },
-)
-
-const names = await readdir(stageRoot)
-const leaked = forbidden.filter((rel) => names.includes(rel))
-if (leaked.length > 0) {
-  throw new Error(`stage looks like a vendored official tree: ${leaked.join(', ')}`)
-}
+process.stdout.write(`staging official @deepseek-ai/dsh@${pin} (hoisted)…\n`)
+runCommand('pnpm', ['install', '--prod', '--ignore-workspace'], { cwd: stageRoot })
 
 const officialBin = join(stageRoot, 'node_modules/@deepseek-ai/dsh/lib/bin.js')
-if (!existsSync(officialBin)) {
-  throw new Error(`staged official bin missing: ${officialBin}`)
+if (!existsSync(officialBin)) throw new Error(`staged official bin missing: ${officialBin}`)
+if (lstatSync(officialBin).isSymbolicLink()) {
+  throw new Error(`staged official bin is a symlink: ${officialBin}`)
 }
 
-const extra = resolve(appRoot, 'runtime-host')
-await rm(extra, { recursive: true, force: true })
-await mkdir(join(extra, 'node_modules'), { recursive: true })
-await cp(join(stageRoot, 'node_modules'), join(extra, 'node_modules'), { recursive: true })
+const leaked = ['apps/cli', 'packages/core', 'vendor/deepseek-harness']
+const names = await readdir(stageRoot)
+const hit = leaked.filter((rel) => names.includes(rel))
+if (hit.length > 0) throw new Error(`stage looks like a vendored official tree: ${hit.join(', ')}`)
 
+await rm(extra, { recursive: true, force: true })
+await mkdir(extra, { recursive: true })
+process.stdout.write('archiving official runtime to a single tar…\n')
+runCommand('tar', ['-cf', archive, 'node_modules'], { cwd: stageRoot })
+if (!existsSync(archive)) throw new Error(`official dsh archive missing: ${archive}`)
+
+const listed = runCommand('tar', ['-tf', archive], { cwd: extra, stdio: 'pipe', encoding: 'utf8' })
+const listing = String(listed.stdout ?? '')
+if (!listing.includes('node_modules/@deepseek-ai/dsh/lib/bin.js')) {
+  throw new Error('official dsh archive does not contain lib/bin.js')
+}
+
+process.stdout.write(`${archive}\n`)
 process.stdout.write(`${officialBin}\n`)

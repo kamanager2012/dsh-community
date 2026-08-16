@@ -97,7 +97,7 @@ phase('building desktop main/preload')
 runCommand(process.execPath, [join(desktop, 'scripts/write-tray-icon.mjs')], { cwd: desktop })
 runCommand(process.execPath, [join(desktop, 'scripts/build.mjs')], { cwd: desktop })
 
-if (!await exists(join(desktop, 'runtime-host/node_modules/@deepseek-ai/dsh/lib/bin.js'))) {
+if (!await exists(join(desktop, 'runtime-host/official-dsh.tar'))) {
   phase('staging official runtime')
   runCommand(process.execPath, [join(desktop, 'scripts/stage-official-runtime.mjs')], { cwd: desktop })
 } else {
@@ -148,8 +148,8 @@ const packManifest = {
     ],
     extraResources: [
       {
-        from: join(desktop, 'runtime-host/node_modules'),
-        to: 'host/node_modules',
+        from: join(desktop, 'runtime-host/official-dsh.tar'),
+        to: 'host/official-dsh.tar',
       },
       {
         from: join(workspace, 'contracts/compatibility/latest-tested.json'),
@@ -214,26 +214,24 @@ if (targetFlag === 'appimage') {
     ?? names.find((name) => name.endsWith('.exe'))
   if (exe === undefined) throw new Error(`Windows installer missing in ${releaseDir}`)
   const bin = join(releaseDir, 'win-unpacked', 'DSH Community.exe')
-  const officialPath = join(releaseDir, 'win-unpacked', 'resources/host/node_modules/@deepseek-ai/dsh/lib/bin.js')
+  const officialPath = join(releaseDir, 'win-unpacked', 'resources/host/official-dsh.tar')
   if (!await exists(bin)) throw new Error(`packaged executable missing: ${bin}`)
-  if (!await exists(officialPath)) throw new Error(`staged official dsh missing: ${officialPath}`)
+  if (!await exists(officialPath)) throw new Error(`staged official dsh archive missing: ${officialPath}`)
   process.stdout.write(`packaged ${join(releaseDir, exe)}\n`)
-  const zip = names.find((name) => name.endsWith('.zip'))
-  if (zip !== undefined) process.stdout.write(`packaged ${join(releaseDir, zip)}\n`)
 } else if (targetFlag === 'mac') {
   const dmg = (await readdir(releaseDir)).find((name) => name.endsWith('.dmg'))
   if (dmg === undefined) throw new Error(`macOS dmg missing in ${releaseDir}`)
   const bin = await findMacApp(releaseDir)
   if (bin === undefined) throw new Error(`packaged executable missing under ${releaseDir} (looked for ${productAppName})`)
-  const officialPath = join(bin, 'Contents/Resources/host/node_modules/@deepseek-ai/dsh/lib/bin.js')
-  if (!await exists(officialPath)) throw new Error(`staged official dsh missing: ${officialPath}`)
+  const officialPath = join(bin, 'Contents/Resources/host/official-dsh.tar')
+  if (!await exists(officialPath)) throw new Error(`staged official dsh archive missing: ${officialPath}`)
   process.stdout.write(`packaged ${join(releaseDir, dmg)}\n`)
 } else {
   const unpackedRoot = join(releaseDir, 'linux-unpacked')
   const bin = join(unpackedRoot, 'dsh-community')
-  const officialPath = join(unpackedRoot, 'resources/host/node_modules/@deepseek-ai/dsh/lib/bin.js')
+  const officialPath = join(unpackedRoot, 'resources/host/official-dsh.tar')
   if (!await exists(bin)) throw new Error(`packaged executable missing: ${bin}`)
-  if (!await exists(officialPath)) throw new Error(`staged official dsh missing: ${officialPath}`)
+  if (!await exists(officialPath)) throw new Error(`staged official dsh archive missing: ${officialPath}`)
   process.stdout.write(`packaged ${bin}\n`)
   process.stdout.write(`official  ${officialPath}\n`)
 }

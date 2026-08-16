@@ -31,7 +31,7 @@ describe('resolveHostLaunchPaths', () => {
     expect(paths.nodeExecutable).toBe(realNode)
     expect(paths.electronRunAsNode).toBe(false)
     expect(paths.cwd).toBe('/home/dev')
-    expect(paths.env.NODE_PATH).toMatch(/host\/node_modules/)
+    expect(paths.env.NODE_PATH).toMatch(/node_modules/)
   })
 
   it('falls back to Electron-as-node when no real Node is available', () => {
@@ -46,6 +46,6 @@ describe('resolveHostLaunchPaths', () => {
     })
     expect(paths.nodeExecutable).toBe('/opt/Electron')
     expect(paths.electronRunAsNode).toBe(true)
-    expect(paths.env.NODE_PATH).toMatch(/host\/node_modules/)
+    expect(paths.env.NODE_PATH).toMatch(/node_modules/)
   })
 })

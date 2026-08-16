@@ -33,4 +33,4 @@ pnpm --filter @dsh-community/desktop package
 ./release/linux-unpacked/dsh-community
 ```
 
-打包脚本在独立 `.pack-root` 里跑 electron-builder，避免 `pnpm install --production` 卸掉开发依赖。`stage-official-runtime.mjs` 用 `pnpm deploy --prod` 暂存**已发布**的官方包。解包目录是预览，未签名。
+打包脚本在独立 `.pack-root` 里跑 electron-builder，避免 `pnpm install --production` 卸掉开发依赖。官方 runtime 打成单个 `official-dsh.tar`，第一次启动再解到 userData；不要把整个 pnpm `node_modules` 塞进 NSIS。解包目录是预览，未签名。

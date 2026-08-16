@@ -55,6 +55,12 @@ function stagedOfficialBin(resourcesPath: string): string {
   return join(resourcesPath, 'host', 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')
 }
 
+function nodePathForCli(cliEntry: string, resourcesPath: string): string {
+  const unpacked = join(resourcesPath, 'host', 'node_modules')
+  if (existsSync(unpacked)) return unpacked
+  return join(cliEntry, '..', '..', '..', '..')
+}
+
 export function resolveOfficialInstall(from: string): OfficialDshInstall {
   return resolveOfficialDsh({ from })
 }
@@ -84,7 +90,7 @@ export function resolveHostLaunchPaths(input: ResolveHostLaunchInput): HostLaunc
     ? staged
     : resolveOfficialDsh({ from: input.from, env: input.env }).binPath
   const nodeExecutable = packagedNodeExecutable(input)
-  const nodePath = join(input.resourcesPath, 'host', 'node_modules')
+  const nodePath = nodePathForCli(cliEntry, input.resourcesPath)
   const delimiter = process.platform === 'win32' ? ';' : ':'
   const nodePathValue = input.env.NODE_PATH === undefined || input.env.NODE_PATH === ''
     ? nodePath
