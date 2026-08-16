@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- 产品端钉死为三个社区端：WSL/Linux Terminal、Windows Desktop、macOS Desktop。官方 Web 是共享 `~/.dsh` 的官方入口，不是社区端。Linux AppImage 降为次要产物。
+
 ## 0.1.4 — 2026-08-16
 
 Release: https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.4

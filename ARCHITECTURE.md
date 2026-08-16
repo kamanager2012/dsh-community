@@ -1,6 +1,6 @@
 # Architecture
 
-Community **distribution** around official DeepSeek Harness: one runtime, one `~/.dsh`, three surfaces. Not a second harness and not a Desktop fork.
+Community **distribution** around official DeepSeek Harness: one runtime, one `~/.dsh`, three Community endpoints (WSL/Linux Terminal, Windows Desktop, macOS Desktop). Official Web is a compatible official surface, not a Community product. Not a second harness and not a Desktop fork. See [docs/community-endpoints.md](docs/community-endpoints.md).
 
 ```
                   DeepSeek Harness
@@ -71,7 +71,7 @@ A new official rc: extract → diff snapshots → contract tests → then TUI/De
 2. **TUI patch-surface reduction** — official Cordis row overrides go 33 → 15 → 8 → TUI-owned inserts only
 3. **TUI/Desktop do not implement** Agent loop, Session persistence, Tool execution
 4. **Upstream rc bump** does not require business UI code changes
-5. **TUI / Desktop / official Web share the same session source of truth**
+5. **The three Community endpoints and official Web share the same session source of truth**
 6. **Breaks fail in contract CI first**, not on a user’s machine
 
 See [docs/reconstruction.md](docs/reconstruction.md), [docs/upgrade.md](docs/upgrade.md), [contracts/README.md](contracts/README.md).

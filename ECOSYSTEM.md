@@ -28,18 +28,25 @@
 真正对用户能感知的差异不是 “Zero Vendoring” 或 “架构更干净”，而是：
 
 ```text
-Official Web  ↔  Community Desktop  ↔  Community TUI
-                    same ~/.dsh
+                    Official DeepSeek Harness Runtime
+                                │
+               ┌────────────────┼────────────────┐
+               │                │                │
+               ▼                ▼                ▼
+        WSL / Linux TUI    Windows Desktop   macOS Desktop
+                    same ~/.dsh as official Web
                     same official plugins
 ```
 
-概括成：**One Harness. Three Surfaces.**
+概括成：**One Harness. Three Community Endpoints.**
+
+官方 Web 是兼容对象，不是我们的端。Linux AppImage 是次要产物，不是第四个产品端。定义见 [docs/community-endpoints.md](docs/community-endpoints.md)。
 
 和愿意 `patch-package` 改官方 UI、并把 session 放进 Electron userData 的 Desktop 产品，走的是两条路。对方短期产品速度更快；我们不改官方表面，用外围发行层 / 契约 / 验证插件扩展，长期 drift 成本更低。没有谁天然高级。工程原则不是用户价值。
 
 Registry 的目标是验证层，不是最大目录：能装、能跑、适配当前 pin、申请了什么权限。Awesome 做发现，我们做 trust。
 
-节奏必须双轨，不能等 Win/mac/SDK/手册 100% 再开口：`v0.1.2` 三系统 Stable 已发布，工程继续维护安装证据、上游契约和版本漂移，同时把“社区发行版、同一套会话”讲清楚。
+节奏必须双轨，不能等 Win/mac/SDK/手册 100% 再开口：`v0.1.4` Latest 已发布，工程继续维护 exact-artifact 用户闭环、上游契约和版本漂移，同时把“三个社区端、同一套会话”讲清楚。
 
 ---
 
@@ -47,14 +54,17 @@ Registry 的目标是验证层，不是最大目录：能装、能跑、适配�
 
 项目一句话定位:
 
-> **我们没有再造 DeepSeek Harness。我们在官方 Harness 外面建立一个长期可维护的 Community Distribution:同一套 Runtime、同一套 Session、同一套插件,Web / Desktop / Terminal 三个入口。**
+> **我们没有再造 DeepSeek Harness。我们在官方 Harness 外面建立一个长期可维护的 Community Distribution:同一套 Runtime、同一套 Session、同一套插件，三个社区端（WSL/Linux 终端、Windows 桌面、macOS 桌面）。**
 
 类比:
 
 ```text
 DeepSeek Harness      = kernel / runtime
 DSH Community         = distribution
-Desktop / TUI         = surfaces
+WSL/Linux TUI
+Windows Desktop
+macOS Desktop         = community endpoints
+Official Web          = official surface, shared ~/.dsh
 Registry              = verified packages
 Marketplace           = package discovery
 Handbook              = docs
@@ -63,12 +73,14 @@ Labs                  = unstable / testing
 
 对外口号:
 
-> **One Harness. Three Surfaces.**
+> **One Harness. Three Community Endpoints.**
+
+不要再用 “One Harness. Three Surfaces.” 当产品口号。那句话把官方 Web 算进了我们的端。
 
 真正的四层竞争优势(注意:都不是"架构干净"这类工程原则本身,而是它们落成的用户价值):
 
 1. **官方原生兼容** — Official DSH,without locking you into another fork。官方 Runtime、官方 Session、官方插件直接可用,不做 patch-package 改上游表面。
-2. **三个界面共享一个世界** — 官方 Web 里开的对话,关掉 Web,用 Community TUI 继续;再开 Desktop,还是同一个会话。Same workspace / same session / same plugins。
+2. **三个社区端共享一个世界** — WSL/Linux 终端、Windows 桌面、macOS 桌面共用官方 `~/.dsh`；官方 Web 也能接着同一条会话，但那是官方入口，不是我们的端。
 3. **Verified Ecosystem** — 不跟 awesome 列表比插件数量(它 3000+ stars,比收录量没有意义)。我们做验证层:哪些插件真的能装、能跑、适配 rc.6、会申请什么权限。Awesome = discovery,Registry = trust,Marketplace = UX。
 4. **Upstream resilience** — DeepSeek 明天发 rc.7,我们比你先知道哪些东西坏了。Upstream changes → Contract CI → Compatibility Matrix → Community release。
 
@@ -84,8 +96,8 @@ Repo topology 完整 ≠ Ecosystem 完整。现在真实成熟度:产品初期�
 
 ```text
 Engineering:               Distribution:
-0.1.2 stable 三平台发布      定位叙事 + 架构文章
-win/mac 打包收口           插件验证 / 对比 / demo
+0.1.4 Latest 已发布         三个社区端叙事
+exact-artifact Reality Gate 插件验证 / 对比 / demo
 Session consistency        用户反馈回流
 release reproducibility
 ```
@@ -167,14 +179,17 @@ dsh-community
 
 不是 Plugins。
 
-### 对普通用户的唯一入口
+### 对普通用户的三个社区端
 
 ```text
 DSH Community
     │
-    ├── Desktop
-    └── Terminal / TUI
+    ├── WSL / Linux Terminal   →  dsh-community
+    ├── Windows Desktop        →  Setup.exe
+    └── macOS Desktop          →  dmg
 ```
+
+官方 Web 不是第四个社区端。Linux AppImage 不是第四个社区端。
 
 正式 Release 永远来自:
 
@@ -185,32 +200,24 @@ kamanager2012/dsh-community/releases/latest
 版本是三层，不要把 `package.json` 里的开发号写成“用户下载版本”：
 
 ```text
-main / package.json     当前代码线 0.1.2
-Stable                  v0.1.2 / releases/latest
-Preview                 v0.1.2-preview（历史回归记录）
+main / package.json     当前代码线 0.1.4
+Latest                  v0.1.4 / releases/latest
+Preview                 最新 Pre-release（当前含 v0.1.3，不要当正式下载）
 ```
 
 当前用户下载事实：
 
 ```text
-Stable          v0.1.2  — Linux AppImage / macOS dmg / Windows NSIS
-Preview         v0.1.2-preview（旧，仅 Linux）
+Latest          v0.1.4  — 主资产：Windows Setup.exe / macOS dmg
+                          次要：Linux AppImage
+v0.1.3          Pre-release，Windows 包曾不完整，不要下
+v0.1.2          第一个三系统构建基线
 不要再推 v0.1.1 AppImage（官方 dsh web 起不来）
 ```
 
-### Stable 发布基线与 main 修复线
+### Latest 与 Reality Gate
 
-`v0.1.2` 是第一个三系统 Stable 的固定发布基线。当前 `main` 已进入发布后可靠性修复线：
-
-```text
-v0.1.2 tag
-    ↓
-exact Release assets
-    ↓
-main: Windows staging + first-launch reliability fixes
-```
-
-[`918f004`](https://github.com/kamanager2012/dsh-community/commit/918f004) 修复 Windows 完整依赖树暂存、压平和 ready stamp；[`e487cf0`](https://github.com/kamanager2012/dsh-community/commit/e487cf0) 让首次启动先显示加载页。它们不自动属于已经发布的 `v0.1.2` 资产。后续必须对 Release 页面真实下载的包做干净环境验证。
+`v0.1.2` 是第一个三系统构建基线。`v0.1.4` 已包含完整依赖树暂存、ready stamp 和首次启动加载页。这不等于干净环境用户闭环已经验证。后续必须对 Release 页面真实下载的包做干净环境验证。
 
 Windows / macOS 也必须只从 `dsh-community` 发布，不能改去 Suite 或 Edition。
 
@@ -1423,10 +1430,12 @@ Labs 成熟功能分批晋升 Community
 必须直接测试 exact release artifact，而不是 main 源码或 CI artifact:
 
 ```text
-Windows clean VM → EXE 安装 → 首次启动 → 密钥 → new/resume → plugin → restart
-macOS clean host → dmg 安装 → 首次启动 → 密钥 → new/resume → plugin → restart
-Linux clean host → AppImage → 首次启动 → 密钥 → new/resume → plugin → restart
+Windows clean VM → Setup.exe → 首次启动 → 密钥 → new/resume → plugin → restart
+macOS clean host → dmg       → 首次启动 → 密钥 → new/resume → plugin → restart
+WSL / Linux      → dsh-community 终端 → 密钥 → new/resume → plugin → restart
 ```
+
+AppImage 只做可选回归，不定义 Linux 产品端。
 
 还要覆盖:
 
@@ -1498,7 +1507,7 @@ REAL
 
 ## 三十三、整个生态一句话定义
 
-> **DeepSeek Harness Community 不是 DeepSeek Harness 的 fork，也不是功能最多的 Desktop 壳。它是以官方 Runtime 为 kernel 的社区发行版：同一套会话、三个入口、可验证插件、契约盯上游。六仓是角色，不是已经转起来的生态闭环。**
+> **DeepSeek Harness Community 不是 DeepSeek Harness 的 fork，也不是功能最多的 Desktop 壳。它是以官方 Runtime 为 kernel 的社区发行版：同一套会话、三个社区端（WSL/Linux 终端、Windows 桌面、macOS 桌面）、可验证插件、契约盯上游。官方 Web 不是我们的端。六仓是角色，不是已经转起来的生态闭环。**
 
 ---
 
