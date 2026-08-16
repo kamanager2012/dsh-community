@@ -39,6 +39,22 @@ execution, official Session persistence, and core lifecycle.
 Only this repository is the normal download entry. Suite, Edition, Marketplace,
 Plugins, and the Handbook are supporting repositories, not competing products.
 
+## Current release status
+
+Keep these three layers separate:
+
+| Layer | Value | Meaning |
+|---|---|---|
+| Code line | `0.1.2` | Current `package.json` / main development line |
+| Preview | [`v0.1.2-preview`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.2-preview) | Test release with Web startup, system-Node preference, readiness polling, `doctor`, and official plugin lifecycle fixes |
+| Stable | [`v0.1.1`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.1) | Current Stable; the Linux AppImage has a known official `dsh web` startup issue |
+
+The latest preview is closer to usable than the current Stable, but the three-OS release
+gate is not closed yet: Linux packaging is green, while the latest observed Windows and
+macOS packaging jobs are red and publish is skipped. Do not describe Windows/macOS
+assets as verified merely because the workflow exists. See the [Handbook release status](https://kamanager2012.github.io/deepseek-harness-handbook/content/11-operations/community-release-status/)
+for the dated evidence snapshot.
+
 ## From source
 
 Requirements: Node.js 22+, pnpm, and a configured `DEEPSEEK_API_KEY`.
