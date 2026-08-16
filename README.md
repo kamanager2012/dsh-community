@@ -47,14 +47,14 @@
 
 ## 社区生态导航
 
-本仓是唯一用户下载入口。六仓是发行版需要的**角色边界**，不是已经转起来的生态闭环。现在没有完整插件市场，也不和 awesome 列表比收录数量。注册表做验证：哪些插件真能 `dsh plugin add`、在 pin 的官方版本上能 compose。
+本仓是唯一用户下载入口。六仓是发行版需要的**角色边界**；插件生态仍不等于“全量市场”，也不和 awesome 列表比收录数量。当前注册表有 9 个第三方插件完成 rc.6 的安装/组合验证，并继续补充 digest、provenance 和 runtime smoke 证据。
 
 | 仓库 | 角色 | 现在实际是 |
 |---|---|---|
 | [`deepseek-harness-suite`](https://github.com/kamanager2012/deepseek-harness-suite) | Labs | 实验源，不是下载渠道 |
 | [`deepseek-harness-handbook`](https://github.com/kamanager2012/deepseek-harness-handbook) | 手册 | 知识 / 证据，还在追代码 |
-| [`dsh-community-plugins`](https://github.com/kamanager2012/dsh-community-plugins) | 验证注册表 | 7 个已在 rc.6 上验证，不扩目录 |
-| [`dsh-marketplace`](https://github.com/kamanager2012/dsh-marketplace) | 发现 / 安装 UX | 初期，安装仍走官方 `dsh plugin add` |
+| [`dsh-community-plugins`](https://github.com/kamanager2012/dsh-community-plugins) | 验证注册表 | 9 个第三方插件已在 rc.6 上完成安装/组合验证；供应链 CI 持续校验 |
+| [`dsh-marketplace`](https://github.com/kamanager2012/dsh-marketplace) | 发现 / 安装 UX | 稳定维护，当前测试 11/11；安装仍走官方 `dsh plugin add` |
 | [`dsh-community-edition`](https://github.com/kamanager2012/dsh-community-edition) | 已归档 | 不要从那里下载 |
 
 官方执行核心仍是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)。社区层不重新实现 Agent loop、不另建 session 目录、不用 patch 改官方 UI。

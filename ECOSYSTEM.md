@@ -23,7 +23,7 @@
 
 最终目标不是搞很多仓库,而是形成一个围绕官方 DeepSeek Harness 的社区发行版。
 
-**角色边界搭出来了 ≠ 生态闭环已经转起来。** 现在产品初期、用户接近 0、已验证插件 7 个。不要对外说“完整生态闭环”，也不要和 awesome 列表比插件数量。
+**角色边界搭出来了 ≠ 生态闭环已经转起来。** 现在产品初期、用户接近 0、Registry 有 9 个第三方插件完成 rc.6 安装/组合验证，Marketplace 的发现/安装 UX 已完成当前一轮验证。不要对外说“完整生态闭环”，也不要和 awesome 列表比插件数量。
 
 真正对用户能感知的差异不是 “Zero Vendoring” 或 “架构更干净”，而是：
 
@@ -78,7 +78,7 @@ Labs                  = unstable / testing
 - `awesome-dsh-plugin`:~3289 stars / 657 forks,Discovery 目录。
 - 我们:0 stars。市场注意力正在形成第一次路径依赖,双轨推进(见下),不能再"全打磨完再传播"。
 
-Repo topology 完整 ≠ Ecosystem 完整。现在真实成熟度:产品初期、Labs 活跃、Registry 7 个验证插件、用户接近 0。对外必须用这个口径,不得写"完整生态闭环"。
+Repo topology 完整 ≠ Ecosystem 完整。现在真实成熟度:产品初期、Labs 活跃、Registry 9 个验证插件、Marketplace UX 已稳定、用户接近 0。对外必须用这个口径,不得写"完整生态闭环"。
 
 ### 双轨节奏
 
