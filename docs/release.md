@@ -51,7 +51,9 @@ https://github.com/kamanager2012/dsh-community/releases/latest
 
 ## Distribution Reality Gate
 
-`v0.1.4` is the current three-platform Stable release. The latest Preview is `v0.1.3`.
+`v0.1.2` is the current downloadable Latest. `v0.1.4` is a Pre-release: clean
+macOS extract cannot resolve `@deepseek-ai/dsh-app-boot`. Do not send users to
+those desktop assets.
 The current code line is `0.1.4`; later `main` commits may contain documentation or
 verification fixes that are not in the already published assets. Validate the exact
 Release downloads separately from source or CI:

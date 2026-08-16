@@ -31,42 +31,90 @@ writeFileSync(join(stageRoot, 'package.json'), `${JSON.stringify({
   private: true,
   dependencies: { '@deepseek-ai/dsh': pin },
 }, null, 2)}\n`)
-writeFileSync(join(stageRoot, '.npmrc'), 'node-linker=hoisted\n')
-writeFileSync(join(stageRoot, 'pnpm-workspace.yaml'), 'onlyBuiltDependencies:\n  - node-pty\n')
 
-process.stdout.write(`staging official @deepseek-ai/dsh@${pin} (hoisted)…\n`)
-const installed = spawnSync('pnpm', ['install', '--prod', '--ignore-workspace'], {
+// pnpm 11, even with node-linker=hoisted, leaves deps in .pnpm and only
+// lifts the direct @deepseek-ai/dsh package. Node cannot resolve that after
+// extract (v0.1.4: missing @deepseek-ai/dsh-app-boot). npm writes a classic
+// node_modules that the official bin can import.
+process.stdout.write(`staging official @deepseek-ai/dsh@${pin} with npm (classic node_modules)…\n`)
+const installed = spawnSync('npm', [
+  'install',
+  '--omit=dev',
+  '--ignore-scripts',
+  '--no-fund',
+  '--no-audit',
+], {
   cwd: stageRoot,
   stdio: 'inherit',
-  env: { ...process.env, CI: 'true' },
+  env: { ...process.env, npm_config_fund: 'false', npm_config_audit: 'false' },
   shell: process.platform === 'win32',
   windowsHide: true,
 })
-if (installed.error) throw new Error(`pnpm install failed: ${installed.error.message}`)
+if (installed.error) throw new Error(`npm install failed: ${installed.error.message}`)
 if (!existsSync(join(stageRoot, 'node_modules/@deepseek-ai/dsh/lib/bin.js'))) {
-  throw new Error(`pnpm install left no official bin (status ${String(installed.status)})`)
+  throw new Error(`npm install left no official bin (status ${String(installed.status)})`)
 }
 if (installed.status !== 0) {
-  process.stdout.write(`pnpm install exited ${String(installed.status)} after placing the tree (ignored native builds are ok)\n`)
+  throw new Error(`npm install failed (status ${String(installed.status)})`)
 }
 
-const ptyStore = join(stageRoot, 'node_modules/.pnpm')
-if (existsSync(ptyStore)) {
-  const ptyEntries = await readdir(ptyStore)
-  const ptyName = ptyEntries.find((name) => name.startsWith('node-pty@'))
-  if (ptyName !== undefined) {
-    const ptyDir = join(ptyStore, ptyName, 'node_modules/node-pty')
-    const ptyPlatform = process.platform === 'darwin' ? 'darwin' : process.platform === 'win32' ? 'win32' : 'linux'
-    const ptyArch = process.arch === 'arm64' ? 'arm64' : 'x64'
-    const prebuilt = join(ptyDir, 'prebuilds', `${ptyPlatform}-${ptyArch}`, 'pty.node')
-    const compiled = join(ptyDir, 'build/Release/pty.node')
-    if (!existsSync(prebuilt) && !existsSync(compiled)) {
-      const workspacePty = join(workspaceRoot, 'node_modules/.pnpm', ptyName, 'node_modules/node-pty')
-      const workspaceBinary = join(workspacePty, 'build/Release/pty.node')
-      if (existsSync(workspaceBinary)) {
-        process.stdout.write('copying compiled node-pty from the workspace…\n')
-        await mkdir(join(ptyDir, 'build/Release'), { recursive: true })
-        await cp(workspaceBinary, compiled)
+const ptyDir = join(stageRoot, 'node_modules/node-pty')
+if (existsSync(ptyDir)) {
+  const ptyPlatform = process.platform === 'darwin' ? 'darwin' : process.platform === 'win32' ? 'win32' : 'linux'
+  const ptyArch = process.arch === 'arm64' ? 'arm64' : 'x64'
+  const prebuilt = join(ptyDir, 'prebuilds', `${ptyPlatform}-${ptyArch}`, 'pty.node')
+  const compiled = join(ptyDir, 'build/Release/pty.node')
+  if (!existsSync(prebuilt) && !existsSync(compiled)) {
+    const workspacePtyEntries = existsSync(join(workspaceRoot, 'node_modules/.pnpm'))
+      ? await readdir(join(workspaceRoot, 'node_modules/.pnpm'))
+      : []
+    const ptyName = workspacePtyEntries.find((name) => name.startsWith('node-pty@'))
+    const workspaceBinary = ptyName === undefined
+      ? ''
+      : join(workspaceRoot, 'node_modules/.pnpm', ptyName, 'node_modules/node-pty/build/Release/pty.node')
+    if (workspaceBinary !== '' && existsSync(workspaceBinary)) {
+      process.stdout.write('copying compiled node-pty from the workspace…\n')
+      await mkdir(join(ptyDir, 'build/Release'), { recursive: true })
+      await cp(workspaceBinary, compiled)
+    }
+  }
+}
+
+/**
+ * pnpm 11 still parks almost every package in .pnpm even with
+ * node-linker=hoisted. Node cannot resolve that store. Lift each
+ * package once into a classic node_modules and drop the virtual store.
+ */
+async function materializeClassicModules(storeModules, destModules) {
+  const pnpmDir = join(storeModules, '.pnpm')
+  if (!existsSync(pnpmDir)) {
+    for (const name of await readdir(storeModules)) {
+      if (name.startsWith('.')) continue
+      await cp(join(storeModules, name), join(destModules, name), {
+        recursive: true,
+        dereference: true,
+      })
+    }
+    return
+  }
+  for (const entry of await readdir(pnpmDir)) {
+    if (entry.startsWith('.') || entry === 'node_modules') continue
+    const inner = join(pnpmDir, entry, 'node_modules')
+    if (!existsSync(inner)) continue
+    for (const name of await readdir(inner)) {
+      if (name.startsWith('.')) continue
+      const src = join(inner, name)
+      if (name.startsWith('@')) {
+        await mkdir(join(destModules, name), { recursive: true })
+        for (const pkg of await readdir(src)) {
+          const to = join(destModules, name, pkg)
+          if (existsSync(to)) continue
+          await cp(join(src, pkg), to, { recursive: true, dereference: true })
+        }
+      } else {
+        const to = join(destModules, name)
+        if (existsSync(to)) continue
+        await cp(src, to, { recursive: true, dereference: true })
       }
     }
   }
@@ -80,15 +128,8 @@ if (hit.length > 0) throw new Error(`stage looks like a vendored official tree: 
 const flatRoot = join(stageRoot, 'flat')
 const flatModules = join(flatRoot, 'node_modules')
 await mkdir(flatModules, { recursive: true })
-process.stdout.write('flattening staged node_modules (no symlinks)…\n')
-for (const name of await readdir(join(stageRoot, 'node_modules'))) {
-  // Keep .pnpm. Windows hoisted installs still leave most packages there.
-  if (name.startsWith('.') && name !== '.pnpm') continue
-  await cp(join(stageRoot, 'node_modules', name), join(flatModules, name), {
-    recursive: true,
-    dereference: true,
-  })
-}
+process.stdout.write('materializing a Node-resolvable node_modules from the pnpm store…\n')
+await materializeClassicModules(join(stageRoot, 'node_modules'), flatModules)
 
 const officialBin = join(flatModules, '@deepseek-ai/dsh/lib/bin.js')
 if (!existsSync(officialBin)) throw new Error(`flattened official bin missing: ${officialBin}`)
@@ -112,12 +153,27 @@ const listing = String(listed.stdout ?? '')
 if (!listing.includes('@deepseek-ai/dsh')) {
   throw new Error('official dsh archive does not contain @deepseek-ai/dsh')
 }
-const hasDep = existsSync(join(flatModules, 'commander'))
-  || existsSync(join(flatModules, '@deepseek-ai/dsh-app-boot'))
-  || existsSync(join(flatModules, '.pnpm'))
-if (!hasDep) {
-  throw new Error('flattened official tree is missing dsh dependencies (commander / dsh-app-boot / .pnpm)')
+const required = [
+  '@deepseek-ai/dsh/lib/bin.js',
+  '@deepseek-ai/dsh-app-boot/package.json',
+  'commander/package.json',
+]
+const missing = required.filter((rel) => !existsSync(join(flatModules, rel)))
+if (missing.length > 0) {
+  throw new Error(`flattened official tree is not resolvable: missing ${missing.join(', ')}`)
 }
+const probe = spawnSync(process.execPath, ['--input-type=module', '-e', `
+import { createRequire } from 'node:module'
+const require = createRequire(${JSON.stringify(officialBin)})
+for (const spec of ['@deepseek-ai/dsh-app-boot', 'commander']) {
+  require.resolve(spec)
+  process.stdout.write(spec + ' OK\\n')
+}
+`], { cwd: flatRoot, encoding: 'utf8' })
+if (probe.status !== 0) {
+  throw new Error(`flattened official tree cannot resolve dsh imports:\n${probe.stderr || probe.stdout}`)
+}
+process.stdout.write(probe.stdout ?? '')
 const bytes = statSync(archive).size
 if (bytes < 80_000_000) {
   throw new Error(`official dsh archive too small to hold the runtime: ${String(bytes)} bytes`)

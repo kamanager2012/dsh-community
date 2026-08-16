@@ -10,12 +10,12 @@
 | --- | --- | --- |
 | Use the official Runtime directly | [`npx @deepseek-ai/dsh web`](https://github.com/deepseek-ai/deepseek-harness) | Official product path |
 | Use the community Terminal / TUI | `dsh-community` or `pnpm tui` from source | Community UX around the official Runtime |
-| Download the Windows Desktop build | [v0.1.4 Stable Release](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.4) | Current Windows Desktop download entry |
-| Download the macOS Desktop build | [v0.1.4 Stable Release](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.4) | Current macOS Desktop download entry |
+| Download the Windows Desktop build | [v0.1.2 Latest](https://github.com/kamanager2012/dsh-community/releases/latest) | Do not download v0.1.4 |
+| Download the macOS Desktop build | [v0.1.2 Latest](https://github.com/kamanager2012/dsh-community/releases/latest) | Do not download v0.1.4 |
 | Use the WSL/Linux Terminal | `dsh-community` / `pnpm tui` | Primary Linux Community endpoint |
 | Read the full operational guide | [DeepSeek Harness Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/en/) | Providers, Sessions, security, automation, and acceptance |
 
-Do not download a formal client from Suite, Marketplace, Plugins, or Edition. They are respectively the labs, discovery UX, compatibility registry, and historical archive. The current Stable is `v0.1.4` and the latest Preview is `v0.1.3`. Official Web is an upstream companion, not a Community endpoint; the Linux AppImage is an optional/secondary artifact.
+Do not download a formal client from Suite, Marketplace, Plugins, or Edition. They are respectively the labs, discovery UX, compatibility registry, and historical archive. Current Latest is `v0.1.2`. `v0.1.4` desktop extracts an unresolvable official tree and is a Pre-release — do not download it. Official Web is an upstream companion, not a Community endpoint; the Linux AppImage is an optional/secondary artifact.
 
 ## Current Stable assets
 
@@ -107,7 +107,7 @@ The registry is not a security guarantee and does not replace the official insta
 | `dsh-community: command not found` | Use the source commands or fix the package PATH | Do not publish this repository as `@deepseek-ai/dsh` |
 | No model response | `DEEPSEEK_API_KEY`, Provider settings, and `dsh web --help` | Do not treat a passing `doctor` as a successful model call |
 | Port already in use | `doctor` output and the official `dsh web` process | Do not use `killall node` against unrelated projects |
-| Unsure which release to download | Download [v0.1.4 Stable](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.4), then read the [current release status](https://kamanager2012.github.io/deepseek-harness-handbook/en/11-operations/community-release-status/) | Do not treat the Preview or `package.json` code line as the current Stable |
+| Unsure which release to download | Download [v0.1.2 Latest](https://github.com/kamanager2012/dsh-community/releases/latest) | Do not download v0.1.4 desktop; do not treat `package.json` as Latest |
 | Want to try SDK / Checkpoint work | Enter [Community Labs](https://github.com/kamanager2012/deepseek-harness-suite) | Do not treat Labs as a release channel |
 
 ## Continue reading

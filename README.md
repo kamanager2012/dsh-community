@@ -17,27 +17,19 @@
 | **Stable** | [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) |
 | **Preview** | [Releases](https://github.com/kamanager2012/dsh-community/releases) 里最新的 Pre-release |
 
-代码版本看根目录 `package.json`，不要把开发号、Preview tag 和 Stable Latest 混成一个数。当前正式下载是 **v0.1.4 Stable**，最新 Preview 是 **v0.1.3**；`v0.1.4` 已发布 Linux AppImage、macOS dmg 和 Windows NSIS，并为每个资产提供 `.sha256`。`v0.1.2` 是第一个三系统 Stable 的历史基线，不再是当前下载版本。
+代码版本看根目录 `package.json`，不要把开发号、Preview tag 和 Stable Latest 混成一个数。当前 Latest 已回退到 **[v0.1.2](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.2)**。`v0.1.4` / `v0.1.3` 都是 Pre-release：**不要下桌面包**。干净 macOS 上 v0.1.4 解压后缺 `@deepseek-ai/dsh-app-boot`，官方 Web 起不来。
 
 ## Stable 基线与当前 main
 
-`v0.1.4` 是当前 Stable 发布基线；根目录 `package.json` 和当前 `main` 代码线为 `0.1.4`。当前 `main` 可能继续包含发布后的文档、诊断和验证修复，不能把 main 源码测试结果直接当成已发布安装包的验证结果。
-
-`v0.1.4` 的正式资产为：
-
-- `dsh-community-0.1.4.AppImage`
-- `dsh-community-0.1.4.dmg`
-- `DSH.Community.Setup.0.1.4.exe`
-
-每个资产均有对应的 `.sha256` 文件。最新 exact-artifact smoke run 的 macOS job 已通过，但 Windows job 失败；因此 Release 构建已发布，用户现实门禁仍标为 `[UNVERIFIED]`。验证 Stable 时必须下载 GitHub Release 页面上的原始资产，而不是用 main 构建替代。
+`v0.1.2` 是当前可下载的 Latest。`v0.1.4` 构建出来了，但 exact-artifact 证明桌面端解压后的官方树无法被 Node 解析，已标成 Pre-release。main 上的暂存修复还没有变成新的 Release。不要把 main 源码测试当成已发布安装包已验证。
 
 | 发行面 | 命名 | 入口 |
 |---|---|---|
 | 官方 Web | 官方上游兼容入口，不是 Community 发行端 | [`npx @deepseek-ai/dsh web`](https://github.com/deepseek-ai/deepseek-harness) |
 | WSL/Linux 终端 | **社区端 1：Terminal / TUI** | `dsh-community` / `dsh-community-tui` / `pnpm tui` |
-| Windows 桌面 | **社区端 2：Desktop** | [`v0.1.4 Stable`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.4) NSIS 安装包，或 `pnpm desktop` |
-| macOS 桌面 | **社区端 3：Desktop** | [`v0.1.4 Stable`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.4) dmg，或 `pnpm desktop` |
-| Linux AppImage | 可选 / 次要构建产物 | [`v0.1.4 Stable`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.4)；Linux 主路径仍是 Terminal |
+| Windows 桌面 | **社区端 2：Desktop** | [`v0.1.2 Latest`](https://github.com/kamanager2012/dsh-community/releases/latest) NSIS 安装包，或 `pnpm desktop` |
+| macOS 桌面 | **社区端 3：Desktop** | [`v0.1.2 Latest`](https://github.com/kamanager2012/dsh-community/releases/latest) dmg，或 `pnpm desktop` |
+| Linux AppImage | 可选 / 次要构建产物 | 不要下 v0.1.4；Linux 主路径仍是 Terminal |
 
 > 命名红线：不叫 dsh-TUI / DeepSeek Harness Desktop（那是别人的产品名），不在 npm 冒用 `@deepseek-ai` 或 `dsh-tui` 的包名。我们是发行版，不是再造一个桌面壳。
 
@@ -53,7 +45,7 @@
 |---|---|
 | 真正跑 agent | 官方 [`npx @deepseek-ai/dsh web`](https://github.com/deepseek-ai/deepseek-harness) |
 | 终端 TUI | 本仓 `pnpm tui`（官方 profile + 薄 patch，Ink 只当挂载的插件） |
-| 下载安装包 | [v0.1.4 Stable Release](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.4)：Windows/macOS Desktop 与 Linux 可选 AppImage 均已发布 |
+| 下载安装包 | [v0.1.2 Latest](https://github.com/kamanager2012/dsh-community/releases/latest)。不要下 v0.1.4 桌面包 |
 | 已验证能装的社区插件 | Desktop 市场页 · [`dsh-marketplace`](https://github.com/kamanager2012/dsh-marketplace) · [验证注册表](https://github.com/kamanager2012/dsh-community-plugins)（不是 awesome 目录） |
 | 官方表面快照 / 升 rc 契约 | **本仓** |
 

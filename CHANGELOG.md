@@ -1,10 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- v0.1.4 桌面端 exact-artifact 失败：解压后只有 `@deepseek-ai/dsh`，Node 找不到 `dsh-app-boot`。已标 Pre-release，Latest 回退到 v0.1.2。官方 runtime 改用 npm 打成经典 `node_modules`，解压时校验 `dsh-app-boot`。`v0.1.5` tag 仍是旧暂存，发布已取消，不要把它当 Latest。
+
 ## 0.1.5 — 2026-08-16
 
 Release: https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.5
 
-在 v0.1.4(完整压平的 Windows 暂存)之上收口发布后可靠性修复,并作为新的 Stable Latest。
+tag 已打，GitHub Release 未发布。此 tag 仍用 v0.1.4 那套 pnpm 虚拟店暂存，不要当正式下载。
 
 - 产品端钉死为三个社区端:WSL/Linux Terminal、Windows Desktop、macOS Desktop。官方 Web 是共享 `~/.dsh` 的官方入口,不是社区端。Linux AppImage 降为次要产物。
 - `artifact-smoke` 按三个社区端验 Latest:Windows Setup / macOS dmg / Linux 终端(不是 AppImage)。Windows 静默安装后轮询 exe,不再默认 v0.1.2。

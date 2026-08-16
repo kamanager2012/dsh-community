@@ -55,7 +55,7 @@ Official Web (upstream companion)
 
 Registry 的目标是验证层，不是最大目录：能装、能跑、适配当前 pin、申请了什么权限。Awesome 做发现，我们做 trust。
 
-节奏必须双轨，不能等 Win/mac/SDK/手册 100% 再开口：`v0.1.4` 三系统 Stable 已发布，工程继续维护安装证据、上游契约和版本漂移，同时把“社区发行版、同一套会话”讲清楚。
+节奏必须双轨，不能等 Win/mac/SDK/手册 100% 再开口：`v0.1.2` 是当前 Latest；`v0.1.4` 桌面端 exact-artifact 失败已标 Pre-release。工程继续修官方 runtime 暂存，同时把“三个社区端、同一套会话”讲清楚。
 
 ---
 
@@ -204,32 +204,22 @@ kamanager2012/dsh-community/releases/latest
 
 ```text
 main / package.json     当前代码线 0.1.4
-Stable                  v0.1.4 / releases/latest
-Preview                 v0.1.3（当前最新 Preview）
+Latest                  v0.1.2 / releases/latest
+Preview                 v0.1.4、v0.1.3（不要当正式下载）
 ```
 
 当前用户下载事实：
 
 ```text
-Stable          v0.1.4  — Windows NSIS / macOS dmg / Linux AppImage（可选）
-Preview         v0.1.3
+Latest          v0.1.2  — Windows NSIS / macOS dmg
+v0.1.4          Pre-release：桌面解压后缺 @deepseek-ai/dsh-app-boot，不要下
 Linux 主力端    WSL/Linux Terminal / TUI
 官方 Web        上游兼容入口，不是 Community 发行端
 ```
 
-### Stable 发布基线与 main 修复线
+### Latest 与 Reality Gate
 
-`v0.1.4` 是当前三系统 Stable 发布基线。当前 `main` 代码线仍为 `0.1.4`，并可能继续包含发布后的文档、诊断和验证修复：
-
-```text
-v0.1.4 tag
-    ↓
-exact Release assets
-    ↓
-main: post-release documentation / diagnostics / verification
-```
-
-当前 `v0.1.4` Release 资产为 `dsh-community-0.1.4.AppImage`、`dsh-community-0.1.4.dmg` 和 `DSH.Community.Setup.0.1.4.exe`，均带 `.sha256`。最新 exact-artifact smoke 的 macOS job 已通过、Windows job 失败；所以构建/发布已完成，用户现实门禁仍是 `[UNVERIFIED]`。后续必须对 Release 页面真实下载的包做干净环境验证。
+`v0.1.2` 是当前可下载 Latest。`v0.1.4` 在干净 macOS 上解压后 Node 无法解析官方包，已标 Pre-release。main 上的 npm classic 暂存修复还不是新 Release。用户现实门禁仍是 `[UNVERIFIED]`。
 
 Windows / macOS 也必须只从 `dsh-community` 发布，不能改去 Suite 或 Edition。
 

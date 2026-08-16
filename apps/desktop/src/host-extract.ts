@@ -64,6 +64,10 @@ export function ensureOfficialHostExtracted(input: {
     throw new Error(`extract official dsh failed (${String(result.status)})`)
   }
   if (!existsSync(bin)) throw new Error(`extract official dsh missing ${bin}`)
+  const appBoot = join(input.destRoot, 'node_modules', '@deepseek-ai', 'dsh-app-boot', 'package.json')
+  if (!existsSync(appBoot)) {
+    throw new Error(`extract official dsh is incomplete: missing ${appBoot}`)
+  }
   writeFileSync(officialHostReady(input.destRoot), 'ok\n')
   return bin
 }
