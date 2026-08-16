@@ -113,6 +113,7 @@ const packManifest = {
   version: packVersion,
   private: true,
   type: 'module',
+  packageManager: 'pnpm@11.21.0',
   main: 'dist/main.js',
   description: 'Community preview shell around official DeepSeek Harness.',
   author: 'dsh-community contributors',
@@ -179,6 +180,10 @@ const packManifest = {
 }
 
 await writeFile(join(packRoot, 'package.json'), `${JSON.stringify(packManifest, null, 2)}\n`)
+// Keep electron-builder inside this directory. If it walks up into the
+// monorepo pnpm store, Windows Defender turns a 2-minute pack into a hang.
+await writeFile(join(packRoot, 'pnpm-workspace.yaml'), 'packages:\n  - "."\n')
+await mkdir(join(packRoot, 'node_modules'), { recursive: true })
 
 const builderArgs = ['--publish', 'never', '--config.npmRebuild=false']
 if (targetFlag === 'win') builderArgs.unshift('--win', 'nsis', 'zip')
