@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Phase 3 Release：3-OS 发布工作流（`release` workflow）——Linux AppImage / Windows NSIS+zip / macOS dmg，全部带 sha256 侧车；`node scripts/release.mjs <tag>` 一键发版
+
 Promote stable launcher UX from the archived edition line. Marketplace and official-plugin install stay as they are.
 
 - `dsh-community` / `pnpm start`：continue newest official `~/.dsh` session；`new` starts fresh
