@@ -38,8 +38,12 @@ function run(command, args, cwd) {
 }
 
 async function ensureElectronDist() {
-  const dest = join(electronDir, 'dist/electron')
-  if (await exists(dest)) return
+  const electronBinary = process.platform === 'win32'
+    ? join(electronDir, 'dist', 'electron.exe')
+    : process.platform === 'darwin'
+      ? join(electronDir, 'dist', 'Electron.app')
+      : join(electronDir, 'dist', 'electron')
+  if (await exists(electronBinary)) return
   const cacheRoot = join(homedir(), '.cache/electron')
   if (await exists(cacheRoot)) {
     for (const entry of await readdir(cacheRoot, { withFileTypes: true })) {
@@ -49,13 +53,13 @@ async function ensureElectronDist() {
       process.stdout.write(`unpacking Electron ${electronVersion} from cache…\n`)
       await mkdir(join(electronDir, 'dist'), { recursive: true })
       run('unzip', ['-qo', zip, '-d', join(electronDir, 'dist')], electronDir)
-      if (await exists(dest)) return
+      if (await exists(electronBinary)) return
     }
   }
   process.stdout.write('downloading Electron dist…\n')
   run(process.execPath, [join(electronDir, 'install.js')], electronDir)
-  if (!await exists(dest)) {
-    throw new Error(`Electron ${electronVersion} dist missing. Set network access or cache ~/.cache/electron.`)
+  if (!await exists(electronBinary)) {
+    throw new Error(`Electron ${electronVersion} dist missing at ${electronBinary}. Set network access or cache ~/.cache/electron.`)
   }
 }
 
