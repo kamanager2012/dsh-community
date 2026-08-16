@@ -31,7 +31,7 @@ export function formatPreflightReport(report: DistributionPreflight): string {
     `  API 密钥   ${report.apiKeyPresent ? '已设置' : `未设置 ${OFFICIAL_API_KEY_ENV}`}`,
     ...(report.profileReady === undefined
       ? []
-      : [`  官方 profile   ${report.profileReady ? '就绪' : '用官方 headless，不装第三方 TUI'}`]),
+      : [`  官方 profile   ${report.profileReady ? '就绪' : '自研 @dsh-community/tui，不装第三方 TUI'}`]),
     '',
   ]
   if (!report.apiKeyPresent) {

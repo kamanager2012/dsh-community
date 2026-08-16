@@ -7,7 +7,7 @@
 
 - insert:
     - id: dsh-community-tui
-      name: '@dsh-community/tui'
+      name: '@dsh-community/tui-surface'
 
 - id: user-questions
   name: '@deepseek-ai/dsh-user-questions'

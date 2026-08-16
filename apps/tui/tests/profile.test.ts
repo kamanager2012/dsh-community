@@ -19,11 +19,11 @@ import {
 } from '../src/profile.ts'
 
 describe('our TUI profile', () => {
-  it('uses official headless only — no third-party TUI package', () => {
+  it('uses official base plus our own surface — no third-party mounts', () => {
     const manifest = buildProfileManifest()
-    expect(manifest.dsh?.profile?.bundles).toEqual([...COMMUNITY_TUI_BUNDLES])
+    expect(manifest.dsh?.profile?.bundles).toEqual(['@deepseek-ai/dsh-base', '@dsh-community/tui-surface'])
+    expect(manifest.dependencies?.['@dsh-community/tui-surface']).toContain('file:')
     expect(manifest.dependencies?.['@deepseek-harness-tui/dsh-tui']).toBeUndefined()
-    expect(manifest.dsh?.profile?.bundles).toEqual(['@deepseek-ai/dsh-headless'])
   })
 
   it('writes our patch into the official home profiles dir', () => {
@@ -32,13 +32,14 @@ describe('our TUI profile', () => {
     const result = ensureCommunityTuiProfile({ dshHome: home, communityPatch: patch })
     expect(result.dir).toBe(join(home, 'profiles', COMMUNITY_TUI_PROFILE))
     const written = readFileSync(result.patchPath, 'utf8')
-    expect(written).toMatch(/official dsh/)
+    expect(written).toMatch(/dsh-community overlay/)
     expect(written).toMatch(/tool-bash/)
+    expect(written).toMatch(/sandbox-policy/)
     expect(written).not.toMatch(/@deepseek-harness-tui\/dsh-tui/)
     const pkg = JSON.parse(readFileSync(join(result.dir, 'package.json'), 'utf8')) as {
       dsh: { profile: { bundles: string[] } }
     }
-    expect(pkg.dsh.profile.bundles).toEqual(['@deepseek-ai/dsh-headless'])
+    expect(pkg.dsh.profile.bundles).toEqual(['@deepseek-ai/dsh-base', '@dsh-community/tui-surface'])
   })
 
   it('lists official sessions without launching Ink', () => {
@@ -79,7 +80,7 @@ describe('our TUI profile', () => {
     ])
     expect(officialTuiArgv('/tmp/community.patch.yml', officialAppArgs(launch as Extract<typeof launch, { kind: 'resume' }>))).toEqual([
       '--profile',
-      'headless',
+      COMMUNITY_TUI_PROFILE,
       '--patch',
       '/tmp/community.patch.yml',
       '--resume',

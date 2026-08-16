@@ -1,9 +1,12 @@
 /**
- * Official launcher argv. Terminal boots official headless, not a
- * third-party Ink TUI. `dsh` owns --profile/--patch.
+ * Official launcher argv. Terminal boots our own dsh-community-tui profile
+ * (our surface @dsh-community/tui-surface over official host seams). `dsh` owns
+ * --profile/--patch.
  */
+import { COMMUNITY_TUI_PROFILE } from './profile.js'
+
 export function officialTuiArgv(patchPath: string, extra: readonly string[] = []): string[] {
-  return ['--profile', 'headless', '--patch', patchPath, ...extra]
+  return ['--profile', COMMUNITY_TUI_PROFILE, '--patch', patchPath, ...extra]
 }
 
 export type CommunityLaunch =
@@ -21,8 +24,8 @@ export type CommunityLaunch =
 
 export const COMMUNITY_TUI_HELP = `dsh-community — 社区发行层，跑官方 @deepseek-ai/dsh
 
-终端启动官方：dsh --profile headless
-不安装、不挂第三方 TUI。
+终端是我们的自研 @dsh-community/tui-surface（官方 seam 上）。
+不安装、不挂第三方 TUI，第三方只许参考。
 
   dsh-community                     有对话就接着最近一条，否则开新的
   dsh-community new [任务]          官方 headless 开新对话

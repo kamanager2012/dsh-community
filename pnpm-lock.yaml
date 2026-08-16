@@ -8,6 +8,9 @@ importers:
 
   .:
     devDependencies:
+      '@dsh-community/tui-surface':
+        specifier: workspace:*
+        version: link:packages/tui
       '@types/node':
         specifier: ^22.18.0
         version: 22.20.1

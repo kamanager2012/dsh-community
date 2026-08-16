@@ -7,7 +7,7 @@
 终端实际启动：
 
 ```sh
-dsh --profile headless --patch <community overlay>
+dsh --profile dsh-community-tui --patch <community overlay>
 ```
 
 社区层只做入口：`new` / `resume` / `sessions` / `doctor`。不重写 Agent loop，不另建 session 目录。

@@ -13,18 +13,18 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "pnpm --filter @dsh-community/shared-types --filter @dsh-community/dsh-bridge --filter @dsh-community/tui --filter @dsh-community/desktop build",
-    "build:tui": "pnpm --filter @dsh-community/shared-types --filter @dsh-community/dsh-bridge --filter @dsh-community/tui build",
-    "typecheck": "pnpm --filter @dsh-community/shared-types build && pnpm --filter @dsh-community/dsh-bridge build && pnpm --filter @dsh-community/tui-adapter --filter @dsh-community/tui --filter @dsh-community/desktop --filter @dsh-community/upstream-contract typecheck",
+    "build": "pnpm --filter @dsh-community/shared-types --filter @dsh-community/dsh-bridge --filter @dsh-community/tui-surface --filter @dsh-community/desktop build",
+    "build:tui": "pnpm --filter @dsh-community/shared-types --filter @dsh-community/dsh-bridge --filter @dsh-community/tui-surface build",
+    "typecheck": "pnpm --filter @dsh-community/shared-types build && pnpm --filter @dsh-community/dsh-bridge build && pnpm --filter @dsh-community/tui-adapter --filter @dsh-community/tui-surface --filter @dsh-community/desktop --filter @dsh-community/upstream-contract typecheck",
     "test": "vitest run",
     "test:watch": "vitest",
-    "start": "pnpm build:tui && pnpm --filter @dsh-community/tui start",
-    "new": "pnpm build:tui && pnpm --filter @dsh-community/tui start -- new",
-    "doctor": "pnpm build:tui && pnpm --filter @dsh-community/tui start -- doctor",
-    "sessions": "pnpm build:tui && pnpm --filter @dsh-community/tui start -- sessions",
-    "plugins": "pnpm build:tui && pnpm --filter @dsh-community/tui start -- plugins",
+    "start": "pnpm build:tui && pnpm --filter @dsh-community/tui-surface start",
+    "new": "pnpm build:tui && pnpm --filter @dsh-community/tui-surface start -- new",
+    "doctor": "pnpm build:tui && pnpm --filter @dsh-community/tui-surface start -- doctor",
+    "sessions": "pnpm build:tui && pnpm --filter @dsh-community/tui-surface start -- sessions",
+    "plugins": "pnpm build:tui && pnpm --filter @dsh-community/tui-surface start -- plugins",
     "desktop": "pnpm --filter @dsh-community/desktop start",
-    "tui": "pnpm build:tui && pnpm --filter @dsh-community/tui start",
+    "tui": "pnpm build:tui && pnpm --filter @dsh-community/tui-surface start",
     "desktop:package": "pnpm --filter @dsh-community/desktop package",
     "official:help": "pnpm --filter @dsh-community/dsh-bridge exec dsh --help",
     "official:version": "pnpm --filter @dsh-community/dsh-bridge exec dsh --version",
@@ -33,6 +33,7 @@
   "devDependencies": {
     "@types/node": "^22.18.0",
     "typescript": "^5.9.2",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "@dsh-community/tui-surface": "workspace:*"
   }
 }

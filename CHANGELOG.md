@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- 终端不再安装或挂载 `@deepseek-harness-tui/dsh-tui`。入口只启动官方 `dsh --profile headless`。第三方 TUI 只许参考。
+- TUI Ownership Closure：终端自研 `@dsh-community/tui`（官方 seam：ctx.agents / session/event / userQuestions / approval），彻底移除第三方 TUI 挂载；第三方只许参考，CI 强制（third-party-surface 守卫）
 
 ## 0.1.6 — 2026-08-16
 

@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 export const COMMUNITY_TUI_PROFILE = 'dsh-community-tui'
 
@@ -10,17 +11,25 @@ export interface ProfileManifest {
   dsh?: { profile?: { bundles?: string[] } }
 }
 
-/** Official headless only. No third-party TUI package. */
-export const COMMUNITY_TUI_BUNDLES = ['@deepseek-ai/dsh-headless'] as const
+/** Official base only. The terminal surface is our own @dsh-community/tui-surface. */
+export const COMMUNITY_TUI_BUNDLES = ['@deepseek-ai/dsh-base', '@dsh-community/tui-surface'] as const
 
-export const COMMUNITY_TUI_PLUGIN_DEPS: Record<string, string> = {}
+/** Absolute file: spec for our own terminal plugin (built dist included). */
+export function communityTuiPackageSpec(): string {
+  const tuiRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../packages/tui')
+  return `file:${tuiRoot}`
+}
+
+export function communityTuiPluginDeps(): Record<string, string> {
+  return { '@dsh-community/tui-surface': communityTuiPackageSpec() }
+}
 
 export function profileDir(dshHome: string, name = COMMUNITY_TUI_PROFILE): string {
   return join(dshHome, 'profiles', name)
 }
 
 export function buildProfileManifest(existing?: ProfileManifest): ProfileManifest {
-  const dependencies = { ...existing?.dependencies, ...COMMUNITY_TUI_PLUGIN_DEPS }
+  const dependencies = { ...existing?.dependencies, ...communityTuiPluginDeps() }
   return {
     name: existing?.name ?? `dsh-profile-${COMMUNITY_TUI_PROFILE}`,
     private: true,
