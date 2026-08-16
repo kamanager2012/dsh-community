@@ -202,17 +202,25 @@ jobs:
         run: |
           unset DEEPSEEK_API_KEY
           mkdir -p "$DSH_HOME"
+          # Fresh clone only has sources. TUI tsc needs workspace dist first.
+          if [ -f package.json ] && grep -q '"build:tui"' package.json; then
+            pnpm build:tui
+          else
+            pnpm --filter @dsh-community/shared-types --filter @dsh-community/dsh-bridge --filter @dsh-community/tui build
+          fi
+          bin=apps/tui/dist/bin.js
+          test -f "$bin"
           echo "== help =="
-          pnpm --filter @dsh-community/tui start -- help > help.out
+          node "$bin" help > help.out
           cat help.out
           grep -q 'dsh-community new' help.out
           echo "== version =="
-          pnpm --filter @dsh-community/tui start -- version > version.out
+          node "$bin" version > version.out
           cat version.out
           grep -q '@deepseek-ai/dsh' version.out
           echo "== doctor (no key → exit 2) =="
           set +e
-          pnpm --filter @dsh-community/tui start -- doctor > doctor.out
+          node "$bin" doctor > doctor.out
           code=$?
           set -e
           cat doctor.out
@@ -220,11 +228,11 @@ jobs:
           grep -q '未设置 DEEPSEEK_API_KEY' doctor.out
           grep -q '@deepseek-ai/dsh' doctor.out
           echo "== sessions =="
-          pnpm --filter @dsh-community/tui start -- sessions > sessions.out
+          node "$bin" sessions > sessions.out
           cat sessions.out
           echo "== default launch without TTY must refuse =="
           set +e
-          pnpm --filter @dsh-community/tui start > launch.out 2>&1
+          node "$bin" > launch.out 2>&1
           code=$?
           set -e
           cat launch.out
