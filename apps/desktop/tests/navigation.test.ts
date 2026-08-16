@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { decideNavigation, isHttpUrl, sameOrigin } from '../src/navigation.ts'
+import {
+  decideNavigation,
+  decideOfficialViewNavigation,
+  isDataHtmlUrl,
+  isHttpUrl,
+  sameOrigin,
+} from '../src/navigation.ts'
 
 describe('decideNavigation', () => {
   const origin = 'http://127.0.0.1:4310'
@@ -19,5 +25,12 @@ describe('decideNavigation', () => {
     expect(decideNavigation('javascript:alert(1)', origin)).toBe('block')
     expect(isHttpUrl('javascript:alert(1)')).toBe(false)
     expect(sameOrigin('not a url', origin)).toBe(false)
+  })
+
+  it('lets the shell window load its own chrome documents', () => {
+    const chrome = 'data:text/html;charset=utf-8,hello'
+    expect(isDataHtmlUrl(chrome)).toBe(true)
+    expect(decideNavigation(chrome, origin)).toBe('allow')
+    expect(decideOfficialViewNavigation(chrome, origin)).toBe('block')
   })
 })

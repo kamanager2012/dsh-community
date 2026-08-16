@@ -1,10 +1,30 @@
 import { join } from 'node:path'
-import { BrowserWindow, shell } from 'electron'
+import { BrowserWindow, WebContentsView, shell, type WebContents } from 'electron'
 import { WINDOW_TITLE } from './branding.ts'
-import { decideNavigation } from './navigation.ts'
+import { officialViewBounds } from './chrome.ts'
+import { decideNavigation, decideOfficialViewNavigation } from './navigation.ts'
 
 const WINDOW_WIDTH = 1280
 const WINDOW_HEIGHT = 840
+
+function bindNavigation(
+  contents: WebContents,
+  decide: (url: string, origin: string) => ReturnType<typeof decideNavigation>,
+  getOrigin: () => string,
+): void {
+  contents.on('will-navigate', (event, url) => {
+    const decision = decide(url, getOrigin())
+    if (decision === 'allow') return
+    event.preventDefault()
+    if (decision === 'open-external') void shell.openExternal(url)
+  })
+  contents.setWindowOpenHandler(({ url }) => {
+    if (decide(url, getOrigin()) === 'open-external') {
+      void shell.openExternal(url)
+    }
+    return { action: 'deny' }
+  })
+}
 
 export function createDesktopWindow(input: {
   readonly preloadPath: string
@@ -31,20 +51,39 @@ export function createDesktopWindow(input: {
     },
   })
 
-  window.webContents.on('will-navigate', (event, url) => {
-    const decision = decideNavigation(url, input.getOrigin())
-    if (decision === 'allow') return
-    event.preventDefault()
-    if (decision === 'open-external') void shell.openExternal(url)
-  })
-  window.webContents.setWindowOpenHandler(({ url }) => {
-    if (decideNavigation(url, input.getOrigin()) === 'open-external') {
-      void shell.openExternal(url)
-    }
-    return { action: 'deny' }
-  })
-
+  bindNavigation(window.webContents, decideNavigation, input.getOrigin)
   return window
+}
+
+/** Official `dsh web` only. No preload, no Desktop IPC. */
+export function createOfficialWebView(getOrigin: () => string): WebContentsView {
+  const view = new WebContentsView({
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      webSecurity: true,
+    },
+  })
+  bindNavigation(view.webContents, decideOfficialViewNavigation, getOrigin)
+  return view
+}
+
+export function attachOfficialWebView(window: BrowserWindow, view: WebContentsView): void {
+  window.contentView.addChildView(view)
+}
+
+export function layoutOfficialWebView(
+  window: BrowserWindow,
+  view: WebContentsView,
+  visible: boolean,
+): void {
+  const size = window.getContentSize()
+  const width = size[0] ?? 0
+  const height = size[1] ?? 0
+  const bounds = officialViewBounds(width, height, visible)
+  view.setVisible(visible)
+  view.setBounds(bounds)
 }
 
 export function preloadPathFromMain(mainDir: string): string {

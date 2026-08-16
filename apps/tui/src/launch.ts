@@ -21,7 +21,7 @@ Usage:
   dsh-community-tui --list-sessions
   dsh-community-tui --resume <official-session-id>
 
-  --list-sessions     read-only list of official ~/.dsh/sessions
+  --list-sessions     read-only list: id, project, mtime, transcript
   --resume <id>       official dsh --profile … --resume <id>
   -h, --help          this help
 

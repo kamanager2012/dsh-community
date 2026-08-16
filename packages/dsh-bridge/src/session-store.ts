@@ -49,3 +49,9 @@ export function listOfficialSessions(root: string): OfficialSessionRef[] {
 export function dumpUsesOfficialSessionRoot(dump: string): boolean {
   return dump.includes("dshHomePath('sessions')") || dump.includes('dshHomePath("sessions")')
 }
+
+/** Display-only. Does not decode the official transcript. */
+export function formatOfficialSessionMtime(mtimeMs: number): string {
+  if (!Number.isFinite(mtimeMs) || mtimeMs <= 0) return '—'
+  return `${new Date(mtimeMs).toISOString().slice(0, 19).replace('T', ' ')} UTC`
+}

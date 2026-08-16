@@ -19,9 +19,10 @@ Version Manager 在菜单 **Host → Runtime**。它读 `contracts/compatibility
 1. 解析已发布的 `@deepseek-ai/dsh`（开发态用真正的 Node，不用 Electron 二进制去跑 CLI）。
 2. `createOfficialHost` 拉起 `node <bin> web --host 127.0.0.1 --port 0`。
 3. 只接受 `dsh web: http://127.0.0.1:<port>`。
-4. 窗口加载该 origin；其它 http(s) 走系统浏览器。
-5. 有托盘时关窗只是隐藏，Host 继续跑。托盘可显示窗口、重启官方运行时、退出。
-6. 官方子进程异常退出时留在壳里，提供重启，而不是把 Electron 一起杀掉。
+4. 官方 UI 放在窗口下半的 `WebContentsView`；顶栏是社区壳，随时切 Session / 设置 / 诊断。
+5. 其它 http(s) 走系统浏览器。官方视图不加载壳的 `data:` 文档。
+6. 有托盘时关窗只是隐藏，Host 继续跑。托盘可显示窗口、重启官方运行时、退出。
+7. 官方子进程异常退出时留在壳里，提供重启，而不是把 Electron 一起杀掉。
 
 打包：
 

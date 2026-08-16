@@ -9,6 +9,8 @@ Desktop shell polish on the same GitHub repo. No new Release tag.
 - Host diagnostics page; shell nav on every chrome page
 - Isolated mode now lists and launches against `userData/isolated-dsh`, not `~/.dsh`
 - `dsh-community-tui` treats a leading `--` as a pnpm passthrough so `--help` / `--list-sessions` work
+- Desktop keeps a chrome bar while official `dsh web` runs in a child view
+- `--list-sessions` prints transcript mtime next to the official path
 
 ## 0.1.1-preview — 2026-08-16
 

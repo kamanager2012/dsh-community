@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   dumpUsesOfficialSessionRoot,
+  formatOfficialSessionMtime,
   listOfficialSessions,
   officialSessionRoot,
 } from '../src/session-store.ts'
@@ -21,6 +22,11 @@ describe('official session store', () => {
     expect(listed[0]?.projectKey).toBe('--tmp-proj--')
     expect(listed[0]?.transcript.endsWith('session.jsonl.zstd')).toBe(true)
     expect(officialSessionRoot('/home/dev/.dsh')).toBe('/home/dev/.dsh/sessions')
+  })
+
+  it('formats transcript mtime without decoding events', () => {
+    expect(formatOfficialSessionMtime(0)).toBe('—')
+    expect(formatOfficialSessionMtime(Date.UTC(2026, 7, 16, 0, 31, 15))).toBe('2026-08-16 00:31:15 UTC')
   })
 
   it('recognizes the official session root expression', () => {

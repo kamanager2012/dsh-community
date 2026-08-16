@@ -14,6 +14,7 @@ import {
   session,
   Tray,
   type BrowserWindow,
+  type WebContentsView,
 } from 'electron'
 import {
   createOfficialHost,
@@ -32,6 +33,7 @@ import {
   type RuntimeCatalog,
 } from '@dsh-community/dsh-bridge'
 import { COMMUNITY_PRODUCT_NAME, WINDOW_TITLE } from './branding.ts'
+import { renderChromePage, type ChromeActive } from './chrome.ts'
 import { resolveLatestTestedPath } from './contracts-path.ts'
 import { appendHostDiagnostics } from './host-log.ts'
 
@@ -62,15 +64,23 @@ import {
   parseWindowState,
   windowStateFromBounds,
 } from './window-state.ts'
-import { createDesktopWindow, preloadPathFromMain } from './window.ts'
+import {
+  attachOfficialWebView,
+  createDesktopWindow,
+  createOfficialWebView,
+  layoutOfficialWebView,
+  preloadPathFromMain,
+} from './window.ts'
 
 const MAIN_DIR = dirname(fileURLToPath(import.meta.url))
 const WORKSPACE_ROOT = resolve(MAIN_DIR, '../../..')
 
 let host: OfficialHost | undefined
 let window: BrowserWindow | undefined
+let officialView: WebContentsView | undefined
 let tray: Tray | undefined
 let origin = ''
+let showingOfficial = false
 let quitting = false
 let settings = DEFAULT_DESKTOP_SETTINGS
 let catalog: RuntimeCatalog | undefined
@@ -158,16 +168,40 @@ function dataUrl(html: string): string {
   return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`
 }
 
+function layoutOfficial(): void {
+  if (window === undefined || window.isDestroyed() || officialView === undefined) return
+  layoutOfficialWebView(window, officialView, showingOfficial)
+}
+
+function chromeModel(active: ChromeActive) {
+  const snap = host?.snapshot()
+  return {
+    product: COMMUNITY_PRODUCT_NAME,
+    phase: snap?.phase ?? 'idle',
+    isolated: isolatedNow(),
+    origin,
+    active,
+  }
+}
+
 async function showHtml(html: string): Promise<void> {
   if (window === undefined || window.isDestroyed()) return
+  showingOfficial = false
+  layoutOfficial()
   await window.loadURL(dataUrl(html))
   if (!window.isVisible() && !quitting) window.show()
 }
 
 async function showOfficial(nextOrigin: string): Promise<void> {
-  if (window === undefined || window.isDestroyed()) return
+  if (window === undefined || window.isDestroyed() || officialView === undefined) return
   origin = nextOrigin
-  await window.loadURL(nextOrigin)
+  showingOfficial = true
+  await window.loadURL(dataUrl(renderChromePage(chromeModel('official'))))
+  const current = officialView.webContents.getURL()
+  if (current !== nextOrigin && !current.startsWith(`${nextOrigin}/`)) {
+    await officialView.webContents.loadURL(nextOrigin)
+  }
+  layoutOfficial()
   if (!window.isVisible() && !quitting) window.show()
 }
 
@@ -481,8 +515,14 @@ async function boot(): Promise<void> {
     getOrigin: () => origin,
     bounds: loaded.bounds ?? DEFAULT_WINDOW_STATE,
   })
+  officialView = createOfficialWebView(() => origin)
+  attachOfficialWebView(window, officialView)
+  layoutOfficial()
   window.setTitle(WINDOW_TITLE)
-  window.on('resize', () => persistWindowState())
+  window.on('resize', () => {
+    persistWindowState()
+    layoutOfficial()
+  })
   window.on('move', () => persistWindowState())
   window.on('close', (event) => {
     persistWindowState()
@@ -495,7 +535,9 @@ async function boot(): Promise<void> {
     }
   })
   window.on('closed', () => {
+    officialView = undefined
     window = undefined
+    showingOfficial = false
     if (!quitting && decideWindowClose({
       quitting,
       trayAvailable: trayAvailable() && settings.hideToTray,

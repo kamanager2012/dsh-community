@@ -6,6 +6,7 @@
 import { spawnSync } from 'node:child_process'
 import { homedir } from 'node:os'
 import {
+  formatOfficialSessionMtime,
   listOfficialSessions,
   officialSessionRoot,
   resolveOfficialDsh,
@@ -45,7 +46,9 @@ if (launch.kind === 'list') {
     process.exit(0)
   }
   for (const session of sessions) {
-    process.stdout.write(`${session.id}\t${session.projectKey}\t${session.transcript}\n`)
+    process.stdout.write(
+      `${session.id}\t${session.projectKey}\t${formatOfficialSessionMtime(session.mtimeMs)}\t${session.transcript}\n`,
+    )
   }
   process.exit(0)
 }

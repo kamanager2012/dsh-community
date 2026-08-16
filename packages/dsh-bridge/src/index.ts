@@ -58,6 +58,7 @@ export {
 } from './data-dirs.js'
 export {
   dumpUsesOfficialSessionRoot,
+  formatOfficialSessionMtime,
   listOfficialSessions,
   officialSessionRoot,
   OFFICIAL_SESSION_DIR,
