@@ -1,6 +1,6 @@
 # dsh-community
 
-**DSH 社区版（DeepSeek Harness Community Edition）—— 0.1.1-preview.**
+**DSH 社区版（DeepSeek Harness Community Edition）—— 0.1.1.**
 
 只发布在 [github.com/kamanager2012/dsh-community](https://github.com/kamanager2012/dsh-community)。官方 Runtime 的社区发行层，不是官方客户端，也不是第二套 harness。
 
@@ -13,7 +13,7 @@
 
 > 命名红线：不叫 dsh-TUI / DeepSeek Harness Desktop（那是参考物），不在 npm 冒用 `@deepseek-ai` 或 `dsh-tui` 的包名。
 
-[仓库](https://github.com/kamanager2012/dsh-community) · [Release](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.1-preview)
+[仓库](https://github.com/kamanager2012/dsh-community) · [Release](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.1) · [插件市场](https://github.com/kamanager2012/dsh-community-plugins)
 
 开发基础是官方 DeepSeek Harness（`@deepseek-ai/dsh`）。我们在这上面做 Terminal / Desktop 发行和契约层，不另写一套 harness。
 
@@ -25,7 +25,8 @@
 |---|---|
 | 真正跑 agent | 官方 [`npx @deepseek-ai/dsh web`](https://github.com/deepseek-ai/deepseek-harness) |
 | 终端 TUI | 本仓 `pnpm tui`（官方 profile + 薄 patch，Ink 只当挂载的插件） |
-| Linux 桌面预览 | [0.1.1-preview AppImage](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.1-preview) 或 `pnpm desktop` |
+| Linux 桌面 | [0.1.1 AppImage](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.1) 或 `pnpm desktop`（含内嵌社区市场页） |
+| 浏览 / 安装社区插件 | Desktop 社区市场页 · [`dsh-marketplace`](https://github.com/kamanager2012/dsh-marketplace) CLI · [注册表](https://github.com/kamanager2012/dsh-community-plugins) |
 | 官方表面快照 / 升 rc 契约 | **本仓** |
 
 不要把本仓发到 npm 当 `@deepseek-ai/dsh` 或 `dsh-tui` 的替代。
@@ -90,7 +91,7 @@ contracts/              官方表面快照 + compatibility matrix
 packages/dsh-bridge     解析官方 bin、生命周期、数据目录
 packages/tui-adapter    我们的 TUI 薄 patch + KPI
 packages/shared-types   社区自己的类型，不是官方 event fork
-apps/desktop            官方 `dsh web` 壳 + 官方 session 列表
+apps/desktop            官方 `dsh web` 壳 + 官方 session 列表 + 内嵌社区市场页
 apps/tui                官方 `dsh --profile` / `--resume` 启动器
 tests/upstream-contract vendor=0、pin、CLI
 ```
