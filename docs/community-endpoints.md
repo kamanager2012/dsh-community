@@ -1,6 +1,6 @@
 # Community 端定义
 
-官方是内核，社区是套壳。这是已经锁定的产品端定义。不要混淆 **操作系统目标**、**UI 形态** 和 **社区端**。
+官方是内核，社区基于官方内核。这是已经锁定的产品端定义。不要混淆 **操作系统目标**、**UI 形态** 和 **社区端**。
 
 [English](community-endpoints.en.md) · [中文使用指南](getting-started.md) · [在线 Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/)
 

@@ -1,7 +1,8 @@
 # Version and identity policy
 
-Official DeepSeek Harness is the kernel. `dsh-community` is only a shell, so its
-public version 1:1-mirrors the official core and keeps that relationship visible.
+Official DeepSeek Harness is the kernel. `dsh-community` is based on that kernel,
+so its public version 1:1-mirrors the official core and keeps that relationship
+visible.
 
 ## Version rules
 
@@ -46,7 +47,7 @@ DeepSeek Harness Community v0.1.1-rc.1 [Official Core: @deepseek-ai/dsh@0.1.1-rc
 ```
 
 The badge is the user-facing source of truth. The official core version is the
-kernel; the community version is the shell around that same pin. Do not replace
+kernel; the community version is based on that same pin. Do not replace
 it with two unrelated version labels.
 
 ## Release checklist

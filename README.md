@@ -2,11 +2,11 @@
 
 **One Harness. Five Community Endpoints.**（一套 Harness，五个社区端）
 
-官方 DeepSeek Harness 是内核。本仓只是给这个内核套壳：同一套 Runtime、同一套 `~/.dsh`、同一套官方插件。五个社区端（**WSL/Linux 终端、Windows 桌面、macOS 桌面、Linux AppImage、Android**）只是入口；官方 Web 是内核自带界面，不是我们的发行端——进的是同一个世界。不是第二套 Harness，也不另造执行核心。
+官方 DeepSeek Harness 是内核。本仓基于官方内核：同一套 Runtime、同一套 `~/.dsh`、同一套官方插件。五个社区端（**WSL/Linux 终端、Windows 桌面、macOS 桌面、Linux AppImage、Android**）只是入口；官方 Web 是内核自带界面，不是我们的发行端——进的是同一个世界。不是第二套 Harness，也不另造执行核心。
 
 你今天在官方 Web 开的对话，关掉以后用 `dsh-community` 终端可以接着聊；再打开 Desktop，还是同一条会话。
 
-> **One Harness. Five Community Endpoints.** 官方是内核，社区是套壳。同一套 Runtime / Session / 插件；五个入口 = WSL/Linux 终端 + Windows 桌面 + macOS 桌面 + Linux AppImage + Android。不重写 Harness，不 patch 官方表面。
+> **One Harness. Five Community Endpoints.** 官方是内核，社区基于官方内核。同一套 Runtime / Session / 插件；五个入口 = WSL/Linux 终端 + Windows 桌面 + macOS 桌面 + Linux AppImage + Android。不重写 Harness，不 patch 官方表面。
 
 [English](README.en.md) | 简体中文
 
@@ -30,7 +30,7 @@ Desktop 与 TUI 的身份应显示为：`DeepSeek Harness Community v0.1.1-rc.1 
 | Linux AppImage | **社区端 4：Desktop** | 随 Release 附带；CLI 用户仍以终端为主 |
 | Android | **社区端 5：Mobile** | Labs `[UNVERIFIED]`（`deepseek-harness-suite`），未过 Reality Gate |
 
-> 命名红线：不叫 dsh-TUI / DeepSeek Harness Desktop（那是别人的产品名），不在 npm 冒用 `@deepseek-ai` 或 `dsh-tui` 的包名。我们是官方内核外面的套壳，不是第二套 Harness。
+> 命名红线：不叫 dsh-TUI / DeepSeek Harness Desktop（那是别人的产品名），不在 npm 冒用 `@deepseek-ai` 或 `dsh-tui` 的包名。我们基于官方内核，不是第二套 Harness。
 
 [仓库](https://github.com/kamanager2012/dsh-community) · [Stable](https://github.com/kamanager2012/dsh-community/releases/latest) · [Releases](https://github.com/kamanager2012/dsh-community/releases) · [已验证插件](https://github.com/kamanager2012/dsh-community-plugins)
 

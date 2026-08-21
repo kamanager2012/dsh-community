@@ -8,11 +8,11 @@
 
 ## 一、项目到底在做什么
 
-官方 DeepSeek Harness 是内核。社区只做套壳：把官方 Runtime 发到五个社区端，不另造 Agent 执行核心。
+官方 DeepSeek Harness 是内核。社区基于官方内核，把同一套 Runtime 发到五个社区端，不另造 Agent 执行核心。
 
 核心原则是:
 
-> **官方 Runtime 是内核（Agent 循环、模型、工具、会话、官方 UI）。社区只是套壳（启动、安装包、入口、外围验证）。不复制 Harness，不 patch 官方表面，不另起一套执行核心。**
+> **官方 Runtime 是内核（Agent 循环、模型、工具、会话、官方 UI）。社区基于官方内核做启动、安装包、入口和外围验证。不复制 Harness，不 patch 官方表面，不另起一套执行核心。**
 
 项目方法论:
 
@@ -58,17 +58,17 @@ Registry 的目标是验证层，不是最大目录：能装、能跑、适配�
 
 ---
 
-## 一·五、我们是什么:官方内核外面的套壳
+## 一·五、我们是什么:基于官方内核的社区发行
 
 项目一句话定位:
 
-> **官方 DeepSeek Harness 是内核。我们没有再造它，只在外面套壳：同一套 Runtime、同一套 Session、同一套插件；五个入口（WSL/Linux 终端、Windows 桌面、macOS 桌面、Linux AppImage、Android），与官方 Web 共用 Session。**
+> **官方 DeepSeek Harness 是内核。我们基于官方内核发行，不另造一套：同一套 Runtime、同一套 Session、同一套插件；五个入口（WSL/Linux 终端、Windows 桌面、macOS 桌面、Linux AppImage、Android），与官方 Web 共用 Session。**
 
 类比:
 
 ```text
 DeepSeek Harness      = kernel / runtime
-DSH Community         = shell around that kernel
+DSH Community         = based on that kernel
 WSL/Linux Terminal    = community endpoint(开发者/CLI)
 Windows Desktop       = community endpoint(普通用户)
 macOS Desktop         = community endpoint(普通用户)
@@ -82,7 +82,7 @@ Labs                  = unstable / testing
 
 对外口号:
 
-> **One Harness. Five Community Endpoints.**（官方是内核，社区是套壳。）
+> **One Harness. Five Community Endpoints.**（官方是内核，社区基于官方内核。）
 
 真正的四层竞争优势(注意:都不是"架构干净"这类工程原则本身,而是它们落成的用户价值):
 

@@ -2,8 +2,8 @@
 
 **One Harness. Five Community Endpoints.**
 
-Official DeepSeek Harness is the kernel. This repo is only a shell around that
-kernel: one runtime, one `~/.dsh` session store, one official plugin chain. The
+Official DeepSeek Harness is the kernel. This repo is based on that kernel:
+one runtime, one `~/.dsh` session store, one official plugin chain. The
 five community endpoints (**WSL/Linux terminal, Windows Desktop, macOS Desktop,
 Linux AppImage, and Android**) are launchers, not a second Harness. Official Web
 is the kernel's own UI — not a surface we ship — but it lives in the same world.
@@ -35,7 +35,7 @@ Read the locked endpoint definition in [Community endpoints](docs/community-endp
 
 ## What this repository is
 
-`dsh-community` is the only download entry. It is a shell around the official
+`dsh-community` is the only download entry. It is based on the official
 kernel, not a second Harness: thin adapters and contracts around published
 `@deepseek-ai/dsh`, official source ownership = 0, no `patch-package` on official
 UI.
