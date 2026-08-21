@@ -8,6 +8,7 @@
 - 契约快照按 rc.8 重抽；`latest-tested` 改为 `0.1.0-rc.8`。
 - 官方 rc.8 SQLite 存储格式不兼容：会话真源仍是官方 `~/.dsh`，社区层不迁移、不自造第二套 session。
 - TUI 官方 peer（`dsh-llm` / `dsh-session` / `dsh-agent`）对齐同一 pin。
+- Node 下限 `>=22.15.0`：官方 `dsh-session-persistence-jsonl` 使用 `node:zlib` zstd；22.14 上 `dsh web` 会在就绪前退出。
 
 - 输入系统重写:移除 ink-text-input,自研按键处理(兼容 cooked/raw 模式整行输入)
 - 修复:交互键入消息(含中文)未渲染——user/message 形状适配 + runtime-context 快照过滤
