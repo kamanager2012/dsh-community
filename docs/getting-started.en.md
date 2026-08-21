@@ -10,8 +10,8 @@
 | --- | --- | --- |
 | Use the official Runtime directly | [`npx @deepseek-ai/dsh web`](https://github.com/deepseek-ai/deepseek-harness) | Official product path |
 | Use the community Terminal / TUI | `dsh-community` or `pnpm tui` from source | Community UX around the official Runtime |
-| Download the Windows Desktop build | [Published `v0.1.2`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.2) | Installer and full user-loop evidence still require review |
-| Download the macOS Desktop build | [Published `v0.1.2`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.2) | Installer and full user-loop evidence still require review |
+| Download the Windows Desktop build | [Published `v0.1.2`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.2) | Real-asset first-launch smoke passed; full user loop still requires review |
+| Download the macOS Desktop build | [Published `v0.1.2`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.2) | Real-asset first-launch smoke passed; full user loop still requires review |
 | Use the WSL/Linux Terminal | `dsh-community` / `pnpm tui` | Primary Linux Community endpoint |
 | Read the full operational guide | [DeepSeek Harness Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/en/) | Providers, Sessions, security, automation, and acceptance |
 

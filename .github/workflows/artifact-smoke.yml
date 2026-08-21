@@ -42,16 +42,28 @@ jobs:
     timeout-minutes: 25
     env:
       TAG: ${{ needs.resolve.outputs.tag }}
+      GH_TOKEN: ${{ github.token }}
     steps:
       - name: Download the exact Windows Setup + sha256
         shell: pwsh
         run: |
-          $ver = $env:TAG.TrimStart('v')
-          $url = "https://github.com/kamanager2012/dsh-community/releases/download/$env:TAG/DSH Community Setup $ver.exe"
+          $headers = @{
+            Accept = 'application/vnd.github+json'
+            Authorization = "Bearer $env:GH_TOKEN"
+            'User-Agent' = 'dsh-community-artifact-smoke'
+          }
+          $release = Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/releases/tags/$env:TAG"
+          $asset = @($release.assets | Where-Object { $_.name -match '\.exe$' } | Select-Object -First 1)
+          if (-not $asset) { throw "no .exe asset found for $env:TAG" }
+          $hashAsset = @($release.assets | Where-Object { $_.name -eq "$($asset.name).sha256" } | Select-Object -First 1)
+          if (-not $hashAsset) { throw "no checksum sidecar found for $($asset.name)" }
+          $url = $asset.browser_download_url
+          $hashUrl = $hashAsset.browser_download_url
+          Write-Host "selected asset: $($asset.name)"
           Write-Host "GET $url"
           curl.exe -fSL -o setup.exe $url
-          curl.exe -fSL -o setup.exe.sha256 "$url.sha256"
-          $expected = (Get-Content setup.exe.sha256).Split(' ')[0].ToLower()
+          curl.exe -fSL -o setup.exe.sha256 $hashUrl
+          $expected = (Get-Content setup.exe.sha256).Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries)[0].ToLower()
           $actual = (Get-FileHash setup.exe -Algorithm SHA256).Hash.ToLower()
           if ($expected -ne $actual) { throw "sha256 mismatch: $actual vs $expected" }
           Write-Output "sha256 OK ($((Get-Item setup.exe).Length) bytes)"
