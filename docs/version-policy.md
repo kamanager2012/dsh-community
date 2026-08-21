@@ -1,7 +1,7 @@
 # Version and identity policy
 
-`dsh-community` uses one public version identity for the whole community
-distribution and keeps the official runtime relationship visible.
+Official DeepSeek Harness is the kernel. `dsh-community` is only a shell, so its
+public version 1:1-mirrors the official core and keeps that relationship visible.
 
 ## Version rules
 
@@ -45,9 +45,9 @@ For the current source line, the exact output is:
 DeepSeek Harness Community v0.1.1-rc.1 [Official Core: @deepseek-ai/dsh@0.1.1-rc.1]
 ```
 
-The badge is the user-facing source of truth. It must make the community
-client version and the corresponding official core version legible together;
-do not replace it with two unrelated version labels.
+The badge is the user-facing source of truth. The official core version is the
+kernel; the community version is the shell around that same pin. Do not replace
+it with two unrelated version labels.
 
 ## Release checklist
 

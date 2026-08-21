@@ -2,12 +2,11 @@
 
 **One Harness. Five Community Endpoints.**
 
-The community **distribution** around official DeepSeek Harness: one runtime, one
-`~/.dsh` session store, one official plugin chain. Our five community endpoints
-are the **WSL/Linux terminal, Windows Desktop, macOS Desktop, Linux AppImage, and
-Android**. Official Web is the compatibility target — not a surface we ship — but
-it lives in the same world. This is not the official client and not a second
-Harness.
+Official DeepSeek Harness is the kernel. This repo is only a shell around that
+kernel: one runtime, one `~/.dsh` session store, one official plugin chain. The
+five community endpoints (**WSL/Linux terminal, Windows Desktop, macOS Desktop,
+Linux AppImage, and Android**) are launchers, not a second Harness. Official Web
+is the kernel's own UI — not a surface we ship — but it lives in the same world.
 
 A conversation you start in official Web is the same conversation you resume in
 `dsh-community` and then open again in Desktop.
@@ -36,12 +35,13 @@ Read the locked endpoint definition in [Community endpoints](docs/community-endp
 
 ## What this repository is
 
-`dsh-community` is the only download entry. It is a distribution, not another
-Desktop shell: thin adapters and contracts around published `@deepseek-ai/dsh`,
-with official source ownership = 0 and no `patch-package` on official UI.
+`dsh-community` is the only download entry. It is a shell around the official
+kernel, not a second Harness: thin adapters and contracts around published
+`@deepseek-ai/dsh`, official source ownership = 0, no `patch-package` on official
+UI.
 
 Official Runtime still owns the Agent loop, model execution, tool execution,
-session persistence, and core lifecycle.
+session persistence, official UI, and core lifecycle.
 
 ## Choose an entry
 

@@ -2,7 +2,7 @@
 
 **Read `ECOSYSTEM.md` first** — six-repo strategy, hard boundaries, and Reality Gate rules. This repo is the only canonical product; user downloads come only from `dsh-community/releases/latest`.
 
-This is a community launcher/adapter workspace for official DeepSeek Harness.
+Official DeepSeek Harness is the kernel. This repo is only a shell (launcher/adapter) around published `@deepseek-ai/dsh`.
 
 - Runtime: published `@deepseek-ai/dsh` only. Pin is `packages/dsh-bridge/src/pin.ts`.
 - Community suite version 1:1-mirrors the official pin (`docs/version-policy.md`). Optional `-community.N` suffix for community-only patches. Dual-Badge via `formatCommunityIdentity()`.

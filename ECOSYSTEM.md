@@ -8,11 +8,11 @@
 
 ## 一、项目到底在做什么
 
-我们不是要复制 DeepSeek Harness,也不是简单给官方项目套一个壳。
+官方 DeepSeek Harness 是内核。社区只做套壳：把官方 Runtime 发到五个社区端，不另造 Agent 执行核心。
 
 核心原则是:
 
-> **官方 DeepSeek Harness Runtime 负责真正的 Agent 执行核心;社区项目围绕官方 Runtime 做发行、兼容、插件、知识、治理、安全和更好的用户体验。**
+> **官方 Runtime 是内核（Agent 循环、模型、工具、会话、官方 UI）。社区只是套壳（启动、安装包、入口、外围验证）。不复制 Harness，不 patch 官方表面，不另起一套执行核心。**
 
 项目方法论:
 
@@ -58,20 +58,22 @@ Registry 的目标是验证层，不是最大目录：能装、能跑、适配�
 
 ---
 
-## 一·五、我们是什么:Community Distribution,不是 Desktop 壳
+## 一·五、我们是什么:官方内核外面的套壳
 
 项目一句话定位:
 
-> **我们没有再造 DeepSeek Harness。我们在官方 Harness 外面建立一个长期可维护的 Community Distribution:同一套 Runtime、同一套 Session、同一套插件,三个社区端(WSL/Linux 终端、Windows 桌面、macOS 桌面),与官方 Web 共用 Session。**
+> **官方 DeepSeek Harness 是内核。我们没有再造它，只在外面套壳：同一套 Runtime、同一套 Session、同一套插件；五个入口（WSL/Linux 终端、Windows 桌面、macOS 桌面、Linux AppImage、Android），与官方 Web 共用 Session。**
 
 类比:
 
 ```text
 DeepSeek Harness      = kernel / runtime
-DSH Community         = distribution
+DSH Community         = shell around that kernel
 WSL/Linux Terminal    = community endpoint(开发者/CLI)
 Windows Desktop       = community endpoint(普通用户)
 macOS Desktop         = community endpoint(普通用户)
+Linux AppImage        = community endpoint(Linux 桌面)
+Android               = community endpoint(Labs)
 Registry              = verified packages
 Marketplace           = package discovery
 Handbook              = docs
@@ -80,12 +82,12 @@ Labs                  = unstable / testing
 
 对外口号:
 
-> **One Harness. Three Community Endpoints.**
+> **One Harness. Five Community Endpoints.**（官方是内核，社区是套壳。）
 
 真正的四层竞争优势(注意:都不是"架构干净"这类工程原则本身,而是它们落成的用户价值):
 
 1. **官方原生兼容** — Official DSH,without locking you into another fork。官方 Runtime、官方 Session、官方插件直接可用,不做 patch-package 改上游表面。
-2. **三个社区端共享一个世界** — 官方 Web 里开的对话,关掉 Web,用 WSL/Linux Terminal 继续;再开 Windows 或 macOS Desktop,还是同一个会话。Same workspace / same session / same plugins。官方 Web 是兼容入口,不计入 Community 端数量。
+2. **五个入口共用一个内核世界** — 官方 Web 里开的对话,关掉 Web,用 WSL/Linux Terminal 继续;再开 Windows 或 macOS Desktop,还是同一个会话。Same workspace / same session / same plugins。官方 Web 是内核自带界面,不计入 Community 端数量。
 3. **Verified Ecosystem** — 不跟 awesome 列表比插件数量(它 3000+ stars,比收录量没有意义)。我们做验证层:哪些插件真的能装、能跑、适配 rc.6、会申请什么权限。Awesome = discovery,Registry = trust,Marketplace = UX。
 4. **Upstream resilience** — DeepSeek 明天发 rc.7,我们比你先知道哪些东西坏了。Upstream changes → Contract CI → Compatibility Matrix → Community release。
 

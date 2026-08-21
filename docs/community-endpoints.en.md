@@ -1,7 +1,7 @@
 # Community endpoints
 
-This is the locked product-end definition. Do not mix **OS targets**, **UI surfaces**,
-and **Community endpoints**.
+Official is the kernel; community is only a shell. This is the locked product-end
+definition. Do not mix **OS targets**, **UI surfaces**, and **Community endpoints**.
 
 [简体中文](community-endpoints.md) · [Getting started](getting-started.en.md) · [Online Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/en/)
 

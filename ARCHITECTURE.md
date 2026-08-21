@@ -1,6 +1,6 @@
 # Architecture
 
-Community **distribution** around official DeepSeek Harness: one runtime, one `~/.dsh`, three Community endpoints. Not a second harness and not a Desktop fork. The endpoints are WSL/Linux Terminal, Windows Desktop, and macOS Desktop; Official Web is an upstream companion, not a Community endpoint.
+Official DeepSeek Harness is the kernel. Community is only a shell: one runtime, one `~/.dsh`, five launchers. Not a second harness. The endpoints are WSL/Linux Terminal, Windows Desktop, macOS Desktop, Linux AppImage, and Android; Official Web is the kernel's own UI, not a Community endpoint.
 
 ```
                   DeepSeek Harness
