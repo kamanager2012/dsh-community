@@ -1,6 +1,6 @@
 # DSH Community 使用指南
 
-> 面向第一次使用者的任务型入口。事实快照：2026-08-16。
+> 面向第一次使用者的任务型入口。事实快照：2026-08-21。
 
 [English](getting-started.en.md) · [返回中文 README](../README.md) · [三个社区端定义](community-endpoints.md) · [在线 Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/)
 
@@ -10,22 +10,22 @@
 | --- | --- | --- |
 | 直接使用官方 Runtime | [`npx @deepseek-ai/dsh web`](https://github.com/deepseek-ai/deepseek-harness) | 官方产品路径 |
 | 使用社区终端 / TUI | 本仓库 `dsh-community` 或源码中的 `pnpm tui` | 社区 UX，执行核心仍是官方 Runtime |
-| 下载 Windows 桌面包 | [v0.1.6](https://github.com/kamanager2012/dsh-community/releases/latest) | `DSH Community Setup 0.1.6.exe` |
-| 下载 macOS 桌面包 | [v0.1.6](https://github.com/kamanager2012/dsh-community/releases/latest) | `dsh-community-0.1.6.dmg` |
+| 下载 Windows 桌面包 | [已发布 Latest](https://github.com/kamanager2012/dsh-community/releases/latest) | 当前已发布资产仍是历史版本 |
+| 下载 macOS 桌面包 | [已发布 Latest](https://github.com/kamanager2012/dsh-community/releases/latest) | 当前已发布资产仍是历史版本 |
 | 使用 WSL/Linux 终端 | `dsh-community` / `pnpm tui` | Linux 的主力 Community endpoint |
 | 查完整操作手册 | [DeepSeek Harness Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/) | Provider、Session、安全、自动化和验收 |
 
-不要从 Suite、Marketplace、Plugins 或 Edition 下载正式客户端。它们分别是实验舱、发现体验、兼容注册表和历史归档。当前产品号是 **0.1.6**。不要下 `v0.1.3` / `v0.1.4` / `v0.1.5`。官方 Web 是上游兼容入口，不是 Community 发行端；Linux AppImage 是可选/次要产物。
+不要从 Suite、Marketplace、Plugins 或 Edition 下载正式客户端。它们分别是实验舱、发现体验、兼容注册表和历史归档。当前源码/下一发行线是 **0.1.0-rc.8-community.1**，官方核心是 `@deepseek-ai/dsh@0.1.0-rc.8`；已发布的 `v0.1.6` 保留为历史 Latest，不回写旧标签。官方 Web 是上游兼容入口，不是 Community 发行端；Linux AppImage 是可选/次要产物。详见[版本策略](version-policy.md)。
 
-## 当前下载资产
+## 当前已发布下载资产
 
 [`v0.1.6`](https://github.com/kamanager2012/dsh-community/releases/latest)：
 
-- `DSH.Community.Setup.0.1.6.exe` — Windows
+- `DSH Community Setup 0.1.6.exe` — Windows
 - `dsh-community-0.1.6.dmg` — macOS
 - `dsh-community-0.1.6.AppImage` — 次要 Linux 产物
 
-每个文件都有对应的 `.sha256`。Windows / macOS 包**未签名、未公证**。Windows 可能弹出 SmartScreen「未知发布者」：选「更多信息 → 仍要运行」，然后用 sidecar 校验：
+这些是已发布历史 `v0.1.6` 的资产；新版本发布前不要把源码版本号误写成下载资产版本。每个文件都有对应的 `.sha256`。Windows / macOS 包**未签名、未公证**。Windows 可能弹出 SmartScreen「未知发布者」：选「更多信息 → 仍要运行」，然后用 sidecar 校验：
 
 ```sh
 # Windows PowerShell:

@@ -1,7 +1,7 @@
 {
   "name": "dsh-community",
   "private": true,
-  "version": "0.1.6",
+  "version": "0.1.0-rc.8-community.1",
   "description": "Community preview distribution around official DeepSeek Harness. Not an official client.",
   "repository": {
     "type": "git",

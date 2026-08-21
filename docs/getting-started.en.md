@@ -1,6 +1,6 @@
 # DSH Community Getting Started
 
-> A task-oriented entry point for first-time users. Evidence snapshot: 2026-08-16.
+> A task-oriented entry point for first-time users. Evidence snapshot: 2026-08-21.
 
 [简体中文](getting-started.md) · [Back to English README](../README.en.md) · [Community endpoints](community-endpoints.en.md) · [Online Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/en/)
 
@@ -10,22 +10,22 @@
 | --- | --- | --- |
 | Use the official Runtime directly | [`npx @deepseek-ai/dsh web`](https://github.com/deepseek-ai/deepseek-harness) | Official product path |
 | Use the community Terminal / TUI | `dsh-community` or `pnpm tui` from source | Community UX around the official Runtime |
-| Download the Windows Desktop build | [v0.1.6](https://github.com/kamanager2012/dsh-community/releases/latest) | `DSH Community Setup 0.1.6.exe` |
-| Download the macOS Desktop build | [v0.1.6](https://github.com/kamanager2012/dsh-community/releases/latest) | `dsh-community-0.1.6.dmg` |
+| Download the Windows Desktop build | [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) | The currently published artifact is historical |
+| Download the macOS Desktop build | [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) | The currently published artifact is historical |
 | Use the WSL/Linux Terminal | `dsh-community` / `pnpm tui` | Primary Linux Community endpoint |
 | Read the full operational guide | [DeepSeek Harness Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/en/) | Providers, Sessions, security, automation, and acceptance |
 
-Do not download a formal client from Suite, Marketplace, Plugins, or Edition. They are respectively the labs, discovery UX, compatibility registry, and historical archive. The community product version is **0.1.6**. Do not download `v0.1.3`, `v0.1.4`, or `v0.1.5`. Official Web is an upstream companion, not a Community endpoint; the Linux AppImage is an optional/secondary artifact.
+Do not download a formal client from Suite, Marketplace, Plugins, or Edition. They are respectively the labs, discovery UX, compatibility registry, and historical archive. The current source / next release line is **0.1.0-rc.8-community.1**, with official core `@deepseek-ai/dsh@0.1.0-rc.8`; published `v0.1.6` remains historical Latest and is not rewritten. Official Web is an upstream companion, not a Community endpoint; the Linux AppImage is an optional/secondary artifact. See the [version policy](version-policy.md).
 
-## Current download assets
+## Current published download assets
 
 [`v0.1.6`](https://github.com/kamanager2012/dsh-community/releases/latest):
 
-- `DSH.Community.Setup.0.1.6.exe` — Windows
+- `DSH Community Setup 0.1.6.exe` — Windows
 - `dsh-community-0.1.6.dmg` — macOS
 - `dsh-community-0.1.6.AppImage` — secondary Linux artifact
 
-Each file has a matching `.sha256`. Windows / macOS builds are **unsigned and not notarized**. Windows SmartScreen may say “Unknown publisher”: More info → Run anyway, then check the sidecar hash:
+These are the published historical `v0.1.6` assets; do not confuse them with the next source release line. Each file has a matching `.sha256`. Windows / macOS builds are **unsigned and not notarized**. Windows SmartScreen may say “Unknown publisher”: More info → Run anyway, then check the sidecar hash:
 
 ```sh
 # Windows PowerShell:

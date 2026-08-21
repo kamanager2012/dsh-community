@@ -1,13 +1,13 @@
 /**
- * Extract the CHANGELOG section for a tag like v0.1.3-preview.
- * Usage: node scripts/release-notes.mjs v0.1.3-preview
+ * Extract the CHANGELOG section for a tag like v0.1.0-rc.8-community.1.
+ * Usage: node scripts/release-notes.mjs v0.1.0-rc.8-community.1
  */
 
 import { readFileSync } from 'node:fs'
 
 const tag = process.argv[2]
 if (tag === undefined || !tag.startsWith('v')) {
-  process.stderr.write('usage: node scripts/release-notes.mjs <vX.Y.Z[-preview]>\n')
+  process.stderr.write('usage: node scripts/release-notes.mjs <vX.Y.Z[-prerelease]>\n')
   process.exit(2)
 }
 

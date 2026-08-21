@@ -31,7 +31,7 @@ export const COMMUNITY_TUI_HELP = `dsh-community — 社区发行层，跑官方
   dsh-community new [任务]          官方 headless 开新对话
   dsh-community resume last         接着最近一条
   dsh-community sessions            看官方 ~/.dsh 里的对话
-  dsh-community version             客户端版本 + 官方 pin
+  dsh-community version             统一 Dual-Badge（客户端版本 + 官方核心）
   dsh-community doctor              自检（不打印密钥）
   dsh-community plugins             只读插件目录
   dsh-community desktop             打开桌面壳

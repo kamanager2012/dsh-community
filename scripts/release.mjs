@@ -2,15 +2,15 @@
  * Local release gate. Pushing the tag starts the GitHub `release` workflow,
  * which builds Linux / Windows / macOS artifacts and publishes the release.
  *
- * Usage: node scripts/release.mjs v0.1.3-preview
+ * Usage: node scripts/release.mjs v0.1.0-rc.8-community.1
  */
 
 import { spawnSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 
 const tag = process.argv[2]
-if (tag === undefined || !/^v\d+\.\d+\.\d+(-preview)?$/.test(tag)) {
-  process.stderr.write('usage: node scripts/release.mjs <vX.Y.Z[-preview]>\n')
+if (tag === undefined || !/^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(tag)) {
+  process.stderr.write('usage: node scripts/release.mjs <vX.Y.Z[-prerelease]>\n')
   process.exit(2)
 }
 

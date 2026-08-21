@@ -19,6 +19,7 @@ import {
 } from 'electron'
 import {
   createOfficialHost,
+  formatCommunityIdentity,
   hostProcessEnv,
   hydrateCatalog,
   isolatedDesktopRequested,
@@ -204,8 +205,10 @@ function layoutOfficial(): void {
 
 function chromeModel(active: ChromeActive) {
   const snap = host?.snapshot()
+  const install = resolveOfficialDsh({ from: import.meta.url })
   return {
     product: COMMUNITY_PRODUCT_NAME,
+    identity: formatCommunityIdentity(install.packageName, install.version),
     phase: snap?.phase ?? 'idle',
     isolated: isolatedNow(),
     origin,
@@ -275,6 +278,7 @@ function aboutModel() {
   const layout = desktopLayout()
   return {
     product: COMMUNITY_PRODUCT_NAME,
+    identity: formatCommunityIdentity(install.packageName, install.version),
     officialPackage: install.packageName,
     officialVersion: install.version,
     officialBin: install.binPath,

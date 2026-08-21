@@ -13,6 +13,7 @@ export type ChromeActive =
 
 export interface ChromeBarModel {
   readonly product: string
+  readonly identity: string
   readonly phase: string
   readonly isolated: boolean
   readonly origin: string
@@ -65,7 +66,7 @@ export function renderChromePage(model: ChromeBarModel): string {
   </head>
   <body>
     <div class="bar">
-      <strong>${escapeHtml(model.product)}</strong>
+      <strong title="${escapeHtml(model.product)}">${escapeHtml(model.identity)}</strong>
       <span class="status" title="${escapeHtml(model.origin || '')}">${escapeHtml(status)}</span>
       <nav>
         <button data-go="official" data-active="${String(model.active === 'official')}">官方 Web</button>

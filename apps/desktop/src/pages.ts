@@ -9,6 +9,7 @@ import {
 
 export interface AboutPageModel {
   readonly product: string
+  readonly identity: string
   readonly officialPackage: string
   readonly officialVersion: string
   readonly officialBin: string
@@ -206,7 +207,7 @@ export function renderErrorPage(message: string): string {
 export function renderAboutPage(model: AboutPageModel): string {
   return shellDocument(
     `${model.product} · 关于`,
-    `<h1>${escapeHtml(model.product)}</h1>
+    `<h1>${escapeHtml(model.identity)}</h1>
      <p>社区重构的桌面壳：子进程拉起官方 Harness，窗口只加载 loopback。默认共用官方 <code>~/.dsh</code>，和 TUI / Web 是同一批 Session。stdout 只当日志。</p>
      <dl>
        <dt>官方包</dt><dd><code>${escapeHtml(model.officialPackage)}@${escapeHtml(model.officialVersion)}</code></dd>
