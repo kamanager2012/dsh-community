@@ -23,7 +23,13 @@ distribution and keeps the official runtime relationship visible.
 
 Published tags are immutable historical records. Do not rewrite or retag an
 older community release merely to bring it under this policy; cut the next
-release instead.
+release instead. Independent community numbers such as `0.1.2` / `0.1.6` that
+do not 1:1-mirror the official core stay historical; they must not remain
+GitHub Latest after a correct 1:1 tag exists.
+
+When the official current release is itself an rc, GitHub Latest uses the 1:1
+tag `vX.Y.Z-rc.N`. Only `-community.N`, `-preview`, and `-beta` tags are GitHub
+pre-releases.
 
 ## Dual-Badge identity
 

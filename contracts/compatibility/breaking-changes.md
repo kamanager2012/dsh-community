@@ -13,7 +13,7 @@ Do not invent a compatibility shim in Desktop IPC.
 - community action:
   - Bump pin and every workspace `package.json` to `0.1.1-rc.1` (1:1 mirror, no `-community.N`).
   - Re-extract `contracts/upstream`. Keep Node `>=22.15.0`.
-  - Do not rewrite historical `v0.1.2` / `v0.1.6` tags.
+  - Cut `v0.1.1-rc.1` as GitHub Latest. Do not rewrite historical `v0.1.2` / `v0.1.6` tags.
 
 ## 0.1.0-rc.8
 

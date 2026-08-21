@@ -2,7 +2,11 @@
 
 ## Unreleased
 
-## 0.1.1-rc.1 — Unreleased
+## 0.1.1-rc.1 — 2026-08-21
+
+Release: https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.1-rc.1
+
+社区产品号 1:1 镜像官方当前核心 **0.1.1-rc.1**。这是按版本策略发出的当前下载，取代此前自编的 `v0.1.2` / `v0.1.3` / `v0.1.4` / `v0.1.6` 号（那些 tag 保留为历史记录，不再当 Latest）。
 
 - 官方 Runtime pin：`@deepseek-ai/dsh` `0.1.0-rc.8` → `0.1.1-rc.1`（官方 GitHub 当前发行 / npm `latest` 与 `next`）。社区套件 1:1 镜像为 `0.1.1-rc.1`，不再带 `-community.N`。
 - Dual-Badge：`DeepSeek Harness Community v0.1.1-rc.1 [Official Core: @deepseek-ai/dsh@0.1.1-rc.1]`。Desktop 顶栏 / About 与 TUI 状态栏同一字符串。

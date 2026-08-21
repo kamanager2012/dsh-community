@@ -4,18 +4,18 @@ Official `@deepseek-ai/dsh` is the **development foundation**. We build TUI and 
 
 Current official pin is `@deepseek-ai/dsh@0.1.1-rc.1` (`packages/dsh-bridge/src/pin.ts`). That is the official GitHub current release and npm `latest` / `next`.
 
-The current source release identity is `0.1.1-rc.1`: all workspace
-packages use it and 1:1-mirror the official core. The published Latest is `v0.1.2`; `v0.1.6` is a
-draft/pre-release with checksum assets only, not a user download. See [Version
-and identity policy](version-policy.md).
+The current source and published identity is `0.1.1-rc.1`: all workspace
+packages use it and 1:1-mirror the official core. GitHub Latest is
+`v0.1.1-rc.1`. Older independent numbers (`v0.1.2`–`v0.1.6`) remain historical
+and must not be used as the current download. See [Version and identity
+policy](version-policy.md).
 
 ## Channels
 
 | Channel | Tag | Notes |
 |---|---|---|
-| Official-core mirror | `vX.Y.Z` or `vX.Y.Z-rc.N` | Community version exactly mirrors the official core |
-| Community patch | `vX.Y.Z[-prerelease]-community.N` | Community-owned fix on the same official core |
-| Stable / Preview | GitHub tag uses the exact community version | Plain tags are Latest; prerelease tags are pre-release |
+| Official-core mirror | `vX.Y.Z` or `vX.Y.Z-rc.N` | Community version exactly mirrors the official core; this is GitHub Latest |
+| Community patch | `vX.Y.Z[-prerelease]-community.N` | Community-owned fix on the same official core; GitHub pre-release |
 
 Windows / macOS artifacts are built by GitHub Actions (`release` workflow) — nobody needs to sit on those OSes.
 
@@ -29,10 +29,10 @@ node scripts/release.mjs v0.1.1-rc.1
 Replace the example tag with the next intended community version. If the change
 only advances the official core, use the exact official version. If it is a
 community-only fix on the same core, increment `-community.N`.
-The published `v0.1.2` remains Latest on
+The current download is `v0.1.1-rc.1` on
 [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest).
-The draft `v0.1.6` is not a user download. Do not download or republish `v0.1.3`,
-`v0.1.4`, or `v0.1.5`. Never move or overwrite a published tag.
+Do not download historical `v0.1.2`–`v0.1.6` as the current product. Never move
+or overwrite a published tag.
 
 The script checks a clean tree, a free tag, and a matching CHANGELOG section, then builds the AppImage locally as a sanity check and pushes the tag. The tag push starts the 3-OS `release` workflow:
 
@@ -40,8 +40,7 @@ The script checks a clean tree, a free tag, and a matching CHANGELOG section, th
 2. **Windows** — NSIS installer (`DSH Community Setup x.y.z.exe`) + sha256. Portable zip is deferred until NSIS is reliably green.
 3. **macOS** — dmg + sha256
 
-The `publish` job collects all assets and creates the GitHub Release with the CHANGELOG section as notes. Tags containing a prerelease or community suffix are
-marked pre-release; plain stable mirror tags become Latest.
+The `publish` job collects all assets and creates the GitHub Release with the CHANGELOG section as notes. Official-core mirrors (`vX.Y.Z` or `vX.Y.Z-rc.N`) become Latest. Only `-community.N` / `-preview` / `-beta` tags are GitHub pre-releases.
 
 ## Artifact naming
 
@@ -54,10 +53,9 @@ dsh-community-x.y.z[-prerelease].dmg             macOS (unsigned preview)
 
 Every artifact ships a `<file>.sha256` sidecar.
 
-The source workflow currently templates the Windows file as `DSH Community Setup
-<version>.exe`; the historical published `v0.1.2` asset is named
-`DSH.Community.Setup.0.1.2.exe`. Always use the exact filename shown on the Release
-page when verifying a published asset.
+The source workflow templates the Windows file as `DSH Community Setup
+<version>.exe`. GitHub may display spaces as dots. Always use the exact
+filename shown on the Release page when verifying a published asset.
 
 ## Manual checks after a release
 
@@ -73,31 +71,28 @@ https://github.com/kamanager2012/dsh-community/releases/latest
 
 ## Distribution Reality Gate
 
-`v0.1.2` is the currently published Latest asset. The current source line is
-`0.1.1-rc.1`, and it has not been published yet; `v0.1.6` is a
-draft/pre-release with checksum assets only. Later `main` commits may contain code
-or verification fixes that are not in the published download. Validate exact
-Release downloads separately from source or CI:
+GitHub Latest is `v0.1.1-rc.1` (1:1 official core). Later `main` commits may
+contain code or verification fixes that are not in the published download.
+Validate exact Release downloads separately from source or CI. Use the exact
+filename on the Release page (Windows Setup may appear with spaces or dots):
 
 | Endpoint | Exact artifact / path | Required flow |
 |---|---|---|
-| Windows Desktop | `DSH.Community.Setup.0.1.2.exe` | clean VM → install → first launch → key → new/resume → plugin → restart |
-| macOS Desktop | `dsh-community-0.1.2.dmg` | clean host → install → first launch → key → new/resume → plugin → restart |
+| Windows Desktop | `DSH Community Setup 0.1.1-rc.1.exe` | clean VM → install → first launch → key → new/resume → plugin → restart |
+| macOS Desktop | `dsh-community-0.1.1-rc.1.dmg` | clean host → install → first launch → key → new/resume → plugin → restart |
 | WSL/Linux Terminal | `dsh-community` / `pnpm tui` | clean WSL/Linux → key → new/resume → plugin → restart |
-| Linux AppImage | `dsh-community-0.1.2.AppImage` | community endpoint 4; CLI users still start at Terminal |
+| Linux AppImage | `dsh-community-0.1.1-rc.1.AppImage` | community endpoint 4; CLI users still start at Terminal |
 | Android | Labs APK / Termux | `[UNVERIFIED]`; not a Latest download |
 
 The gate must also cover uninstall/reinstall, upgrade, missing key, bad network, and
 broken or interrupted Runtime extraction. Record Official Web ↔ WSL/Linux TUI ↔
 Windows/macOS Desktop Session sharing and the exact asset filename plus SHA256.
 `artifact-smoke` is only a partial install / first-ready / missing-key check; it is not
-a full user loop. The latest run
+a full user loop. Historical `v0.1.2` smoke
 ([32470195309](https://github.com/kamanager2012/dsh-community/actions/runs/32470195309))
-passed the resolver, Windows, macOS, and Linux jobs for the exact published `v0.1.2`
-assets. This proves `[PARTIAL]` real-asset checksum, install/first-ready, and missing-key
-coverage; it does not prove Session sharing, plugin restart, lifecycle recovery, network
-failure handling, or a successful first conversation. A green unit test or a main-source
-smoke is not that evidence.
+does not cover `v0.1.1-rc.1`. Re-run `artifact-smoke` against the new tag; until
+that run is green, this gate stays `[UNVERIFIED]` for the current Latest. A green
+unit test or a main-source smoke is not that evidence.
 
 ## Rules
 

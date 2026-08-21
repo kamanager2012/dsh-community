@@ -18,17 +18,15 @@ A conversation you start in official Web is the same conversation you resume in
 
 | Channel | Download |
 |---|---|
-| **Stable** | [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) |
-| **Preview** | newest Pre-release on [Releases](https://github.com/kamanager2012/dsh-community/releases) |
+| **Current** | [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) (`v0.1.1-rc.1`) |
+| **Historical / Pre-release** | older independent numbers on [Releases](https://github.com/kamanager2012/dsh-community/releases) |
 
-GitHub's currently published Latest is **v0.1.2**. Its downloadable assets are the
-Linux AppImage, macOS dmg, and Windows `DSH.Community.Setup.0.1.2.exe`, each with a
-`.sha256` sidecar. The current source / next release line is
-**0.1.1-rc.1** — root, Desktop, TUI, and workspace packages share that
-exact version. The official core is `@deepseek-ai/dsh@0.1.1-rc.1`.
-This source line is not yet a published user Release. `v0.1.6` is a draft/pre-release with checksum assets only, not a
-download entry. See the [version policy](docs/version-policy.md) for the version
-and interface identity rules.
+GitHub Latest is **v0.1.1-rc.1**, 1:1 with official core `@deepseek-ai/dsh@0.1.1-rc.1`.
+Downloadable assets are the Linux AppImage, macOS dmg, and Windows Setup (use the
+exact filenames on the Release page), each with a `.sha256` sidecar. Root,
+Desktop, TUI, and workspace packages share that version. Earlier independent
+numbers `v0.1.2`–`v0.1.6` are historical only. See the
+[version policy](docs/version-policy.md).
 
 Desktop and TUI should show: `DeepSeek Harness Community v0.1.1-rc.1 [Official Core: @deepseek-ai/dsh@0.1.1-rc.1]`.
 
@@ -50,10 +48,10 @@ session persistence, and core lifecycle.
 | Goal | Use |
 |---|---|
 | Run the official Runtime directly | [`npx @deepseek-ai/dsh web`](https://github.com/deepseek-ai/deepseek-harness) |
-| Download the community product | [Published `v0.1.2`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.2) |
+| Download the community product | [Latest `v0.1.1-rc.1`](https://github.com/kamanager2012/dsh-community/releases/latest) |
 | Use the WSL/Linux Terminal / TUI | `pnpm tui` or `dsh-community` after a source install |
-| Use the Windows Desktop shell | [Published `v0.1.2`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.2) Setup.exe, or `pnpm desktop` |
-| Use the macOS Desktop shell | [Published `v0.1.2`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.2) dmg, or `pnpm desktop` |
+| Use the Windows Desktop shell | [Latest `v0.1.1-rc.1`](https://github.com/kamanager2012/dsh-community/releases/latest) Setup.exe, or `pnpm desktop` |
+| Use the macOS Desktop shell | [Latest `v0.1.1-rc.1`](https://github.com/kamanager2012/dsh-community/releases/latest) dmg, or `pnpm desktop` |
 | Read operational guidance | [DeepSeek Harness Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/) |
 | Verified community plugins | [`dsh-marketplace`](https://github.com/kamanager2012/dsh-marketplace) and the [verification registry](https://github.com/kamanager2012/dsh-community-plugins) — not an awesome list |
 
@@ -63,9 +61,9 @@ products.
 
 ## Current release status
 
-Community version is one workspace-wide identity: **0.1.1-rc.1**
-in source, with official core `@deepseek-ai/dsh@0.1.1-rc.1`. The published
-Latest is `v0.1.2`; `v0.1.6` is a draft/pre-release with checksum assets only.
+Community version is one workspace-wide identity: **0.1.1-rc.1**, 1:1 with
+official core `@deepseek-ai/dsh@0.1.1-rc.1`. GitHub Latest is that same tag.
+Earlier independent numbers `v0.1.2`–`v0.1.6` are historical only.
 The Linux AppImage is community endpoint 4; the primary Linux CLI path remains WSL/Linux
 Terminal. Official Web is an upstream companion, not a Community endpoint. Android is
 endpoint 5 and stays `[UNVERIFIED]` in Labs.

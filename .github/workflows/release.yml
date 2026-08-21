@@ -128,9 +128,13 @@ jobs:
         run: |
           TAG="${GITHUB_REF_NAME}"
           EXTRA=()
-          # Any SemVer prerelease/community suffix is a GitHub pre-release.
-          # A plain mirror such as v0.1.1 is the only Latest channel.
-          if [[ "$TAG" == *-* ]]; then EXTRA+=(--prerelease); fi
+          # 1:1 official-core mirrors (plain or -rc.N) are the current download.
+          # Independent community suffixes stay GitHub pre-releases.
+          if [[ "$TAG" == *-community.* || "$TAG" == *preview* || "$TAG" == *beta* ]]; then
+            EXTRA+=(--prerelease)
+          else
+            EXTRA+=(--latest)
+          fi
           shopt -s nullglob
           assets=(
             dist-artifacts/*/*.AppImage

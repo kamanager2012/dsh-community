@@ -14,10 +14,10 @@
 
 | 通道 | 去哪下 |
 |---|---|
-| **Stable** | [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) |
-| **Preview** | [Releases](https://github.com/kamanager2012/dsh-community/releases) 里最新的 Pre-release |
+| **当前发行** | [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest)（`v0.1.1-rc.1`） |
+| **历史 / Pre-release** | [Releases](https://github.com/kamanager2012/dsh-community/releases) 里旧的独立编号 |
 
-GitHub 当前已发布 Latest 是 **v0.1.2**，实际下载资产为 Linux AppImage、macOS dmg 和 Windows `DSH.Community.Setup.0.1.2.exe`，每项都有 `.sha256` sidecar。当前源码/下一发行线是 **0.1.1-rc.1**：根目录、Desktop、TUI、workspace 包全部同号，1:1 镜像官方核心 `@deepseek-ai/dsh@0.1.1-rc.1`。尚未作为用户 Release 发布。`v0.1.6` 是 draft/pre-release，只有 checksum 资产，不是下载入口。版本和界面展示规则见 [Version policy](docs/version-policy.md)。
+GitHub Latest 是 **v0.1.1-rc.1**，与官方核心 `@deepseek-ai/dsh@0.1.1-rc.1` 1:1 同号。下载资产为 Linux AppImage、macOS dmg 和 Windows Setup（文件名以 Release 页为准，各带 `.sha256`）。根目录、Desktop、TUI、workspace 包全部同号。此前自编的 `v0.1.2`–`v0.1.6` 只作历史记录，不要当当前下载。版本和界面展示规则见 [Version policy](docs/version-policy.md)。
 
 Desktop 与 TUI 的身份应显示为：`DeepSeek Harness Community v0.1.1-rc.1 [Official Core: @deepseek-ai/dsh@0.1.1-rc.1]`。
 
@@ -25,8 +25,8 @@ Desktop 与 TUI 的身份应显示为：`DeepSeek Harness Community v0.1.1-rc.1 
 |---|---|---|
 | 官方 Web | 官方上游兼容入口，不是 Community 发行端 | [`npx @deepseek-ai/dsh web`](https://github.com/deepseek-ai/deepseek-harness) |
 | WSL/Linux 终端 | **社区端 1：Terminal / TUI** | `dsh-community` / `dsh-community-tui` / `pnpm tui` |
-| Windows 桌面 | **社区端 2：Desktop** | [已发布 `v0.1.2`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.2) Setup.exe，或 `pnpm desktop` |
-| macOS 桌面 | **社区端 3：Desktop** | [已发布 `v0.1.2`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.2) dmg，或 `pnpm desktop` |
+| Windows 桌面 | **社区端 2：Desktop** | [Latest `v0.1.1-rc.1`](https://github.com/kamanager2012/dsh-community/releases/latest) Setup.exe，或 `pnpm desktop` |
+| macOS 桌面 | **社区端 3：Desktop** | [Latest `v0.1.1-rc.1`](https://github.com/kamanager2012/dsh-community/releases/latest) dmg，或 `pnpm desktop` |
 | Linux AppImage | **社区端 4：Desktop** | 随 Release 附带；CLI 用户仍以终端为主 |
 | Android | **社区端 5：Mobile** | Labs `[UNVERIFIED]`（`deepseek-harness-suite`），未过 Reality Gate |
 
@@ -44,7 +44,7 @@ Desktop 与 TUI 的身份应显示为：`DeepSeek Harness Community v0.1.1-rc.1 
 |---|---|
 | 真正跑 agent | 官方 [`npx @deepseek-ai/dsh web`](https://github.com/deepseek-ai/deepseek-harness) |
 | 终端 | 本仓 `dsh-community`（启动官方 `dsh --profile headless`，不挂第三方 TUI） |
-| 下载安装包 | [已发布 `v0.1.2`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.2)；当前源码线为 `0.1.1-rc.1`，不是同一个版本 |
+| 下载安装包 | [Latest `v0.1.1-rc.1`](https://github.com/kamanager2012/dsh-community/releases/latest) |
 | 已验证能装的社区插件 | Desktop 市场页 · [`dsh-marketplace`](https://github.com/kamanager2012/dsh-marketplace) · [验证注册表](https://github.com/kamanager2012/dsh-community-plugins)（不是 awesome 目录） |
 | 官方表面快照 / 升 rc 契约 | **本仓** |
 
