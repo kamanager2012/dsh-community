@@ -6,8 +6,9 @@ Current official pin is `@deepseek-ai/dsh@0.1.0-rc.8` (`packages/dsh-bridge/src/
 
 The current source release identity is `0.1.0-rc.8-community.1`: all workspace
 packages use it, and the `-community.1` suffix records a community-owned fix on
-the same official core. The published `v0.1.6` remains historical and must not
-be moved or retagged. See [Version and identity policy](version-policy.md).
+the same official core. The published Latest is `v0.1.2`; `v0.1.6` is a
+draft/pre-release with checksum assets only, not a user download. See [Version
+and identity policy](version-policy.md).
 
 ## Channels
 
@@ -29,10 +30,10 @@ node scripts/release.mjs v0.1.0-rc.8-community.1
 Replace the example tag with the next intended community version. If the change
 only advances the official core, use the exact official version. If it is a
 community-only fix on the same core, increment `-community.N`.
-The published `v0.1.6` remains Latest on
+The published `v0.1.2` remains Latest on
 [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest).
-Do not download or republish `v0.1.3`, `v0.1.4`, or `v0.1.5`. Never move or overwrite
-a published tag.
+The draft `v0.1.6` is not a user download. Do not download or republish `v0.1.3`,
+`v0.1.4`, or `v0.1.5`. Never move or overwrite a published tag.
 
 The script checks a clean tree, a free tag, and a matching CHANGELOG section, then builds the AppImage locally as a sanity check and pushes the tag. The tag push starts the 3-OS `release` workflow:
 
@@ -54,6 +55,11 @@ dsh-community-x.y.z[-prerelease].dmg             macOS (unsigned preview)
 
 Every artifact ships a `<file>.sha256` sidecar.
 
+The source workflow currently templates the Windows file as `DSH Community Setup
+<version>.exe`; the historical published `v0.1.2` asset is named
+`DSH.Community.Setup.0.1.2.exe`. Always use the exact filename shown on the Release
+page when verifying a published asset.
+
 ## Manual checks after a release
 
 ```sh
@@ -68,17 +74,18 @@ https://github.com/kamanager2012/dsh-community/releases/latest
 
 ## Distribution Reality Gate
 
-`v0.1.6` is the currently published Latest asset. The current source line is
-`0.1.0-rc.8-community.1`, and it has not been published yet; later `main`
-commits may contain code or verification fixes that are not in the historical
-download. Validate exact Release downloads separately from source or CI:
+`v0.1.2` is the currently published Latest asset. The current source line is
+`0.1.0-rc.8-community.1`, and it has not been published yet; `v0.1.6` is a
+draft/pre-release with checksum assets only. Later `main` commits may contain code
+or verification fixes that are not in the published download. Validate exact
+Release downloads separately from source or CI:
 
 | Endpoint | Exact artifact / path | Required flow |
 |---|---|---|
-| Windows Desktop | `DSH Community Setup 0.1.6.exe` | clean VM → install → first launch → key → new/resume → plugin → restart |
-| macOS Desktop | `dsh-community-0.1.6.dmg` | clean host → install → first launch → key → new/resume → plugin → restart |
+| Windows Desktop | `DSH.Community.Setup.0.1.2.exe` | clean VM → install → first launch → key → new/resume → plugin → restart |
+| macOS Desktop | `dsh-community-0.1.2.dmg` | clean host → install → first launch → key → new/resume → plugin → restart |
 | WSL/Linux Terminal | `dsh-community` / `pnpm tui` | clean WSL/Linux → key → new/resume → plugin → restart |
-| Linux AppImage | `dsh-community-0.1.6.AppImage` | optional artifact smoke; not the primary Linux endpoint |
+| Linux AppImage | `dsh-community-0.1.2.AppImage` | optional artifact smoke; not the primary Linux endpoint |
 
 The gate must also cover uninstall/reinstall, upgrade, missing key, bad network, and
 broken or interrupted Runtime extraction. Record Official Web ↔ WSL/Linux TUI ↔
