@@ -39,6 +39,8 @@ writeFileSync(join(stageRoot, 'package.json'), `${JSON.stringify({
 }, null, 2)}\n`)
 
 process.stdout.write(`staging official @deepseek-ai/dsh@${pin} with npm (classic node_modules)…\n`)
+const nodeOptions = process.env.NODE_OPTIONS ?? ''
+const heapFlag = '--max-old-space-size=4096'
 const installed = spawnSync('npm', [
   'install',
   '--omit=dev',
@@ -47,7 +49,12 @@ const installed = spawnSync('npm', [
 ], {
   cwd: stageRoot,
   stdio: 'inherit',
-  env: { ...process.env, npm_config_fund: 'false', npm_config_audit: 'false' },
+  env: {
+    ...process.env,
+    npm_config_fund: 'false',
+    npm_config_audit: 'false',
+    NODE_OPTIONS: nodeOptions.includes('max-old-space-size') ? nodeOptions : `${nodeOptions} ${heapFlag}`.trim(),
+  },
   shell: process.platform === 'win32',
   windowsHide: true,
 })
