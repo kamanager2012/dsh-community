@@ -1,5 +1,5 @@
 {
-  "pin": "0.1.0-rc.6",
+  "pin": "0.1.0-rc.8",
   "note": "Required official rows for community surfaces. Snapshot of official dump, not a community event model.",
   "session": {
     "mustExist": [

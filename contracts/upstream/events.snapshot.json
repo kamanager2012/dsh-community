@@ -1,6 +1,6 @@
 {
-  "pin": "0.1.0-rc.6",
-  "source": "https://github.com/deepseek-ai/deepseek-harness/blob/main/docs/architecture.md",
+  "pin": "0.1.0-rc.8",
+  "source": "https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/architecture.md",
   "note": "Frozen extract of documented official seams at this pin. Not a community event model — do not add Desktop/TUI events here.",
   "uiInstruction": "drive ctx.agents and render from session/event",
   "sessionBroadcast": "session/event",

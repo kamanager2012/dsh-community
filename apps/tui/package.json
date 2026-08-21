@@ -14,7 +14,7 @@
     "start": "pnpm build && node dist/bin.js"
   },
   "dependencies": {
-    "@deepseek-ai/dsh": "0.1.0-rc.6",
+    "@deepseek-ai/dsh": "0.1.0-rc.8",
     "@dsh-community/dsh-bridge": "workspace:*"
   }
 }

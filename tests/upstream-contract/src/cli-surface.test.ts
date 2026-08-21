@@ -22,7 +22,9 @@ describe('official CLI surface (pinned @deepseek-ai/dsh)', () => {
     const help = runOfficial(['web', '--help'])
     expect(help).toMatch(/--host/)
     expect(help).toMatch(/--port/)
+    expect(help).toMatch(/--no-open/)
     expect(officialWebArgv()[0]).toBe('web')
+    expect(officialWebArgv()).toContain('--no-open')
   })
 
   it('dumps the official web tree without this repo vendoring it', () => {

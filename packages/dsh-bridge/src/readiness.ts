@@ -21,6 +21,10 @@ export function parseReadinessLine(line: string): string | undefined {
     throw new Error(`official readiness line has no URL: ${trimmed}`)
   }
 
+  // rc.8 also prints `dsh web: opening the default browser; pass --no-open to disable`.
+  // That shares the readiness prefix but is not a bind URL — skip it.
+  if (!/^https?:\/\//u.test(token)) return undefined
+
   let url: URL
   try {
     url = new URL(token)

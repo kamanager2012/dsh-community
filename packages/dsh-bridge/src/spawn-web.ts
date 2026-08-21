@@ -74,9 +74,14 @@ export function adaptNodeChild(child: ChildProcess): HostChild {
  * "OS picks a free port" flag — Desktop uses that so it does not fight a
  * browser already on 3080.
  */
-/** Launcher argv the contract tests lock. */
+/**
+ * Launcher argv the contract tests lock.
+ *
+ * rc.8 opens the default browser after a local `dsh web` unless `--no-open`
+ * is passed. Desktop embeds official Web; do not also hand off to a browser.
+ */
 export function officialWebArgv(bind: OfficialWebBind = { host: '127.0.0.1', port: 0 }): readonly string[] {
-  return ['web', '--host', bind.host, '--port', String(bind.port)]
+  return ['web', '--host', bind.host, '--port', String(bind.port), '--no-open']
 }
 
 /** Full child argv: optional Node flags, then the official CLI entry. */
@@ -95,6 +100,7 @@ export function officialHostArgs(input: {
     host,
     '--port',
     String(port),
+    '--no-open',
   ]
 }
 
