@@ -21,7 +21,7 @@
 
 [`v0.1.6`](https://github.com/kamanager2012/dsh-community/releases/latest)：
 
-- `DSH.Community.Setup.0.1.6.exe` — Windows
+- `DSH Community Setup 0.1.6.exe` — Windows
 - `dsh-community-0.1.6.dmg` — macOS
 - `dsh-community-0.1.6.AppImage` — 次要 Linux 产物
 

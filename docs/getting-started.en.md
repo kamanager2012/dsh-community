@@ -21,7 +21,7 @@ Do not download a formal client from Suite, Marketplace, Plugins, or Edition. Th
 
 [`v0.1.6`](https://github.com/kamanager2012/dsh-community/releases/latest):
 
-- `DSH.Community.Setup.0.1.6.exe` — Windows
+- `DSH Community Setup 0.1.6.exe` — Windows
 - `dsh-community-0.1.6.dmg` — macOS
 - `dsh-community-0.1.6.AppImage` — secondary Linux artifact
 

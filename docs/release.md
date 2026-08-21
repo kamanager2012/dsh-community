@@ -29,6 +29,10 @@ node scripts/release.mjs v0.1.0-rc.8-community.1
 Replace the example tag with the next intended community version. If the change
 only advances the official core, use the exact official version. If it is a
 community-only fix on the same core, increment `-community.N`.
+The published `v0.1.6` remains Latest on
+[releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest).
+Do not download or republish `v0.1.3`, `v0.1.4`, or `v0.1.5`. Never move or overwrite
+a published tag.
 
 The script checks a clean tree, a free tag, and a matching CHANGELOG section, then builds the AppImage locally as a sanity check and pushes the tag. The tag push starts the 3-OS `release` workflow:
 
@@ -71,7 +75,7 @@ download. Validate exact Release downloads separately from source or CI:
 
 | Endpoint | Exact artifact / path | Required flow |
 |---|---|---|
-| Windows Desktop | `DSH.Community.Setup.0.1.6.exe` | clean VM → install → first launch → key → new/resume → plugin → restart |
+| Windows Desktop | `DSH Community Setup 0.1.6.exe` | clean VM → install → first launch → key → new/resume → plugin → restart |
 | macOS Desktop | `dsh-community-0.1.6.dmg` | clean host → install → first launch → key → new/resume → plugin → restart |
 | WSL/Linux Terminal | `dsh-community` / `pnpm tui` | clean WSL/Linux → key → new/resume → plugin → restart |
 | Linux AppImage | `dsh-community-0.1.6.AppImage` | optional artifact smoke; not the primary Linux endpoint |
