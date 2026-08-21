@@ -17,7 +17,7 @@
 | **Stable** | [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) |
 | **Preview** | [Releases](https://github.com/kamanager2012/dsh-community/releases) 里最新的 Pre-release |
 
-当前社区产品号是 **0.1.6**：根目录、Desktop、TUI、workspace 包同一数字。官方 Runtime pin 仍是 `@deepseek-ai/dsh@0.1.0-rc.6`，那是上游版本，不是我们的号。下载只走 [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest)（`v0.1.6`）。不要下 `v0.1.3` / `v0.1.4` / `v0.1.5`。
+当前社区产品号是 **0.1.6**：根目录、Desktop、TUI、workspace 包同一数字。官方 Runtime pin 是 `@deepseek-ai/dsh@0.1.0-rc.8`（官方仓库当前发行 / npm `next`），那是上游版本，不是我们的号。下载只走 [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest)（`v0.1.6`）。不要下 `v0.1.3` / `v0.1.4` / `v0.1.5`。
 
 | 发行面 | 命名 | 入口 |
 |---|---|---|

@@ -2,6 +2,8 @@
 
 Official `@deepseek-ai/dsh` is the **development foundation**. We build TUI and Desktop on the pinned official runtime. A newer official rc is an upgrade of that foundation (pin + contract extract), not a gate that pauses product work.
 
+Current official pin is `@deepseek-ai/dsh@0.1.0-rc.8` (`packages/dsh-bridge/src/pin.ts`). That is the official GitHub current release / npm `next`. npm `latest` is still `0.1.0-rc.7`; this repo does not follow npm latest.
+
 ## Channels
 
 | Channel | Tag | Notes |

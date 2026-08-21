@@ -74,7 +74,7 @@ const cliSnapshot = {
   pin: manifest.version,
   version,
   helpMustContain: ['--profile', '--dump-config', '--dump-default-config', 'web', 'plugin'],
-  webHelpMustContain: ['--host', '--port'],
+  webHelpMustContain: ['--host', '--port', '--no-open'],
   readinessPrefix: 'dsh web: ',
 }
 const rowsSnapshot = {

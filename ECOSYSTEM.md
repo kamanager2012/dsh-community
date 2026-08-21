@@ -55,7 +55,7 @@ Official Web (upstream companion)
 
 Registry 的目标是验证层，不是最大目录：能装、能跑、适配当前 pin、申请了什么权限。Awesome 做发现，我们做 trust。
 
-节奏必须双轨，不能等 Win/mac/SDK/手册 100% 再开口：社区产品号统一为 `0.1.6`，官方 pin 仍是 `0.1.0-rc.6`。同时把“三个社区端、同一套会话”讲清楚。
+节奏必须双轨，不能等 Win/mac/SDK/手册 100% 再开口：社区产品号统一为 `0.1.6`，官方 pin 是 `0.1.0-rc.8`。同时把“三个社区端、同一套会话”讲清楚。
 
 ---
 
@@ -204,7 +204,7 @@ kamanager2012/dsh-community/releases/latest
 
 ```text
 社区产品号            0.1.6   （根目录 / Desktop / TUI / workspace 同一数字）
-官方 Runtime pin      0.1.0-rc.6   （上游，不是我们的版本）
+官方 Runtime pin      0.1.0-rc.8   （上游，不是我们的版本）
 Latest                v0.1.6 / releases/latest
 不要下载              v0.1.3 / v0.1.4 / v0.1.5
 ```

@@ -15,7 +15,7 @@
     "package": "node scripts/package.mjs"
   },
   "dependencies": {
-    "@deepseek-ai/dsh": "0.1.0-rc.6",
+    "@deepseek-ai/dsh": "0.1.0-rc.8",
     "@dsh-community/dsh-bridge": "workspace:*",
     "@dsh-community/shared-types": "workspace:*"
   },
