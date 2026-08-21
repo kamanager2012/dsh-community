@@ -21,8 +21,9 @@ node scripts/release.mjs vX.Y.Z-preview
 ```
 
 Replace the placeholder tag with the next intended version. At the current snapshot,
-`v0.1.4` is already Stable and `v0.1.3` is the latest Preview; do not move or overwrite
-either published tag.
+**v0.1.6** is Latest on [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest).
+Do not download or republish `v0.1.3`, `v0.1.4`, or `v0.1.5`. Never move or overwrite a
+published tag.
 
 The script checks a clean tree, a free tag, and a matching CHANGELOG section, then builds the AppImage locally as a sanity check and pushes the tag. The tag push starts the 3-OS `release` workflow:
 
@@ -57,19 +58,18 @@ https://github.com/kamanager2012/dsh-community/releases/latest
 
 ## Distribution Reality Gate
 
-`v0.1.2` is the current downloadable Latest. `v0.1.4` is a Pre-release: clean
-macOS extract cannot resolve `@deepseek-ai/dsh-app-boot`. Do not send users to
-those desktop assets.
-The current code line is `0.1.4`; later `main` commits may contain documentation or
-verification fixes that are not in the already published assets. Validate the exact
-Release downloads separately from source or CI:
+Community product **0.1.6** is Latest. Older tags (`v0.1.3` / `v0.1.4` / `v0.1.5`) are not
+user downloads — desktop Pre-releases and broken Windows flatten are documented in CHANGELOG.
+The current code line is **0.1.6** with official runtime `@deepseek-ai/dsh@0.1.0-rc.8`; later
+`main` commits may contain fixes not yet in published assets. Validate exact Release downloads
+separately from source or CI:
 
 | Endpoint | Exact artifact / path | Required flow |
 |---|---|---|
-| Windows Desktop | `DSH.Community.Setup.0.1.4.exe` | clean VM → install → first launch → key → new/resume → plugin → restart |
-| macOS Desktop | `dsh-community-0.1.4.dmg` | clean host → install → first launch → key → new/resume → plugin → restart |
+| Windows Desktop | `DSH Community Setup 0.1.6.exe` | clean VM → install → first launch → key → new/resume → plugin → restart |
+| macOS Desktop | `dsh-community-0.1.6.dmg` | clean host → install → first launch → key → new/resume → plugin → restart |
 | WSL/Linux Terminal | `dsh-community` / `pnpm tui` | clean WSL/Linux → key → new/resume → plugin → restart |
-| Linux AppImage | `dsh-community-0.1.4.AppImage` | optional artifact smoke; not the primary Linux endpoint |
+| Linux AppImage | `dsh-community-0.1.6.AppImage` | optional artifact smoke; not the primary Linux endpoint |
 
 The gate must also cover uninstall/reinstall, upgrade, missing key, bad network, and
 broken or interrupted Runtime extraction. Record Official Web ↔ WSL/Linux TUI ↔

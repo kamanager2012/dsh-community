@@ -1432,10 +1432,10 @@ Labs 成熟功能分批晋升 Community
 必须直接测试 exact release artifact，而不是 main 源码或 CI artifact:
 
 ```text
-Windows clean VM → `DSH.Community.Setup.0.1.4.exe` → 安装 → 首次启动 → 密钥 → new/resume → plugin → restart
-macOS clean host → `dsh-community-0.1.4.dmg` → 安装 → 首次启动 → 密钥 → new/resume → plugin → restart
+Windows clean VM → `DSH Community Setup 0.1.6.exe` → 安装 → 首次启动 → 密钥 → new/resume → plugin → restart
+macOS clean host → `dsh-community-0.1.6.dmg` → 安装 → 首次启动 → 密钥 → new/resume → plugin → restart
 WSL/Linux clean host → `dsh-community` / `pnpm tui` → 密钥 → new/resume → plugin → restart
-Linux AppImage → `dsh-community-0.1.4.AppImage` → 可选/次要 artifact smoke
+Linux AppImage → `dsh-community-0.1.6.AppImage` → 可选/次要 artifact smoke
 ```
 
 还要覆盖:
