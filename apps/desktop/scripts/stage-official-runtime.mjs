@@ -4,7 +4,8 @@
  * npm's classic node_modules (no symlinks, no virtual store) is the only
  * layout that is both Node-resolvable after extraction and safe for Windows
  * tar extraction. node-pty compiles natively on Linux during install
- * (its postinstall); darwin/win32 ship prebuilds in the npm tarball.
+ * (its postinstall); darwin ships prebuilds in the npm tarball; Windows 1.2
+ * ships `conpty.node` (not `pty.node`).
  *
  * v0.1.4 lesson: a tar that only carries @deepseek-ai/dsh and not its deps
  * boots nothing. v0.1.5 lesson: pnpm hoisted still parks deps in .pnpm and
@@ -80,10 +81,12 @@ if (missing.length > 0) {
 
 const ptyPlatform = process.platform === 'darwin' ? 'darwin' : process.platform === 'win32' ? 'win32' : 'linux'
 const ptyArch = process.arch === 'arm64' ? 'arm64' : 'x64'
-const ptyBinary = join(modules, 'node-pty', 'prebuilds', `${ptyPlatform}-${ptyArch}`, 'pty.node')
-const ptyCompiled = join(modules, 'node-pty', 'build/Release/pty.node')
+const ptyDir = join(modules, 'node-pty', 'prebuilds', `${ptyPlatform}-${ptyArch}`)
+const ptyNative = ptyPlatform === 'win32' ? 'conpty.node' : 'pty.node'
+const ptyBinary = join(ptyDir, ptyNative)
+const ptyCompiled = join(modules, 'node-pty', 'build/Release', ptyNative)
 if (!existsSync(ptyBinary) && !existsSync(ptyCompiled)) {
-  throw new Error(`node-pty binary missing for ${ptyPlatform}-${ptyArch}`)
+  throw new Error(`node-pty binary missing for ${ptyPlatform}-${ptyArch} (${ptyNative})`)
 }
 
 const probe = spawnSync(process.execPath, ['--input-type=module', '-e', `

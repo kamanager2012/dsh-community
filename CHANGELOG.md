@@ -14,6 +14,7 @@ Release: https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.1-rc.1
 - 保留 rc.8 工程修复：Desktop `--no-open`、readiness 跳过非 URL 行、Node `>=22.15.0`。
 - 契约快照按 `0.1.1-rc.1` 重抽；`latest-tested` 改为 `0.1.1-rc.1`。
 - macOS 发版暂存官方 Runtime 时把 Node 堆提到 4GB，避免 GitHub runner 上 `npm install` OOM。
+- Windows 暂存检查认 `node-pty` 1.2 的 `conpty.node`（不再误找已移除的 `pty.node`）。
 
 ## 0.1.0-rc.8-community.1 — Unreleased (superseded in source)
 
