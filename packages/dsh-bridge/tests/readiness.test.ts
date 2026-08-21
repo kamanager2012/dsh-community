@@ -17,7 +17,11 @@ describe('parseReadinessLine', () => {
     expect(() => parseReadinessLine(`${READINESS_PREFIX}https://127.0.0.1:3080`)).toThrow(/loopback/)
     expect(() => parseReadinessLine(`${READINESS_PREFIX}http://127.0.0.1:3080/chat`)).toThrow(/loopback/)
     expect(() => parseReadinessLine(`${READINESS_PREFIX}http://127.0.0.1`)).toThrow(/loopback/)
-    expect(() => parseReadinessLine(`${READINESS_PREFIX}not-a-url`)).toThrow(/invalid/)
+  })
+
+  it('skips the rc.8 browser-handoff diagnostic that shares the prefix', () => {
+    expect(parseReadinessLine(`${READINESS_PREFIX}opening the default browser; pass --no-open to disable`)).toBeUndefined()
+    expect(parseReadinessLine(`${READINESS_PREFIX}not-a-url`)).toBeUndefined()
   })
 })
 
@@ -27,6 +31,12 @@ describe('createReadinessParser', () => {
     expect(parser.push('dsh we')).toBeUndefined()
     expect(parser.push('b: http://127.0.0.1:9')).toBeUndefined()
     expect(parser.push('001/\nmore\n')).toBe('http://127.0.0.1:9001')
+  })
+
+  it('accepts the URL line after the rc.8 browser-handoff diagnostic', () => {
+    const parser = createReadinessParser()
+    expect(parser.push(`${READINESS_PREFIX}opening the default browser; pass --no-open to disable\n`)).toBeUndefined()
+    expect(parser.push(`${READINESS_PREFIX}http://127.0.0.1:3080\n`)).toBe('http://127.0.0.1:3080')
   })
 
   it('rejects two different ready URLs', () => {

@@ -3,13 +3,14 @@ import { officialHostArgs, officialWebArgv } from '../src/spawn-web.ts'
 
 describe('officialWebArgv', () => {
   it('is the published web alias plus loopback bind', () => {
-    expect(officialWebArgv()).toEqual(['web', '--host', '127.0.0.1', '--port', '0'])
+    expect(officialWebArgv()).toEqual(['web', '--host', '127.0.0.1', '--port', '0', '--no-open'])
     expect(officialWebArgv({ host: '127.0.0.1', port: 3080 })).toEqual([
       'web',
       '--host',
       '127.0.0.1',
       '--port',
       '3080',
+      '--no-open',
     ])
   })
 })
@@ -28,6 +29,7 @@ describe('officialHostArgs', () => {
       '127.0.0.1',
       '--port',
       '0',
+      '--no-open',
     ])
   })
 
@@ -39,6 +41,7 @@ describe('officialHostArgs', () => {
       '127.0.0.1',
       '--port',
       '0',
+      '--no-open',
     ])
   })
 })
