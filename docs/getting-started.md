@@ -45,7 +45,7 @@ git clone https://github.com/kamanager2012/dsh-community.git
 cd dsh-community
 pnpm install
 export DEEPSEEK_API_KEY=...
-pnpm doctor
+pnpm run doctor
 pnpm start
 ```
 
@@ -53,7 +53,7 @@ Windows PowerShell 可以使用：
 
 ```powershell
 $env:DEEPSEEK_API_KEY = "..."
-pnpm doctor
+pnpm run doctor
 pnpm start
 ```
 
@@ -72,7 +72,7 @@ dsh-community plugins         # 只读查看插件目录
 dsh-community desktop         # 启动桌面壳
 ```
 
-源码开发时也可以使用 `pnpm start`、`pnpm new`、`pnpm desktop`。插件安装不要由社区层重新实现，继续使用官方 `dsh plugin add` 链路或 Desktop 市场页。
+源码开发时也可以使用 `pnpm start`、`pnpm new`、`pnpm run doctor`、`pnpm desktop`。不要裸跑 `pnpm doctor`（那是 pnpm 自己的命令）。插件安装不要由社区层重新实现，继续使用官方 `dsh plugin add` 链路或 Desktop 市场页。
 
 ## 会话和数据边界
 

@@ -45,7 +45,7 @@ git clone https://github.com/kamanager2012/dsh-community.git
 cd dsh-community
 pnpm install
 export DEEPSEEK_API_KEY=...
-pnpm doctor
+pnpm run doctor
 pnpm start
 ```
 
@@ -53,7 +53,7 @@ On Windows PowerShell:
 
 ```powershell
 $env:DEEPSEEK_API_KEY = "..."
-pnpm doctor
+pnpm run doctor
 pnpm start
 ```
 
@@ -72,7 +72,7 @@ dsh-community plugins         # read-only plugin catalog view
 dsh-community desktop         # start the desktop shell
 ```
 
-Source development also supports `pnpm start`, `pnpm new`, and `pnpm desktop`. Plugin installation should remain on the official `dsh plugin add` chain or the Desktop marketplace flow.
+Source development also supports `pnpm start`, `pnpm new`, `pnpm run doctor`, and `pnpm desktop`. Do not run bare `pnpm doctor` — that is pnpm's own command. Plugin installation should remain on the official `dsh plugin add` chain or the Desktop marketplace flow.
 
 ## Session and data boundaries
 
