@@ -78,7 +78,7 @@ export DEEPSEEK_API_KEY=...
 pnpm start
 pnpm new
 pnpm desktop
-pnpm doctor
+pnpm run doctor         # not bare `pnpm doctor` — that is pnpm's own command
 ```
 
 Useful commands exposed by the source distribution include `sessions`, `resume`,

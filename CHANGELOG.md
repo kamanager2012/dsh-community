@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- 修复根目录 `pnpm start` / `tui` / `sessions` / `run doctor`：改走 `@dsh-community/tui`（`apps/tui`）入口，不再误调没有 `start` 的 `@dsh-community/tui-surface`。文档用 `pnpm run doctor`，避免撞上 pnpm 内置 `doctor`。
+
 - 官方 Runtime pin：`@deepseek-ai/dsh` `0.1.0-rc.6` → `0.1.0-rc.8`（官方 GitHub 当前发行 / npm `next`）。npm `latest` 仍是 `0.1.0-rc.7`，本仓跟官方仓库当前表面，不跟 npm latest。
 - Desktop / dsh-bridge spawn 增加 `--no-open`：rc.8 本地 `dsh web` 会自动开系统浏览器；Electron 壳只托管官方 UI，不再弹浏览器。
 - 就绪解析忽略 `dsh web: opening the default browser...` 诊断行，只接受 loopback URL。
