@@ -6,6 +6,8 @@ import {
   OFFICIAL_DSH_BIN_REL,
   OFFICIAL_DSH_PACKAGE,
   PINNED_DSH_VERSION,
+  COMMUNITY_PRODUCT_VERSION,
+  communityBaseVersion,
   resolveOfficialDsh,
 } from '@dsh-community/dsh-bridge'
 
@@ -38,7 +40,9 @@ describe('community product version', () => {
       'tests/upstream-contract/package.json',
     ]
     const root = readManifest('package.json').version
-    expect(root).toMatch(/^\d+\.\d+\.\d+$/)
+    expect(root).toBe(COMMUNITY_PRODUCT_VERSION)
+    if (root === undefined) throw new Error('root package.json must declare a version')
+    expect(communityBaseVersion(root)).toBe(PINNED_DSH_VERSION)
     for (const rel of manifests) {
       expect(readManifest(rel).version, rel).toBe(root)
     }

@@ -20,12 +20,14 @@ A conversation you start in official Web is the same conversation you resume in
 | **Stable** | [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) |
 | **Preview** | newest Pre-release on [Releases](https://github.com/kamanager2012/dsh-community/releases) |
 
-The community product version is **0.1.6** — root, Desktop, TUI, and workspace
-packages share that number. Official Runtime is `@deepseek-ai/dsh@0.1.0-rc.8`
-(current official GitHub release / npm `next`); that pin is upstream, not our
-version. Download only
-[releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest)
-(`v0.1.6`). Do not download `v0.1.3`, `v0.1.4`, or `v0.1.5`.
+The current source / next release line is **0.1.0-rc.8-community.1** — root,
+Desktop, TUI, and workspace packages share that exact version. The official
+core is `@deepseek-ai/dsh@0.1.0-rc.8`; `-community.1` identifies a
+community-owned fix on that same core. Published `v0.1.6` remains historical
+Latest and has not been rewritten. Before the next release, use the
+[Releases](https://github.com/kamanager2012/dsh-community/releases) page for
+download status. See the [version policy](docs/version-policy.md) for the
+version and interface identity rules.
 
 [Official Runtime](https://github.com/deepseek-ai/deepseek-harness)
 
@@ -45,10 +47,10 @@ session persistence, and core lifecycle.
 | Goal | Use |
 |---|---|
 | Run the official Runtime directly | [`npx @deepseek-ai/dsh web`](https://github.com/deepseek-ai/deepseek-harness) |
-| Download the community product | [v0.1.6](https://github.com/kamanager2012/dsh-community/releases/latest) |
+| Download the community product | [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) |
 | Use the WSL/Linux Terminal / TUI | `pnpm tui` or `dsh-community` after a source install |
-| Use the Windows Desktop shell | [v0.1.6](https://github.com/kamanager2012/dsh-community/releases/latest) Setup.exe, or `pnpm desktop` |
-| Use the macOS Desktop shell | [v0.1.6](https://github.com/kamanager2012/dsh-community/releases/latest) dmg, or `pnpm desktop` |
+| Use the Windows Desktop shell | [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) Setup.exe, or `pnpm desktop` |
+| Use the macOS Desktop shell | [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) dmg, or `pnpm desktop` |
 | Read operational guidance | [DeepSeek Harness Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/) |
 | Verified community plugins | [`dsh-marketplace`](https://github.com/kamanager2012/dsh-marketplace) and the [verification registry](https://github.com/kamanager2012/dsh-community-plugins) — not an awesome list |
 
@@ -58,11 +60,11 @@ products.
 
 ## Current release status
 
-Community version is one number: **0.1.6** in `package.json` and on
-[releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest).
-Official Runtime pin is a different number (`0.1.0-rc.8`). The Linux AppImage is
-optional; the primary Linux endpoint is the WSL/Linux Terminal. Official Web is
-an upstream companion, not a Community endpoint.
+Community version is one workspace-wide identity: **0.1.0-rc.8-community.1**
+in source, with official core `@deepseek-ai/dsh@0.1.0-rc.8`. The published
+`v0.1.6` Latest is historical until the next release is cut. The Linux AppImage
+is optional; the primary Linux endpoint is the WSL/Linux Terminal. Official Web
+is an upstream companion, not a Community endpoint.
 
 ## From source
 
