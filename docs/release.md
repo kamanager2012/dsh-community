@@ -92,10 +92,12 @@ broken or interrupted Runtime extraction. Record Official Web ↔ WSL/Linux TUI 
 Windows/macOS Desktop Session sharing and the exact asset filename plus SHA256.
 `artifact-smoke` is only a partial install / first-ready / missing-key check; it is not
 a full user loop. The latest run
-([31935679026](https://github.com/kamanager2012/dsh-community/actions/runs/31935679026))
-passed the macOS exact job but failed the Windows exact job. Until the failure is
-understood and a later Latest smoke plus real-machine loop passes, the gate remains
-`[UNVERIFIED]`. A green unit test or a main-source smoke is not that evidence.
+([32470195309](https://github.com/kamanager2012/dsh-community/actions/runs/32470195309))
+passed the resolver, Windows, macOS, and Linux jobs for the exact published `v0.1.2`
+assets. This proves `[PARTIAL]` real-asset checksum, install/first-ready, and missing-key
+coverage; it does not prove Session sharing, plugin restart, lifecycle recovery, network
+failure handling, or a successful first conversation. A green unit test or a main-source
+smoke is not that evidence.
 
 ## Rules
 

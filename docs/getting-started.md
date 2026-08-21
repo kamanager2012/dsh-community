@@ -10,8 +10,8 @@
 | --- | --- | --- |
 | 直接使用官方 Runtime | [`npx @deepseek-ai/dsh web`](https://github.com/deepseek-ai/deepseek-harness) | 官方产品路径 |
 | 使用社区终端 / TUI | 本仓库 `dsh-community` 或源码中的 `pnpm tui` | 社区 UX，执行核心仍是官方 Runtime |
-| 下载 Windows 桌面包 | [已发布 `v0.1.2`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.2) | 安装包和完整用户闭环仍需复核 |
-| 下载 macOS 桌面包 | [已发布 `v0.1.2`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.2) | 安装包和完整用户闭环仍需复核 |
+| 下载 Windows 桌面包 | [已发布 `v0.1.2`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.2) | 真实资产首启 smoke 已通过；完整用户闭环仍需复核 |
+| 下载 macOS 桌面包 | [已发布 `v0.1.2`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.2) | 真实资产首启 smoke 已通过；完整用户闭环仍需复核 |
 | 使用 WSL/Linux 终端 | `dsh-community` / `pnpm tui` | Linux 的主力 Community endpoint |
 | 查完整操作手册 | [DeepSeek Harness Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/) | Provider、Session、安全、自动化和验收 |
 
