@@ -11,10 +11,15 @@ import {
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '../../..')
 
-function readManifest(rel: string): { version?: string; dependencies?: Record<string, string> } {
+function readManifest(rel: string): {
+  version?: string
+  dependencies?: Record<string, string>
+  peerDependencies?: Record<string, string>
+} {
   return JSON.parse(readFileSync(join(repoRoot, rel), 'utf8')) as {
     version?: string
     dependencies?: Record<string, string>
+    peerDependencies?: Record<string, string>
   }
 }
 
@@ -27,6 +32,7 @@ describe('community product version', () => {
       'packages/dsh-bridge/package.json',
       'packages/shared-types/package.json',
       'packages/tui-adapter/package.json',
+      'packages/tui/package.json',
       'tests/upstream-contract/package.json',
     ]
     const root = readManifest('package.json').version
@@ -48,6 +54,10 @@ describe('official pin consistency', () => {
     for (const rel of manifests) {
       const pin = readManifest(rel).dependencies?.[OFFICIAL_DSH_PACKAGE]
       expect(pin, rel).toBe(PINNED_DSH_VERSION)
+    }
+    const tuiPeers = readManifest('packages/tui/package.json').peerDependencies
+    for (const name of ['@deepseek-ai/dsh-llm', '@deepseek-ai/dsh-session', '@deepseek-ai/dsh-agent']) {
+      expect(tuiPeers?.[name], `packages/tui peer ${name}`).toBe(PINNED_DSH_VERSION)
     }
   })
 

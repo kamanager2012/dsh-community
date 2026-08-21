@@ -21,8 +21,9 @@ A conversation you start in official Web is the same conversation you resume in
 | **Preview** | newest Pre-release on [Releases](https://github.com/kamanager2012/dsh-community/releases) |
 
 The community product version is **0.1.6** — root, Desktop, TUI, and workspace
-packages share that number. Official Runtime remains `@deepseek-ai/dsh@0.1.0-rc.6`;
-that pin is upstream, not our version. Download only
+packages share that number. Official Runtime is `@deepseek-ai/dsh@0.1.0-rc.8`
+(current official GitHub release / npm `next`); that pin is upstream, not our
+version. Download only
 [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest)
 (`v0.1.6`). Do not download `v0.1.3`, `v0.1.4`, or `v0.1.5`.
 
@@ -59,7 +60,7 @@ products.
 
 Community version is one number: **0.1.6** in `package.json` and on
 [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest).
-Official Runtime pin is a different number (`0.1.0-rc.6`). The Linux AppImage is
+Official Runtime pin is a different number (`0.1.0-rc.8`). The Linux AppImage is
 optional; the primary Linux endpoint is the WSL/Linux Terminal. Official Web is
 an upstream companion, not a Community endpoint.
 
