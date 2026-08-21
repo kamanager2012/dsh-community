@@ -73,7 +73,7 @@ export DEEPSEEK_API_KEY=...
 pnpm start              # 有对话就接着最近一条，否则开新的
 pnpm new                # 强制开新对话
 pnpm desktop            # 桌面壳（含社区市场页）
-pnpm doctor             # 自检
+pnpm run doctor         # 自检（不要裸跑 pnpm doctor，那是 pnpm 自己的）
 ```
 
 同一入口也叫 `dsh-community`（`dsh-community-tui` 仍可用）：

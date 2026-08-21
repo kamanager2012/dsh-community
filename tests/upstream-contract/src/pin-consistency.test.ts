@@ -15,11 +15,13 @@ function readManifest(rel: string): {
   version?: string
   dependencies?: Record<string, string>
   peerDependencies?: Record<string, string>
+  scripts?: Record<string, string>
 } {
   return JSON.parse(readFileSync(join(repoRoot, rel), 'utf8')) as {
     version?: string
     dependencies?: Record<string, string>
     peerDependencies?: Record<string, string>
+    scripts?: Record<string, string>
   }
 }
 
@@ -40,6 +42,20 @@ describe('community product version', () => {
     for (const rel of manifests) {
       expect(readManifest(rel).version, rel).toBe(root)
     }
+  })
+})
+
+describe('root convenience scripts', () => {
+  it('routes start/tui/doctor/sessions through the community launcher, not the surface', () => {
+    const root = readManifest('package.json').scripts ?? {}
+    const launcher = readManifest('apps/tui/package.json').scripts ?? {}
+    expect(launcher.start).toMatch(/dist\/bin\.js/)
+    for (const name of ['start', 'tui', 'new', 'doctor', 'sessions', 'plugins']) {
+      expect(root[name], name).toMatch(/@dsh-community\/tui(?!-surface)/)
+      expect(root[name], name).not.toMatch(/@dsh-community\/tui-surface start/)
+    }
+    expect(root.doctor).toMatch(/start -- doctor/)
+    expect(root.sessions).toMatch(/start -- sessions/)
   })
 })
 
