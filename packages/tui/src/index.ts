@@ -11,6 +11,7 @@
  * are imported, mounted, or patched.
  */
 
+import { formatDualBadge } from './badge.js'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { installModelSelection } from '@deepseek-ai/dsh-agent'
@@ -112,6 +113,7 @@ export function apply(ctx: CordisContext): (() => void) | void {
 
     const ui = render(createElement(App, {
       store,
+      dualBadge: formatDualBadge(),
       onSend: (text: string) => {
         agent.followup(createUserMessage({
           content: [{ type: 'text', text }],

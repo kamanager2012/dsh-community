@@ -6,7 +6,7 @@
  * the same official core release.
  */
 export const COMMUNITY_PRODUCT_NAME = 'DeepSeek Harness Community' as const
-export const COMMUNITY_PRODUCT_VERSION = '0.1.0-rc.8-community.1' as const
+export const COMMUNITY_PRODUCT_VERSION = '0.1.1-rc.1' as const
 export const OFFICIAL_CORE_PACKAGE = '@deepseek-ai/dsh' as const
 
 const COMMUNITY_SUFFIX = /-community\.(?:0|[1-9]\d*)$/u

@@ -1,6 +1,6 @@
 {
   "source": "https://github.com/ccch1mneyyy/dsh-TUI/blob/main/cordis.patch.yml",
-  "measuredAt": "community tui-surface against official @deepseek-ai/dsh@0.1.0-rc.8",
+  "measuredAt": "community tui-surface against official @deepseek-ai/dsh@0.1.1-rc.1",
   "kpi": "patch-surface-reduction",
   "interventionCount": 7,
   "communityTuiOwned": 7,

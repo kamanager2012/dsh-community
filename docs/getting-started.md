@@ -2,7 +2,7 @@
 
 > 面向第一次使用者的任务型入口。事实快照：2026-08-21。
 
-[English](getting-started.en.md) · [返回中文 README](../README.md) · [三个社区端定义](community-endpoints.md) · [在线 Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/)
+[English](getting-started.en.md) · [返回中文 README](../README.md) · [五个社区端定义](community-endpoints.md) · [在线 Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/)
 
 ## 先选正确入口
 
@@ -15,9 +15,9 @@
 | 使用 WSL/Linux 终端 | `dsh-community` / `pnpm tui` | Linux 的主力 Community endpoint |
 | 查完整操作手册 | [DeepSeek Harness Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/) | Provider、Session、安全、自动化和验收 |
 
-不要从 Suite、Marketplace、Plugins 或 Edition 下载正式客户端。它们分别是实验舱、发现体验、兼容注册表和历史归档。当前源码/下一发行线是 **0.1.0-rc.8-community.1**，官方核心是 `@deepseek-ai/dsh@0.1.0-rc.8`；已发布 Latest 是 `v0.1.2`。`v0.1.6` 是 draft/pre-release，只有 checksum 资产，不是下载入口。官方 Web 是上游兼容入口，不是 Community 发行端；Linux AppImage 是可选/次要产物。详见[版本策略](version-policy.md)。
+不要从 Suite、Marketplace、Plugins 或 Edition 下载正式客户端。它们分别是实验舱、发现体验、兼容注册表和历史归档。当前源码/下一发行线是 **0.1.1-rc.1**，官方核心是 `@deepseek-ai/dsh@0.1.1-rc.1`；已发布 Latest 是 `v0.1.2`。`v0.1.6` 是 draft/pre-release，只有 checksum 资产，不是下载入口。官方 Web 是上游兼容入口，不是 Community 发行端。五个社区端见 [community-endpoints.md](community-endpoints.md)。详见[版本策略](version-policy.md)。
 
-Desktop 与 TUI 的身份应显示为：`DeepSeek Harness Community v0.1.0-rc.8-community.1 [Official Core: @deepseek-ai/dsh@0.1.0-rc.8]`。
+Desktop 与 TUI 的身份应显示为：`DeepSeek Harness Community v0.1.1-rc.1 [Official Core: @deepseek-ai/dsh@0.1.1-rc.1]`。
 
 ## 当前已发布下载资产
 

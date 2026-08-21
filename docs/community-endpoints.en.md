@@ -9,25 +9,32 @@ and **Community endpoints**.
 
 | Layer | Count | Meaning |
 |---|---:|---|
-| OS targets the code can build | 3 | Linux, Windows, macOS |
-| Community UI surfaces | 2 | Terminal / TUI, Desktop |
-| Community endpoints shipped to users | **3** | WSL/Linux Terminal, Windows Desktop, macOS Desktop |
+| OS targets the code can build | 4 | Linux, Windows, macOS, Android |
+| Community UI surfaces | 3 | Terminal / TUI, Desktop, Mobile shell |
+| Community endpoints shipped to users | **5** | WSL/Linux Terminal, Windows Desktop, macOS Desktop, Linux AppImage, Android |
 
 Official Web is an official DeepSeek surface. It shares `~/.dsh` with Community, but it
-is **not** a Community endpoint. The Linux AppImage is a **secondary artifact**, not a
-fourth product end.
+is **not** a Community endpoint.
 
-## The three Community endpoints
+## The five Community endpoints
 
 ```text
                     Official DeepSeek Harness Runtime
                                 │
-               ┌────────────────┼────────────────┐
-               │                │                │
-               ▼                ▼                ▼
-        WSL / Linux TUI    Windows Desktop   macOS Desktop
-         dsh-community        Setup.exe            dmg
+     ┌──────────┬───────────────┼───────────────┬──────────┐
+     ▼          ▼               ▼               ▼          ▼
+ WSL/Linux   Windows         macOS          Linux       Android
+  Terminal   Desktop         Desktop        AppImage     Mobile
+    ①          ②               ③              ④           ⑤
 ```
+
+| # | Endpoint | Artifact | Maturity |
+|---|---|---|---|
+| 1 | WSL / Linux Terminal | `dsh-community` / `pnpm tui` | Stable (primary source path) |
+| 2 | Windows Desktop | `DSH Community Setup.exe` | Stable (published Latest) |
+| 3 | macOS Desktop | `dsh-community-*.dmg` | Stable (published Latest) |
+| 4 | Linux Desktop AppImage | `dsh-community-*.AppImage` | Beta (Release artifact; CLI users still start at Terminal) |
+| 5 | Android Mobile | APK (WebView + nodejs-mobile) | `[UNVERIFIED]` in Labs (`deepseek-harness-suite`) until Reality Gate |
 
 ### 1. WSL / Linux Terminal
 
@@ -42,8 +49,7 @@ dsh-community doctor
 dsh-community plugins
 ```
 
-This is the primary Linux product path. A Linux Desktop AppImage is not required for
-this user.
+This is the primary Linux CLI path. An AppImage is not required for this user.
 
 ### 2. Windows Desktop
 
@@ -63,23 +69,25 @@ dsh-community-*.dmg
 → install → API key → use
 ```
 
-## Official Web is an upstream companion
+### 4. Linux Desktop AppImage
 
-```text
-                    DeepSeek Harness Runtime
-                            │
-          ┌─────────────────┼──────────────────┐
-          │                 │                  │
-          ▼                 ▼                  ▼
-   Official Web       Community TUI      Community Desktop
-   DeepSeek ships     we ship            we ship
-                                         ├── Windows
-                                         └── macOS
-```
+For Linux users who want a graphical desktop without a Windows/macOS installer. This is
+community endpoint 4, not an accidental build leftover. WSL / headless-server users still
+start at the Terminal.
+
+### 5. Android Mobile
+
+A thin APK: WebView hosts official Web UI; embedded Node runs published
+`@deepseek-ai/dsh`. Source currently lives in
+[`deepseek-harness-suite/apps/android`](https://github.com/kamanager2012/deepseek-harness-suite).
+It stays `[UNVERIFIED]` and off the `dsh-community` Latest download list until the Termux
+Reality Gate passes.
+
+## Official Web is an upstream companion
 
 Correct claim:
 
-> One official Runtime. Three Community endpoints. Same `~/.dsh` as official Web.
+> One official Runtime. Five Community endpoints. Same `~/.dsh` as official Web.
 
 Incorrect claim:
 
@@ -87,30 +95,18 @@ Incorrect claim:
 
 That wording makes people think Community ships the official Web surface.
 
-## Linux AppImage
-
-Release workflows may still attach `dsh-community-*.AppImage`. Treat it as optional /
-secondary:
-
-- do not list it as a primary Community endpoint;
-- do not tell WSL users they need a Linux Desktop;
-- do not count it as a fourth product end.
-
-The Linux user path is the Terminal.
-
 ## Slogan
 
 Prefer:
 
-> **One Harness. Three Community Endpoints.**
+> **One Harness. Five Community Endpoints.**
 
 Chinese:
 
-> **一套 Harness，三个社区端：WSL/Linux 终端、Windows 桌面、macOS 桌面。**
+> **一套 Harness，五个社区端：WSL/Linux 终端、Windows 桌面、macOS 桌面、Linux AppImage、Android。**
 
 Always add:
 
-> Shares the official `~/.dsh` session store with official Web.
+> Shares the official `~/.dsh` session store with official Web. Official Web is not a Community endpoint.
 
-Do not use **One Harness. Three Surfaces.** as the product slogan. It mixes an official
-surface into the Community product count.
+Do not use **One Harness. Three Surfaces.** or **Three Community Endpoints** as the current product slogan.

@@ -16,14 +16,14 @@ describe('desktop chrome around official dsh web', () => {
   it('renders a bar that can reopen official web and shell pages', () => {
     const html = renderChromePage({
       product: 'DSH Community',
-      identity: 'DeepSeek Harness Community v0.1.0-rc.8-community.1 [Official Core: @deepseek-ai/dsh@0.1.0-rc.8]',
+      identity: 'DeepSeek Harness Community v0.1.1-rc.1 [Official Core: @deepseek-ai/dsh@0.1.1-rc.1]',
       phase: 'ready',
       isolated: false,
       origin: 'http://127.0.0.1:4310',
       active: 'official',
     })
     expect(html).toMatch(/共用 ~\/\.dsh/)
-    expect(html).toMatch(/DeepSeek Harness Community v0\.1\.0-rc\.8-community\.1 \[Official Core: @deepseek-ai\/dsh@0\.1\.0-rc\.8\]/)
+    expect(html).toMatch(/DeepSeek Harness Community v0\.1\.1-rc\.1 \[Official Core: @deepseek-ai\/dsh@0\.1\.1-rc\.1\]/)
     expect(html).toMatch(/data-go="official"/)
     expect(html).toMatch(/data-go="sessions"/)
     expect(html).toMatch(/data-go="marketplace"/)

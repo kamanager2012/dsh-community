@@ -5,6 +5,8 @@
 This is a community launcher/adapter workspace for official DeepSeek Harness.
 
 - Runtime: published `@deepseek-ai/dsh` only. Pin is `packages/dsh-bridge/src/pin.ts`.
+- Community suite version 1:1-mirrors the official pin (`docs/version-policy.md`). Optional `-community.N` suffix for community-only patches. Dual-Badge via `formatCommunityIdentity()`.
+- Product count is **five community endpoints** (`docs/community-endpoints.md`). Official Web is not one of them.
 - Official apps today are cli+web. That is an architecture signal, not “official will never ship a TUI”.
 - stdout/stderr are diagnostics. IPC is lifecycle only (pid/port/start/crash). No Desktop Runtime Protocol.
 - Default: do not rewrite DSH_HOME. Sessions stay in official ~/.dsh so TUI/Web/Desktop share one log.

@@ -1,5 +1,5 @@
 {
-  "pin": "0.1.0-rc.8",
+  "pin": "0.1.1-rc.1",
   "count": 134,
   "names": [
     "@deepseek-ai/cordis-plugin-hmr",

@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { describe, expect, it } from 'vitest'
+import { PINNED_DSH_VERSION } from '../src/pin.ts'
 import { resolveOfficialDsh } from '../src/resolve-bin.ts'
 
 describe('packaged official bin resolution', () => {
@@ -15,7 +16,7 @@ describe('packaged official bin resolution', () => {
     writeFileSync(binPath, '#!/usr/bin/env node\n')
     writeFileSync(join(pkgDir, 'package.json'), JSON.stringify({
       name: '@deepseek-ai/dsh',
-      version: '0.1.0-rc.8',
+      version: PINNED_DSH_VERSION,
       bin: { dsh: 'lib/bin.js' },
     }))
 
@@ -24,7 +25,7 @@ describe('packaged official bin resolution', () => {
       env: { DSH_COMMUNITY_BIN: binPath },
     })
     expect(install.binPath).toBe(binPath)
-    expect(install.version).toBe('0.1.0-rc.8')
+    expect(install.version).toBe(PINNED_DSH_VERSION)
     expect(install.packageDir).toBe(pkgDir)
   })
 
@@ -38,6 +39,6 @@ describe('packaged official bin resolution', () => {
   it('still resolves the published package from the workspace', () => {
     const install = resolveOfficialDsh({ from: import.meta.url })
     expect(existsSync(install.binPath)).toBe(true)
-    expect(install.version).toBe('0.1.0-rc.8')
+    expect(install.version).toBe(PINNED_DSH_VERSION)
   })
 })

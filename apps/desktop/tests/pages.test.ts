@@ -26,22 +26,22 @@ describe('shell pages', () => {
   it('prints the official pin on the about page', () => {
     const html = renderAboutPage({
       product: 'DSH Community',
-      identity: 'DeepSeek Harness Community v0.1.0-rc.8-community.1 [Official Core: @deepseek-ai/dsh@0.1.0-rc.8]',
+      identity: 'DeepSeek Harness Community v0.1.1-rc.1 [Official Core: @deepseek-ai/dsh@0.1.1-rc.1]',
       officialPackage: '@deepseek-ai/dsh',
-      officialVersion: '0.1.0-rc.8',
+      officialVersion: '0.1.1-rc.1',
       officialBin: '/tmp/lib/bin.js',
       officialHome: '/home/dev/.dsh',
       desktopRoot: '/home/dev/.config/dsh-community',
       isolated: false,
-      latestTested: '0.1.0-rc.8',
+      latestTested: '0.1.1-rc.1',
       officialSessionCount: 3,
       origin: 'http://127.0.0.1:4310',
       phase: 'ready',
       pid: '12',
       logs: 'dsh web: http://127.0.0.1:4310',
     })
-    expect(html).toMatch(/DeepSeek Harness Community v0\.1\.0-rc\.8-community\.1 \[Official Core: @deepseek-ai\/dsh@0\.1\.0-rc\.8\]/)
-    expect(html).toMatch(/@deepseek-ai\/dsh@0\.1\.0-rc\.8/)
+    expect(html).toMatch(/DeepSeek Harness Community v0\.1\.1-rc\.1 \[Official Core: @deepseek-ai\/dsh@0\.1\.1-rc\.1\]/)
+    expect(html).toMatch(/@deepseek-ai\/dsh@0\.1\.1-rc\.1/)
     expect(html).toMatch(/~\/\.dsh/)
     expect(html).toMatch(/同一批 Session/)
     expect(html).toMatch(/\/home\/dev\/\.dsh/)

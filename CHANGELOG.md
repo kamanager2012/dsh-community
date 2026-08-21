@@ -2,7 +2,15 @@
 
 ## Unreleased
 
-## 0.1.0-rc.8-community.1 — Unreleased
+## 0.1.1-rc.1 — Unreleased
+
+- 官方 Runtime pin：`@deepseek-ai/dsh` `0.1.0-rc.8` → `0.1.1-rc.1`（官方 GitHub 当前发行 / npm `latest` 与 `next`）。社区套件 1:1 镜像为 `0.1.1-rc.1`，不再带 `-community.N`。
+- Dual-Badge：`DeepSeek Harness Community v0.1.1-rc.1 [Official Core: @deepseek-ai/dsh@0.1.1-rc.1]`。Desktop 顶栏 / About 与 TUI 状态栏同一字符串。
+- 产品端定义为五个社区端：WSL/Linux 终端、Windows 桌面、macOS 桌面、Linux AppImage、Android（Labs / `[UNVERIFIED]`）。官方 Web 仍不是 Community 发行端。
+- 保留 rc.8 工程修复：Desktop `--no-open`、readiness 跳过非 URL 行、Node `>=22.15.0`。
+- 契约快照按 `0.1.1-rc.1` 重抽；`latest-tested` 改为 `0.1.1-rc.1`。
+
+## 0.1.0-rc.8-community.1 — Unreleased (superseded in source)
 
 - 版本身份契约：社区发行线镜像官方核心版本；当前未发布线为 `0.1.0-rc.8-community.1`，对应 `@deepseek-ai/dsh@0.1.0-rc.8`。Desktop 与 TUI 统一显示 Dual-Badge：`DeepSeek Harness Community v0.1.0-rc.8-community.1 [Official Core: @deepseek-ai/dsh@0.1.0-rc.8]`。已发布的 `v0.1.6` 保留为历史版本。
 - 发行文档对齐 0.1.6：`docs/release.md` Distribution Reality Gate 与 `ECOSYSTEM.md` 验包路径从 0.1.4 升到当前 Latest 产物名；门禁仍标 `[UNVERIFIED]`（待 clean-machine exact artifact 重跑）。

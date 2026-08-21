@@ -1,17 +1,23 @@
 {
   "policy": "Recommend latest tested, not latest published.",
   "runtimes": {
+    "0.1.1-rc.1": {
+      "desktop": "tested",
+      "tui": "tested",
+      "contracts": "snapshotted",
+      "notes": "Official GitHub current / npm latest and next. Desktop still passes --no-open."
+    },
     "0.1.0-rc.8": {
       "desktop": "tested",
-      "tui": "unverified",
+      "tui": "tested",
       "contracts": "snapshotted",
-      "notes": "Current official pin. Desktop spawns official dsh web with --no-open."
+      "notes": "Previous community pin. Introduced --no-open and Node >=22.15.0."
     },
     "0.1.0-rc.6": {
       "desktop": "tested",
       "tui": "unverified",
       "contracts": "snapshotted",
-      "notes": "Previous community pin. Desktop spawned official dsh web without --no-open."
+      "notes": "Earlier community pin. Desktop spawned official dsh web without --no-open."
     }
   }
 }

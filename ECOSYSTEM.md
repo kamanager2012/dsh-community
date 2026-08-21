@@ -32,30 +32,29 @@ Official Web (upstream companion)
               │ same ~/.dsh
               ├── WSL/Linux Terminal
               ├── Windows Desktop
-              └── macOS Desktop
+              ├── macOS Desktop
+              ├── Linux AppImage
+              └── Android (Labs / UNVERIFIED)
 ```
 
-官方 Web 是**兼容对象**,不是我们的发行端。我们真正的三个社区端:
+官方 Web 是**兼容对象**,不是我们的发行端。我们真正的五个社区端:
 
 ```text
              Official DeepSeek Harness Runtime
                          │
-        ┌────────────────┼────────────────┐
-        ▼                ▼                ▼
-   WSL/Linux Terminal  Windows Desktop  macOS Desktop
-        │                │                │
-        └────────────────┴───────┬────────┘
-                                 ▼
-                          DSH Community
+   ┌──────────┬──────────┼──────────┬──────────┐
+   ▼          ▼          ▼          ▼          ▼
+ WSL/Linux  Windows    macOS     Linux      Android
+ Terminal   Desktop    Desktop   AppImage   Mobile
 ```
 
-对外口号:**One Harness. Three Community Endpoints.**(一套 Harness,三个社区端:WSL/Linux 终端、Windows 桌面、macOS 桌面;与官方 Web 共用同一套 `~/.dsh` Session。)Linux AppImage 桌面端降级为 **secondary / optional** 资产,WSL/Linux 用户的正式端是终端。
+对外口号:**One Harness. Five Community Endpoints.**(一套 Harness,五个社区端:WSL/Linux 终端、Windows 桌面、macOS 桌面、Linux AppImage、Android;与官方 Web 共用同一套 `~/.dsh` Session。)Linux CLI 用户默认走终端;AppImage 是第 4 端,不是“随便附带”。Android 在 Labs,未过 Reality Gate。
 
 和愿意 `patch-package` 改官方 UI、并把 session 放进 Electron userData 的 Desktop 产品,走的是两条路。对方短期产品速度更快;我们不改官方表面,用外围发行层 / 契约 / 验证插件扩展,长期 drift 成本更低。没有谁天然高级。工程原则不是用户价值。
 
 Registry 的目标是验证层，不是最大目录：能装、能跑、适配当前 pin、申请了什么权限。Awesome 做发现，我们做 trust。
 
-节奏必须双轨，不能等 Win/mac/SDK/手册 100% 再开口：当前源码/下一发行线统一为 `0.1.0-rc.8-community.1`，对应官方 pin `0.1.0-rc.8`。已发布的 `v0.1.6` 保留为历史 Latest，不回写旧标签。同时把“三个社区端、同一套会话”讲清楚。
+节奏必须双轨，不能等 Win/mac/SDK/手册 100% 再开口：当前源码/下一发行线统一为 `0.1.1-rc.1`，对应官方 pin `0.1.1-rc.1`。已发布的 Latest 仍是 `v0.1.2`，不回写旧标签。同时把“五个社区端、同一套会话”讲清楚。
 
 ---
 
@@ -102,7 +101,7 @@ Repo topology 完整 ≠ Ecosystem 完整。现在真实成熟度:产品初期�
 
 ```text
 Engineering:               Distribution:
-0.1.0-rc.8-community.1       定位叙事 + 架构文章
+0.1.1-rc.1                   定位叙事 + 架构文章
 win/mac 打包收口           插件验证 / 对比 / demo
 Session consistency        用户反馈回流
 release reproducibility
@@ -203,9 +202,9 @@ kamanager2012/dsh-community/releases/latest
 版本是三层，不要把 `package.json` 里的开发号写成“用户下载版本”：
 
 ```text
-社区源码版本          0.1.0-rc.8-community.1 （根目录 / Desktop / TUI / workspace 同一版本）
-官方 Runtime pin      0.1.0-rc.8            （社区版本的核心基线）
-已发布 Latest         v0.1.6 / releases/latest （历史资产，不能回写）
+社区源码版本          0.1.1-rc.1            （根目录 / Desktop / TUI / workspace 同一版本）
+官方 Runtime pin      0.1.1-rc.1            （社区版本的核心基线）
+已发布 Latest         v0.1.2 / releases/latest （历史资产，不能回写）
 下一发行线            尚未发布              （发布前不要把源码线写成下载资产）
 ```
 
@@ -219,7 +218,7 @@ Linux 主力端    WSL/Linux Terminal / TUI
 
 ### Latest 与 Reality Gate
 
-源码版本已经统一为 `0.1.0-rc.8-community.1`。干净环境用户闭环仍要单独验证，不能把发版成功写成 Reality Gate 已过。
+源码版本已经统一为 `0.1.1-rc.1`。干净环境用户闭环仍要单独验证，不能把发版成功写成 Reality Gate 已过。
 
 Windows / macOS 也必须只从 `dsh-community` 发布，不能改去 Suite 或 Edition。
 
@@ -1427,7 +1426,7 @@ Labs 成熟功能分批晋升 Community
 
 ## 三十一、当前最重要的产品工作是 Distribution Reality Gate
 
-当前源码版本是 `0.1.0-rc.8-community.1`，官方核心是 `0.1.0-rc.8`。现在要验证的是：一个没有参与开发的人，下载已发布 Latest 页面上的真实安装包后能否完成用户闭环。
+当前源码版本是 `0.1.1-rc.1`，官方核心是 `0.1.1-rc.1`。现在要验证的是：一个没有参与开发的人，下载已发布 Latest 页面上的真实安装包后能否完成用户闭环。
 
 必须直接测试 exact release artifact，而不是 main 源码或 CI artifact:
 

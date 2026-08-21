@@ -2,11 +2,10 @@
 
 Official `@deepseek-ai/dsh` is the **development foundation**. We build TUI and Desktop on the pinned official runtime. A newer official rc is an upgrade of that foundation (pin + contract extract), not a gate that pauses product work.
 
-Current official pin is `@deepseek-ai/dsh@0.1.0-rc.8` (`packages/dsh-bridge/src/pin.ts`). That is the official GitHub current release / npm `next`. npm `latest` is still `0.1.0-rc.7`; this repo does not follow npm latest.
+Current official pin is `@deepseek-ai/dsh@0.1.1-rc.1` (`packages/dsh-bridge/src/pin.ts`). That is the official GitHub current release and npm `latest` / `next`.
 
-The current source release identity is `0.1.0-rc.8-community.1`: all workspace
-packages use it, and the `-community.1` suffix records a community-owned fix on
-the same official core. The published Latest is `v0.1.2`; `v0.1.6` is a
+The current source release identity is `0.1.1-rc.1`: all workspace
+packages use it and 1:1-mirror the official core. The published Latest is `v0.1.2`; `v0.1.6` is a
 draft/pre-release with checksum assets only, not a user download. See [Version
 and identity policy](version-policy.md).
 
@@ -24,7 +23,7 @@ Windows / macOS artifacts are built by GitHub Actions (`release` workflow) — n
 
 ```sh
 pnpm typecheck && pnpm test          # gate
-node scripts/release.mjs v0.1.0-rc.8-community.1
+node scripts/release.mjs v0.1.1-rc.1
 ```
 
 Replace the example tag with the next intended community version. If the change
@@ -75,7 +74,7 @@ https://github.com/kamanager2012/dsh-community/releases/latest
 ## Distribution Reality Gate
 
 `v0.1.2` is the currently published Latest asset. The current source line is
-`0.1.0-rc.8-community.1`, and it has not been published yet; `v0.1.6` is a
+`0.1.1-rc.1`, and it has not been published yet; `v0.1.6` is a
 draft/pre-release with checksum assets only. Later `main` commits may contain code
 or verification fixes that are not in the published download. Validate exact
 Release downloads separately from source or CI:
@@ -85,7 +84,8 @@ Release downloads separately from source or CI:
 | Windows Desktop | `DSH.Community.Setup.0.1.2.exe` | clean VM → install → first launch → key → new/resume → plugin → restart |
 | macOS Desktop | `dsh-community-0.1.2.dmg` | clean host → install → first launch → key → new/resume → plugin → restart |
 | WSL/Linux Terminal | `dsh-community` / `pnpm tui` | clean WSL/Linux → key → new/resume → plugin → restart |
-| Linux AppImage | `dsh-community-0.1.2.AppImage` | optional artifact smoke; not the primary Linux endpoint |
+| Linux AppImage | `dsh-community-0.1.2.AppImage` | community endpoint 4; CLI users still start at Terminal |
+| Android | Labs APK / Termux | `[UNVERIFIED]`; not a Latest download |
 
 The gate must also cover uninstall/reinstall, upgrade, missing key, bad network, and
 broken or interrupted Runtime extraction. Record Official Web ↔ WSL/Linux TUI ↔

@@ -1,12 +1,12 @@
 # dsh-community
 
-**One Harness. Three Community Endpoints.**（一套 Harness，三个社区端）
+**One Harness. Five Community Endpoints.**（一套 Harness，五个社区端）
 
-官方 DeepSeek Harness 的社区发行版：同一套 Runtime、同一套 `~/.dsh` 会话、同一套官方插件。我们的三个社区端是 **WSL/Linux 终端、Windows 桌面、macOS 桌面**；官方 Web 是兼容对象，不是我们的发行端——但进的是同一个世界。不是官方客户端，也不是第二套 Harness。
+官方 DeepSeek Harness 的社区发行版：同一套 Runtime、同一套 `~/.dsh` 会话、同一套官方插件。我们的五个社区端是 **WSL/Linux 终端、Windows 桌面、macOS 桌面、Linux AppImage、Android**；官方 Web 是兼容对象，不是我们的发行端——但进的是同一个世界。不是官方客户端，也不是第二套 Harness。
 
 你今天在官方 Web 开的对话，关掉以后用 `dsh-community` 终端可以接着聊；再打开 Desktop，还是同一条会话。
 
-> **One Harness. Three Community Endpoints.** 官方 DeepSeek Harness Runtime 之上的社区发行版：同一套 Runtime、同一套 Session、同一套插件；三个社区端 = WSL/Linux 终端 + Windows 桌面 + macOS 桌面。不重写 Harness，不 patch 官方表面。
+> **One Harness. Five Community Endpoints.** 官方 DeepSeek Harness Runtime 之上的社区发行版：同一套 Runtime、同一套 Session、同一套插件；五个社区端 = WSL/Linux 终端 + Windows 桌面 + macOS 桌面 + Linux AppImage + Android。不重写 Harness，不 patch 官方表面。
 
 [English](README.en.md) | 简体中文
 
@@ -17,9 +17,9 @@
 | **Stable** | [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) |
 | **Preview** | [Releases](https://github.com/kamanager2012/dsh-community/releases) 里最新的 Pre-release |
 
-GitHub 当前已发布 Latest 是 **v0.1.2**，实际下载资产为 Linux AppImage、macOS dmg 和 Windows `DSH.Community.Setup.0.1.2.exe`，每项都有 `.sha256` sidecar。当前源码/下一发行线是 **0.1.0-rc.8-community.1**：根目录、Desktop、TUI、workspace 包全部同号；官方核心是 `@deepseek-ai/dsh@0.1.0-rc.8`。`-community.1` 表示在同一官方核心上的社区自有修补，尚未作为用户 Release 发布。`v0.1.6` 是 draft/pre-release，只有 checksum 资产，不是下载入口。版本和界面展示规则见 [Version policy](docs/version-policy.md)。
+GitHub 当前已发布 Latest 是 **v0.1.2**，实际下载资产为 Linux AppImage、macOS dmg 和 Windows `DSH.Community.Setup.0.1.2.exe`，每项都有 `.sha256` sidecar。当前源码/下一发行线是 **0.1.1-rc.1**：根目录、Desktop、TUI、workspace 包全部同号，1:1 镜像官方核心 `@deepseek-ai/dsh@0.1.1-rc.1`。尚未作为用户 Release 发布。`v0.1.6` 是 draft/pre-release，只有 checksum 资产，不是下载入口。版本和界面展示规则见 [Version policy](docs/version-policy.md)。
 
-Desktop 与 TUI 的身份应显示为：`DeepSeek Harness Community v0.1.0-rc.8-community.1 [Official Core: @deepseek-ai/dsh@0.1.0-rc.8]`。
+Desktop 与 TUI 的身份应显示为：`DeepSeek Harness Community v0.1.1-rc.1 [Official Core: @deepseek-ai/dsh@0.1.1-rc.1]`。
 
 | 发行面 | 命名 | 入口 |
 |---|---|---|
@@ -27,7 +27,8 @@ Desktop 与 TUI 的身份应显示为：`DeepSeek Harness Community v0.1.0-rc.8-
 | WSL/Linux 终端 | **社区端 1：Terminal / TUI** | `dsh-community` / `dsh-community-tui` / `pnpm tui` |
 | Windows 桌面 | **社区端 2：Desktop** | [已发布 `v0.1.2`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.2) Setup.exe，或 `pnpm desktop` |
 | macOS 桌面 | **社区端 3：Desktop** | [已发布 `v0.1.2`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.2) dmg，或 `pnpm desktop` |
-| Linux AppImage | 可选 / 次要构建产物 | 随 Release 附带；Linux 主路径仍是 Terminal |
+| Linux AppImage | **社区端 4：Desktop** | 随 Release 附带；CLI 用户仍以终端为主 |
+| Android | **社区端 5：Mobile** | Labs `[UNVERIFIED]`（`deepseek-harness-suite`），未过 Reality Gate |
 
 > 命名红线：不叫 dsh-TUI / DeepSeek Harness Desktop（那是别人的产品名），不在 npm 冒用 `@deepseek-ai` 或 `dsh-tui` 的包名。我们是发行版，不是再造一个桌面壳。
 
@@ -35,7 +36,7 @@ Desktop 与 TUI 的身份应显示为：`DeepSeek Harness Community v0.1.0-rc.8-
 
 开发基础是已发布的 `@deepseek-ai/dsh`。我们不 vendor 官方源码，也不用 `patch-package` 改官方 UI。扩展走外围发行层、契约层和插件验证层。
 
-中文 | [使用指南](docs/getting-started.md) · [三个社区端定义](docs/community-endpoints.md) · [Architecture](ARCHITECTURE.md) · [重构说明](docs/reconstruction.md) · [Upgrade](docs/upgrade.md) · [TUI adapter](docs/tui-adapter.md) · [contracts](contracts/README.md) · [Version Manager](docs/version-manager.md)
+中文 | [使用指南](docs/getting-started.md) · [五个社区端定义](docs/community-endpoints.md) · [Architecture](ARCHITECTURE.md) · [重构说明](docs/reconstruction.md) · [Upgrade](docs/upgrade.md) · [TUI adapter](docs/tui-adapter.md) · [contracts](contracts/README.md) · [Version Manager](docs/version-manager.md)
 
 ## 现在能给谁用
 
@@ -43,7 +44,7 @@ Desktop 与 TUI 的身份应显示为：`DeepSeek Harness Community v0.1.0-rc.8-
 |---|---|
 | 真正跑 agent | 官方 [`npx @deepseek-ai/dsh web`](https://github.com/deepseek-ai/deepseek-harness) |
 | 终端 | 本仓 `dsh-community`（启动官方 `dsh --profile headless`，不挂第三方 TUI） |
-| 下载安装包 | [已发布 `v0.1.2`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.2)；当前源码线为 `0.1.0-rc.8-community.1`，不是同一个版本 |
+| 下载安装包 | [已发布 `v0.1.2`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.2)；当前源码线为 `0.1.1-rc.1`，不是同一个版本 |
 | 已验证能装的社区插件 | Desktop 市场页 · [`dsh-marketplace`](https://github.com/kamanager2012/dsh-marketplace) · [验证注册表](https://github.com/kamanager2012/dsh-community-plugins)（不是 awesome 目录） |
 | 官方表面快照 / 升 rc 契约 | **本仓** |
 

@@ -3,6 +3,18 @@
 Record the delta here when contract CI or a pin bump hits a public-surface move.
 Do not invent a compatibility shim in Desktop IPC.
 
+## 0.1.1-rc.1
+
+- surface: package / pin
+- what moved:
+  - Official GitHub current and npm `latest`/`next` are `@deepseek-ai/dsh@0.1.1-rc.1`.
+  - `dsh web --help` still includes `--host`, `--port`, `--no-open`.
+  - Desktop spawn keeps `--no-open`; readiness still skips non-URL `dsh web:` lines.
+- community action:
+  - Bump pin and every workspace `package.json` to `0.1.1-rc.1` (1:1 mirror, no `-community.N`).
+  - Re-extract `contracts/upstream`. Keep Node `>=22.15.0`.
+  - Do not rewrite historical `v0.1.2` / `v0.1.6` tags.
+
 ## 0.1.0-rc.8
 
 - surface: cli / readiness

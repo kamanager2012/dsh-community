@@ -8,6 +8,7 @@ import type { UiItem, UiStore } from './store.js'
 
 interface AppProps {
   readonly store: UiStore
+  readonly dualBadge: string
   readonly onSend: (text: string) => void
   readonly onCancel: () => void
   readonly onExit: () => void
@@ -79,9 +80,12 @@ const InputBar: FC<{ store: UiStore }> = ({ store }) => {
   return createElement(Text, null, '> ', draft, createElement(Text, { color: MUTED }, '█'))
 }
 
-const StatusBar: FC<{ store: UiStore }> = ({ store }) => {
+const StatusBar: FC<{ store: UiStore; dualBadge: string }> = ({ store, dualBadge }) => {
   const state = useSyncExternalStore(store.subscribe, () => store.state)
-  return createElement(Text, { color: MUTED }, `dsh-community-tui · ${state.model} · ${state.status}`)
+  return createElement(Box, { flexDirection: 'column', marginTop: 1 },
+    createElement(Text, { color: MUTED, wrap: 'wrap' }, dualBadge),
+    createElement(Text, { color: MUTED }, `${state.model} · ${state.status}`),
+  )
 }
 
 const ApprovalView: FC<{ store: UiStore }> = ({ store }) => {
@@ -116,7 +120,7 @@ const QuestionsView: FC<{ store: UiStore }> = ({ store }) => {
   )
 }
 
-export const App: FC<AppProps> = ({ store, onSend, onCancel, onExit }) => {
+export const App: FC<AppProps> = ({ store, dualBadge, onSend, onCancel, onExit }) => {
   const { exit } = useApp()
   const [thinkingOpen, setThinkingOpen] = useState(false)
   useInput((input, key) => {
@@ -174,6 +178,6 @@ export const App: FC<AppProps> = ({ store, onSend, onCancel, onExit }) => {
     createElement(Box, { marginTop: 1 },
       createElement(InputBar, { store }),
     ),
-    createElement(StatusBar, { store }),
+    createElement(StatusBar, { store, dualBadge }),
   )
 }

@@ -12,9 +12,9 @@ distribution and keeps the official runtime relationship visible.
    official core version. For example, official `0.1.1` means community
    `0.1.1`.
 3. A community-only fix against the same official core appends the standard
-   suffix `-community.N`. For example, the current unreleased line is
-   `0.1.0-rc.8-community.1`: its base version is the official `0.1.0-rc.8`,
-   and `.1` identifies the first community-only fix in that core line.
+   suffix `-community.N`. Example: `0.1.0-rc.8-community.1` was the first
+   community-owned identity line on official `0.1.0-rc.8`. When the official
+   core itself bumps, drop the suffix and 1:1-mirror the new pin.
 4. Every workspace `package.json` uses the same community product version.
    The suffix is part of the product version; it must not be applied to the
    official `@deepseek-ai/dsh` dependency itself.
@@ -36,7 +36,7 @@ DeepSeek Harness Community v<community-version> [Official Core: @deepseek-ai/dsh
 For the current source line, the exact output is:
 
 ```text
-DeepSeek Harness Community v0.1.0-rc.8-community.1 [Official Core: @deepseek-ai/dsh@0.1.0-rc.8]
+DeepSeek Harness Community v0.1.1-rc.1 [Official Core: @deepseek-ai/dsh@0.1.1-rc.1]
 ```
 
 The badge is the user-facing source of truth. It must make the community
