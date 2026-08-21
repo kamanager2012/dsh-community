@@ -63,7 +63,7 @@
 
 ## 从源码跑
 
-需要 Node 22+、pnpm，以及 `DEEPSEEK_API_KEY`。对话在官方 `~/.dsh`。没密钥不会闷头进 Ink。
+需要 Node 22.15+、pnpm，以及 `DEEPSEEK_API_KEY`。官方 rc.8 的 session JSONL 用了 `node:zlib` 的 zstd API（22.15 才有）。对话在官方 `~/.dsh`。没密钥不会闷头进 Ink。
 
 ```sh
 git clone https://github.com/kamanager2012/dsh-community.git

@@ -12,11 +12,13 @@ Do not invent a compatibility shim in Desktop IPC.
   - `dsh web --help` adds `--no-open` and repeatable `--trusted-host`.
   - Official release notes: SQLite session storage format is incompatible with earlier rcs.
   - Web default-config grew additively (129 → 135 rows): `session-reference`, `file-reference-local`, `ui-renderer`, `ui-brand-official`, `ui-attachment`, `ui-reference`. Required session/agent/approval/plugin domain rows still exist.
+  - `@deepseek-ai/dsh-session-persistence-jsonl` imports `createZstdDecompress` from `node:zlib` (Node 22.15+). Official `dsh web` exits before readiness on 22.14.
 - community action:
   - Bump pin to `0.1.0-rc.8` (official GitHub current release / npm `next`; npm `latest` is still `0.1.0-rc.7`).
   - Desktop spawn passes `--no-open` so the Electron shell does not also hand off to a system browser.
   - Readiness parser skips non-URL `dsh web:` lines; still fail-closed on non-loopback binds.
   - Re-extract `contracts/upstream`. Do not migrate official `~/.dsh` SQLite.
+  - Raise workspace `engines.node` to `>=22.15.0`. Do not vendor or patch official zlib imports.
 
 ## 0.1.0-rc.N
 

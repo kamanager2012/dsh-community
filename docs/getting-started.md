@@ -38,7 +38,7 @@ shasum -a 256 -c dsh-community-0.1.6.dmg.sha256
 
 ## 五分钟从源码启动
 
-需要 Node.js 22+、pnpm 和可用的 `DEEPSEEK_API_KEY`：
+需要 Node.js 22.15+、pnpm 和可用的 `DEEPSEEK_API_KEY`（官方 rc.8 session JSONL 依赖 `node:zlib` zstd，22.15 才有）：
 
 ```sh
 git clone https://github.com/kamanager2012/dsh-community.git
