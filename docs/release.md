@@ -2,12 +2,9 @@
 
 Official `@deepseek-ai/dsh` is the **development foundation**. We build TUI and Desktop on the pinned official runtime. A newer official rc is an upgrade of that foundation (pin + contract extract), not a gate that pauses product work.
 
-Current official pin is `@deepseek-ai/dsh@0.1.1-rc.1` (`packages/dsh-bridge/src/pin.ts`). That is the official GitHub current release and npm `latest` / `next`.
-
-The current source and published identity is `0.1.1-rc.1`: all workspace
-packages use it and 1:1-mirror the official core. GitHub Latest is
-`v0.1.1-rc.1`. Older independent numbers (`v0.1.2`–`v0.1.6`) remain historical
-and must not be used as the current download. See [Version and identity
+Current official pin, Latest tag, Dual-Badge, and asset names live in
+[`current-release.json`](current-release.json). Update that file in the same
+commit as `pin.ts` when cutting a release. See [Version and identity
 policy](version-policy.md).
 
 ## Channels

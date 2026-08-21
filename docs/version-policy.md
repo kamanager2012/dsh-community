@@ -40,11 +40,9 @@ Desktop and TUI display the same two-part identity:
 DeepSeek Harness Community v<community-version> [Official Core: @deepseek-ai/dsh@<official-version>]
 ```
 
-For the current source line, the exact output is:
-
-```text
-DeepSeek Harness Community v0.1.1-rc.1 [Official Core: @deepseek-ai/dsh@0.1.1-rc.1]
-```
+Current numbers live in [`current-release.json`](current-release.json)
+([human index](current-release.md)). This file is the rule; that JSON is the
+snapshot CI checks against `pin.ts`.
 
 The badge is the user-facing source of truth. The official core version is the
 kernel; the community version is based on that same pin. Do not replace
@@ -56,6 +54,7 @@ it with two unrelated version labels.
 - Set every workspace package version to the exact community product version.
 - Use `-community.N` only for community-owned changes on the same official
   core version.
+- Update `docs/current-release.json` and `docs/current-release.md` in the same commit.
 - Update the changelog with both version identities.
 - Verify the Desktop and TUI Dual-Badge output.
 - Run `pnpm typecheck`, `pnpm test`, and the upstream pin-consistency checks.

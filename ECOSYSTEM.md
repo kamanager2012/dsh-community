@@ -54,7 +54,7 @@ Official Web (upstream companion)
 
 Registry 的目标是验证层，不是最大目录：能装、能跑、适配当前 pin、申请了什么权限。Awesome 做发现，我们做 trust。
 
-节奏必须双轨，不能等 Win/mac/SDK/手册 100% 再开口：当前源码与 GitHub Latest 统一为 `0.1.1-rc.1`，对应官方 pin `0.1.1-rc.1`。此前自编的 `v0.1.2`–`v0.1.6` 只作历史记录。同时把“五个社区端、同一套会话”讲清楚。
+当前源码与 GitHub Latest 以 [`docs/current-release.json`](docs/current-release.json) 为准，不要在其它仓再抄一份版本号。
 
 ---
 

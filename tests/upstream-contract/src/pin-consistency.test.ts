@@ -88,3 +88,29 @@ describe('official pin consistency', () => {
     expect(install.binPath.replaceAll('\\', '/')).toMatch(new RegExp(`${OFFICIAL_DSH_BIN_REL}$`))
   })
 })
+
+describe('docs/current-release.json', () => {
+  it('matches the pin, product version, Dual-Badge, and published asset names', () => {
+    const facts = JSON.parse(
+      readFileSync(join(repoRoot, 'docs/current-release.json'), 'utf8'),
+    ) as {
+      officialKernel: { package: string; version: string }
+      communityProduct: { version: string; githubLatestTag: string }
+      dualBadge: string
+      assets: { linuxAppImage: string; macosDmg: string; windowsSetup: string }
+      historicalIndependentTags: string[]
+    }
+    const version = COMMUNITY_PRODUCT_VERSION
+    expect(facts.officialKernel.package).toBe(OFFICIAL_DSH_PACKAGE)
+    expect(facts.officialKernel.version).toBe(PINNED_DSH_VERSION)
+    expect(facts.communityProduct.version).toBe(version)
+    expect(facts.communityProduct.githubLatestTag).toBe(`v${version}`)
+    expect(facts.dualBadge).toBe(
+      `DeepSeek Harness Community v${version} [Official Core: ${OFFICIAL_DSH_PACKAGE}@${PINNED_DSH_VERSION}]`,
+    )
+    expect(facts.assets.linuxAppImage).toBe(`dsh-community-${version}.AppImage`)
+    expect(facts.assets.macosDmg).toBe(`dsh-community-${version}.dmg`)
+    expect(facts.assets.windowsSetup).toBe(`DSH.Community.Setup.${version}.exe`)
+    expect(facts.historicalIndependentTags).not.toContain(`v${version}`)
+  })
+})

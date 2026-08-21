@@ -20,14 +20,10 @@ A conversation you start in official Web is the same conversation you resume in
 | **Current** | [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) (`v0.1.1-rc.1`) |
 | **Historical / Pre-release** | older independent numbers on [Releases](https://github.com/kamanager2012/dsh-community/releases) |
 
-GitHub Latest is **v0.1.1-rc.1**, 1:1 with official core `@deepseek-ai/dsh@0.1.1-rc.1`.
-Downloadable assets are the Linux AppImage, macOS dmg, and Windows Setup (use the
-exact filenames on the Release page), each with a `.sha256` sidecar. Root,
-Desktop, TUI, and workspace packages share that version. Earlier independent
-numbers `v0.1.2`–`v0.1.6` are historical only. See the
+Current Latest, official kernel, five endpoints, asset names, and evidence labels
+are in [current-release](docs/current-release.md) /
+[`current-release.json`](docs/current-release.json). Rules:
 [version policy](docs/version-policy.md).
-
-Desktop and TUI should show: `DeepSeek Harness Community v0.1.1-rc.1 [Official Core: @deepseek-ai/dsh@0.1.1-rc.1]`.
 
 [Official Runtime](https://github.com/deepseek-ai/deepseek-harness)
 

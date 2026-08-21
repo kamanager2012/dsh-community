@@ -17,7 +17,7 @@
 | **当前发行** | [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest)（`v0.1.1-rc.1`） |
 | **历史 / Pre-release** | [Releases](https://github.com/kamanager2012/dsh-community/releases) 里旧的独立编号 |
 
-GitHub Latest 是 **v0.1.1-rc.1**，与官方核心 `@deepseek-ai/dsh@0.1.1-rc.1` 1:1 同号。下载资产为 Linux AppImage、macOS dmg 和 Windows Setup（文件名以 Release 页为准，各带 `.sha256`）。根目录、Desktop、TUI、workspace 包全部同号。此前自编的 `v0.1.2`–`v0.1.6` 只作历史记录，不要当当前下载。版本和界面展示规则见 [Version policy](docs/version-policy.md)。
+当前 Latest、官方内核、五个端、安装包文件名和证据标签以 [current-release](docs/current-release.md) / [`current-release.json`](docs/current-release.json) 为准。版本规则见 [Version policy](docs/version-policy.md)。
 
 Desktop 与 TUI 的身份应显示为：`DeepSeek Harness Community v0.1.1-rc.1 [Official Core: @deepseek-ai/dsh@0.1.1-rc.1]`。
 

@@ -7,15 +7,16 @@ Official Harness is in developer preview and **will break**. This repo is design
 1. Read the official changelog / `apps/cli` README for the new version.
 2. Set `PINNED_DSH_VERSION` in `packages/dsh-bridge/src/pin.ts`.
 3. Set the same exact version on every `package.json` that depends on `@deepseek-ai/dsh` (no `^`).
-4. `pnpm install`
-5. `pnpm test` and `pnpm typecheck`
-6. If tests fail because the CLI surface moved:
+4. Update `docs/current-release.json` (and `docs/current-release.md`) in the same commit. Sister repos must link that file instead of copying numbers.
+5. `pnpm install`
+6. `pnpm test` and `pnpm typecheck`
+7. If tests fail because the CLI surface moved:
    - readiness prefix / URL rules → `packages/dsh-bridge/src/readiness.ts`
    - launcher flags (`web`, `--profile`, `--dump-config`) → contract tests + spawn args
    - web flags (`--host`, `--port`) → `packages/dsh-bridge/src/spawn-web.ts`
-7. Do **not** copy files out of `deepseek-ai/deepseek-harness`.
-8. Refresh official snapshots: `pnpm contracts:extract`. Commit the diff and note any public-surface move in `contracts/compatibility/breaking-changes.md`.
-9. Only then consider recommending the rc as `latest-tested`.
+8. Do **not** copy files out of `deepseek-ai/deepseek-harness`.
+9. Refresh official snapshots: `pnpm contracts:extract`. Commit the diff and note any public-surface move in `contracts/compatibility/breaking-changes.md`.
+10. Only then consider recommending the rc as `latest-tested`.
 
 ## What a failure means
 
