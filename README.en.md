@@ -66,7 +66,8 @@ an upstream companion, not a Community endpoint.
 
 ## From source
 
-Requirements: Node.js 22+, pnpm, and a configured `DEEPSEEK_API_KEY`.
+Requirements: Node.js 22.15+, pnpm, and a configured `DEEPSEEK_API_KEY`.
+Official rc.8 session JSONL uses `node:zlib` zstd APIs added in 22.15.
 Sessions continue to use the official `~/.dsh` data source.
 
 ```sh
