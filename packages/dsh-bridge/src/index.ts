@@ -82,6 +82,14 @@ export {
   type DistributionPreflight,
 } from './preflight.js'
 export {
+  assertCommunityVersionMatchesOfficial,
+  communityBaseVersion,
+  COMMUNITY_PRODUCT_NAME,
+  COMMUNITY_PRODUCT_VERSION,
+  OFFICIAL_CORE_PACKAGE,
+  formatCommunityIdentity,
+} from './community-version.js'
+export {
   COMMUNITY_PLUGIN_CATALOG_REPO,
   COMMUNITY_PLUGIN_CATALOG_URL,
   fetchPluginCatalog,

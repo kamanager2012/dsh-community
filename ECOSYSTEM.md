@@ -2,7 +2,7 @@
 
 ## Project Handoff / Current Source of Truth
 
-**日期:2026-08-16**
+**日期:2026-08-21**
 
 ---
 
@@ -55,7 +55,7 @@ Official Web (upstream companion)
 
 Registry 的目标是验证层，不是最大目录：能装、能跑、适配当前 pin、申请了什么权限。Awesome 做发现，我们做 trust。
 
-节奏必须双轨，不能等 Win/mac/SDK/手册 100% 再开口：社区产品号统一为 `0.1.6`，官方 pin 是 `0.1.0-rc.8`。同时把“三个社区端、同一套会话”讲清楚。
+节奏必须双轨，不能等 Win/mac/SDK/手册 100% 再开口：当前源码/下一发行线统一为 `0.1.0-rc.8-community.1`，对应官方 pin `0.1.0-rc.8`。已发布的 `v0.1.6` 保留为历史 Latest，不回写旧标签。同时把“三个社区端、同一套会话”讲清楚。
 
 ---
 
@@ -102,7 +102,7 @@ Repo topology 完整 ≠ Ecosystem 完整。现在真实成熟度:产品初期�
 
 ```text
 Engineering:               Distribution:
-0.1.6 产品号统一             定位叙事 + 架构文章
+0.1.0-rc.8-community.1       定位叙事 + 架构文章
 win/mac 打包收口           插件验证 / 对比 / demo
 Session consistency        用户反馈回流
 release reproducibility
@@ -203,23 +203,23 @@ kamanager2012/dsh-community/releases/latest
 版本是三层，不要把 `package.json` 里的开发号写成“用户下载版本”：
 
 ```text
-社区产品号            0.1.6   （根目录 / Desktop / TUI / workspace 同一数字）
-官方 Runtime pin      0.1.0-rc.8   （上游，不是我们的版本）
-Latest                v0.1.6 / releases/latest
-不要下载              v0.1.3 / v0.1.4 / v0.1.5
+社区源码版本          0.1.0-rc.8-community.1 （根目录 / Desktop / TUI / workspace 同一版本）
+官方 Runtime pin      0.1.0-rc.8            （社区版本的核心基线）
+已发布 Latest         v0.1.6 / releases/latest （历史资产，不能回写）
+下一发行线            尚未发布              （发布前不要把源码线写成下载资产）
 ```
 
 当前用户下载事实：
 
 ```text
-Latest          v0.1.6  — Windows Setup.exe / macOS dmg
+Latest          v0.1.6  — Windows Setup.exe / macOS dmg（历史资产）
 Linux 主力端    WSL/Linux Terminal / TUI
 官方 Web        上游兼容入口，不是 Community 发行端
 ```
 
 ### Latest 与 Reality Gate
 
-产品号已经统一为 0.1.6。干净环境用户闭环仍要单独验证，不能把发版成功写成 Reality Gate 已过。
+源码版本已经统一为 `0.1.0-rc.8-community.1`。干净环境用户闭环仍要单独验证，不能把发版成功写成 Reality Gate 已过。
 
 Windows / macOS 也必须只从 `dsh-community` 发布，不能改去 Suite 或 Edition。
 
@@ -1427,15 +1427,15 @@ Labs 成熟功能分批晋升 Community
 
 ## 三十一、当前最重要的产品工作是 Distribution Reality Gate
 
-产品号是 0.1.6。现在要验证的是：一个没有参与开发的人，下载 Latest 页面上的真实安装包后能否完成用户闭环。
+当前源码版本是 `0.1.0-rc.8-community.1`，官方核心是 `0.1.0-rc.8`。现在要验证的是：一个没有参与开发的人，下载已发布 Latest 页面上的真实安装包后能否完成用户闭环。
 
 必须直接测试 exact release artifact，而不是 main 源码或 CI artifact:
 
 ```text
-Windows clean VM → `DSH.Community.Setup.0.1.4.exe` → 安装 → 首次启动 → 密钥 → new/resume → plugin → restart
-macOS clean host → `dsh-community-0.1.4.dmg` → 安装 → 首次启动 → 密钥 → new/resume → plugin → restart
+Windows clean VM → `DSH.Community.Setup.0.1.6.exe` → 安装 → 首次启动 → 密钥 → new/resume → plugin → restart
+macOS clean host → `dsh-community-0.1.6.dmg` → 安装 → 首次启动 → 密钥 → new/resume → plugin → restart
 WSL/Linux clean host → `dsh-community` / `pnpm tui` → 密钥 → new/resume → plugin → restart
-Linux AppImage → `dsh-community-0.1.4.AppImage` → 可选/次要 artifact smoke
+Linux AppImage → `dsh-community-0.1.6.AppImage` → 可选/次要 artifact smoke
 ```
 
 还要覆盖:

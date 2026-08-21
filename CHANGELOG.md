@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.1.0-rc.8-community.1 — Unreleased
+
+- 版本身份契约：社区发行线镜像官方核心版本；当前未发布线为 `0.1.0-rc.8-community.1`，对应 `@deepseek-ai/dsh@0.1.0-rc.8`。Desktop 与 TUI 统一显示 Dual-Badge：`DeepSeek Harness Community v0.1.0-rc.8-community.1 [Official Core: @deepseek-ai/dsh@0.1.0-rc.8]`。已发布的 `v0.1.6` 保留为历史版本。
+
 - 修复根目录 `pnpm start` / `tui` / `sessions` / `run doctor`：改走 `@dsh-community/tui`（`apps/tui`）入口，不再误调没有 `start` 的 `@dsh-community/tui-surface`。文档用 `pnpm run doctor`，避免撞上 pnpm 内置 `doctor`。
 
 - 官方 Runtime pin：`@deepseek-ai/dsh` `0.1.0-rc.6` → `0.1.0-rc.8`（官方 GitHub 当前发行 / npm `next`）。npm `latest` 仍是 `0.1.0-rc.7`，本仓跟官方仓库当前表面，不跟 npm latest。
