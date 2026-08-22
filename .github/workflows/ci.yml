@@ -5,6 +5,10 @@ on:
     branches: [main, master]
   pull_request:
 
+# CI only checks out, builds, and tests. No job writes to the repository.
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
