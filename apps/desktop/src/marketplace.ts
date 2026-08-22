@@ -44,7 +44,8 @@ export interface MarketplaceCatalog {
   readonly plugins: readonly MarketplacePlugin[]
 }
 
-const DSH_RC_LINE = /^0\.1\.0-rc\.\d+$/u
+/** Any 0.1.x official rc line. The registry moves across minors; the desktop must follow, not freeze on one release. */
+const DSH_RC_LINE = /^0\.1\.\d+-rc\.\d+$/u
 
 export function parseMarketplaceCatalog(raw: unknown): MarketplaceCatalog | undefined {
   if (raw === null || typeof raw !== 'object') return undefined

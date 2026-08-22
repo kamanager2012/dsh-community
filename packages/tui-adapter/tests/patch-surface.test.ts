@@ -34,4 +34,15 @@ describe('TUI patch-surface reduction', () => {
     expect(owned).not.toMatch(/@deepseek-harness-tui/)
     expect(owned).not.toMatch(/disabled: true/)
   })
+
+  it('never widens sandbox/approval by OS detection — only explicit env may widen', () => {
+    const owned = readFileSync(join(patches, 'tui-owned.cordis.patch.yml'), 'utf8')
+    // Regression: win32 used to hardcode danger-full-access + approval never
+    // with no way to opt out. Defaults must be platform-uniform and safe.
+    expect(owned).not.toMatch(/process\.platform/)
+    expect(owned).toMatch(/DSH_PERMISSION_MODE/)
+    expect(owned).toMatch(/DSH_APPROVAL_POLICY/)
+    const defaultModes = owned.match(/DSH_PERMISSION_MODE\s*\?\?\s*'([^']+)'/) ?? []
+    expect(defaultModes[1]).toBe('workspace-write')
+  })
 })

@@ -7,14 +7,17 @@
   config:
     agents: []
 
+# Sandbox/approval defaults are platform-uniform and safe. Operators may widen
+# them explicitly via DSH_PERMISSION_MODE / DSH_APPROVAL_POLICY; nothing is
+# widened silently by OS detection.
 - id: sandbox-policy
   config:
-    mode: !!js "process.platform === 'win32' ? 'danger-full-access' : (process.env.DSH_PERMISSION_MODE ?? 'workspace-write')"
+    mode: !!js "process.env.DSH_PERMISSION_MODE ?? 'workspace-write'"
     workspaceRoot: !!js process.cwd()
 
 - id: approval
   config:
-    policy: !!js "process.platform === 'win32' ? 'never' : ((process.env.DSH_PERMISSION_MODE ?? 'workspace-write') === 'danger-full-access' ? 'never' : 'ask')"
+    policy: !!js "process.env.DSH_APPROVAL_POLICY ?? (process.env.DSH_PERMISSION_MODE === 'danger-full-access' ? 'never' : 'ask')"
 
 - id: session-persistence-jsonl
   config:
