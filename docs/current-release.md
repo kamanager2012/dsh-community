@@ -21,7 +21,7 @@ Rules (1:1 kernel mirror, Dual-Badge, immutable tags) stay in
 | Android | Labs `[UNVERIFIED]`, not on the Latest download page |
 | artifact-smoke | `[PARTIAL]` on `v0.1.1-rc.2` ([run 32579569995](https://github.com/kamanager2012/dsh-community/actions/runs/32579569995)): checksum + cosign bundle verify (12 assets) + Windows/macOS first-ready + Linux TUI; full user loop still separate |
 | Full user loop | `[UNVERIFIED]` |
-| Plugin `testedDsh` | `0.1.1-rc.1` (compose: `plugin add` + `--dump-config`; restart/user-loop still `[UNVERIFIED]`) |
+| Plugin `testedDsh` | `0.1.1-rc.2` (compose: `plugin add` + `--dump-config`; restart/user-loop still `[UNVERIFIED]`) |
 | Historical tags | `v0.1.2`–`v0.1.6` are not the current download |
 
 Release-page filenames (GitHub may show Windows spaces as dots):

@@ -58,8 +58,8 @@
       "status": "UNVERIFIED"
     },
     "pluginRegistryLastVerified": {
-      "testedDsh": "0.1.1-rc.1",
-      "note": "9 plugins: official dsh plugin add + dump-config compose on 0.1.1-rc.1. Restart/user-loop still UNVERIFIED."
+      "testedDsh": "0.1.1-rc.2",
+      "note": "9 plugins: official dsh plugin add + dump-config compose on 0.1.1-rc.2. Restart/user-loop still UNVERIFIED."
     }
   }
 }
