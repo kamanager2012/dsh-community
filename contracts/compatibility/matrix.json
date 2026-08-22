@@ -1,6 +1,12 @@
 {
   "policy": "Recommend latest tested, not latest published.",
   "runtimes": {
+    "0.1.1-rc.2": {
+      "desktop": "unverified",
+      "tui": "tested",
+      "contracts": "snapshotted",
+      "notes": "Official GitHub current / npm latest and next. Config tree and CLI surface identical to rc.1; adds an additive web --trusted-host flag. Desktop smoke pending release."
+    },
     "0.1.1-rc.1": {
       "desktop": "tested",
       "tui": "tested",

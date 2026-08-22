@@ -25,6 +25,11 @@ are in [current-release](docs/current-release.md) /
 [`current-release.json`](docs/current-release.json). Rules:
 [version policy](docs/version-policy.md).
 
+The source line is now **0.1.1-rc.2**: root, Desktop, TUI, and every workspace
+package share the number, 1:1 with official core `@deepseek-ai/dsh@0.1.1-rc.2`
+(contract surface identical to rc.1 — 135 config rows, zero drift). GitHub
+Latest switches to `v0.1.1-rc.2` at release time.
+
 [Official Runtime](https://github.com/deepseek-ai/deepseek-harness)
 
 Read the locked endpoint definition in [Community endpoints](docs/community-endpoints.en.md).
@@ -57,8 +62,9 @@ products.
 
 ## Current release status
 
-Community version is one workspace-wide identity: **0.1.1-rc.1**, 1:1 with
-official core `@deepseek-ai/dsh@0.1.1-rc.1`. GitHub Latest is that same tag.
+Community version is one workspace-wide identity: **0.1.1-rc.2**, 1:1 with
+official core `@deepseek-ai/dsh@0.1.1-rc.2`. Published GitHub Latest is still
+`v0.1.1-rc.1` until the next tag is cut.
 Earlier independent numbers `v0.1.2`–`v0.1.6` are historical only.
 The Linux AppImage is community endpoint 4; the primary Linux CLI path remains WSL/Linux
 Terminal. Official Web is an upstream companion, not a Community endpoint. Android is

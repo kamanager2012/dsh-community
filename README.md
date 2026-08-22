@@ -19,7 +19,9 @@
 
 当前 Latest、官方内核、五个端、安装包文件名和证据标签以 [current-release](docs/current-release.md) / [`current-release.json`](docs/current-release.json) 为准。版本规则见 [Version policy](docs/version-policy.md)。
 
-Desktop 与 TUI 的身份应显示为：`DeepSeek Harness Community v0.1.1-rc.1 [Official Core: @deepseek-ai/dsh@0.1.1-rc.1]`。
+源码线已升 **0.1.1-rc.2**：根目录、Desktop、TUI、workspace 包全部同号，1:1 镜像官方核心 `@deepseek-ai/dsh@0.1.1-rc.2`；契约面与 rc.1 一致（135 行配置树零漂移）。GitHub Latest 切到 `v0.1.1-rc.2` 待发版。
+
+Desktop 与 TUI 的身份应显示为：`DeepSeek Harness Community v0.1.1-rc.2 [Official Core: @deepseek-ai/dsh@0.1.1-rc.2]`。
 
 | 发行面 | 命名 | 入口 |
 |---|---|---|

@@ -204,9 +204,9 @@ kamanager2012/dsh-community/releases/latest
 版本是三层，不要把历史独立编号写成“用户当前下载版本”：
 
 ```text
-社区源码版本          0.1.1-rc.1            （根目录 / Desktop / TUI / workspace 同一版本）
-官方 Runtime pin      0.1.1-rc.1            （社区版本的核心基线）
-已发布 Latest         v0.1.1-rc.1 / releases/latest
+社区源码版本          0.1.1-rc.2            （根目录 / Desktop / TUI / workspace 同一版本）
+官方 Runtime pin      0.1.1-rc.2            （社区版本的核心基线）
+已发布 Latest         v0.1.1-rc.1 / releases/latest   （v0.1.1-rc.2 待下个 tag 切换）
 历史独立编号          v0.1.2–v0.1.6         （不回写旧标签，也不再当 Latest）
 ```
 
@@ -220,7 +220,7 @@ Linux 主力端    WSL/Linux Terminal / TUI
 
 ### Latest 与 Reality Gate
 
-源码版本已经统一为 `0.1.1-rc.1`。干净环境用户闭环仍要单独验证，不能把发版成功写成 Reality Gate 已过。
+源码版本已经统一为 `0.1.1-rc.2`（契约面与 rc.1 一致）。干净环境用户闭环仍要单独验证，不能把发版成功写成 Reality Gate 已过。
 
 Windows / macOS 也必须只从 `dsh-community` 发布，不能改去 Suite 或 Edition。
 
@@ -1428,7 +1428,7 @@ Labs 成熟功能分批晋升 Community
 
 ## 三十一、当前最重要的产品工作是 Distribution Reality Gate
 
-当前源码版本是 `0.1.1-rc.1`，官方核心是 `0.1.1-rc.1`，GitHub Latest 同号。现在要验证的是：一个没有参与开发的人，下载已发布 Latest 页面上的真实安装包后能否完成用户闭环。
+当前源码版本是 `0.1.1-rc.2`，官方核心是 `0.1.1-rc.2`；GitHub Latest 仍是已发布的 `v0.1.1-rc.1`（随下个 tag 切换）。现在要验证的是：一个没有参与开发的人，下载已发布 Latest 页面上的真实安装包后能否完成用户闭环。
 
 必须直接测试 exact release artifact，而不是 main 源码或 CI artifact:
 

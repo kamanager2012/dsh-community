@@ -3,6 +3,19 @@
 Record the delta here when contract CI or a pin bump hits a public-surface move.
 Do not invent a compatibility shim in Desktop IPC.
 
+## 0.1.1-rc.2
+
+- surface: package / pin / config-row
+- what moved:
+  - Official GitHub current and npm `latest`/`next` are `@deepseek-ai/dsh@0.1.1-rc.2`.
+  - No public-surface move vs our rc.1 pin: `web --dump-default-config` stays at 135 rows with identical ids and order; launcher and web flags unchanged.
+  - Image-attachment domain only (static tarball diff): `dsh-goal` / `dsh-session-reference` add an optional `originalDimensions` on `ImageAttachmentRef`; `dsh-tool-fs` trims the `read_image` schema description. Optional/additive; nothing removed.
+  - `web --help` shows repeatable `--trusted-host` (present since the rc.8 lineage); must-contain checks unaffected.
+- community action:
+  - Bump pin and every workspace `package.json` to `0.1.1-rc.2` (1:1 mirror).
+  - Re-extract `contracts/upstream`. Keep Node `>=22.15.0`.
+  - Cut `v0.1.1-rc.2` as GitHub Latest when ready; first signed release under keyless cosign.
+
 ## 0.1.1-rc.1
 
 - surface: package / pin

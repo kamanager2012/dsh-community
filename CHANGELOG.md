@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+Pin bump:官方 Runtime `@deepseek-ai/dsh` `0.1.1-rc.1` → `0.1.1-rc.2`(官方 GitHub 当前发行 / npm `latest` 与 `next`)。社区产品号 1:1 镜像为 `0.1.1-rc.2`。
+
+- 契约面零漂移:`web --dump-default-config` 仍 135 行,id 与相对顺序和 rc.1 快照一致;launcher 五 token 与 web 三旗标不变;readiness 前缀 `dsh web: ` 不变(隔离 DSH_HOME 运行时探针实证)。
+- 静态 tarball 全量对比:54 个子包中 49 个仅版本号变化,4 个差异全部集中在图片附件域且为纯增量(`dsh-goal` / `dsh-session-reference` 给 `ImageAttachmentRef` 加可选 `originalDimensions`;`dsh-tool-fs` 精简 `read_image` 描述);零删除行,无破坏性变更。
+- 契约快照按 `0.1.1-rc.2` 重抽;`latest-tested` 改为 `0.1.1-rc.2`;compatibility matrix 新增 rc.2 行(desktop 发布冒烟待跑)。
+- 下个 tag 起发行产物走 keyless cosign 签名(`docs/release.md`)。
+
 ## 0.1.1-rc.1 — 2026-08-21
 
 Release: https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.1-rc.1

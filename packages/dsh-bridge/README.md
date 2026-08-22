@@ -2,7 +2,7 @@
 
 The only code in this workspace that is allowed to know how to launch official DSH.
 
-- Pin: `PINNED_DSH_VERSION` → `@deepseek-ai/dsh@0.1.1-rc.1`
+- Pin: `PINNED_DSH_VERSION` → `@deepseek-ai/dsh@0.1.1-rc.2`
 - Resolve: `node_modules/@deepseek-ai/dsh/lib/bin.js` (or `DSH_COMMUNITY_BIN`)
 - Spawn: `node <bin> web --host 127.0.0.1 --port 0 --no-open`
 - Ready: parse `dsh web: http://127.0.0.1:<port>` (ignore the rc.8 browser-handoff line)
