@@ -5,6 +5,11 @@ on:
   push:
     tags: ['v*']
 
+# Least privilege by default: builds and artifact uploads never touch
+# repository content. Only the publish job elevates (job-level override).
+permissions:
+  contents: read
+
 jobs:
   build-linux:
     runs-on: ubuntu-latest
@@ -117,6 +122,7 @@ jobs:
     needs: [build-linux, build-windows, build-macos]
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # Sole writer in this workflow: creates the GitHub Release and uploads assets.
     permissions:
       contents: write
     steps:

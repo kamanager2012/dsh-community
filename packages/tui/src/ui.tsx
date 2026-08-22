@@ -4,6 +4,7 @@
 
 import { Box, Text, useInput, useApp } from 'ink'
 import { createElement, useState, useSyncExternalStore, type FC } from 'react'
+import { handleKey } from './keys.js'
 import type { UiItem, UiStore } from './store.js'
 
 interface AppProps {
@@ -124,51 +125,14 @@ export const App: FC<AppProps> = ({ store, dualBadge, onSend, onCancel, onExit }
   const { exit } = useApp()
   const [thinkingOpen, setThinkingOpen] = useState(false)
   useInput((input, key) => {
-    const raw = typeof input === 'string' ? input : ''
-    const list = key.return ? ['\r'] : [...raw].map((ch) => ch === '\n' ? '\r' : ch)
-    for (const ch of list) {
-      const state = store.state
-      if (ch === '\r') {
-        const trimmed = state.draft.trim()
-        store.setDraft('')
-        if (trimmed === '/exit') process.exit(0)
-        else if (trimmed === '/help') store.showHelp(HELP_TEXT)
-        else if (trimmed !== '') onSend(trimmed)
-        continue
-      }
-      if (state.approval !== undefined) {
-        if (ch === 'y') store.resolveApproval('allowed-once')
-        else if (ch === 'n') store.resolveApproval('rejected')
-        continue
-      }
-      if (state.questions !== undefined) {
-        const question = state.questions.request.questions[0]
-        if (question !== undefined) {
-          const options = question.options ?? []
-          if (options.length > 0) {
-            const index = Number(ch) - 1
-            if (Number.isInteger(index) && index >= 0 && index < options.length) {
-              store.resolveQuestions({ answers: [{ id: question.id, selected: [options[index]!.label] }] })
-            }
-          } else if (ch === '\r') {
-            const answer = state.draft.trim()
-            store.setDraft('')
-            store.resolveQuestions({ answers: [{ id: question.id, selected: [], ...(answer === '' ? {} : { custom: answer }) }] })
-          }
-        }
-        continue
-      }
-      if (ch === '\t') {
-        setThinkingOpen((open) => !open)
-        continue
-      }
-      if (ch === '\x1b' || key.escape) {
-        onCancel()
-        continue
-      }
-      if (ch === 'q' && key.ctrl) onExit()
-      if (ch >= ' ' && ch !== '\x7f') store.setDraft(state.draft + ch)
-    }
+    handleKey({
+      store,
+      onSend,
+      onCancel,
+      onExit,
+      showHelp: () => store.showHelp(HELP_TEXT),
+      toggleThinking: () => setThinkingOpen((open) => !open),
+    }, typeof input === 'string' ? input : '', key)
   })
 
   return createElement(Box, { flexDirection: 'column', padding: 1 },

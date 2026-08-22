@@ -20,4 +20,27 @@ describe('createWebSupervisor', () => {
     child.emitExit(1)
     await expect(started).rejects.toThrow(/exited before readiness/)
   })
+
+  it('keeps the start failure pending until the doomed child is confirmed dead', async () => {
+    const child = fakeChild(4242, { killExits: false })
+    const supervisor = createWebSupervisor({
+      spawnHost: () => child,
+      readinessTimeoutMs: 25,
+    })
+    const started = supervisor.start()
+
+    await new Promise((resolve) => setTimeout(resolve, 60))
+    let settled = false
+    void started.catch(() => undefined).then(() => {
+      settled = true
+    })
+    await new Promise((resolve) => setImmediate(resolve))
+    expect(settled).toBe(false)
+    expect(child.killedWith).toContain('SIGTERM')
+
+    child.emitExit(0, 'SIGTERM')
+    await expect(started).rejects.toThrow(/readiness timed out/)
+    await new Promise((resolve) => setImmediate(resolve))
+    expect(settled).toBe(true)
+  })
 })

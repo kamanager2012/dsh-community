@@ -17,8 +17,24 @@ export function sameOrigin(raw: string, expected: string): boolean {
   }
 }
 
+/**
+ * The shell only ever loads documents it generated itself: main.ts `dataUrl()`
+ * encodes pages.ts / chrome.ts HTML with exactly this media type.
+ */
+export const SHELL_DATA_PREFIX = 'data:text/html;charset=utf-8,'
+
+/** Preload bridge every generated chrome document references. */
+const SHELL_BRIDGE_MARKER = 'window.dshCommunity'
+
+/** True only for our own generated chrome documents, not arbitrary data:* URLs. */
 export function isDataHtmlUrl(raw: string): boolean {
-  return raw.startsWith('data:text/html')
+  if (!raw.startsWith(SHELL_DATA_PREFIX)) return false
+  try {
+    const html = decodeURIComponent(raw.slice(SHELL_DATA_PREFIX.length))
+    return html.includes(SHELL_BRIDGE_MARKER)
+  } catch {
+    return false
+  }
 }
 
 /** Shell window: official origin + our chrome documents. */

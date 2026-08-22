@@ -19,7 +19,9 @@ describe('tui adapter reconstruction', () => {
 
   it('does not mount a third-party TUI plugin', () => {
     expect(tuiPatchKpi.tuiOwnedInserts).toEqual([])
-    expect(tuiPatchKpi.communityTuiOwned).toBe(7)
+    // Regenerated from the two shipped patch files (see tui-patch-surface.json):
+    // 6 distinct row overrides + hmr disable + our own dsh-community-tui insert.
+    expect(tuiPatchKpi.communityTuiOwned).toBe(8)
   })
 
   it('does not contain an Ink tree', () => {

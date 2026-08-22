@@ -33,6 +33,7 @@ import {
 } from './launch.js'
 import { communityClientVersion, formatClientIdentity } from './version.js'
 import { ensureCommunityTuiProfile } from './profile.js'
+import { desktopSourceRequiredMessage, findPackagedDesktopExecutable } from './desktop-launch.js'
 import {
   formatHumanSessions,
   formatPorcelainSessions,
@@ -108,6 +109,15 @@ if (launch.kind === 'doctor') {
 
 if (launch.kind === 'desktop') {
   const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../..')
+  const packaged = findPackagedDesktopExecutable({ execPath: process.execPath, repoRoot: root })
+  if (packaged !== undefined) {
+    const result = spawnSync(packaged, [], {
+      stdio: 'inherit',
+      env: process.env,
+      windowsHide: true,
+    })
+    process.exit(result.status ?? 1)
+  }
   const result = spawnSync('pnpm', ['desktop'], {
     cwd: root,
     stdio: 'inherit',
@@ -115,7 +125,15 @@ if (launch.kind === 'desktop') {
     shell: process.platform === 'win32',
     windowsHide: true,
   })
-  process.exit(result.status ?? 1)
+  if (result.error !== undefined || result.status !== 0) {
+    const detail = result.error instanceof Error
+      ? result.error.message
+      : result.status === null
+        ? 'spawn failed'
+        : `pnpm desktop exit ${String(result.status)}`
+    fail(desktopSourceRequiredMessage(detail))
+  }
+  process.exit(result.status ?? 0)
 }
 
 if (launch.kind === 'plugins') {

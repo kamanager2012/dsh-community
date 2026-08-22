@@ -1,18 +1,27 @@
 {
-  "upstream": "dsh-TUI 0.6.1 cordis.patch.yml",
+  "upstream": "reference only: dsh-TUI 0.6.1 cordis.patch.yml — not installed, not mounted",
   "officialTwin": "packages/bundle/web-app/cordis.patch.yml in deepseek-harness (preset isolation)",
   "total": 33,
   "presetIsolationDisables": [],
   "officialInserts": [
     "dsh-community-tui"
   ],
+  "bundlePatch": {
+    "file": "packages/tui/cordis.patch.yml",
+    "overrides": [
+      "user-questions",
+      "approval"
+    ],
+    "disables": [
+      "hmr"
+    ]
+  },
   "tuiOwned": [
     "system-prompt",
-    "llm-deepseek",
     "agent-loop",
     "sandbox-policy",
     "approval",
     "session-persistence-jsonl"
   ],
-  "note": "Official foundation only. Third-party TUI rows (dsh-tui, working-activity) are not mounted."
+  "note": "tuiOwned lists exactly the runtime overlay rows (patches/tui-owned.cordis.patch.yml). No llm-deepseek row ships anywhere. Third-party TUI rows are not mounted."
 }

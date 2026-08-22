@@ -19,7 +19,7 @@ const VALID_CATALOG = {
       repo: 'https://github.com/xu1132/dsh-plugin-hello',
       category: 'tool',
       versions: [
-        { version: '0.1.0', testedDsh: '0.1.0-rc.6', notes: '安装 + 合成验证通过' },
+        { version: '0.1.0', testedDsh: '0.1.1-rc.1', notes: '安装 + 合成验证通过' },
       ],
     },
     {
@@ -29,7 +29,7 @@ const VALID_CATALOG = {
       repo: 'https://github.com/STARDUSTLC666/dsh-voice',
       category: 'ui',
       versions: [
-        { version: '0.1.0', testedDsh: '0.1.0-rc.6' },
+        { version: '0.1.0', testedDsh: '0.1.1-rc.1' },
       ],
     },
   ],
@@ -81,6 +81,21 @@ describe('marketplace catalog parse', () => {
       plugins: [{ ...VALID_CATALOG.plugins[0], repo: '' }],
     }
     expect(parseMarketplaceCatalog(missingRepo)).toBeUndefined()
+  })
+
+  it('accepts every official rc line family, old and current', () => {
+    // The live registry (catalog.json) currently ships 0.1.1-rc.1 across all
+    // plugins; older snapshots carry 0.1.0-rc.6. Both must parse — a frozen
+    // allowlist turned the whole marketplace page permanently unavailable.
+    const parseWith = (testedDsh: string) => parseMarketplaceCatalog({
+      ...VALID_CATALOG,
+      plugins: [{
+        ...VALID_CATALOG.plugins[0]!,
+        versions: [{ version: '0.1.0', testedDsh }],
+      }],
+    })
+    expect(parseWith('0.1.0-rc.6')?.plugins[0]?.versions[0]?.testedDsh).toBe('0.1.0-rc.6')
+    expect(parseWith('0.1.1-rc.1')?.plugins[0]?.versions[0]?.testedDsh).toBe('0.1.1-rc.1')
   })
 
   it('rejects versions without an official rc tested line', () => {
@@ -170,7 +185,7 @@ describe('marketplace page', () => {
     expect(html).toMatch(/社区市场/)
     expect(html).toMatch(/dsh-plugin-hello/)
     expect(html).toMatch(/dsh-voice/)
-    expect(html).toMatch(/验证线 0\.1\.0-rc\.6/)
+    expect(html).toMatch(/验证线 0\.1\.1-rc\.1/)
     expect(html).toMatch(/安装 \+ 合成验证通过/)
     expect(html).toMatch(/dsh plugin add dsh-plugin-hello/)
     expect(html).toMatch(/工具 · 1/)
@@ -251,7 +266,7 @@ describe('marketplace page', () => {
           author: 'a&b',
           repo: 'https://example.com/" onmouseover="x',
           category: 'tool',
-          versions: [{ version: '<b>', testedDsh: '0.1.0-rc.6' }],
+          versions: [{ version: '<b>', testedDsh: '0.1.1-rc.1' }],
         }],
       },
     }))

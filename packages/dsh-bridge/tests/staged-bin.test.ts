@@ -36,6 +36,22 @@ describe('packaged official bin resolution', () => {
     })).toThrow(/DSH_COMMUNITY_BIN does not exist/)
   })
 
+  it('fails closed when a staged override has no package.json to verify', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'dsh-staged-bare-'))
+    const binPath = join(dir, 'lib', 'bin.js')
+    mkdirSync(join(dir, 'lib'), { recursive: true })
+    writeFileSync(binPath, '#!/usr/bin/env node\n')
+
+    expect(() => resolveOfficialDsh({
+      from: import.meta.url,
+      env: { DSH_COMMUNITY_BIN: binPath },
+    })).toThrow(/staged @deepseek-ai\/dsh runtime is incomplete/)
+    expect(() => resolveOfficialDsh({
+      from: import.meta.url,
+      env: { DSH_COMMUNITY_BIN: binPath, DSH_COMMUNITY_ALLOW_UNPINNED: '1' },
+    })).toThrow(/staged @deepseek-ai\/dsh runtime is incomplete/)
+  })
+
   it('still resolves the published package from the workspace', () => {
     const install = resolveOfficialDsh({ from: import.meta.url })
     expect(existsSync(install.binPath)).toBe(true)

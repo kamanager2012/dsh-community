@@ -1,31 +1,37 @@
 {
-  "source": "https://github.com/ccch1mneyyy/dsh-TUI/blob/main/cordis.patch.yml",
-  "measuredAt": "community tui-surface against official @deepseek-ai/dsh@0.1.1-rc.1",
+  "source": [
+    "packages/tui/cordis.patch.yml — @dsh-community/tui-surface bundle patch",
+    "packages/tui-adapter/patches/tui-owned.cordis.patch.yml — runtime overlay written to the dsh-community-tui profile"
+  ],
+  "measuredAt": "community shipped patches against official @deepseek-ai/dsh@0.1.1-rc.1",
   "kpi": "patch-surface-reduction",
-  "interventionCount": 7,
-  "communityTuiOwned": 7,
-  "communityTuiOwnedWritten": 7,
+  "baselineRows": 33,
+  "interventionSemantics": "distinct ids touched across both shipped patches = overrides + disables + inserts; approval is overridden in both files and counts once",
+  "interventionCount": 8,
+  "communityTuiOwned": 8,
+  "communityTuiOwnedWritten": 5,
   "presetIsolationRows": 0,
   "overrides": [
     "system-prompt",
-    "llm-deepseek",
     "agent-loop",
     "sandbox-policy",
     "approval",
-    "session-persistence-jsonl"
+    "session-persistence-jsonl",
+    "user-questions"
   ],
-  "disables": [],
+  "disables": [
+    "hmr"
+  ],
   "inserts": [
-    "agent-presets",
-    "cordis-host-runner"
+    "dsh-community-tui"
   ],
   "tuiOwnedInserts": [],
   "milestones": [
     33,
     15,
     8,
-    2,
-    7
+    8
   ],
+  "milestoneNote": "33 -> 15 -> 8 is the reduction ladder from ARCHITECTURE.md success criteria #2; the final entry tracks the current interventionCount.",
   "target": "official dsh --profile headless; no third-party TUI plugin"
 }

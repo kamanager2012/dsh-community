@@ -19,7 +19,7 @@ describe('parseReadinessLine', () => {
     expect(() => parseReadinessLine(`${READINESS_PREFIX}http://127.0.0.1`)).toThrow(/loopback/)
   })
 
-  it('skips the rc.8 browser-handoff diagnostic that shares the prefix', () => {
+  it('skips the 0.1.0-rc.8-era browser-handoff diagnostic that shares the prefix', () => {
     expect(parseReadinessLine(`${READINESS_PREFIX}opening the default browser; pass --no-open to disable`)).toBeUndefined()
     expect(parseReadinessLine(`${READINESS_PREFIX}not-a-url`)).toBeUndefined()
   })
@@ -33,7 +33,7 @@ describe('createReadinessParser', () => {
     expect(parser.push('001/\nmore\n')).toBe('http://127.0.0.1:9001')
   })
 
-  it('accepts the URL line after the rc.8 browser-handoff diagnostic', () => {
+  it('accepts the URL line after the 0.1.0-rc.8-era browser-handoff diagnostic', () => {
     const parser = createReadinessParser()
     expect(parser.push(`${READINESS_PREFIX}opening the default browser; pass --no-open to disable\n`)).toBeUndefined()
     expect(parser.push(`${READINESS_PREFIX}http://127.0.0.1:3080\n`)).toBe('http://127.0.0.1:3080')

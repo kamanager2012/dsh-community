@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { handleKey } from '../src/keys.js'
 import { createStore } from '../src/store.js'
 
 describe('store interaction flows', () => {
@@ -67,5 +68,101 @@ describe('store interaction flows', () => {
     store.resolveQuestions({ answers: [{ id: 'q1', selected: [], custom: '第一个' }] })
     await expect(pending).resolves.toEqual({ answers: [{ id: 'q1', selected: [], custom: '第一个' }] })
     expect(store.state.questions).toBeUndefined()
+  })
+
+  it('rejects a second approval request while the first is still pending', async () => {
+    const store = createStore()
+    const first = store.askApproval({ toolName: 'bash' })
+    await expect(store.askApproval({ toolName: 'write' })).rejects.toThrow(/already pending/)
+    expect(store.state.approval?.toolName).toBe('bash')
+    store.resolveApproval('allowed-once')
+    await expect(first).resolves.toBe('allowed-once')
+    const next = store.askApproval({ toolName: 'write' })
+    expect(store.state.approval?.toolName).toBe('write')
+    store.resolveApproval('denied')
+    await expect(next).resolves.toBe('denied')
+  })
+
+  it('rejects a second question request while the first is still pending', async () => {
+    const store = createStore()
+    const first = store.askQuestions({ questions: [{ id: 'q1', question: '选哪个?' }] })
+    await expect(
+      store.askQuestions({ questions: [{ id: 'q2', question: '再来一个?' }] }),
+    ).rejects.toThrow(/already pending/)
+    expect(store.state.questions?.request.questions[0]?.id).toBe('q1')
+    store.resolveQuestions({ answers: [{ id: 'q1', selected: ['甲'] }] })
+    await expect(first).resolves.toEqual({ answers: [{ id: 'q1', selected: ['甲'] }] })
+  })
+
+  describe('modal key routing (handleKey)', () => {
+    function deps(store: ReturnType<typeof createStore>) {
+      const sent: string[] = []
+      return {
+        deps: {
+          store,
+          onSend: (text: string) => sent.push(text),
+          onCancel: () => {},
+          onExit: () => {},
+          showHelp: () => {},
+          toggleThinking: () => {},
+        },
+        sent,
+      }
+    }
+
+    it('free-text question: typed characters land in the draft and Enter resolves the answer', async () => {
+      const store = createStore()
+      const { deps: d, sent } = deps(store)
+      const pending = store.askQuestions({ questions: [{ id: 'q1', question: '补充说明?' }] })
+      handleKey(d, '第一个', {})
+      expect(store.state.draft).toBe('第一个')
+      handleKey(d, '', { return: true })
+      await expect(pending).resolves.toEqual({
+        answers: [{ id: 'q1', selected: [], custom: '第一个' }],
+      })
+      expect(store.state.questions).toBeUndefined()
+      expect(sent).toEqual([])
+    })
+
+    it('question modal steals Enter: a pre-existing draft is submitted as the answer, not sent as chat', async () => {
+      const store = createStore()
+      store.setDraft('草稿')
+      const { deps: d, sent } = deps(store)
+      const pending = store.askQuestions({ questions: [{ id: 'q1', question: '确认?' }] })
+      handleKey(d, '', { return: true })
+      await expect(pending).resolves.toEqual({
+        answers: [{ id: 'q1', selected: [], custom: '草稿' }],
+      })
+      expect(sent).toEqual([])
+    })
+
+    it('option question still selects by digit', async () => {
+      const store = createStore()
+      const { deps: d } = deps(store)
+      const pending = store.askQuestions({
+        questions: [{ id: 'q1', question: '选哪个?', options: [{ label: '甲' }, { label: '乙' }] }],
+      })
+      handleKey(d, '2', {})
+      await expect(pending).resolves.toEqual({ answers: [{ id: 'q1', selected: ['乙'] }] })
+    })
+
+    it('approval modal answers y/n and ignores other keys', () => {
+      const store = createStore()
+      const { deps: d } = deps(store)
+      store.askApproval({ toolName: 'bash' })
+      handleKey(d, 'x', {})
+      expect(store.state.approval).toBeDefined()
+      handleKey(d, 'y', {})
+      expect(store.state.approval).toBeUndefined()
+    })
+
+    it('plain chat Enter still sends when no modal is open', () => {
+      const store = createStore()
+      const { deps: d, sent } = deps(store)
+      handleKey(d, '你好', {})
+      handleKey(d, '', { return: true })
+      expect(sent).toEqual(['你好'])
+      expect(store.state.draft).toBe('')
+    })
   })
 })
