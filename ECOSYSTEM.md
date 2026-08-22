@@ -206,14 +206,14 @@ kamanager2012/dsh-community/releases/latest
 ```text
 社区源码版本          0.1.1-rc.2            （根目录 / Desktop / TUI / workspace 同一版本）
 官方 Runtime pin      0.1.1-rc.2            （社区版本的核心基线）
-已发布 Latest         v0.1.1-rc.1 / releases/latest   （v0.1.1-rc.2 待下个 tag 切换）
+已发布 Latest         v0.1.1-rc.2 / releases/latest
 历史独立编号          v0.1.2–v0.1.6         （不回写旧标签，也不再当 Latest）
 ```
 
 当前用户下载事实：
 
 ```text
-Latest          v0.1.1-rc.1  — Windows Setup.exe / macOS dmg / Linux AppImage
+Latest          v0.1.1-rc.2  — Windows Setup.exe / macOS dmg / Linux AppImage（keyless cosign 签名）
 Linux 主力端    WSL/Linux Terminal / TUI
 官方 Web        上游兼容入口，不是 Community 发行端
 ```
@@ -1428,15 +1428,15 @@ Labs 成熟功能分批晋升 Community
 
 ## 三十一、当前最重要的产品工作是 Distribution Reality Gate
 
-当前源码版本是 `0.1.1-rc.2`，官方核心是 `0.1.1-rc.2`；GitHub Latest 仍是已发布的 `v0.1.1-rc.1`（随下个 tag 切换）。现在要验证的是：一个没有参与开发的人，下载已发布 Latest 页面上的真实安装包后能否完成用户闭环。
+当前源码版本是 `0.1.1-rc.2`，官方核心是 `0.1.1-rc.2`；GitHub Latest 是已发布的 `v0.1.1-rc.2`。现在要验证的是：一个没有参与开发的人，下载已发布 Latest 页面上的真实安装包后能否完成用户闭环。
 
 必须直接测试 exact release artifact，而不是 main 源码或 CI artifact:
 
 ```text
-Windows clean VM → `DSH Community Setup 0.1.1-rc.1.exe` → 安装 → 首次启动 → 密钥 → new/resume → plugin → restart
-macOS clean host → `dsh-community-0.1.1-rc.1.dmg` → 安装 → 首次启动 → 密钥 → new/resume → plugin → restart
+Windows clean VM → `DSH Community Setup 0.1.1-rc.2.exe` → 安装 → 首次启动 → 密钥 → new/resume → plugin → restart
+macOS clean host → `dsh-community-0.1.1-rc.2.dmg` → 安装 → 首次启动 → 密钥 → new/resume → plugin → restart
 WSL/Linux clean host → `dsh-community` / `pnpm tui` → 密钥 → new/resume → plugin → restart
-Linux AppImage → `dsh-community-0.1.1-rc.1.AppImage` → 第 4 端 artifact smoke
+Linux AppImage → `dsh-community-0.1.1-rc.2.AppImage` → 第 4 端 artifact smoke
 ```
 
 还要覆盖:

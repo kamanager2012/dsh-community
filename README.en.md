@@ -17,7 +17,7 @@ A conversation you start in official Web is the same conversation you resume in
 
 | Channel | Download |
 |---|---|
-| **Current** | [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) (`v0.1.1-rc.1`) |
+| **Current** | [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) (`v0.1.1-rc.2`) |
 | **Historical / Pre-release** | older independent numbers on [Releases](https://github.com/kamanager2012/dsh-community/releases) |
 
 Current Latest, official kernel, five endpoints, asset names, and evidence labels
@@ -25,10 +25,11 @@ are in [current-release](docs/current-release.md) /
 [`current-release.json`](docs/current-release.json). Rules:
 [version policy](docs/version-policy.md).
 
-The source line is now **0.1.1-rc.2**: root, Desktop, TUI, and every workspace
+The current release is **v0.1.1-rc.2**: root, Desktop, TUI, and every workspace
 package share the number, 1:1 with official core `@deepseek-ai/dsh@0.1.1-rc.2`
-(contract surface identical to rc.1 — 135 config rows, zero drift). GitHub
-Latest switches to `v0.1.1-rc.2` at release time.
+(contract surface identical to rc.1 — 135 config rows, zero drift). Release
+assets carry keyless cosign signatures (`.sigstore.json`); see
+[release docs](docs/release.md#artifact-signing-keyless) for verification.
 
 [Official Runtime](https://github.com/deepseek-ai/deepseek-harness)
 
@@ -49,10 +50,10 @@ session persistence, official UI, and core lifecycle.
 | Goal | Use |
 |---|---|
 | Run the official Runtime directly | [`npx @deepseek-ai/dsh web`](https://github.com/deepseek-ai/deepseek-harness) |
-| Download the community product | [Latest `v0.1.1-rc.1`](https://github.com/kamanager2012/dsh-community/releases/latest) — cosign signature verification: [release docs](docs/release.md#artifact-signing-keyless) |
+| Download the community product | [Latest `v0.1.1-rc.2`](https://github.com/kamanager2012/dsh-community/releases/latest) — cosign signature verification: [release docs](docs/release.md#artifact-signing-keyless) |
 | Use the WSL/Linux Terminal / TUI | `pnpm tui` or `dsh-community` after a source install |
-| Use the Windows Desktop shell | [Latest `v0.1.1-rc.1`](https://github.com/kamanager2012/dsh-community/releases/latest) Setup.exe, or `pnpm desktop` |
-| Use the macOS Desktop shell | [Latest `v0.1.1-rc.1`](https://github.com/kamanager2012/dsh-community/releases/latest) dmg, or `pnpm desktop` |
+| Use the Windows Desktop shell | [Latest `v0.1.1-rc.2`](https://github.com/kamanager2012/dsh-community/releases/latest) Setup.exe, or `pnpm desktop` |
+| Use the macOS Desktop shell | [Latest `v0.1.1-rc.2`](https://github.com/kamanager2012/dsh-community/releases/latest) dmg, or `pnpm desktop` |
 | Read operational guidance | [DeepSeek Harness Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/) |
 | Verified community plugins | [`dsh-marketplace`](https://github.com/kamanager2012/dsh-marketplace) and the [verification registry](https://github.com/kamanager2012/dsh-community-plugins) — not an awesome list |
 
@@ -63,8 +64,7 @@ products.
 ## Current release status
 
 Community version is one workspace-wide identity: **0.1.1-rc.2**, 1:1 with
-official core `@deepseek-ai/dsh@0.1.1-rc.2`. Published GitHub Latest is still
-`v0.1.1-rc.1` until the next tag is cut.
+official core `@deepseek-ai/dsh@0.1.1-rc.2`. GitHub Latest is that same tag.
 Earlier independent numbers `v0.1.2`–`v0.1.6` are historical only.
 The Linux AppImage is community endpoint 4; the primary Linux CLI path remains WSL/Linux
 Terminal. Official Web is an upstream companion, not a Community endpoint. Android is

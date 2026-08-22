@@ -10,30 +10,30 @@
 | --- | --- | --- |
 | Use the official Runtime directly | [`npx @deepseek-ai/dsh web`](https://github.com/deepseek-ai/deepseek-harness) | Official product path |
 | Use the community Terminal / TUI | `dsh-community` or `pnpm tui` from source | Community UX around the official Runtime |
-| Download the Windows Desktop build | [Latest `v0.1.1-rc.1`](https://github.com/kamanager2012/dsh-community/releases/latest) | Re-run exact-asset smoke on the new tag; full user loop still requires review |
-| Download the macOS Desktop build | [Latest `v0.1.1-rc.1`](https://github.com/kamanager2012/dsh-community/releases/latest) | Re-run exact-asset smoke on the new tag; full user loop still requires review |
+| Download the Windows Desktop build | [Latest `v0.1.1-rc.2`](https://github.com/kamanager2012/dsh-community/releases/latest) | Re-run exact-asset smoke on the new tag; full user loop still requires review |
+| Download the macOS Desktop build | [Latest `v0.1.1-rc.2`](https://github.com/kamanager2012/dsh-community/releases/latest) | Re-run exact-asset smoke on the new tag; full user loop still requires review |
 | Use the WSL/Linux Terminal | `dsh-community` / `pnpm tui` | Primary Linux Community endpoint |
 | Read the full operational guide | [DeepSeek Harness Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/en/) | Providers, Sessions, security, automation, and acceptance |
 
-Do not download a formal client from Suite, Marketplace, Plugins, or Edition. They are respectively the labs, discovery UX, compatibility registry, and historical archive. The current release is **v0.1.1-rc.1**, 1:1 with official core `@deepseek-ai/dsh@0.1.1-rc.1`. The source line has moved to `0.1.1-rc.2` (same contract surface); GitHub Latest switches at the next tag. Do not download historical `v0.1.2`–`v0.1.6` as the current product. Official Web is an upstream companion, not a Community endpoint. See [community-endpoints.en.md](community-endpoints.en.md) and the [version policy](version-policy.md).
+Do not download a formal client from Suite, Marketplace, Plugins, or Edition. They are respectively the labs, discovery UX, compatibility registry, and historical archive. The current release is **v0.1.1-rc.2**, 1:1 with official core `@deepseek-ai/dsh@0.1.1-rc.2`; release assets carry keyless cosign signatures (`.sigstore.json`). Do not download historical `v0.1.2`–`v0.1.6` as the current product. Official Web is an upstream companion, not a Community endpoint. See [community-endpoints.en.md](community-endpoints.en.md) and the [version policy](version-policy.md).
 
-Desktop and TUI built from source show: `DeepSeek Harness Community v0.1.1-rc.2 [Official Core: @deepseek-ai/dsh@0.1.1-rc.2]`; the published download still shows rc.1 until the next release.
+Desktop and TUI should show: `DeepSeek Harness Community v0.1.1-rc.2 [Official Core: @deepseek-ai/dsh@0.1.1-rc.2]`.
 
 ## Current published download assets
 
-[`v0.1.1-rc.1`](https://github.com/kamanager2012/dsh-community/releases/latest):
+[`v0.1.1-rc.2`](https://github.com/kamanager2012/dsh-community/releases/latest):
 
-- `DSH Community Setup 0.1.1-rc.1.exe` — Windows (GitHub may display spaces as dots)
-- `dsh-community-0.1.1-rc.1.dmg` — macOS
-- `dsh-community-0.1.1-rc.1.AppImage` — Linux endpoint 4
+- `DSH Community Setup 0.1.1-rc.2.exe` — Windows (GitHub may display spaces as dots)
+- `dsh-community-0.1.1-rc.2.dmg` — macOS
+- `dsh-community-0.1.1-rc.2.AppImage` — Linux endpoint 4
 
 Use the exact filenames on the Release page. Each file has a matching `.sha256`. Windows / macOS builds are **unsigned and not notarized**. Windows SmartScreen may say “Unknown publisher”: More info → Run anyway, then check the sidecar hash:
 
 ```sh
 # Windows PowerShell:
-Get-FileHash 'DSH Community Setup 0.1.1-rc.1.exe' -Algorithm SHA256
+Get-FileHash 'DSH Community Setup 0.1.1-rc.2.exe' -Algorithm SHA256
 # macOS / Linux:
-shasum -a 256 -c dsh-community-0.1.1-rc.1.dmg.sha256
+shasum -a 256 -c dsh-community-0.1.1-rc.2.dmg.sha256
 ```
 
 The first desktop launch unpacks the official runtime into user data once. Sessions stay in official `~/.dsh`.
@@ -106,7 +106,7 @@ The registry is not a security guarantee and does not replace the official insta
 | `dsh-community: command not found` | Use the source commands or fix the package PATH | Do not publish this repository as `@deepseek-ai/dsh` |
 | No model response | `DEEPSEEK_API_KEY`, Provider settings, and `dsh web --help` | Do not treat a passing `doctor` as a successful model call |
 | Port already in use | `doctor` output and the official `dsh web` process | Do not use `killall node` against unrelated projects |
-| Unsure which release to download | [v0.1.1-rc.1](https://github.com/kamanager2012/dsh-community/releases/latest) | Do not download historical `v0.1.2`–`v0.1.6` |
+| Unsure which release to download | [v0.1.1-rc.2](https://github.com/kamanager2012/dsh-community/releases/latest) | Do not download historical `v0.1.2`–`v0.1.6` |
 | Want to try SDK / Checkpoint work | Enter [Community Labs](https://github.com/kamanager2012/deepseek-harness-suite) | Do not treat Labs as a release channel |
 
 ## Continue reading

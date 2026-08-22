@@ -50,9 +50,9 @@
   "evidence": {
     "artifactSmoke": {
       "status": "PARTIAL",
-      "tag": "v0.1.1-rc.1",
-      "run": "https://github.com/kamanager2012/dsh-community/actions/runs/32489762676",
-      "covers": "checksum, Windows silent install/first-ready, macOS dmg first-ready, Linux TUI missing-key/no-TTY"
+      "tag": "v0.1.1-rc.2",
+      "run": "https://github.com/kamanager2012/dsh-community/actions/runs/32579569995",
+      "covers": "checksum, keyless cosign bundle verification (12 assets), Windows silent install/first-ready, macOS dmg first-ready, Linux TUI missing-key/no-TTY"
     },
     "userLoop": {
       "status": "UNVERIFIED"
