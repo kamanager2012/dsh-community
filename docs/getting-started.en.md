@@ -15,9 +15,9 @@
 | Use the WSL/Linux Terminal | `dsh-community` / `pnpm tui` | Primary Linux Community endpoint |
 | Read the full operational guide | [DeepSeek Harness Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/en/) | Providers, Sessions, security, automation, and acceptance |
 
-Do not download a formal client from Suite, Marketplace, Plugins, or Edition. They are respectively the labs, discovery UX, compatibility registry, and historical archive. The current release is **v0.1.1-rc.1**, 1:1 with official core `@deepseek-ai/dsh@0.1.1-rc.1`. Do not download historical `v0.1.2`–`v0.1.6` as the current product. Official Web is an upstream companion, not a Community endpoint. See [community-endpoints.en.md](community-endpoints.en.md) and the [version policy](version-policy.md).
+Do not download a formal client from Suite, Marketplace, Plugins, or Edition. They are respectively the labs, discovery UX, compatibility registry, and historical archive. The current release is **v0.1.1-rc.1**, 1:1 with official core `@deepseek-ai/dsh@0.1.1-rc.1`. The source line has moved to `0.1.1-rc.2` (same contract surface); GitHub Latest switches at the next tag. Do not download historical `v0.1.2`–`v0.1.6` as the current product. Official Web is an upstream companion, not a Community endpoint. See [community-endpoints.en.md](community-endpoints.en.md) and the [version policy](version-policy.md).
 
-Desktop and TUI should show: `DeepSeek Harness Community v0.1.1-rc.1 [Official Core: @deepseek-ai/dsh@0.1.1-rc.1]`.
+Desktop and TUI built from source show: `DeepSeek Harness Community v0.1.1-rc.2 [Official Core: @deepseek-ai/dsh@0.1.1-rc.2]`; the published download still shows rc.1 until the next release.
 
 ## Current published download assets
 

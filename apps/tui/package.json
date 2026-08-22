@@ -1,6 +1,6 @@
 {
   "name": "@dsh-community/tui",
-  "version": "0.1.1-rc.1",
+  "version": "0.1.1-rc.2",
   "private": true,
   "type": "module",
   "description": "Community launcher around official dsh --profile headless. Not a third-party TUI.",
@@ -14,7 +14,7 @@
     "start": "pnpm build && node dist/bin.js"
   },
   "dependencies": {
-    "@deepseek-ai/dsh": "0.1.1-rc.1",
+    "@deepseek-ai/dsh": "0.1.1-rc.2",
     "@dsh-community/dsh-bridge": "workspace:*"
   }
 }

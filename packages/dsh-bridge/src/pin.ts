@@ -1,7 +1,7 @@
 /** Exact published runtime this workspace is allowed to launch. */
 export const OFFICIAL_DSH_PACKAGE = '@deepseek-ai/dsh' as const
 
-export const PINNED_DSH_VERSION = '0.1.1-rc.1' as const
+export const PINNED_DSH_VERSION = '0.1.1-rc.2' as const
 
 export const OFFICIAL_DSH_BIN_NAME = 'dsh' as const
 

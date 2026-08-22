@@ -1,6 +1,6 @@
 {
   "name": "@dsh-community/desktop",
-  "version": "0.1.1-rc.1",
+  "version": "0.1.1-rc.2",
   "private": true,
   "type": "module",
   "main": "dist/main.js",
@@ -15,7 +15,7 @@
     "package": "node scripts/package.mjs"
   },
   "dependencies": {
-    "@deepseek-ai/dsh": "0.1.1-rc.1",
+    "@deepseek-ai/dsh": "0.1.1-rc.2",
     "@dsh-community/dsh-bridge": "workspace:*",
     "@dsh-community/shared-types": "workspace:*"
   },

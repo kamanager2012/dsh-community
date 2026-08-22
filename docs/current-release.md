@@ -8,27 +8,27 @@ Rules (1:1 kernel mirror, Dual-Badge, immutable tags) stay in
 [version-policy.md](version-policy.md). Endpoint definitions stay in
 [community-endpoints.md](community-endpoints.md).
 
-## Current line (2026-08-21)
+## Current line (2026-08-22)
 
 | Fact | Value |
 |---|---|
-| Official kernel | `@deepseek-ai/dsh@0.1.1-rc.1` |
-| Community product | `0.1.1-rc.1` |
-| GitHub Latest | [`v0.1.1-rc.1`](https://github.com/kamanager2012/dsh-community/releases/latest) |
-| Dual-Badge | `DeepSeek Harness Community v0.1.1-rc.1 [Official Core: @deepseek-ai/dsh@0.1.1-rc.1]` |
+| Official kernel | `@deepseek-ai/dsh@0.1.1-rc.2` |
+| Community product | `0.1.1-rc.2` |
+| GitHub Latest | [`v0.1.1-rc.2`](https://github.com/kamanager2012/dsh-community/releases/latest) |
+| Dual-Badge | `DeepSeek Harness Community v0.1.1-rc.2 [Official Core: @deepseek-ai/dsh@0.1.1-rc.2]` |
 | Community endpoints | WSL/Linux Terminal, Windows Desktop, macOS Desktop, Linux AppImage, Android |
 | Official Web | Kernel UI, not a community endpoint |
 | Android | Labs `[UNVERIFIED]`, not on the Latest download page |
-| artifact-smoke | `[PARTIAL]` ([run 32489762676](https://github.com/kamanager2012/dsh-community/actions/runs/32489762676)) |
+| artifact-smoke | last full smoke on `v0.1.1-rc.1` `[PARTIAL]` ([run 32489762676](https://github.com/kamanager2012/dsh-community/actions/runs/32489762676)); `v0.1.1-rc.2` smoke pending release |
 | Full user loop | `[UNVERIFIED]` |
 | Plugin `testedDsh` | `0.1.1-rc.1` (compose: `plugin add` + `--dump-config`; restart/user-loop still `[UNVERIFIED]`) |
 | Historical tags | `v0.1.2`–`v0.1.6` are not the current download |
 
 Release-page filenames (GitHub may show Windows spaces as dots):
 
-- `dsh-community-0.1.1-rc.1.AppImage`
-- `dsh-community-0.1.1-rc.1.dmg`
-- `DSH.Community.Setup.0.1.1-rc.1.exe`
+- `dsh-community-0.1.1-rc.2.AppImage`
+- `dsh-community-0.1.1-rc.2.dmg`
+- `DSH.Community.Setup.0.1.1-rc.2.exe`
 
 When the pin or Latest tag changes, update `current-release.json` in the same
 commit as `pin.ts` / `package.json`. CI checks they match.
