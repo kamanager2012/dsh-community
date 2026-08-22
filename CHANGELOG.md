@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.1-rc.2 — 2026-08-22
 
 Pin bump:官方 Runtime `@deepseek-ai/dsh` `0.1.1-rc.1` → `0.1.1-rc.2`(官方 GitHub 当前发行 / npm `latest` 与 `next`)。社区产品号 1:1 镜像为 `0.1.1-rc.2`。
 
