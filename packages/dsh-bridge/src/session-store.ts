@@ -33,11 +33,17 @@ export function listOfficialSessions(root: string): OfficialSessionRef[] {
       for (const file of OFFICIAL_SESSION_FILES) {
         const transcript = join(sessionDir, file)
         if (!existsSync(transcript)) continue
+        let mtimeMs: number
+        try {
+          mtimeMs = statSync(transcript).mtimeMs
+        } catch {
+          continue
+        }
         found.push({
           id: session.name,
           projectKey: project.name,
           transcript,
-          mtimeMs: statSync(transcript).mtimeMs,
+          mtimeMs,
         })
         break
       }

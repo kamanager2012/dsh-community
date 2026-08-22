@@ -1,14 +1,19 @@
 import { EventEmitter } from 'node:events'
 import type { HostChild } from '../src/spawn-web.ts'
 
-export function fakeChild(pid = 4242): HostChild & {
+export function fakeChild(
+  pid = 4242,
+  options: { readonly killExits?: boolean } = {},
+): HostChild & {
   emitData(chunk: string): void
   emitStderr(chunk: string): void
   emitExit(code: number | null, signal?: NodeJS.Signals | null): void
+  readonly killedWith: Array<'SIGTERM' | 'SIGKILL'>
 } {
   const stdout = new EventEmitter()
   const stderr = new EventEmitter()
   const lifecycle = new EventEmitter()
+  const killedWith: Array<'SIGTERM' | 'SIGKILL'> = []
   return {
     pid,
     stdout: {
@@ -30,8 +35,9 @@ export function fakeChild(pid = 4242): HostChild & {
     onError() {
       return () => undefined
     },
-    kill() {
-      lifecycle.emit('exit', 0, null)
+    kill(signal) {
+      killedWith.push(signal)
+      if (options.killExits !== false) lifecycle.emit('exit', 0, null)
     },
     emitData(chunk) {
       stdout.emit('data', chunk)
@@ -42,5 +48,6 @@ export function fakeChild(pid = 4242): HostChild & {
     emitExit(code, signal = null) {
       lifecycle.emit('exit', code, signal)
     },
+    killedWith,
   }
 }

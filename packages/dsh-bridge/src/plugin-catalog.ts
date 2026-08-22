@@ -22,9 +22,15 @@ export interface PluginCatalog {
   readonly plugins: readonly CatalogPlugin[]
 }
 
+const CATALOG_NAME_RE = /^[A-Za-z0-9@/._-]+$/
+
+function isDisplaySafePluginName(name: string): boolean {
+  return name.length > 0 && !name.startsWith('-') && CATALOG_NAME_RE.test(name)
+}
+
 export function officialPluginAddCommand(name: string): string {
-  if (name.length === 0 || name.startsWith('-')) {
-    throw new Error('dsh plugin add needs a package name')
+  if (!isDisplaySafePluginName(name)) {
+    throw new Error(`dsh plugin add needs a safe package name, got: ${JSON.stringify(name.slice(0, 64))}`)
   }
   return `dsh plugin add ${name}`
 }
@@ -40,7 +46,7 @@ export function parsePluginCatalog(raw: unknown): PluginCatalog {
   for (const item of value.plugins) {
     if (item === null || typeof item !== 'object') continue
     const row = item as Record<string, unknown>
-    if (typeof row.name !== 'string' || row.name.length === 0) continue
+    if (typeof row.name !== 'string' || !isDisplaySafePluginName(row.name)) continue
     const versions = Array.isArray(row.versions) ? row.versions : []
     const latest = versions[0] as Record<string, unknown> | undefined
     plugins.push({

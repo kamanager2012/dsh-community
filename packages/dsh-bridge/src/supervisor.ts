@@ -72,10 +72,27 @@ export function createWebSupervisor(options: WebSupervisorOptions): WebSuperviso
         clearTimeout(timer)
         for (const dispose of startupCleanups.splice(0)) dispose()
       }
-      const fail = (error: unknown): void => {
+      // Failure must not surface until the doomed child is confirmed dead,
+      // or the next generation could start while this one is still alive.
+      const failAfterChildExit = async (error: unknown): Promise<void> => {
         if (settled) return
         settled = true
         cleanupStartup()
+        spawned.kill('SIGTERM')
+        let timer: ReturnType<typeof setTimeout> | undefined
+        const outcome = await Promise.race([
+          exitResult.promise.then(() => 'closed' as const),
+          new Promise<'timeout'>((resolve) => {
+            timer = setTimeout(() => {
+              resolve('timeout')
+            }, shutdownTimeoutMs)
+          }),
+        ])
+        if (timer !== undefined) clearTimeout(timer)
+        if (outcome === 'timeout') {
+          spawned.kill('SIGKILL')
+          await exitResult.promise
+        }
         const diagnostic = output === '' ? '' : `\nHost output:\n${output}`
         reject(new Error(`${error instanceof Error ? error.message : String(error)}${diagnostic}`))
       }
@@ -89,21 +106,21 @@ export function createWebSupervisor(options: WebSupervisorOptions): WebSuperviso
           cleanupStartup()
           resolve(url)
         } catch (error) {
-          fail(error)
-          spawned.kill('SIGTERM')
+          void failAfterChildExit(error)
         }
       }
 
       const timer = setTimeout(() => {
-        fail(new Error(`official dsh web readiness timed out after ${String(readinessTimeoutMs)}ms`))
-        spawned.kill('SIGTERM')
+        void failAfterChildExit(
+          new Error(`official dsh web readiness timed out after ${String(readinessTimeoutMs)}ms`),
+        )
       }, readinessTimeoutMs)
 
       startupCleanups.push(spawned.stdout.onData(acceptChunk))
       startupCleanups.push(spawned.stderr.onData(appendOutput))
       spawned.onError((error) => {
-        fail(new Error(`official dsh web failed to spawn: ${error.message}`))
         exitResult.resolve()
+        void failAfterChildExit(new Error(`official dsh web failed to spawn: ${error.message}`))
       })
       spawned.onExit((code, signal) => {
         exitResult.resolve()
@@ -111,7 +128,9 @@ export function createWebSupervisor(options: WebSupervisorOptions): WebSuperviso
           if (!shuttingDown) options.onUnexpectedExit?.({ code, signal })
           return
         }
-        fail(new Error(`official dsh web exited before readiness (code ${String(code)}, signal ${String(signal)})`))
+        void failAfterChildExit(
+          new Error(`official dsh web exited before readiness (code ${String(code)}, signal ${String(signal)})`),
+        )
       })
     })
     return startPromise

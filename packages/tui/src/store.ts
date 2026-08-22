@@ -212,6 +212,11 @@ export function createStore(): UiStore {
       set({ items: [...state.items, { kind: 'help', id: String(state.items.length), text }] })
     },
     askApproval(prompt) {
+      if (approvalWaiter !== undefined) {
+        return Promise.reject(
+          new Error('an approval prompt is already pending; resolve it before requesting another'),
+        )
+      }
       set({ approval: prompt })
       return new Promise<string>((resolve) => {
         approvalWaiter = resolve
@@ -223,6 +228,11 @@ export function createStore(): UiStore {
       approvalWaiter = undefined
     },
     askQuestions(request) {
+      if (questionWaiter !== undefined) {
+        return Promise.reject(
+          new Error('a question prompt is already pending; answer it before requesting another'),
+        )
+      }
       set({ questions: { request } })
       return new Promise<UserQuestionAnswer>((resolve) => {
         questionWaiter = resolve

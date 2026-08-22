@@ -1,9 +1,13 @@
 import { OFFICIAL_UI_CONTRACT } from '@dsh-community/shared-types'
 
 /**
- * Community UIs (Desktop window, future TUI adapter) attach here.
- * Implementing `AgentLoop`, `deriveMessages`, or a second session store
- * in this workspace is a layering violation.
+ * Re-export of the official UI contract for community surfaces.
+ *
+ * Community surfaces (the desktop shell and the TUI adapter) consume this
+ * contract as-is. The agent loop, message derivation, and session storage
+ * remain the responsibility of the official runtime; a community surface
+ * that reimplements any of them breaks the single-runtime boundary this
+ * workspace is built on.
  */
 export const communityUiContract = OFFICIAL_UI_CONTRACT
 

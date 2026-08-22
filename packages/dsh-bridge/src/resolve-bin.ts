@@ -64,25 +64,23 @@ export function resolveOfficialDsh(options: ResolveOfficialDshOptions = {}): Off
     ? require.resolve(`${OFFICIAL_DSH_PACKAGE}/package.json`)
     : join(dirname(override), '..', 'package.json')
 
-  const resolvedPackageJson = override !== undefined && existsSync(override)
-    ? (existsSync(packageJsonPath) ? packageJsonPath : undefined)
-    : packageJsonPath
-
   if (override !== undefined) {
     if (!existsSync(override)) {
       throw new Error(`DSH_COMMUNITY_BIN does not exist: ${override}`)
     }
-    const packageDir = resolvedPackageJson !== undefined && existsSync(resolvedPackageJson)
-      ? dirname(resolvedPackageJson)
-      : dirname(override)
-    const manifest = resolvedPackageJson !== undefined && existsSync(resolvedPackageJson)
-      ? readManifest(resolvedPackageJson)
-      : { version: PINNED_DSH_VERSION }
+    if (!existsSync(packageJsonPath)) {
+      throw new Error(
+        `staged ${OFFICIAL_DSH_PACKAGE} runtime is incomplete: no package.json at ${packageJsonPath}. `
+          + 'Stage the official package.json next to lib/ so the runtime version can be verified against '
+          + `the pin (${PINNED_DSH_VERSION}), or clear DSH_COMMUNITY_BIN to resolve from node_modules.`,
+      )
+    }
+    const manifest = readManifest(packageJsonPath)
     const version = typeof manifest.version === 'string' ? manifest.version : 'unknown'
     if (options.assertPin !== false) assertPinnedVersion(version, env)
     return {
       packageName: OFFICIAL_DSH_PACKAGE,
-      packageDir,
+      packageDir: dirname(packageJsonPath),
       version,
       binPath: override,
       pinned: PINNED_DSH_VERSION,

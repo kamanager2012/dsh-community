@@ -70,6 +70,30 @@ describe('store interaction flows', () => {
     expect(store.state.questions).toBeUndefined()
   })
 
+  it('rejects a second approval request while the first is still pending', async () => {
+    const store = createStore()
+    const first = store.askApproval({ toolName: 'bash' })
+    await expect(store.askApproval({ toolName: 'write' })).rejects.toThrow(/already pending/)
+    expect(store.state.approval?.toolName).toBe('bash')
+    store.resolveApproval('allowed-once')
+    await expect(first).resolves.toBe('allowed-once')
+    const next = store.askApproval({ toolName: 'write' })
+    expect(store.state.approval?.toolName).toBe('write')
+    store.resolveApproval('denied')
+    await expect(next).resolves.toBe('denied')
+  })
+
+  it('rejects a second question request while the first is still pending', async () => {
+    const store = createStore()
+    const first = store.askQuestions({ questions: [{ id: 'q1', question: '选哪个?' }] })
+    await expect(
+      store.askQuestions({ questions: [{ id: 'q2', question: '再来一个?' }] }),
+    ).rejects.toThrow(/already pending/)
+    expect(store.state.questions?.request.questions[0]?.id).toBe('q1')
+    store.resolveQuestions({ answers: [{ id: 'q1', selected: ['甲'] }] })
+    await expect(first).resolves.toEqual({ answers: [{ id: 'q1', selected: ['甲'] }] })
+  })
+
   describe('modal key routing (handleKey)', () => {
     function deps(store: ReturnType<typeof createStore>) {
       const sent: string[] = []
