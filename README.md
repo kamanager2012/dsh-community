@@ -66,7 +66,7 @@ Desktop 与 TUI 的身份应显示为：`DeepSeek Harness Community v0.1.1-rc.1 
 
 ## 从源码跑
 
-需要 Node 22.15+、pnpm，以及 `DEEPSEEK_API_KEY`。官方 rc.8 的 session JSONL 用了 `node:zlib` 的 zstd API（22.15 才有）。对话在官方 `~/.dsh`。没密钥不会闷头进 Ink。
+需要 Node 22.15+、pnpm，以及 `DEEPSEEK_API_KEY`。官方 0.1.0-rc.8 起，session JSONL 用了 `node:zlib` 的 zstd API（22.15 才有；当前 pin 以 contracts/compatibility/latest-tested.json 为准）。对话在官方 `~/.dsh`。没密钥不会闷头进 Ink。
 
 ```sh
 git clone https://github.com/kamanager2012/dsh-community.git

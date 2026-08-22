@@ -40,7 +40,7 @@ The first desktop launch unpacks the official runtime into user data once. Sessi
 
 ## Start from source in five minutes
 
-You need Node.js 22.15+, pnpm, and a working `DEEPSEEK_API_KEY` (official rc.8 session JSONL uses `node:zlib` zstd, added in 22.15):
+You need Node.js 22.15+, pnpm, and a working `DEEPSEEK_API_KEY` (official 0.1.0-rc.8+ session JSONL uses `node:zlib` zstd, added in 22.15):
 
 ```sh
 git clone https://github.com/kamanager2012/dsh-community.git
