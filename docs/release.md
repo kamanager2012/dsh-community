@@ -56,16 +56,19 @@ filename shown on the Release page when verifying a published asset.
 
 ## Artifact signing (keyless)
 
-`[DRAFT/UNVERIFIED until next tag]` — this section describes the signing flow as
-implemented on `feat/cosign-keyless-release`; it becomes `[REAL]` only after the
-first tag is cut with the `sign` job and verified by `artifact-smoke`.
+`[REAL since v0.1.1-rc.2]` — first signed release shipped on that tag: the `sign`
+job ran on real GitHub OIDC and every published asset carries a bundle, and
+`artifact-smoke` verified all of them in strict mode
+([run 32579569995](https://github.com/kamanager2012/dsh-community/actions/runs/32579569995)).
 
 **What gets signed.** Every release asset — each installer (AppImage / Setup.exe /
-dmg) and every `<file>.sha256` sidecar — gets one cosign **v3 bundle**:
+dmg) and every `<file>.sha256` sidecar — gets one cosign **bundle**:
 `<file>.sigstore.json`, containing the detached signature, the Fulcio certificate,
-and the Rekor transparency-log proof in a single file. cosign ≥ v3 removed the old
-`--output-signature` / `--output-certificate` pair, so there are no separate `.sig`
-/ `.pem` assets; the bundle replaces them. The `release` workflow refuses to publish
+and the Rekor transparency-log proof in a single file. The workflows pin cosign
+**v2.6.1**: newer v3.x releases no longer ship the detached `.sig` assets that
+`cosign-installer`'s self-verification downloads (observed as a curl 22 / 404 on
+the first tagged run), and v2.6.1 produces the identical bundle via `--bundle`.
+The `release` workflow refuses to publish
 an asset without its bundle, and `artifact-smoke` fails once any bundle exists on
 Latest but some asset lacks one.
 
@@ -78,21 +81,22 @@ The certificate identity looks like:
 https://github.com/kamanager2012/dsh-community/.github/workflows/release.yml@refs/tags/v<version>
 ```
 
-**Verify a download yourself** (requires [cosign](https://docs.sigstore.dev) ≥ v3):
+**Verify a download yourself** (requires [cosign](https://docs.sigstore.dev) ≥ v2.4;
+our CI verifies with v2.6.1):
 
 ```sh
 TAG=v0.1.1-rc.2   # example; use the exact filename shown on the Release page
 BASE=https://github.com/kamanager2012/dsh-community/releases/download/$TAG
 
-curl -fLO "$BASE/dsh-community-0.1.2.AppImage" \
-     -O "$BASE/dsh-community-0.1.2.AppImage.sigstore.json"
+curl -fLO "$BASE/dsh-community-0.1.1-rc.2.AppImage" \
+     -O "$BASE/dsh-community-0.1.1-rc.2.AppImage.sigstore.json"
 
 cosign verify-blob \
-  --bundle dsh-community-0.1.2.AppImage.sigstore.json \
+  --bundle dsh-community-0.1.1-rc.2.AppImage.sigstore.json \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   --certificate-identity-regexp \
     '^https://github.com/kamanager2012/dsh-community/\.github/workflows/release\.yml@refs/tags/' \
-  dsh-community-0.1.2.AppImage
+  dsh-community-0.1.1-rc.2.AppImage
 ```
 
 A passing check means: signed by this repo's `release.yml` on a tag ref, cert chain
