@@ -44,7 +44,7 @@ session persistence, official UI, and core lifecycle.
 | Goal | Use |
 |---|---|
 | Run the official Runtime directly | [`npx @deepseek-ai/dsh web`](https://github.com/deepseek-ai/deepseek-harness) |
-| Download the community product | [Latest `v0.1.1-rc.1`](https://github.com/kamanager2012/dsh-community/releases/latest) |
+| Download the community product | [Latest `v0.1.1-rc.1`](https://github.com/kamanager2012/dsh-community/releases/latest) — cosign signature verification: [release docs](docs/release.md#artifact-signing-keyless) |
 | Use the WSL/Linux Terminal / TUI | `pnpm tui` or `dsh-community` after a source install |
 | Use the Windows Desktop shell | [Latest `v0.1.1-rc.1`](https://github.com/kamanager2012/dsh-community/releases/latest) Setup.exe, or `pnpm desktop` |
 | Use the macOS Desktop shell | [Latest `v0.1.1-rc.1`](https://github.com/kamanager2012/dsh-community/releases/latest) dmg, or `pnpm desktop` |

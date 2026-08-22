@@ -36,6 +36,94 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "verifying $TAG"
 
+  verify-signatures:
+    # Cosign keyless verification of the exact release assets (Latest by default,
+    # or the workflow_dispatch tag). One-time transition design:
+    #   - no *.sigstore.json bundle on the target release  → ::warning:: WARN, exit 0
+    #     (releases cut before signing went live stay green)
+    #   - at least one bundle present                      → strict mode: EVERY
+    #     released asset must have a matching bundle that passes
+    #     cosign verify-blob against this repo's release.yml identity; anything
+    #     missing or failing is a hard FAIL. A new unsigned release turns the
+    #     daily smoke red on purpose — that closed loop is intentional.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      COSIGN_OIDC_ISSUER: https://token.actions.githubusercontent.com
+      # Fulcio bakes the triggering workflow + ref into the certificate SAN:
+      # https://github.com/<owner>/<repo>/.github/workflows/release.yml@refs/tags/<tag>
+      COSIGN_IDENTITY_REGEXP: '^https://github.com/kamanager2012/dsh-community/\.github/workflows/release\.yml@refs/tags/'
+    steps:
+      - name: Scan release for cosign bundles
+        id: scan
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.inputs.tag }}"
+          if [ -z "$TAG" ]; then
+            TAG=$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name)
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "== assets of $TAG =="
+          names=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/$TAG" --paginate --jq '.assets[].name')
+          printf '%s\n' "$names"
+          bundles=$(printf '%s\n' "$names" | grep -c '\.sigstore\.json$' || true)
+          if [ "$bundles" -eq 0 ]; then
+            echo "::warning::$TAG carries no cosign bundles yet (pre-signing release); strict signature verification skipped"
+            echo "mode=transition" >> "$GITHUB_OUTPUT"
+          else
+            echo "found $bundles bundle(s); entering strict mode"
+            echo "mode=strict" >> "$GITHUB_OUTPUT"
+          fi
+      # sigstore/cosign-installer v3.10.1 (latest v3.x line)
+      - uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
+        with:
+          cosign-release: 'v3.1.3'
+      - name: Verify every asset against its keyless bundle (strict)
+        if: steps.scan.outputs.mode == 'strict'
+        env:
+          TAG: ${{ steps.scan.outputs.tag }}
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/verify"; mkdir -p "$work"
+          gh api "repos/${GITHUB_REPOSITORY}/releases/tags/$TAG" --paginate \
+            --jq '.assets[] | [.name, .browser_download_url] | @tsv' > "$work/assets.tsv"
+          verified=0; fail=0
+          while IFS=$'\t' read -r name url; do
+            case "$name" in *.sigstore.json) continue ;; esac
+            bundle="$name.sigstore.json"
+            bundle_url=$(awk -F'\t' -v n="$bundle" '$1 == n { print $2 }' "$work/assets.tsv")
+            if [ -z "$bundle_url" ]; then
+              echo "::error::$bundle missing for released asset $name (unsigned publish is not allowed)"
+              fail=$((fail+1)); continue
+            fi
+            echo "== verifying $name =="
+            curl -fSL --retry 3 -o "$work/$name" "$url"
+            curl -fSL --retry 3 -o "$work/$bundle" "$bundle_url"
+            if cosign verify-blob \
+              --bundle "$work/$bundle" \
+              --certificate-oidc-issuer "$COSIGN_OIDC_ISSUER" \
+              --certificate-identity-regexp "$COSIGN_IDENTITY_REGEXP" \
+              "$work/$name"; then
+              verified=$((verified+1))
+            else
+              echo "::error::cosign verification FAILED for $name"
+              fail=$((fail+1))
+            fi
+          done < "$work/assets.tsv"
+          echo "verified=$verified failed=$fail"
+          if [ "$verified" -eq 0 ]; then
+            echo "::error::strict mode but nothing verified; refusing to pass"
+            fail=$((fail+1))
+          fi
+          [ "$fail" -eq 0 ] || { echo "signature verification failures: $fail"; exit 1; }
+      - name: Transition notice (unsigned legacy release)
+        if: steps.scan.outputs.mode == 'transition'
+        run: |
+          echo "release ${{ steps.scan.outputs.tag }} predates keyless signing; only sha256 sidecar checks apply in this mode"
+
   windows-desktop:
     needs: resolve
     runs-on: windows-latest
