@@ -54,6 +54,56 @@ The source workflow templates the Windows file as `DSH Community Setup
 <version>.exe`. GitHub may display spaces as dots. Always use the exact
 filename shown on the Release page when verifying a published asset.
 
+## Artifact signing (keyless)
+
+`[DRAFT/UNVERIFIED until next tag]` — this section describes the signing flow as
+implemented on `feat/cosign-keyless-release`; it becomes `[REAL]` only after the
+first tag is cut with the `sign` job and verified by `artifact-smoke`.
+
+**What gets signed.** Every release asset — each installer (AppImage / Setup.exe /
+dmg) and every `<file>.sha256` sidecar — gets one cosign **v3 bundle**:
+`<file>.sigstore.json`, containing the detached signature, the Fulcio certificate,
+and the Rekor transparency-log proof in a single file. cosign ≥ v3 removed the old
+`--output-signature` / `--output-certificate` pair, so there are no separate `.sig`
+/ `.pem` assets; the bundle replaces them. The `release` workflow refuses to publish
+an asset without its bundle, and `artifact-smoke` fails once any bundle exists on
+Latest but some asset lacks one.
+
+**Who signs.** The `sign` job runs keylessly: GitHub issues a short-lived OIDC token
+(`id-token: write`), Fulcio issues an ephemeral certificate bound to the workflow
+identity, and the signature is logged in Rekor. No long-lived private key exists.
+The certificate identity looks like:
+
+```text
+https://github.com/kamanager2012/dsh-community/.github/workflows/release.yml@refs/tags/v<version>
+```
+
+**Verify a download yourself** (requires [cosign](https://docs.sigstore.dev) ≥ v3):
+
+```sh
+TAG=v0.1.1-rc.2   # example; use the exact filename shown on the Release page
+BASE=https://github.com/kamanager2012/dsh-community/releases/download/$TAG
+
+curl -fLO "$BASE/dsh-community-0.1.2.AppImage" \
+     -O "$BASE/dsh-community-0.1.2.AppImage.sigstore.json"
+
+cosign verify-blob \
+  --bundle dsh-community-0.1.2.AppImage.sigstore.json \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity-regexp \
+    '^https://github.com/kamanager2012/dsh-community/\.github/workflows/release\.yml@refs/tags/' \
+  dsh-community-0.1.2.AppImage
+```
+
+A passing check means: signed by this repo's `release.yml` on a tag ref, cert chain
+rooted at Sigstore's Fulcio CA, logged in Rekor, and the blob bytes match the
+signature. It does not mean the binary is malware-free.
+
+**OS-level signing: absent.** Windows Authenticode and macOS codesign /
+notarization are out of scope and not configured (`CSC_IDENTITY_AUTO_DISCOVERY=false`
+in the build jobs). Expect SmartScreen and Gatekeeper warnings on first run; verify
+via the sha256 sidecar and the cosign bundle above instead of OS trust prompts.
+
 ## Manual checks after a release
 
 ```sh

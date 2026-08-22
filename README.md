@@ -44,7 +44,7 @@ Desktop 与 TUI 的身份应显示为：`DeepSeek Harness Community v0.1.1-rc.1 
 |---|---|
 | 真正跑 agent | 官方 [`npx @deepseek-ai/dsh web`](https://github.com/deepseek-ai/deepseek-harness) |
 | 终端 | 本仓 `dsh-community`（启动官方 `dsh --profile headless`，不挂第三方 TUI） |
-| 下载安装包 | [Latest `v0.1.1-rc.1`](https://github.com/kamanager2012/dsh-community/releases/latest) |
+| 下载安装包 | [Latest `v0.1.1-rc.1`](https://github.com/kamanager2012/dsh-community/releases/latest)（cosign 签名验证见 [release 文档](docs/release.md#artifact-signing-keyless)） |
 | 已验证能装的社区插件 | Desktop 市场页 · [`dsh-marketplace`](https://github.com/kamanager2012/dsh-marketplace) · [验证注册表](https://github.com/kamanager2012/dsh-community-plugins)（不是 awesome 目录） |
 | 官方表面快照 / 升 rc 契约 | **本仓** |
 
