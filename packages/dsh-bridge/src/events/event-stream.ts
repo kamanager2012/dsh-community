@@ -245,6 +245,43 @@ export class DshEventStream {
         break;
       }
 
+      case 'job/created':
+      case 'job.created': {
+        this.emitEvent({
+          type: 'job:created',
+          job: {
+            id: data.id || data.jobId || String(Date.now()),
+            name: data.name || data.title || 'SubAgent Job',
+            agentType: data.agentType || data.type || 'subagent',
+            status: data.status || 'created',
+            prompt: data.prompt || '',
+            createdAt: data.createdAt || Date.now(),
+            updatedAt: data.updatedAt || Date.now(),
+          },
+        });
+        break;
+      }
+
+      case 'job/updated':
+      case 'job.updated':
+      case 'job/state': {
+        this.emitEvent({
+          type: 'job:updated',
+          job: {
+            id: data.id || data.jobId || String(Date.now()),
+            name: data.name || data.title || 'SubAgent Job',
+            agentType: data.agentType || data.type || 'subagent',
+            status: data.status || 'active',
+            prompt: data.prompt || '',
+            createdAt: data.createdAt || Date.now(),
+            updatedAt: data.updatedAt || Date.now(),
+            output: data.output,
+            error: data.error,
+          },
+        });
+        break;
+      }
+
       case 'error': {
         this.emitEvent({
           type: 'error',

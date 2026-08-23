@@ -1,6 +1,7 @@
 packages:
   - 'packages/*'
   - 'apps/*'
+  - 'v8-engine-3d'
 allowBuilds:
   electron: true
   esbuild: true

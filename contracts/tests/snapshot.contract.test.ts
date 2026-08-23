@@ -39,10 +39,10 @@ describe('Upstream Snapshot & Patch Surface Contracts', () => {
     const matrix = JSON.parse(fs.readFileSync(matrixPath, 'utf-8'));
 
     const vm = new DshVersionManager(undefined, matrix);
-    expect(vm.getRecommendedVersion()).toBe('0.1.0-rc.6');
+    expect(vm.getRecommendedVersion()).toBe('0.1.0-rc.7');
 
-    const launchCmd = vm.getLaunchCommand('0.1.0-rc.6');
+    const launchCmd = vm.getLaunchCommand('0.1.0-rc.7');
     expect(launchCmd.executable).toBe('npx');
-    expect(launchCmd.args).toContain('@deepseek-ai/dsh@0.1.0-rc.6');
+    expect(launchCmd.args).toContain('@deepseek-ai/dsh@0.1.0-rc.7');
   });
 });

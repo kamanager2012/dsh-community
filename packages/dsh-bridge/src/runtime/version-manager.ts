@@ -42,11 +42,12 @@ export class DshVersionManager {
 
   private loadDefaultMatrix(): CompatibilityMatrix {
     return {
-      latestTestedVersion: '0.1.0-rc.6',
+      latestTestedVersion: '0.1.0-rc.7',
       versions: {
         '0.1.0-rc.2': { status: 'supported', tuiCompatible: true, desktopCompatible: true, notes: 'Early RC' },
         '0.1.0-rc.3': { status: 'supported', tuiCompatible: true, desktopCompatible: true, notes: 'Cordis profile base' },
-        '0.1.0-rc.6': { status: 'recommended', tuiCompatible: true, desktopCompatible: true, notes: 'Current verified official release' },
+        '0.1.0-rc.6': { status: 'supported', tuiCompatible: true, desktopCompatible: true, notes: 'Official release with JSONL session persistence' },
+        '0.1.0-rc.7': { status: 'recommended', tuiCompatible: true, desktopCompatible: true, notes: 'Current latest official release with multimodal and sub-agent job support' },
       }
     };
   }

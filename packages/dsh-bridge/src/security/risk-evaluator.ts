@@ -186,6 +186,8 @@ export class DshRiskEvaluator {
       normalized.includes('terminal') ||
       normalized.includes('command') ||
       normalized.includes('spawn') ||
+      normalized.includes('subagent') ||
+      normalized.includes('job') ||
       normalized.includes('run')
     ) {
       caps.add('process:exec');

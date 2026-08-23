@@ -78,4 +78,61 @@ describe('Shared Session Store Single-Source-of-Truth Contracts', () => {
     expect(allSummaries).toHaveLength(1);
     expect(allSummaries[0].isOfficial).toBe(true);
   });
+
+  it('supports 0.1.0-rc.7 multimodal image payload and sub-agent job persistence', () => {
+    const sessionWithMultimodal: DshSession = {
+      id: 'sess_multimodal_001',
+      title: 'Multimodal UI Review',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      workspacePath: '/projects/demo-ui',
+      model: 'deepseek-reasoner',
+      messages: [
+        {
+          id: 'msg_m1',
+          role: 'user',
+          content: 'Analyze this UI layout',
+          images: [
+            {
+              type: 'image',
+              mimeType: 'image/png',
+              data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+              name: 'ui_mockup.png',
+            }
+          ],
+          timestamp: Date.now(),
+          status: 'complete',
+        }
+      ],
+      metrics: {
+        promptTokens: 250,
+        completionTokens: 80,
+        totalTokens: 330,
+        tps: 42,
+        contextLimit: 128000,
+        contextUsagePercent: 0.25,
+      },
+      jobs: [
+        {
+          id: 'job_001',
+          name: 'Visual Layout Inspector',
+          agentType: 'subagent',
+          status: 'done',
+          prompt: 'Inspect CSS grid',
+          createdAt: Date.now() - 1000,
+          updatedAt: Date.now(),
+          output: 'Grid alignment verified',
+        }
+      ]
+    };
+
+    store.saveSession(sessionWithMultimodal);
+
+    const loaded = store.readSession('sess_multimodal_001');
+    expect(loaded).not.toBeNull();
+    expect(loaded?.messages[0].images).toHaveLength(1);
+    expect(loaded?.messages[0].images?.[0].name).toBe('ui_mockup.png');
+    expect(loaded?.jobs).toHaveLength(1);
+    expect(loaded?.jobs?.[0].status).toBe('done');
+  });
 });

@@ -50,15 +50,42 @@ export interface DshApprovalRequest {
 
 export type DshApprovalDecision = 'allow_once' | 'allow_always' | 'reject';
 
+export interface DshImageContentPart {
+  type: 'image';
+  mimeType: string;
+  data: string; // Base64 or URL
+  width?: number;
+  height?: number;
+  name?: string;
+}
+
+export type DshContentPart = string | DshImageContentPart;
+
 export interface DshMessage {
   id: string;
   role: DshRole;
   content: string;
+  contentParts?: DshContentPart[];
+  images?: DshImageContentPart[];
   reasoning?: string;
   reasoningContent?: string;
   toolCalls?: DshToolCall[];
   timestamp: number;
   status: 'streaming' | 'complete' | 'error';
+}
+
+export type SubAgentJobStatus = 'created' | 'active' | 'paused' | 'done' | 'errored' | 'cancelled';
+
+export interface SubAgentJob {
+  id: string;
+  name: string;
+  agentType: string;
+  status: SubAgentJobStatus;
+  prompt: string;
+  createdAt: number;
+  updatedAt: number;
+  output?: string;
+  error?: string;
 }
 
 export interface DshSession {
@@ -70,6 +97,7 @@ export interface DshSession {
   model: string;
   messages: DshMessage[];
   metrics: DshUsageMetrics;
+  jobs?: SubAgentJob[];
 }
 
 /**
@@ -85,6 +113,8 @@ export type DshEvent =
   | { type: 'tool:started'; toolCallId: string }
   | { type: 'tool:output'; toolCallId: string; output: string }
   | { type: 'tool:finished'; toolCallId: string; status: 'success' | 'failed'; output?: string; error?: string }
+  | { type: 'job:created'; job: SubAgentJob }
+  | { type: 'job:updated'; job: SubAgentJob }
   | { type: 'session:updated'; session: DshSession }
   | { type: 'session:forked'; originalSessionId: string; newSessionId: string; atTurn: number }
   | { type: 'error'; message: string; code?: string; fatal?: boolean };

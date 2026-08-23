@@ -248,9 +248,9 @@ export class DshAgentController {
   }
 
   /**
-   * Submit a user prompt to the Agent
+   * Submit a user prompt to the Agent (supports text and multimodal images)
    */
-  public async submitPrompt(promptText: string): Promise<void> {
+  public async submitPrompt(promptText: string, images?: import('../types/index.js').DshImageContentPart[]): Promise<void> {
     if (this.currentStatus !== 'idle' && this.currentStatus !== 'error') {
       throw new Error(`Cannot submit prompt while agent is in state: ${this.currentStatus}`);
     }
@@ -260,6 +260,7 @@ export class DshAgentController {
       id: `msg_u_${Date.now()}`,
       role: 'user',
       content: promptText,
+      images: images && images.length > 0 ? images : undefined,
       timestamp: Date.now(),
       status: 'complete',
     };

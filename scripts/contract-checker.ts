@@ -69,7 +69,7 @@ function installOfficialDsh(targetVersion: string): { binPath: string; installed
  * Captures real runtime introspection and command surface from official executable.
  * Robust against cold runner network latency by falling back to verified snapshot when offline.
  */
-export function probeOfficialDsh(targetVersion = 'latest'): UpstreamSnapshot {
+export function probeOfficialDsh(targetVersion = '0.1.1-rc.2'): UpstreamSnapshot {
   console.log(`📡 Probing official @deepseek-ai/dsh@${targetVersion}...`);
 
   let observedPlugins: string[] = [];
