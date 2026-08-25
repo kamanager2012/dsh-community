@@ -1,6 +1,6 @@
 {
   "name": "@dsh-community/dsh-bridge",
-  "version": "0.1.0",
+  "version": "0.1.1-rc.2",
   "description": "Anti-Corruption & Contract Layer for DeepSeek Harness (DSH)",
   "type": "module",
   "main": "./dist/index.js",
@@ -42,7 +42,7 @@
     "test:contract": "vitest run __tests__/contract"
   },
   "dependencies": {
-    "@deepseek-ai/dsh-sdk-client": "^0.1.0-rc.6"
+    "@deepseek-ai/dsh-sdk-client": "^0.1.1-rc.2"
   },
   "devDependencies": {
     "@types/node": "^22.13.4",
