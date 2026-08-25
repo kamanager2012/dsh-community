@@ -12,8 +12,8 @@ A clear and concise description of what the bug is.
 **Environment Information**
 - OS: [e.g. macOS 14.5, Ubuntu 22.04, Windows 11]
 - Node.js Version: [e.g. 22.13.0]
-- DSH Suite Version: [e.g. 0.1.0]
-- Official DSH Version: [e.g. 0.1.0-rc.6]
+- DSH Suite Version: [e.g. 0.1.1-rc.2]
+- Official DSH Version: [e.g. 0.1.1-rc.2]
 - Component: [e.g. Desktop / TUI / Bridge]
 
 **Output of `/doctor` (if accessible)**

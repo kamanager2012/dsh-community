@@ -1,5 +1,5 @@
 {
-  "targetVersion": "0.1.0-rc.6",
+  "targetVersion": "0.1.1-rc.2",
   "allowedCustomRowInserts": [
     "dsh-tui",
     "tui-working-activity"

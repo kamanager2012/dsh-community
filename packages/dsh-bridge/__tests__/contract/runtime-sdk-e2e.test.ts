@@ -346,7 +346,7 @@ rl.on('line', (line) => {
         result: {
           serverInfo: {
             name: '@deepseek-ai/dsh-jsonrpc-agent',
-            version: '0.1.0-rc.6',
+            version: '0.1.1-rc.2',
           }
         }
       };

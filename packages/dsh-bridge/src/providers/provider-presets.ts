@@ -15,9 +15,9 @@ export const KNOWN_PROVIDER_PRESETS: Record<string, ProviderPreset> = {
     name: 'DeepSeek Official API',
     baseUrl: 'https://api.deepseek.com/v1',
     defaultModel: 'deepseek-reasoner',
-    supportedModels: ['deepseek-reasoner', 'deepseek-chat'],
+    supportedModels: ['deepseek-reasoner', 'deepseek-chat', 'DeepSeek-V4-Flash-Vision-Exp'],
     contextLimit: 128000,
-    description: '官方直连，原生支持 DeepSeek-R1 推理思维链与 V3 极速推理',
+    description: '官方直连，原生支持 DeepSeek-R1 推理思维链、V3 极速推理及 V4-Flash-Vision 多模态视觉模型',
     envKeyName: 'DEEPSEEK_API_KEY',
   },
   siliconflow: {

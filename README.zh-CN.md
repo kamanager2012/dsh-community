@@ -6,7 +6,7 @@
 
 [![Contract CI](https://github.com/kamanager2012/deepseek-harness-suite/actions/workflows/contract-ci.yml/badge.svg)](https://github.com/kamanager2012/deepseek-harness-suite/actions/workflows/contract-ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![官方基准验证: 0.1.0-rc.7](https://img.shields.io/badge/Official%20DSH-0.1.0--rc.7%20verified-green.svg)](https://www.npmjs.com/package/@deepseek-ai/dsh)
+[![官方基准验证: 0.1.1-rc.2](https://img.shields.io/badge/Official%20DSH-0.1.1--rc.2%20verified-green.svg)](https://www.npmjs.com/package/@deepseek-ai/dsh)
 
 ---
 
@@ -47,7 +47,7 @@ Labs 不得重新实现 Agent loop、官方 Session persistence、Tool execution
 
 | 模块 / 能力 | 真实状态 | 事实与实现依据 |
 | :--- | :--- | :--- |
-| **官方零源码侵入** | `[REAL]` | 零魔改，直接通过 `npx @deepseek-ai/dsh@0.1.0-rc.6` 进程拉起驱动。 |
+| **官方零源码侵入** | `[REAL]` | 零魔改，直接通过 `npx @deepseek-ai/dsh@0.1.1-rc.2` 进程拉起驱动。 |
 | **桌面受控浏览器壳** | `[REAL]` | Electron 宿主 + 官方 `dsh web` 本地进程 + 托盘常驻与生命周期管控。 |
 | **跨平台进程树治理** | `[REAL]` | POSIX 独立进程组分离 + Windows 树杀（3080 端口 0 残留、0 僵尸进程）。 |
 | **动态契约 CI 探针** | `[PROBE]` | 动态探针采集 128 个官方插件行与 CLI flags，并在离线时校验不可变快照。 |

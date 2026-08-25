@@ -42,12 +42,15 @@ export class DshVersionManager {
 
   private loadDefaultMatrix(): CompatibilityMatrix {
     return {
-      latestTestedVersion: '0.1.0-rc.7',
+      latestTestedVersion: '0.1.1-rc.2',
       versions: {
         '0.1.0-rc.2': { status: 'supported', tuiCompatible: true, desktopCompatible: true, notes: 'Early RC' },
         '0.1.0-rc.3': { status: 'supported', tuiCompatible: true, desktopCompatible: true, notes: 'Cordis profile base' },
         '0.1.0-rc.6': { status: 'supported', tuiCompatible: true, desktopCompatible: true, notes: 'Official release with JSONL session persistence' },
-        '0.1.0-rc.7': { status: 'recommended', tuiCompatible: true, desktopCompatible: true, notes: 'Current latest official release with multimodal and sub-agent job support' },
+        '0.1.0-rc.7': { status: 'supported', tuiCompatible: true, desktopCompatible: true, notes: 'Multimodal and sub-agent job support baseline' },
+        '0.1.0-rc.8': { status: 'supported', tuiCompatible: true, desktopCompatible: true, notes: 'PTY process stability, tool-level approval, and SQLite performance refinement' },
+        '0.1.1-rc.1': { status: 'supported', tuiCompatible: true, desktopCompatible: true, notes: 'Multimodal Vision Exp model and multiline ask_user_question support' },
+        '0.1.1-rc.2': { status: 'recommended', tuiCompatible: true, desktopCompatible: true, notes: 'Current latest verified release with Files API image upload and auto-resizing' },
       }
     };
   }

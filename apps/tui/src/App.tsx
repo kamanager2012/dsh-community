@@ -37,19 +37,29 @@ export const App: React.FC<AppProps> = ({ controller }) => {
     if (text.startsWith('/help')) {
       const helpText = `Available commands:
   /help       - Show this help message
-  /rollback   - Rollback the session
-  /fork       - Fork the current session
-  /sessions   - List available sessions
-  /resume     - Resume a session
-  /save       - Save current session
-  /doctor     - Run system diagnostics
+  /goal       - Run autonomous goal-driven task (/goal <objective>)
+  /plan       - Enter structured planning mode (/plan <task>)
+  /compact    - Compact conversation history and optimize context tokens
+  /rollback   - Rollback the session to previous turn
+  /fork       - Fork the current session into a new branch
+  /sessions   - List available sessions (Suite & Official Read-Only)
+  /resume     - Resume a session by ID
+  /save       - Save current session snapshot
+  /doctor     - Run five-layer system diagnostics
   /plugins    - Search marketplace plugins
-  /audit      - View security audit chain
-  /provider   - Manage LLM providers
-  /undo       - Undo last mutation
-  /export     - Export session transcript
+  /audit      - View cryptographic audit chain
+  /provider   - Manage LLM providers (switch <id> [model])
+  /undo       - Undo last file mutation
+  /export     - Export session transcript (json / md)
   /exit       - Exit the application`;
       controller.addSystemMessage(helpText);
+      return;
+    }
+
+    if (text.startsWith('/compact')) {
+      controller.addSystemMessage('🧹 Compacting context and pruning obsolete tool results...');
+      // Trigger compaction turn
+      await submitPrompt('/compact');
       return;
     }
 

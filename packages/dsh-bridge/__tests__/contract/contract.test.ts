@@ -624,7 +624,7 @@ describe('DSH Bridge Contract Tests', () => {
       expect(plugins.length).toBeGreaterThan(0);
       expect(plugins[0].name).toContain('context');
 
-      const formatted = client.formatPluginList(plugins, '0.1.0-rc.8');
+      const formatted = client.formatPluginList(plugins, '0.1.1-rc.2');
       expect(formatted).toContain('DSH Community Plugin Marketplace');
       expect(formatted).toContain('dsh plugin add');
     });

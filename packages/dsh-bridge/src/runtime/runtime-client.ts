@@ -12,6 +12,7 @@ export interface RuntimeExecutionOptions {
   config: DshConfig;
   events: DshEventStream;
   sessionId?: string;
+  images?: import('../types/index.js').DshImageContentPart[];
   signal?: AbortSignal;
 }
 
@@ -41,7 +42,7 @@ export class DshRuntimeClient {
    * Execute prompt turn through official JSON-RPC SDK or fallback CLI
    */
   public async executeTurn(options: RuntimeExecutionOptions): Promise<RuntimeExecutionResult> {
-    const { prompt, config, events, sessionId, signal } = options;
+    const { prompt, config, events, sessionId, images, signal } = options;
 
     // Replay-hazard latch for the SDK path: flipped ONLY once a successful side
     // effect is confirmed. The official SDK forwards onNotification exclusively
@@ -68,7 +69,7 @@ export class DshRuntimeClient {
       const harness = new DeepSeekHarness({
         launch: {
           command: config.runtimeExecutable || 'npx',
-          args: config.runtimeExecutableArgs || ['-y', `@deepseek-ai/dsh@${config.runtimeVersion || '0.1.0-rc.6'}`, '--profile', 'jsonrpc-agent'],
+          args: config.runtimeExecutableArgs || ['-y', `@deepseek-ai/dsh@${config.runtimeVersion || '0.1.1-rc.2'}`, '--profile', 'jsonrpc-agent'],
           cwd: config.workspacePath || process.cwd(),
           env: {
             ...process.env,
@@ -81,7 +82,8 @@ export class DshRuntimeClient {
         provider: config.provider || 'deepseek-official',
         model: config.model || 'deepseek-reasoner',
         maxTokens: config.maxTokens,
-      });
+        ...(config.reasoningEffort ? { reasoningEffort: config.reasoningEffort } : {}),
+      } as any);
 
       this.activeHarness = harness;
 
@@ -272,7 +274,7 @@ export class DshRuntimeClient {
       // '--' guards against the prompt being parsed as downstream CLI flags
       // when it begins with '-'. (Prompt visibility in `ps` and ARG_MAX limits
       // are accepted trade-offs of argv transport.)
-      const child = spawn('npx', ['-y', `@deepseek-ai/dsh@${config.runtimeVersion || '0.1.0-rc.6'}`, '--profile', 'headless', '--', prompt], {
+      const child = spawn('npx', ['-y', `@deepseek-ai/dsh@${config.runtimeVersion || '0.1.1-rc.2'}`, '--profile', 'headless', '--', prompt], {
         cwd: config.workspacePath || process.cwd(),
         env: {
           ...process.env,

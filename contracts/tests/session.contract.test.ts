@@ -79,7 +79,7 @@ describe('Shared Session Store Single-Source-of-Truth Contracts', () => {
     expect(allSummaries[0].isOfficial).toBe(true);
   });
 
-  it('supports 0.1.0-rc.7 multimodal image payload and sub-agent job persistence', () => {
+  it('supports multimodal image payload and sub-agent job persistence (0.1.1-rc.2)', () => {
     const sessionWithMultimodal: DshSession = {
       id: 'sess_multimodal_001',
       title: 'Multimodal UI Review',

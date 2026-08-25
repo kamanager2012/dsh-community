@@ -25,6 +25,15 @@ export const MessageList: React.FC<MessageListProps> = ({
               </Text>
             </Box>
             <Box paddingLeft={2} marginTop={0} flexDirection="column">
+              {msg.images && msg.images.length > 0 && (
+                <Box flexDirection="column" marginBottom={1}>
+                  {msg.images.map((img, i) => (
+                    <Text key={i} color="magenta">
+                      📷 [Image Attached: {img.name || `Image #${i + 1}`} ({img.mimeType || 'image/png'})]
+                    </Text>
+                  ))}
+                </Box>
+              )}
               <Text color={isSystem ? 'dim' : 'white'}>{msg.content}</Text>
               {msg.toolCalls?.map((tc) => (
                 <ToolCard key={tc.id} toolCall={tc} />

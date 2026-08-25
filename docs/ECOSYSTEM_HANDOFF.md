@@ -184,10 +184,10 @@ Windows / macOS 统一由 `dsh-community` 官方发布。
 
 3. **可验证插件生态（Verified Ecosystem - Trust over Volume）**
    > 不盲目与 Awesome 列表比拼 300+ 数量，而是建立 **可验证供应链（Verification Layer）**：
-   > 真实安装烟测、权限静态审查、依赖真实性校验与多版本兼容矩阵（Tested on rc.6），提供 100% 跑通的信任底座。
+   > 真实安装烟测、权限静态审查、依赖真实性校验与多版本兼容矩阵（Tested on 0.1.1-rc.2），提供 100% 跑通的信任底座。
 
 4. **上游韧性演进（Upstream Resilience）**
-   > *“DeepSeek 明天发 rc.7，我们比你先知道哪里会断，并完成发行兼容修复。”*
+   > *“DeepSeek 每次发布新 RC，我们比你先知道哪里会断，并完成发行兼容修复。”*
    > 动态契约探针实时捕捉上游变动，为社区提供可预测的平滑升级体验。
 
 ---

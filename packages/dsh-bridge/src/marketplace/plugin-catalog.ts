@@ -127,7 +127,7 @@ export class DshPluginCatalogClient {
     );
   }
 
-  public formatPluginList(plugins: PluginEntry[], currentDshVersion = '0.1.0-rc.6'): string {
+  public formatPluginList(plugins: PluginEntry[], currentDshVersion = '0.1.1-rc.2'): string {
     if (plugins.length === 0) {
       return 'No matching plugins found in the registry.';
     }

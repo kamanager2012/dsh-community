@@ -41,7 +41,7 @@ In-session Commands:
       `);
       process.exit(0);
     } else if (args[i] === '--version' || args[i] === '-v') {
-      console.log('dsh-tui v0.1.0 (@dsh-community/tui)');
+      console.log('dsh-tui v0.1.1-rc.2 (@dsh-community/tui)');
       process.exit(0);
     } else if (args[i] === '--model' && args[i + 1]) {
       model = args[i + 1];

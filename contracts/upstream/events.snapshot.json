@@ -1,5 +1,5 @@
 {
-  "version": "0.1.0-rc.6",
+  "version": "0.1.1-rc.2",
   "extractedAt": "2026-08-16T03:30:00Z",
   "events": [
     "assistant/chunk",

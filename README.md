@@ -6,7 +6,7 @@
 
 [![Contract CI](https://github.com/kamanager2012/deepseek-harness-suite/actions/workflows/contract-ci.yml/badge.svg)](https://github.com/kamanager2012/deepseek-harness-suite/actions/workflows/contract-ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![Upstream Target: 0.1.0-rc.7](https://img.shields.io/badge/Official%20DSH-0.1.0--rc.7%20verified-green.svg)](https://www.npmjs.com/package/@deepseek-ai/dsh)
+[![Upstream Target: 0.1.1-rc.2](https://img.shields.io/badge/Official%20DSH-0.1.1--rc.2%20verified-green.svg)](https://www.npmjs.com/package/@deepseek-ai/dsh)
 
 ---
 

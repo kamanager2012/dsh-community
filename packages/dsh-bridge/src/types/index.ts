@@ -130,6 +130,9 @@ export interface DshConfig {
   port?: number;
   sandboxMode?: 'strict' | 'workspace_only' | 'unrestricted';
   approvalPolicy?: 'auto_safe' | 'strict' | 'unrestricted';
+  reasoningEffort?: 'low' | 'high';
+  enableFilesApi?: boolean;
+  nonInteractivePermission?: boolean;
   runtimeVersion?: string;
   runtimeExecutable?: string;
   runtimeExecutableArgs?: string[];

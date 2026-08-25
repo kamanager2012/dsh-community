@@ -53,7 +53,7 @@ export const InputBar: React.FC<InputBarProps> = ({
       </Box>
       <Box marginTop={0}>
         <Text color="dim" italic>
-          Tip: Type /rollback, /fork, /exit, or ask questions directly
+          Tip: /goal, /plan, /compact, /rollback, /doctor, /help, or ask questions directly
         </Text>
       </Box>
     </Box>

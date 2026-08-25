@@ -281,6 +281,8 @@ export class DshAgentController {
     try {
       const result = await this.runtimeClient.executeTurn({
         prompt: promptText,
+        images,
+        sessionId: session.id,
         config: this.config,
         events: this.events,
       });
@@ -501,7 +503,7 @@ export class DshAgentController {
    * Format plugin list for display in TUI
    */
   public formatPluginList(plugins: PluginEntry[]): string {
-    return this.pluginClient.formatPluginList(plugins, this.config.runtimeVersion || '0.1.0-rc.6');
+    return this.pluginClient.formatPluginList(plugins, this.config.runtimeVersion || '0.1.1-rc.2');
   }
 
   /**
