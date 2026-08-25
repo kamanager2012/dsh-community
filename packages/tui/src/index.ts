@@ -3,9 +3,10 @@
  *
  * Own code only. All execution stays on official host seams:
  *   ctx.agents.create/resume + agent.followup  → official Agent
- *   session/event                               → official durable log
- *   ctx.userQuestions.registerProvider          → official ask_user_question
- *   approval/request waterfall                  → official sandbox approval
+ *   ctx.attachments.saveImages                 → official durable image refs
+ *   session/event                              → official durable log
+ *   ctx.userQuestions.registerProvider         → official ask_user_question
+ *   approval/request waterfall                 → official sandbox approval
  *
  * Official types are consumed structurally — no third-party harness products
  * are imported, mounted, or patched.
@@ -15,10 +16,11 @@ import { formatDualBadge } from './badge.js'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { installModelSelection } from '@deepseek-ai/dsh-agent'
-import { render, type Instance } from 'ink'
+import { render } from 'ink'
 import { createElement } from 'react'
 import { randomUUID } from 'node:crypto'
 import { App } from './ui.js'
+import { buildUserContent } from './image-input.js'
 import { createStore, type UiStore } from './store.js'
 import type { AgentHandleLike, CordisContext, UserQuestionRequest } from './types.js'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -28,7 +30,7 @@ const RESUME_ENV = ['DSH_TUI_RESUME_SESSION', 'DSH_CC_RESUME_SESSION'] as const
 
 export const name = 'dsh-community-tui'
 
-export const inject = ['agents', 'userQuestions', 'agentDefaultModel'] as const
+export const inject = ['agents', 'userQuestions', 'agentDefaultModel', 'attachments'] as const
 
 interface ApprovalRequestLike {
   readonly agent?: { readonly id?: string }
@@ -36,6 +38,10 @@ interface ApprovalRequestLike {
   readonly callId?: string
   readonly reason?: string
   readonly signal?: AbortSignal
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }
 
 export function apply(ctx: CordisContext): (() => void) | void {
@@ -100,12 +106,24 @@ export function apply(ctx: CordisContext): (() => void) | void {
       store.applySessionEvent(event)
     })
 
+    let sendChain = Promise.resolve()
+    const enqueueUserInput = (text: string): void => {
+      sendChain = sendChain.then(async () => {
+        try {
+          const { content } = await buildUserContent(text, ctx.attachments)
+          agent.followup(createUserMessage({
+            content,
+            source: { kind: 'user' },
+          }))
+        } catch (error) {
+          store.showHelp(`发送失败：${errorMessage(error)}`)
+        }
+      })
+    }
+
     const firstPrompt = process.env.DSH_TUI_FIRST_PROMPT?.trim()
     if (firstPrompt !== undefined && firstPrompt !== '') {
-      agent.followup(createUserMessage({
-        content: [{ type: 'text', text: firstPrompt }],
-        source: { kind: 'user' },
-      }))
+      enqueueUserInput(firstPrompt)
     }
     agent.ctx.on('agent/status', (payload: { status?: string }) => {
       store.setStatus(payload.status ?? 'idle')
@@ -114,12 +132,7 @@ export function apply(ctx: CordisContext): (() => void) | void {
     const ui = render(createElement(App, {
       store,
       dualBadge: formatDualBadge(),
-      onSend: (text: string) => {
-        agent.followup(createUserMessage({
-          content: [{ type: 'text', text }],
-          source: { kind: 'user' },
-        }))
-      },
+      onSend: enqueueUserInput,
       onCancel: () => agent.cancel('user-interrupt'),
       onExit: () => {
         void handle.dispose()
@@ -130,7 +143,7 @@ export function apply(ctx: CordisContext): (() => void) | void {
   }
 
   void run().catch((error: unknown) => {
-    store.setFatal(error instanceof Error ? error.message : String(error))
+    store.setFatal(errorMessage(error))
   })
 
   return () => {
