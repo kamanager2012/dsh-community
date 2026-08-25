@@ -2,7 +2,7 @@
  * Ink UI for the community terminal surface. Our own layout and components.
  */
 
-import { Box, Text, useInput, useApp } from 'ink'
+import { Box, Text, useInput } from 'ink'
 import { createElement, useState, useSyncExternalStore, type FC } from 'react'
 import { handleKey } from './keys.js'
 import type { UiItem, UiStore } from './store.js'
@@ -17,7 +17,6 @@ interface AppProps {
 
 const MUTED = '#6d7686'
 const ACCENT = '#6ea8fe'
-const TEXT = '#d9dee8'
 
 function renderItem(item: UiItem, thinkingOpen: boolean): ReturnType<typeof createElement> {
   if (item.kind === 'help') {
@@ -66,6 +65,8 @@ const Transcript: FC<{ store: UiStore; thinkingOpen: boolean }> = ({ store, thin
 const HELP_TEXT = `dsh-community-tui 帮助
   /help   显示本帮助
   /exit   退出
+  /image "图1.png" ["图2.webp"] -- 可选提示词
+          图片先交给官方 attachment store 校验/规范化/持久化
   Esc     打断当前回答
   Tab     展开/折叠思考过程
   y/n     审批弹窗:允许一次/拒绝
@@ -76,7 +77,7 @@ const InputBar: FC<{ store: UiStore }> = ({ store }) => {
   const state = useSyncExternalStore(store.subscribe, () => store.state)
   if (state.approval !== undefined || state.questions !== undefined) return null
   if (draft === '') {
-    return createElement(Text, { color: MUTED }, '输入任务，回车发送（/help /exit）')
+    return createElement(Text, { color: MUTED }, '输入任务，回车发送（/help /image /exit）')
   }
   return createElement(Text, null, '> ', draft, createElement(Text, { color: MUTED }, '█'))
 }
@@ -122,7 +123,6 @@ const QuestionsView: FC<{ store: UiStore }> = ({ store }) => {
 }
 
 export const App: FC<AppProps> = ({ store, dualBadge, onSend, onCancel, onExit }) => {
-  const { exit } = useApp()
   const [thinkingOpen, setThinkingOpen] = useState(false)
   useInput((input, key) => {
     handleKey({

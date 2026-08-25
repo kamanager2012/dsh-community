@@ -1,14 +1,40 @@
+import type { ContentBlock } from '@deepseek-ai/dsh-llm'
+
 /**
  * Structural view of the official host seams this surface consumes.
- * Deliberately NOT imports of official packages: the plugin only sees what
- * the runtime hands it, so an upstream rc bump surfaces at runtime/contract,
- * not at our build.
+ * Deliberately narrow: the UI owns presentation only; execution, attachments,
+ * sessions, questions, and approvals stay on official DSH services.
  */
+
+export type ImageMediaTypeLike = 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif'
+
+export type ImageAttachmentRefLike =
+  Extract<ContentBlock, { readonly type: 'image' }>['attachment']
+
+export interface SaveImageAttachmentLike {
+  readonly data: Uint8Array
+  readonly mediaType: ImageMediaTypeLike
+  readonly name?: string
+}
+
+export interface AttachmentStoreLike {
+  readonly imageLimits: {
+    readonly maxImageBytes: number
+    readonly maxImagesPerMessage: number
+    readonly maxMessageImageBytes: number
+    readonly maxImagePixels: number
+    readonly maxImageDimension: number
+    readonly mediaTypes: readonly ImageMediaTypeLike[]
+  }
+  saveImages(
+    inputs: readonly SaveImageAttachmentLike[],
+  ): Promise<readonly ImageAttachmentRefLike[]>
+}
 
 export interface UserMessageLike {
   readonly id: string
   readonly role: 'user'
-  readonly content: readonly { readonly type: 'text'; readonly text: string }[]
+  readonly content: readonly ContentBlock[]
   readonly source: { readonly kind: 'user' }
 }
 
@@ -59,6 +85,7 @@ export interface ModelSelectionLike {
 export interface CordisContext {
   get(name: 'loader'): { await(): Promise<void> } | undefined
   get(name: string): unknown
+  readonly attachments: AttachmentStoreLike
   readonly agentDefaultModel: {
     currentSelection(): ModelSelectionLike
   }

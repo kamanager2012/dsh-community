@@ -43,14 +43,36 @@ interface SessionEventLike {
   readonly data?: Record<string, unknown>
 }
 
-function textOfBlocks(blocks: unknown): string {
+function displayOfBlocks(blocks: unknown): string {
   if (!Array.isArray(blocks)) return ''
-  return blocks
-    .filter((block): block is { type: 'text'; text?: unknown } =>
-      typeof block === 'object' && block !== null && (block as { type?: unknown }).type === 'text',
-    )
-    .map((block) => String(block.text ?? ''))
-    .join('\n')
+  const lines: string[] = []
+
+  for (const block of blocks) {
+    if (typeof block !== 'object' || block === null) continue
+    const value = block as Record<string, unknown>
+    if (value.type === 'text') {
+      const text = String(value.text ?? '')
+      if (text !== '') lines.push(text)
+      continue
+    }
+    if (value.type !== 'image') continue
+
+    const attachment = value.attachment
+    if (typeof attachment !== 'object' || attachment === null) {
+      lines.push('[图片]')
+      continue
+    }
+    const ref = attachment as Record<string, unknown>
+    const name = typeof ref.name === 'string' && ref.name !== '' ? `: ${ref.name}` : ''
+    const width = typeof ref.width === 'number' ? ref.width : undefined
+    const height = typeof ref.height === 'number' ? ref.height : undefined
+    const dimensions = width === undefined || height === undefined
+      ? ''
+      : ` ${String(width)}×${String(height)}`
+    lines.push(`[图片${name}${dimensions}]`)
+  }
+
+  return lines.join('\n')
 }
 
 function summaryOfToolResult(data: Record<string, unknown>): string {
@@ -130,7 +152,7 @@ export function createStore(): UiStore {
         : data
       const source = message.source
       if (typeof source === 'object' && source !== null && (source as { kind?: unknown }).kind !== 'user') return
-      const text = textOfBlocks(message.content)
+      const text = displayOfBlocks(message.content)
       if (text === '') return
       set({ items: [...state.items, { kind: 'user', id: String(seq), text }] })
       return
