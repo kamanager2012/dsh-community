@@ -1,6 +1,8 @@
 # DeepSeek Harness Community Labs (DSH-Suite)
 
-> ⚡ **以官方运行时为核心（Official-Runtime Centric）** 的 DeepSeek Harness 终端 TUI 与桌面客户端增强套件。
+> Community Labs。不是下载入口。
+
+**不要从本仓安装。** 正式发行在 [`dsh-community`](https://github.com/kamanager2012/dsh-community/releases/latest)。
 
 [English](./README.md) | **简体中文**
 
@@ -84,21 +86,19 @@ Labs 不得重新实现 Agent loop、官方 Session persistence、Tool execution
 
 ---
 
-## 🚀 极速上手
+## 本地开发（不是安装路径）
 
-### 1. 终端版 (TUI)
+不要 `npx` / `npm i -g @dsh-community/tui`。那会走到公共 npm，且本仓不会把包发到 `latest`。
 
 ```bash
-# 无需安装，直接运行体验
-npx @dsh-community/tui --model deepseek-reasoner
-
-# 或全局安装使用快捷命令
-npm install -g @dsh-community/tui
-dsh-tui
-
-# 极速接续上一轮任务
-dsh-tui -r last
+git clone https://github.com/kamanager2012/deepseek-harness-suite
+cd deepseek-harness-suite
+pnpm install
+pnpm run build
+pnpm --filter @dsh-community/tui start
 ```
+
+用户安装走 [dsh-community/releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest)。
 
 #### ⌨️ 常用终端指令表
 
@@ -115,12 +115,10 @@ dsh-tui -r last
 
 ---
 
-### 2. 桌面版 (Desktop)
+### 2. 桌面版
 
-从 [GitHub Releases](../../releases) 下载对应平台的安装包：
-- **macOS**: `.dmg` (支持 Apple Silicon M系列与 Intel)
-- **Windows**: `.exe` / 便携免安装 `.zip`
-- **Linux**: `.AppImage` / `.deb`
+不要从本仓 Releases 下载（本仓不发安装包）。走
+[dsh-community/releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest)。
 
 ---
 
