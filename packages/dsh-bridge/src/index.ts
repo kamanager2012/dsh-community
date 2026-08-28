@@ -100,3 +100,8 @@ export {
   type CatalogPlugin,
   type PluginCatalog,
 } from './plugin-catalog.js'
+export {
+  DshMcpBridge,
+  type McpBridgeStatus,
+  type McpServerTarget,
+} from './mcp-support.js'

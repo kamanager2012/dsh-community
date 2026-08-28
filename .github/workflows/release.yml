@@ -73,6 +73,8 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         run: pnpm desktop:package -- --win
+      - name: Asar vendor=0 guard
+        run: pnpm vitest run apps/desktop/tests/asar-purity.test.ts
       - name: Checksum
         shell: bash
         run: node scripts/checksum-release.mjs 'apps/desktop/release/*.exe'
@@ -106,6 +108,8 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         run: pnpm desktop:package -- --mac
+      - name: Asar vendor=0 guard
+        run: pnpm vitest run apps/desktop/tests/asar-purity.test.ts
       - name: Checksum
         shell: bash
         run: node scripts/checksum-release.mjs 'apps/desktop/release/*.dmg'

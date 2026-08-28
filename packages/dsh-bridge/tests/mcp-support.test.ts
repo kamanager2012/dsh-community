@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { DshMcpBridge } from '../src/mcp-support.js';
+import { DshMcpBridge } from '../src/index.ts'
 
 describe('DshMcpBridge', () => {
   it('registers and retrieves MCP servers', () => {
