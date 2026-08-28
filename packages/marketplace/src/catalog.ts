@@ -1,4 +1,4 @@
-/** Catalog schema for the DSH 社区市场 registry (dsh-community-plugins). */
+/** Catalog schema for the DSH community marketplace registry. */
 
 export const PLUGIN_CATEGORIES = ['ui', 'tool', 'provider', 'workflow', 'other'] as const
 export type PluginCategory = (typeof PLUGIN_CATEGORIES)[number]
@@ -19,7 +19,7 @@ const SECURITY_TEXT_FIELDS = [
   'manualReviewNote',
 ] as const
 
-/** Per-version security disclosure from dsh-community-plugins. */
+/** Per-version security disclosure from the in-repo plugin catalog. */
 export interface PluginSecurity {
   risk: PluginRisk
   requiresConfirmation: boolean

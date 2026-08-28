@@ -1,9 +1,9 @@
 /** Read-only pointer at the community registry. Not a second installer. */
 export const COMMUNITY_PLUGIN_CATALOG_URL =
-  'https://raw.githubusercontent.com/kamanager2012/dsh-community-plugins/main/catalog.json'
+  'https://raw.githubusercontent.com/kamanager2012/dsh-community/main/packages/marketplace/catalog.json'
 
 export const COMMUNITY_PLUGIN_CATALOG_REPO =
-  'https://github.com/kamanager2012/dsh-community-plugins'
+  'https://github.com/kamanager2012/dsh-community/blob/main/packages/marketplace/catalog.json'
 
 export const HANDBOOK_REPO = 'https://github.com/kamanager2012/deepseek-harness-handbook'
 

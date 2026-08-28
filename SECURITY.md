@@ -4,9 +4,8 @@
 
 `dsh-community` is a distribution shell around the official, published
 `@deepseek-ai/dsh` runtime: a TUI launcher, an Electron Desktop shell, a
-release/signing pipeline, and a thin marketplace UI over the
-[`dsh-community-plugins`](https://github.com/kamanager2012/dsh-community-plugins)
-registry. Official Source Ownership is 0 (see [ARCHITECTURE.md](ARCHITECTURE.md)):
+release/signing pipeline, and a thin marketplace UI over
+[`packages/marketplace/catalog.json`](packages/marketplace/catalog.json). Official Source Ownership is 0 (see [ARCHITECTURE.md](ARCHITECTURE.md)):
 this repo does not vendor or reimplement the agent runtime, tool execution, or
 session storage.
 
@@ -38,9 +37,10 @@ Out of scope (report upstream instead):
   agent loop, tool execution, model access, prompt handling, or `~/.dsh`
   session format. Report to
   [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness).
-- Third-party community plugins listed in the `dsh-community-plugins`
-  registry or installed from the marketplace page — report to that plugin's
-  own repository. The registry's `security` metadata (added 2026-08-28)
+- Third-party community plugins listed in
+  [`packages/marketplace/catalog.json`](packages/marketplace/catalog.json)
+  or installed from the marketplace page — report to that plugin's
+  own repository. The catalog `security` metadata (added 2026-08-28)
   records a disclosure and an install/compose check; it is not an
   independent security audit of the plugin's runtime behavior.
 - Windows SmartScreen or macOS Gatekeeper warnings on installers — this is a

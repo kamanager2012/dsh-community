@@ -12,7 +12,7 @@ import { installPlugin } from './install.js'
 import { auditPluginSecurity } from './audit.js'
 import { generateMcpDshPlugin, type McpServerConfig } from './mcp-adapter.js'
 
-/** 契约验证线:与插件注册表(dsh-community-plugins)当前 testedDsh 对齐。 */
+/** 契约验证线:与本仓 packages/marketplace/catalog.json 当前 testedDsh 对齐。 */
 export const DSH_TESTED_VERSION = '0.1.1-rc.2'
 
 /** npm 包名与 semver 的最小格式门禁:catalog 数据进官方 CLI argv 前必须通过。 */

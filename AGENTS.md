@@ -1,6 +1,6 @@
 # Agent notes for dsh-community
 
-**Read `ECOSYSTEM.md` first** — role boundaries and Reality Gate rules. This repo is the only canonical product; user downloads come only from `dsh-community/releases/latest`. The plugin discovery CLI is `packages/marketplace` in this tree; `dsh-community-plugins` remains the registry.
+**Read `ECOSYSTEM.md` first** — role boundaries and Reality Gate rules. This repo is the only canonical product; user downloads come only from `dsh-community/releases/latest`. Plugin discovery and `catalog.json` live in `packages/marketplace`.
 
 Official DeepSeek Harness is the kernel. This repo is based on published `@deepseek-ai/dsh`.
 

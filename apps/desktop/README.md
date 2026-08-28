@@ -14,7 +14,7 @@ Version Manager 在菜单 **Host → Runtime**。它读 `contracts/compatibility
 
 **File → Desktop settings**：关窗藏托盘；可选隔离官方数据到 `userData/isolated-dsh`（改这项会重启 `dsh web`）。环境变量 `DSH_COMMUNITY_ISOLATED=1` 仍然强制隔离。
 
-社区市场页在 **Host → Community marketplace** / 托盘「社区市场」：浏览 [dsh-community-plugins](https://github.com/kamanager2012/dsh-community-plugins) 的 `catalog.json`（在线抓取，10 分钟缓存到 userData，失败回退最近缓存）。已装状态读官方 `~/.dsh/profiles/web/package.json` 的 dependencies——不维护第二份安装记录。安装/卸载按钮唤起官方 `dsh plugin --profile web add|remove`（本窗口不自造安装器），完成后提示重启官方运行时生效；仓库链接走系统浏览器。
+社区市场页在 **Host → Community marketplace** / 托盘「社区市场」：浏览本仓 [`packages/marketplace/catalog.json`](../../packages/marketplace/catalog.json)（在线抓取，10 分钟缓存到 userData，失败回退最近缓存）。已装状态读官方 `~/.dsh/profiles/web/package.json` 的 dependencies——不维护第二份安装记录。安装/卸载按钮唤起官方 `dsh plugin --profile web add|remove`（本窗口不自造安装器），完成后提示重启官方运行时生效；仓库链接走系统浏览器。
 
 运行时行为：
 

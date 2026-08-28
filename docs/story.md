@@ -23,7 +23,7 @@
 
 - 代码版本与 Release 见 `package.json` 与 [Releases](https://github.com/kamanager2012/dsh-community/releases);Latest = releases/latest,Preview = 最新 pre-release。
 - 平台打包状态以 [release workflow](https://github.com/kamanager2012/dsh-community/actions/workflows/release.yml) 最新一次 run 为准。
-- 注册表收录数量以 [catalog.json](https://github.com/kamanager2012/dsh-community-plugins/blob/main/catalog.json) 为准。
+- 注册表收录数量以 [catalog.json](packages/marketplace/catalog.json) 为准。
 - 不要把 Linux AppImage 写成 Linux 主产品端。Linux 主入口是终端。
 
 ## 禁止的表达

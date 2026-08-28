@@ -41,7 +41,7 @@ function marketplacePageModel(overrides: Record<string, unknown> = {}) {
     catalog: parseMarketplaceCatalog(VALID_CATALOG),
     source: 'live' as const,
     fetchedAt: '2026-08-16T01:00:00.000Z',
-    registryUrl: 'https://github.com/kamanager2012/dsh-community-plugins',
+    registryUrl: 'https://github.com/kamanager2012/dsh-community/blob/main/packages/marketplace/catalog.json',
     installed: ['dsh-voice'],
     profile: 'web',
     ...overrides,
@@ -198,7 +198,7 @@ describe('marketplace page', () => {
 
   it('links the registry repo and plugin sources externally', () => {
     const html = renderMarketplacePage(marketplacePageModel())
-    expect(html).toMatch(/github\.com\/kamanager2012\/dsh-community-plugins/)
+    expect(html).toMatch(/github\.com\/kamanager2012\/dsh-community\/blob\/main\/packages\/marketplace\/catalog\.json/)
     expect(html).toMatch(/href="https:\/\/github\.com\/xu1132\/dsh-plugin-hello"/)
   })
 

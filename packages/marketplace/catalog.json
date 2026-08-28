@@ -1,0 +1,258 @@
+{
+  "version": 1,
+  "updatedAt": "2026-08-28T16:00:00Z",
+  "plugins": [
+    {
+      "name": "@deepseek-harness-tui/dsh-tui",
+      "description": "参考实现:Claude Code 风格 Ink TUI(社区市场收录,便于一键安装对比)",
+      "author": "ccch1mneyyy",
+      "repo": "https://github.com/ccch1mneyyy/dsh-TUI",
+      "category": "ui",
+      "versions": [
+        {
+          "version": "0.6.1",
+          "testedDsh": "0.1.1-rc.2",
+          "notes": "参考项目,社区验证线 0.1.1-rc.1",
+          "integrity": "sha512-3Ql0HVrpNrQnIDvRJ6oC2UeEQuU8MDI+BL5uuk3ge7FUdQ45EaQNteKBJXRIefeVPpYSY6AzqcYv+voO1E7gvg==",
+          "security": {
+            "risk": "high",
+            "requiresConfirmation": true,
+            "network": "自身不新增独立网络端点,随官方 DSH Runtime 走模型 API;另含作者原话'原生浏览器交互、computer use 等大量附属功能性扩展',这类扩展的网络面未在 README 中逐项列出",
+            "dataEgress": "作者未声明新增遥测;浏览器交互/computer-use 类扩展可代表用户操作浏览器与页面内容,具体数据流向随扩展而定,需单独核实",
+            "credentials": "复用当前 DSH profile 的凭据配置,不新增独立凭据存储",
+            "filesystem": "会话置顶、`/resume` 历史等 UI 状态持久化在 `~/.dsh-tui`",
+            "processExecution": "原生 subagent、会话 fork 由官方能力驱动;浏览器/computer-use 扩展可代表用户执行页面操作,是本条目风险的主要来源之一",
+            "persistence": "`~/.dsh-tui`(固定会话、其他 UI 偏好)",
+            "manualReviewStatus": "partial",
+            "manualReviewNote": "compose 验证通过(0.1.1-rc.2);高风险判定直接来自作者 README 自述的权限边界——dsh-TUI 不实现独立沙箱,复用当前 DSH profile 的 file/shell/sandbox/approval 策略,Windows 目前没有对应的沙箱后端,组合会退回 danger-full-access 且不弹审批。作者建议在含敏感凭证或不可信仓库的环境启动前先检查 profile 配置;浏览器/computer-use 扩展未逐项独立核实",
+            "lastReviewedAt": "2026-08-28"
+          }
+        }
+      ]
+    },
+    {
+      "name": "dsh-compressor",
+      "description": "工具输出压缩:最高省约 20% 上下文,不影响模型的上下文缓存与 agent 性能(Headroom 的精简移植)",
+      "author": "lifeodyssey",
+      "repo": "https://github.com/lifeodyssey/dsh-compressor",
+      "category": "tool",
+      "versions": [
+        {
+          "version": "0.1.0",
+          "testedDsh": "0.1.1-rc.2",
+          "notes": "社区验证线 0.1.1-rc.1:dsh plugin add 安装并合成通过",
+          "integrity": "sha512-oJT3Xy8/jpofp5elHmow6+4W2hPSJi35pYPMCHzoQqtSlhMVEmx5iyxTQ1jmPxJB9OsqUA7sTZcJD/MEH9609w==",
+          "security": {
+            "risk": "low",
+            "requiresConfirmation": false,
+            "network": "无网络请求",
+            "dataEgress": "不产生外传;所有处理在本机完成",
+            "credentials": "不访问凭据",
+            "filesystem": "把原始(未压缩)工具输出写入本机磁盘缓存供之后完整取回,写入范围限于插件自身缓存目录",
+            "processExecution": "无子进程,不拦截或改写其他插件的工具调用",
+            "persistence": "本机磁盘缓存(原始输出),随插件自身生命周期管理",
+            "manualReviewStatus": "partial",
+            "manualReviewNote": "compose 验证通过(0.1.1-rc.2);README 描述的功能面小,无网络/凭据接触,未做独立代码级安全审计",
+            "lastReviewedAt": "2026-08-28"
+          }
+        }
+      ]
+    },
+    {
+      "name": "dsh-context",
+      "description": "上下文洞察面板:看模型上下文窗口的构成与演化(组成 vs 窗口大小、逐请求历史、压缩/注入事件、逐消息 token 统计)",
+      "author": "bowenliang123",
+      "repo": "https://github.com/bowenliang123/dsh-context",
+      "category": "ui",
+      "versions": [
+        {
+          "version": "0.8.0",
+          "testedDsh": "0.1.1-rc.2",
+          "notes": "社区验证线 0.1.1-rc.1:dsh plugin add 安装并合成通过",
+          "integrity": "sha512-ye6r4o9JtL1xc4Nyqhtv+lIknz8/3dBfXH96GxMDf7JUq0SxdOrBR2wU4atTNw3Pyzk73p4U1qL0iyYnJ+fl9A==",
+          "security": {
+            "risk": "low",
+            "requiresConfirmation": false,
+            "network": "无外部网络请求;通过 DSH 自带 webServer 同源提供 Context 面板与 /context 命令",
+            "dataEgress": "不外传数据;展示的是当前会话已有的系统提示、工具schema、消息与文件读写记录等本地数据,通过 Web UI 呈现给可访问该 DSH 实例的用户",
+            "credentials": "不访问凭据",
+            "filesystem": "只读:汇总当前会话对文件的读/写/搜索记录用于展示,不新增写入",
+            "processExecution": "无",
+            "persistence": "每用户的面板偏好(趋势粒度、排序方式等)写入 settings 文档(Host 已安装且该文档可写时)",
+            "manualReviewStatus": "partial",
+            "manualReviewNote": "compose 验证通过(0.1.1-rc.2);本身不引入新的访问边界,但会把会话内容/文件活动集中可视化,若叠加 dsh-lan-access 等把 Web UI 暴露到局域网的插件,可见范围会随之扩大,建议届时重新评估",
+            "lastReviewedAt": "2026-08-28"
+          }
+        }
+      ]
+    },
+    {
+      "name": "dsh-lan-access",
+      "description": "Web GUI 局域网访问:0.0.0.0 绑定 + 非安全(LAN HTTP)上下文 crypto.randomUUID polyfill",
+      "author": "Leon0555",
+      "repo": "https://github.com/Leon0555/dsh-lan-access",
+      "category": "other",
+      "versions": [
+        {
+          "version": "0.1.0",
+          "testedDsh": "0.1.1-rc.2",
+          "notes": "社区验证线 0.1.1-rc.1:dsh plugin add 安装并合成通过",
+          "integrity": "sha512-D7xb8M12cM9de6w6rPojYv8d3Pp+i06gAVIjs0gCTt6B/3ME0Dg8BPKxHWkdR1EfMt9G4TeBGnd8x4xuLx8DRA==",
+          "security": {
+            "risk": "high",
+            "requiresConfirmation": true,
+            "network": "把 DSH 内置 webserver 的 host 从 127.0.0.1 改绑为 0.0.0.0,同一局域网内任意设备可通过 http://<内网IP>:3080 直接连接,不做认证",
+            "dataEgress": "对话内容、会话历史、模型选择等经局域网明文 HTTP 对外可达;作者 README 自述'等于整网都能触达本机的命令执行能力',明确仅建议限于可信内网,公共 WiFi 不要开启",
+            "credentials": "不直接读取凭据;DSH 官方把设置页/凭据管理/Agent Preset/目录选择等 PRIVILEGED_METHODS 硬限制为仅 127.0.0.1 可访问,插件声明不绕过这条边界、不做端口转发或改写请求头",
+            "filesystem": "通过官方 tapIndex 钩子向返回的 index.html 注入 crypto.randomUUID polyfill 与窄屏适配 CSS,不新增其他文件写入",
+            "processExecution": "无",
+            "persistence": "无新增持久化;绑定配置随插件生命周期,卸载后 webserver 恢复仅 127.0.0.1",
+            "manualReviewStatus": "partial",
+            "manualReviewNote": "compose 验证通过(0.1.1-rc.2);作者 README 本身已包含充分的安全提醒与远程访问边界说明(HTTP 403 门禁范围、SSH 隧道替代方案),风险评级直接采用该自述,仍需用户在安装前手动确认只在可信内网使用",
+            "lastReviewedAt": "2026-08-28"
+          }
+        }
+      ]
+    },
+    {
+      "name": "dsh-memory-vault",
+      "description": "跨会话记忆库:memory_remember / memory_recall / memory_forget 工具,最新条目注入 system-prompt 组装,Settings 记忆库页",
+      "author": "flymysql",
+      "repo": "https://github.com/flymysql/dsh-memory",
+      "category": "tool",
+      "versions": [
+        {
+          "version": "0.1.5",
+          "testedDsh": "0.1.1-rc.2",
+          "notes": "社区验证线 0.1.1-rc.1:dsh plugin add 安装并合成通过",
+          "integrity": "sha512-EXk51g7F3DXtVXeaqxaMke9V6Du1xWU5qoIAG61KveJQNHyY98eNGH8UVZmmg++y1HkKn8iCCHqvYLSXAWW8FQ==",
+          "security": {
+            "risk": "medium",
+            "requiresConfirmation": true,
+            "network": "无外部网络请求;仅通过 DSH 自带 webServer 提供同源 JSON 端点(GET/POST /dsh-memory/entries)供设置页的记忆库管理面板使用",
+            "dataEgress": "不发往外部服务;但记录内容会在之后*每次*系统提示组装时自动注入当前 profile 的所有后续会话,构成跨会话/跨项目的隐性数据流动",
+            "credentials": "不直接管理凭据,但用户可能把偏好、密钥类文本当作'记忆'保存;插件本身没有内置敏感内容过滤或提醒",
+            "filesystem": "记录写入 DSH storage domain(`dsh_memory` unit,默认 json backend),明文存储,未见加密",
+            "processExecution": "无",
+            "persistence": "跨会话持久化是该插件的核心功能;需手动调用 `memory_forget` 清除,没有自动过期机制",
+            "manualReviewStatus": "partial",
+            "manualReviewNote": "compose 验证通过(0.1.1-rc.2);单机场景下主要是数据卫生风险(明文存储、自动跨会话注入、无过期),若与 dsh-lan-access 等把 Web UI 暴露到局域网的插件叠加使用,记忆条目的实际可读写范围会扩大到整个局域网,应届时按 high 处理",
+            "lastReviewedAt": "2026-08-28"
+          }
+        }
+      ]
+    },
+    {
+      "name": "dsh-plugin-hello",
+      "description": "社区最小示例插件:注册一个可调用的 hello 工具(dsh.bundle.patch 标准入口)",
+      "author": "xu1132",
+      "repo": "https://github.com/xu1132/dsh-plugin-hello",
+      "category": "tool",
+      "versions": [
+        {
+          "version": "0.1.0",
+          "testedDsh": "0.1.1-rc.2",
+          "notes": "社区验证线 0.1.1-rc.1:dsh plugin add 安装并合成通过",
+          "integrity": "sha512-dRN8i4CvUw9iD0XPTae9FfDwFHP1jpFcjY2oSpc6e8RBbJmLYya8hpYgChtohRpv9Fw8o46NRMv919zUMK6Niw==",
+          "security": {
+            "risk": "low",
+            "requiresConfirmation": false,
+            "network": "无",
+            "dataEgress": "无",
+            "credentials": "无",
+            "filesystem": "无;仅注册一个返回问候语字符串的 `hello` 工具,没有副作用",
+            "processExecution": "无",
+            "persistence": "无",
+            "manualReviewStatus": "partial",
+            "manualReviewNote": "compose 验证通过(0.1.1-rc.2);README 描述的行为面与源码结构均极小(单一 greet 工具),未做独立代码级安全审计但功能上没有可利用面",
+            "lastReviewedAt": "2026-08-28"
+          }
+        }
+      ]
+    },
+    {
+      "name": "dsh-rtk-optimizer",
+      "description": "RTK 命令改写建议 + 工具输出压缩:建议 rtk 改写后的 bash 命令、压缩嘈杂输出(bash/grep/read)以省上下文(pi-rtk-optimizer 移植)",
+      "author": "sleepinsummer",
+      "repo": "https://github.com/sleepinginsummer/dsh-rtk-optimizer",
+      "category": "tool",
+      "versions": [
+        {
+          "version": "0.1.0",
+          "testedDsh": "0.1.1-rc.2",
+          "notes": "社区验证线 0.1.1-rc.1:dsh plugin add 安装并合成通过",
+          "integrity": "sha512-AF4mWnVSXjIQrsdMISWinKUGrDCXiy+vI40+GjTSchYwgzzN96TGj5twE3WMWwdl5VSDrYSOukA9sHy8qFKgWA==",
+          "security": {
+            "risk": "medium",
+            "requiresConfirmation": true,
+            "network": "无网络请求",
+            "dataEgress": "不外传数据",
+            "credentials": "不访问凭据",
+            "filesystem": "若本机安装了 `rtk` 二进制会调用它(`rtk rewrite ...`);不新增文件写入",
+            "processExecution": "全局挂载在所有会话的 bash/grep/read 工具事件上(非按需注册);rewrite 模式下可 deny 一次 bash 调用并要求模型改用改写后的命令,默认 suggest 模式仅追加建议文本;对成功输出按管线做 ANSI 剥离/摘要/截断等改写,会改变模型实际看到的工具结果内容",
+            "persistence": "运行期统计(压缩节省字符数等)保存在插件自身状态,不涉及跨会话敏感数据",
+            "manualReviewStatus": "partial",
+            "manualReviewNote": "compose 验证通过(0.1.1-rc.2);风险点是全局命令拦截与输出改写能力而非网络/凭据——默认 mode:suggest 不阻断调用,只有用户手动切到 mode:rewrite 才会 deny 命令;`/rtk show` 可随时查看当前生效配置",
+            "lastReviewedAt": "2026-08-28"
+          }
+        }
+      ]
+    },
+    {
+      "name": "dsh-voice",
+      "description": "语音输入(语音转文字)与朗读(Edge 神经 TTS),接入 Web 输入框",
+      "author": "STARDUSTLC666",
+      "repo": "https://github.com/STARDUSTLC666/dsh-voice",
+      "category": "ui",
+      "versions": [
+        {
+          "version": "0.1.0",
+          "testedDsh": "0.1.1-rc.2",
+          "notes": "社区验证线 0.1.1-rc.1:dsh plugin add 安装并合成通过",
+          "integrity": "sha512-xHrKxqQmiq9sgldWjSvLtyzq4yq1rmNQSBpJZmTxN9obo9+H6/xabAX7GSeDRW6MQcsMdL+ecn652nY1uLUstw==",
+          "security": {
+            "risk": "high",
+            "requiresConfirmation": true,
+            "network": "voice_tts 通过 edge-tts 协议直连微软 Edge 朗读云服务(WebSocket,ws 库);voice_stt 请求可配置的 OpenAI 兼容 ASR 接口(Groq/OpenAI/自定义 endpoint),可选经用户配置的 HTTP 代理",
+            "dataEgress": "voice_tts 把待合成文本发送给微软服务;voice_stt 把音频文件发送给所配置的第三方 ASR 服务商,由该服务商处理语音内容",
+            "credentials": "voice_stt 需要 ASR API Key(配置项 `asrApiKey` 或推荐的环境变量 `DSH_VOICE_ASR_KEY`);voice_tts 不需要凭据",
+            "filesystem": "本机读写待处理的音频/文本文件(如生成的 `voice_output.mp3`),文本 ≤5000 字符、音频 ≤25MB 前置校验",
+            "processExecution": "无子进程;本地生成 edge-tts 所需的 DRM 令牌(Sec-MS-GEC)后通过 WebSocket 直连微软服务",
+            "persistence": "无跨会话持久化;仅落盘生成的音频文件",
+            "manualReviewStatus": "partial",
+            "manualReviewNote": "compose 验证通过(0.1.1-rc.2,作者称 31 个测试含真实合成集成测试);风险点是文本/音频内容离开本机发往第三方云服务且涉及 ASR API Key,未见对第三方数据处理协议或留存政策的独立核实,ASR 服务商由用户自行配置决定",
+            "lastReviewedAt": "2026-08-28"
+          }
+        }
+      ]
+    },
+    {
+      "name": "dsh-working-activity",
+      "description": "工作状态行数据源:思考文案/运行中工具/回合摘要(官方生态插件)",
+      "author": "dsh-community",
+      "repo": "https://github.com/kamanager2012/dsh-community",
+      "category": "tool",
+      "versions": [
+        {
+          "version": "0.2.4",
+          "testedDsh": "0.1.1-rc.2",
+          "notes": "配合社区版·终端 working-activity 行",
+          "integrity": "sha512-UwTFlL6XDwUuahGx57HB72uKAXpyEuPGA1sXFKlG1A8ggQVfZkrjpt4N4oq8UcA8a944oQUuY2aTcngErNzgGg==",
+          "security": {
+            "risk": "low",
+            "requiresConfirmation": false,
+            "network": "无",
+            "dataEgress": "无;仅在本机进程内把思考文案/运行中工具/回合摘要转发给消费它的 TUI 槙位",
+            "credentials": "无",
+            "filesystem": "无新增文件读写",
+            "processExecution": "无",
+            "persistence": "无;数据随当前会话生命周期,通过 activity/status 会话事件双出口转发,不落盘",
+            "manualReviewStatus": "partial",
+            "manualReviewNote": "第一方官方生态插件(author: dsh-community),行为面是只读状态转发,compose 验证通过(0.1.1-rc.2)",
+            "lastReviewedAt": "2026-08-28"
+          }
+        }
+      ]
+    }
+  ]
+}

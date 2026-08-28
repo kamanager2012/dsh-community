@@ -129,8 +129,8 @@ release reproducibility
                                   │
                     ┌─────────────┴─────────────┐
                     ▼                           ▼
-             deepseek-harness-handbook   dsh-community-plugins
-               Knowledge / Evidence       Registry / Compatibility
+             deepseek-harness-handbook   packages/marketplace
+               Knowledge / Evidence       CLI + catalog.json
 
 
 ────────────────────────────────────────────────────────────
@@ -153,8 +153,9 @@ https://github.com/kamanager2012/deepseek-harness-suite
 https://github.com/kamanager2012/deepseek-harness-handbook
 
 https://github.com/kamanager2012/dsh-community-plugins
+(archived; catalog now dsh-community/packages/marketplace/catalog.json)
 
-Marketplace CLI: dsh-community/packages/marketplace
+Marketplace CLI + catalog: dsh-community/packages/marketplace
 (archived URL https://github.com/kamanager2012/dsh-marketplace redirects here)
 
 https://github.com/kamanager2012/dsh-community-edition

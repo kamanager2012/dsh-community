@@ -15,7 +15,7 @@
 | Use the WSL/Linux Terminal | `dsh-community` / `pnpm tui` | Primary Linux Community endpoint |
 | Read the full operational guide | [DeepSeek Harness Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/en/) | Providers, Sessions, security, automation, and acceptance |
 
-Do not download a formal client from archived Suite, the standalone Marketplace, Plugins-as-a-store, or Edition. The current release is **v0.1.1-rc.2**, 1:1 with official core `@deepseek-ai/dsh@0.1.1-rc.2`; release assets carry keyless cosign signatures (`.sigstore.json`). Do not download historical `v0.1.2`–`v0.1.6` as the current product. Official Web is an upstream companion, not a Community endpoint. See [community-endpoints.en.md](community-endpoints.en.md) and the [version policy](version-policy.md).
+Do not download a formal client from archived Suite, the standalone Marketplace, the standalone Plugins registry, or Edition. The current release is **v0.1.1-rc.2**, 1:1 with official core `@deepseek-ai/dsh@0.1.1-rc.2`; release assets carry keyless cosign signatures (`.sigstore.json`). Do not download historical `v0.1.2`–`v0.1.6` as the current product. Official Web is an upstream companion, not a Community endpoint. See [community-endpoints.en.md](community-endpoints.en.md) and the [version policy](version-policy.md).
 
 Desktop and TUI should show: `DeepSeek Harness Community v0.1.1-rc.2 [Official Core: @deepseek-ai/dsh@0.1.1-rc.2]`.
 
@@ -86,18 +86,18 @@ Source development also supports `pnpm start`, `pnpm new`, `pnpm run doctor`, an
 ## Plugin path
 
 ```text
-dsh-community-plugins/catalog.json
+packages/marketplace/catalog.json
           ↓ compatibility and evidence
       packages/marketplace (CLI: dsh-marketplace / pnpm marketplace)
           ↓ user selection
 official dsh plugin add / official install chain
 ```
 
-The registry is not a security guarantee and does not replace the official installer. An entry without a matching `testedDsh` line must be treated as `[UNVERIFIED]`.
+The catalog is not a security guarantee and does not replace the official installer. An entry without a matching `testedDsh` line must be treated as `[UNVERIFIED]`.
 
-- [Plugin compatibility registry](https://github.com/kamanager2012/dsh-community-plugins)
+- [Plugin catalog](../packages/marketplace/catalog.json)
 - [Marketplace guide](../packages/marketplace/docs/usage.en.md)
-- [Registry verification guide](https://github.com/kamanager2012/dsh-community-plugins/blob/main/docs/registry-guide.en.md)
+- [Registry verification guide](../packages/marketplace/docs/registry-guide.en.md)
 
 ## Troubleshooting first moves
 

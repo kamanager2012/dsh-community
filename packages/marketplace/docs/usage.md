@@ -4,12 +4,12 @@
 
 ## 它是什么
 
-`dsh-marketplace` 是插件发现和安装体验：读取 `dsh-community-plugins/catalog.json`，帮助用户搜索和查看兼容性，再把安装动作交给官方 `dsh plugin add`。
+`dsh-marketplace` 是插件发现和安装体验：读取本包 [`catalog.json`](../catalog.json)，帮助用户搜索和查看兼容性，再把安装动作交给官方 `dsh plugin add`。
 
-它不是 Runtime、不是新的 Package Manager，也不拥有插件注册表或用户 Session。
+它不是 Runtime、不是新的 Package Manager，也不拥有用户 Session。
 
 ```text
-dsh-community-plugins/catalog.json
+packages/marketplace/catalog.json
               ↓ fetch / parse / classify
         dsh-marketplace
               ↓ official command
@@ -78,12 +78,12 @@ npm run build
 npm test
 ```
 
-修改注册表字段时，先更新 [dsh-community-plugins](https://github.com/kamanager2012/dsh-community-plugins) 的验证记录，再更新本仓库的展示或解析逻辑。
+修改目录字段时，先更新本包 [`catalog.json`](../catalog.json) 的验证记录，再更新展示或解析逻辑。验证：`node scripts/verify.mjs`（`--offline` 只查 shape）。
 
 ## 生态入口
 
 - [Canonical Product：dsh-community](https://github.com/kamanager2012/dsh-community)
-- [插件注册表](https://github.com/kamanager2012/dsh-community-plugins)
-- [Community Labs](https://github.com/kamanager2012/deepseek-harness-suite)
+- [插件目录 catalog.json](../catalog.json)
+- [已归档 Labs](https://github.com/kamanager2012/deepseek-harness-suite)（不要从那里安装）
 - [Handbook 插件章节](https://kamanager2012.github.io/deepseek-harness-handbook/content/10-plugins/)
 - [官方 Runtime](https://github.com/deepseek-ai/deepseek-harness)

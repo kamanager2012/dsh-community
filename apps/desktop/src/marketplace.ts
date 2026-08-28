@@ -1,16 +1,16 @@
 /**
  * Community marketplace catalog for the Desktop shell.
  *
- * The schema is owned by the registry repo (dsh-community-plugins/catalog.json).
+ * The schema is owned by packages/marketplace/catalog.json in this repo.
  * This module only mirrors the read side: strict parse, snapshot for the
  * userData cache, and the source URL. Browsing is read-only; installs stay
  * in the official CLI / dsh-marketplace client.
  */
 
 export const MARKETPLACE_CATALOG_URL =
-  'https://raw.githubusercontent.com/kamanager2012/dsh-community-plugins/main/catalog.json'
+  'https://raw.githubusercontent.com/kamanager2012/dsh-community/main/packages/marketplace/catalog.json'
 
-export const MARKETPLACE_REGISTRY_URL = 'https://github.com/kamanager2012/dsh-community-plugins'
+export const MARKETPLACE_REGISTRY_URL = 'https://github.com/kamanager2012/dsh-community/blob/main/packages/marketplace/catalog.json'
 
 export const PLUGIN_CATEGORIES = ['ui', 'tool', 'provider', 'workflow', 'other'] as const
 export type PluginCategory = (typeof PLUGIN_CATEGORIES)[number]

@@ -4,12 +4,12 @@
 
 ## What it is
 
-`dsh-marketplace` is plugin discovery and install UX. It reads `dsh-community-plugins/catalog.json`, helps users search and inspect compatibility, and hands installation to the official `dsh plugin add` command.
+`dsh-marketplace` is plugin discovery and install UX. It reads this package's [`catalog.json`](../catalog.json), helps users search and inspect compatibility, and hands installation to the official `dsh plugin add` command.
 
-It is not a Runtime, not a new Package Manager, and not the owner of the registry or user Sessions.
+It is not a Runtime, not a new Package Manager, and not the owner of user Sessions.
 
 ```text
-dsh-community-plugins/catalog.json
+packages/marketplace/catalog.json
               ↓ fetch / parse / classify
         dsh-marketplace
               ↓ official command
@@ -80,12 +80,12 @@ npm run build
 npm test
 ```
 
-When registry fields change, update the verification record in [dsh-community-plugins](https://github.com/kamanager2012/dsh-community-plugins) before changing presentation or parsing here.
+When catalog fields change, update this package's [`catalog.json`](../catalog.json) before changing presentation or parsing. Verify with `node scripts/verify.mjs` (`--offline` for shape only).
 
 ## Ecosystem links
 
 - [Canonical Product: dsh-community](https://github.com/kamanager2012/dsh-community)
-- [Plugin registry](https://github.com/kamanager2012/dsh-community-plugins)
-- [Community Labs](https://github.com/kamanager2012/deepseek-harness-suite)
+- [Plugin catalog](../catalog.json)
+- [Archived Labs](https://github.com/kamanager2012/deepseek-harness-suite) (do not install from there)
 - [Handbook plugin section](https://kamanager2012.github.io/deepseek-harness-handbook/en/10-plugins/)
 - [Official Runtime](https://github.com/deepseek-ai/deepseek-harness)

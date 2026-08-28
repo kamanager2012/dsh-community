@@ -26,5 +26,7 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Typecheck
         run: pnpm typecheck
+      - name: Catalog shape
+        run: node packages/marketplace/scripts/verify.mjs --offline
       - name: Test and official contracts
         run: pnpm test

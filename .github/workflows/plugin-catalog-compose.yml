@@ -1,0 +1,35 @@
+name: plugin-catalog-compose
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/marketplace/catalog.json'
+      - 'packages/marketplace/scripts/compose-check.mjs'
+      - '.github/workflows/plugin-catalog-compose.yml'
+  pull_request:
+    paths:
+      - 'packages/marketplace/catalog.json'
+      - 'packages/marketplace/scripts/compose-check.mjs'
+      - '.github/workflows/plugin-catalog-compose.yml'
+  schedule:
+    - cron: '41 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.21.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install and compose every catalog plugin on the official chain
+        run: node packages/marketplace/scripts/compose-check.mjs

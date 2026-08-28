@@ -56,7 +56,7 @@ describe('read-only plugin catalog', () => {
     })
     expect(catalog.plugins).toHaveLength(1)
     expect(catalog.plugins[0]?.testedDsh).toBe('0.1.0-rc.6')
-    const text = formatPluginCatalog(catalog, 'https://github.com/kamanager2012/dsh-community-plugins')
+    const text = formatPluginCatalog(catalog, 'https://github.com/kamanager2012/dsh-community/blob/main/packages/marketplace/catalog.json')
     expect(text).toMatch(/dsh plugin add dsh-context/)
     expect(text).toMatch(/只读/)
     expect(text).not.toMatch(/installPlugin/)

@@ -5,10 +5,10 @@ import { dirname, join } from 'node:path'
 import { parseCatalog, type PluginCatalog } from './catalog.js'
 
 export const DEFAULT_REGISTRY_URL =
-  'https://raw.githubusercontent.com/kamanager2012/dsh-community-plugins/main/catalog.json'
+  'https://raw.githubusercontent.com/kamanager2012/dsh-community/main/packages/marketplace/catalog.json'
 
 export interface FetchCatalogOptions {
-  /** Catalog URL; defaults to the dsh-community-plugins registry. */
+  /** Catalog URL; defaults to this repo's packages/marketplace/catalog.json. */
   url?: string
   /** fetch implementation (injectable for tests). */
   fetchImpl?: typeof fetch
