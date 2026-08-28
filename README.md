@@ -1,6 +1,8 @@
 # DeepSeek Harness Community Labs (DSH-Suite)
 
-> ⚡ **Official-Runtime Centric** Terminal & Desktop Distributions for DeepSeek Harness.
+> Community Labs for DeepSeek Harness. Not a download channel.
+
+**Do not install from this repository.** Releases live at [`dsh-community`](https://github.com/kamanager2012/dsh-community/releases/latest).
 
 [简体中文](README.zh-CN.md) | **English**
 
@@ -97,8 +99,8 @@ or the [English handoff](docs/ECOSYSTEM_HANDOFF.en.md). The evidence matrix is i
 
 | Package | Role | Status |
 | :--- | :--- | :--- |
-| [`@dsh-community/dsh-bridge`](./packages/dsh-bridge) | Anti-Corruption Layer, Runtime Client & Process Supervisor | `[PARTIAL]` / Labs |
-| [`@dsh-community/tui`](./apps/tui) | Terminal UX (Ink / Yoga) | `[LABS]` |
+| [`@dsh-community/dsh-bridge`](./packages/dsh-bridge) | Anti-Corruption Layer, Runtime Client & Process Supervisor | `[PARTIAL]` / Labs; not published to npm `latest` |
+| [`@dsh-community/tui`](./apps/tui) | Terminal UX (Ink / Yoga) | `[LABS]`; not published to npm `latest` |
 | [`@dsh-community/desktop`](./apps/desktop) | Desktop Shell (Electron + Subprocess Manager) | `[LABS]` |
 | [`dsh-android`](./apps/android) | Android APK Shell (WebView + nodejs-mobile) | `[UNVERIFIED]` |
 
