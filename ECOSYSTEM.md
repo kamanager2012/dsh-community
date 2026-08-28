@@ -115,7 +115,7 @@ release reproducibility
 
 ## 二、六个仓库不是六个产品
 
-当前六仓最终定位如下:
+产品仓、注册表、手册、Labs 的最终定位如下（Marketplace CLI 已并入产品仓，不再单独作为产品入口）：
 
 ```text
                          DeepSeek Official Runtime
@@ -123,18 +123,14 @@ release reproducibility
                                   ▼
                     ┌────────────────────────────┐
                     │       dsh-community        │
-                    │  正式产品 / Canonical      │
+                    │  Canonical Product         │
+                    │  + packages/marketplace    │
                     └────────────────────────────┘
                                   │
                     ┌─────────────┴─────────────┐
                     ▼                           ▼
              deepseek-harness-handbook   dsh-community-plugins
                Knowledge / Evidence       Registry / Compatibility
-                    │                           │
-                    └─────────────┬─────────────┘
-                                  ▼
-                         dsh-marketplace
-                      Discovery / Install UX
 
 
 ────────────────────────────────────────────────────────────
@@ -155,7 +151,8 @@ https://github.com/kamanager2012/deepseek-harness-handbook
 
 https://github.com/kamanager2012/dsh-community-plugins
 
-https://github.com/kamanager2012/dsh-marketplace
+Marketplace CLI: dsh-community/packages/marketplace
+(legacy URL https://github.com/kamanager2012/dsh-marketplace redirects here)
 
 https://github.com/kamanager2012/dsh-community-edition
 ```
@@ -1152,7 +1149,7 @@ compatibility status
 
 ## 二十三、Marketplace 定位
 
-`dsh-marketplace`
+`dsh-community/packages/marketplace`（CLI 二进制名仍是 `dsh-marketplace`）
 
 作用:
 
@@ -1511,7 +1508,7 @@ REAL
 
 ## 三十三、整个生态一句话定义
 
-> **DeepSeek Harness Community 不是 DeepSeek Harness 的 fork，也不是功能最多的 Desktop 壳。它是以官方 Runtime 为 kernel 的社区发行版：同一套会话、三个入口、可验证插件、契约盯上游。六仓是角色，不是已经转起来的生态闭环。**
+> **DeepSeek Harness Community 不是 DeepSeek Harness 的 fork，也不是功能最多的 Desktop 壳。它是以官方 Runtime 为 kernel 的社区发行版：同一套会话、三个入口、可验证插件、契约盯上游。产品仓 / 注册表 / 手册 / Labs 是角色边界，不是已经转起来的生态闭环。Marketplace CLI 在 `dsh-community/packages/marketplace`。**
 
 ---
 
@@ -1520,6 +1517,7 @@ REAL
 ```text
 dsh-community
 = Product / Canonical Distribution
+  (includes packages/marketplace CLI)
 
 deepseek-harness-suite
 = Community Labs
@@ -1531,7 +1529,7 @@ dsh-community-plugins
 = Compatibility Registry
 
 dsh-marketplace
-= Plugin Discovery / Distribution UX
+= legacy GitHub redirect only; not a source of truth
 
 dsh-community-edition
 = Merge & Archive
@@ -1543,7 +1541,7 @@ dsh-community-edition
 
 任何接手 Agent 必须遵守:
 
-1. **不得重新设计六仓战略。**
+1. **不得把 Marketplace CLI 再拆成独立产品仓；不得把 plugins / handbook / suite 并进 Electron 产品仓。**
 2. **不得把 Suite 变成正式用户发行版。**
 3. **不得继续发展 community-edition。**
 4. **不得重新实现官方 AgentLoop。**

@@ -61,6 +61,8 @@ importers:
         specifier: workspace:*
         version: link:../shared-types
 
+  packages/marketplace: {}
+
   packages/shared-types: {}
 
   packages/tui:

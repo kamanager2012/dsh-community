@@ -88,7 +88,7 @@ dsh-community desktop         # 启动桌面壳
 ```text
 dsh-community-plugins/catalog.json
           ↓ 兼容性和验证信息
-      dsh-marketplace
+      packages/marketplace（CLI：dsh-marketplace / pnpm marketplace）
           ↓ 用户选择
 官方 dsh plugin add / 官方安装链
 ```
@@ -96,7 +96,7 @@ dsh-community-plugins/catalog.json
 注册表不是安全保证，也不替代官方安装器。没有匹配 `testedDsh` 线的条目应按 `[UNVERIFIED]` 处理。
 
 - [插件兼容性注册表](https://github.com/kamanager2012/dsh-community-plugins)
-- [Marketplace 使用说明](https://github.com/kamanager2012/dsh-marketplace)
+- [Marketplace 使用说明](../packages/marketplace/docs/usage.md)
 - [插件验证指南](https://github.com/kamanager2012/dsh-community-plugins/blob/main/docs/registry-guide.md)
 
 ## 常见问题

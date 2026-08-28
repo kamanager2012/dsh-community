@@ -47,21 +47,21 @@ Desktop 与 TUI 的身份应显示为：`DeepSeek Harness Community v0.1.1-rc.2 
 | 真正跑 agent | 官方 [`npx @deepseek-ai/dsh web`](https://github.com/deepseek-ai/deepseek-harness) |
 | 终端 | 本仓 `dsh-community`（启动官方 `dsh --profile headless`，不挂第三方 TUI） |
 | 下载安装包 | [Latest `v0.1.1-rc.2`](https://github.com/kamanager2012/dsh-community/releases/latest)（cosign 签名验证见 [release 文档](docs/release.md#artifact-signing-keyless)） |
-| 已验证能装的社区插件 | Desktop 市场页 · [`dsh-marketplace`](https://github.com/kamanager2012/dsh-marketplace) · [验证注册表](https://github.com/kamanager2012/dsh-community-plugins)（不是 awesome 目录） |
+| 已验证能装的社区插件 | Desktop 市场页 · 本仓 `pnpm marketplace` · [验证注册表](https://github.com/kamanager2012/dsh-community-plugins)（不是 awesome 目录） |
 | 官方表面快照 / 升 rc 契约 | **本仓** |
 
 不要把本仓发到 npm 当 `@deepseek-ai/dsh` 或 `dsh-tui` 的替代。
 
 ## 社区生态导航
 
-本仓是唯一用户下载入口。六仓是发行版需要的**角色边界**；插件生态仍不等于“全量市场”，也不和 awesome 列表比收录数量。当前注册表有 9 个第三方插件完成 rc.6 的安装/组合验证，并继续补充 digest、provenance 和 runtime smoke 证据。
+本仓是唯一用户下载入口。插件发现 CLI 现在也在本仓；注册表和手册仍是独立仓，因为改 catalog / 文档不该触发桌面打包。
 
 | 仓库 | 角色 | 现在实际是 |
 |---|---|---|
 | [`deepseek-harness-suite`](https://github.com/kamanager2012/deepseek-harness-suite) | Labs | 实验源，不是下载渠道 |
 | [`deepseek-harness-handbook`](https://github.com/kamanager2012/deepseek-harness-handbook) | 手册 | 知识 / 证据，还在追代码 |
 | [`dsh-community-plugins`](https://github.com/kamanager2012/dsh-community-plugins) | 验证注册表 | 9 个第三方插件已在 rc.6 上完成安装/组合验证；供应链 CI 持续校验 |
-| [`dsh-marketplace`](https://github.com/kamanager2012/dsh-marketplace) | 发现 / 安装 UX | 稳定维护，当前测试 11/11；安装仍走官方 `dsh plugin add` |
+| 本仓 `packages/marketplace` | 发现 / 安装 CLI | `pnpm marketplace`；安装仍走官方 `dsh plugin add`。旧仓 [dsh-marketplace](https://github.com/kamanager2012/dsh-marketplace) 只保留迁移说明 |
 | [`dsh-community-edition`](https://github.com/kamanager2012/dsh-community-edition) | 已归档 | 不要从那里下载 |
 
 官方执行核心仍是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)。社区层不重新实现 Agent loop、不另建 session 目录、不用 patch 改官方 UI。
@@ -78,6 +78,7 @@ export DEEPSEEK_API_KEY=...
 pnpm start              # 有对话就接着最近一条，否则开新的
 pnpm new                # 强制开新对话
 pnpm desktop            # 桌面壳（含社区市场页）
+pnpm marketplace -- list  # 插件发现 CLI（需先能访问注册表）
 pnpm run doctor         # 自检（不要裸跑 pnpm doctor，那是 pnpm 自己的）
 ```
 
@@ -131,6 +132,7 @@ Windows / macOS 安装包由 GitHub Actions(`release` workflow)在对应系统�
 ```
 contracts/              官方表面快照 + compatibility matrix
 packages/dsh-bridge     解析官方 bin、生命周期、数据目录
+packages/marketplace    插件发现 CLI（`pnpm marketplace`）
 packages/tui-adapter    我们的 TUI 薄 patch + KPI
 packages/shared-types   社区自己的类型，不是官方 event fork
 apps/desktop            官方 `dsh web` 壳 + 官方 session 列表 + 内嵌社区市场页

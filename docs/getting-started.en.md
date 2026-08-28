@@ -88,7 +88,7 @@ Source development also supports `pnpm start`, `pnpm new`, `pnpm run doctor`, an
 ```text
 dsh-community-plugins/catalog.json
           ↓ compatibility and evidence
-      dsh-marketplace
+      packages/marketplace (CLI: dsh-marketplace / pnpm marketplace)
           ↓ user selection
 official dsh plugin add / official install chain
 ```
@@ -96,7 +96,7 @@ official dsh plugin add / official install chain
 The registry is not a security guarantee and does not replace the official installer. An entry without a matching `testedDsh` line must be treated as `[UNVERIFIED]`.
 
 - [Plugin compatibility registry](https://github.com/kamanager2012/dsh-community-plugins)
-- [Marketplace guide](https://github.com/kamanager2012/dsh-marketplace)
+- [Marketplace guide](../packages/marketplace/docs/usage.en.md)
 - [Registry verification guide](https://github.com/kamanager2012/dsh-community-plugins/blob/main/docs/registry-guide.en.md)
 
 ## Troubleshooting first moves

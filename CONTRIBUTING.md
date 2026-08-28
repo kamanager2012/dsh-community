@@ -20,6 +20,8 @@ pnpm test
 pnpm typecheck
 ```
 
+The marketplace CLI lives in `packages/marketplace` (`pnpm marketplace -- list`). Do not add a second installer; install still calls official `dsh plugin add`.
+
 Contract tests fail if:
 
 - the pin in `packages/dsh-bridge` drifts from installed `@deepseek-ai/dsh`

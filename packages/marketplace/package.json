@@ -1,0 +1,26 @@
+{
+  "name": "@dsh-community/marketplace",
+  "version": "0.1.1-rc.2",
+  "private": true,
+  "type": "module",
+  "description": "Community plugin discovery CLI. Catalog from dsh-community-plugins; install still goes through official dsh plugin add.",
+  "bin": {
+    "dsh-marketplace": "./bin/dsh-marketplace.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "bin",
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/cli-entry.js"
+  }
+}

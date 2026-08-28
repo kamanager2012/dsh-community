@@ -15,7 +15,7 @@
   "scripts": {
     "build": "pnpm --filter @dsh-community/shared-types --filter @dsh-community/dsh-bridge --filter @dsh-community/tui-surface --filter @dsh-community/desktop build",
     "build:tui": "pnpm --filter @dsh-community/shared-types --filter @dsh-community/dsh-bridge --filter @dsh-community/tui-surface --filter @dsh-community/tui build",
-    "typecheck": "pnpm --filter @dsh-community/shared-types build && pnpm --filter @dsh-community/dsh-bridge build && pnpm --filter @dsh-community/tui-adapter --filter @dsh-community/tui-surface --filter @dsh-community/desktop --filter @dsh-community/upstream-contract typecheck",
+    "typecheck": "pnpm --filter @dsh-community/shared-types build && pnpm --filter @dsh-community/dsh-bridge build && pnpm --filter @dsh-community/tui-adapter --filter @dsh-community/tui-surface --filter @dsh-community/desktop --filter @dsh-community/upstream-contract --filter @dsh-community/marketplace typecheck",
     "test": "vitest run",
     "test:watch": "vitest",
     "start": "pnpm build:tui && pnpm --filter @dsh-community/tui start",
@@ -28,7 +28,8 @@
     "desktop:package": "pnpm --filter @dsh-community/desktop package",
     "official:help": "pnpm --filter @dsh-community/dsh-bridge exec dsh --help",
     "official:version": "pnpm --filter @dsh-community/dsh-bridge exec dsh --version",
-    "contracts:extract": "node scripts/extract-official-contracts.mjs"
+    "contracts:extract": "node scripts/extract-official-contracts.mjs",
+    "marketplace": "pnpm --filter @dsh-community/marketplace build && pnpm --filter @dsh-community/marketplace start"
   },
   "devDependencies": {
     "@types/node": "^22.18.0",

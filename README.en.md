@@ -55,7 +55,7 @@ session persistence, official UI, and core lifecycle.
 | Use the Windows Desktop shell | [Latest `v0.1.1-rc.2`](https://github.com/kamanager2012/dsh-community/releases/latest) Setup.exe, or `pnpm desktop` |
 | Use the macOS Desktop shell | [Latest `v0.1.1-rc.2`](https://github.com/kamanager2012/dsh-community/releases/latest) dmg, or `pnpm desktop` |
 | Read operational guidance | [DeepSeek Harness Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/) |
-| Verified community plugins | [`dsh-marketplace`](https://github.com/kamanager2012/dsh-marketplace) and the [verification registry](https://github.com/kamanager2012/dsh-community-plugins) — not an awesome list |
+| Verified community plugins | Desktop marketplace page, in-repo `pnpm marketplace`, and the [verification registry](https://github.com/kamanager2012/dsh-community-plugins) — not an awesome list |
 
 Only this repository is the download entry. The other repos are roles (labs, docs,
 verification, discovery, archive), not a finished ecosystem loop and not competing
@@ -112,7 +112,7 @@ exists, use it; add community code only where a verified gap remains.
 | [`deepseek-harness-suite`](https://github.com/kamanager2012/deepseek-harness-suite) | Community Labs | Experimental source; not a release channel |
 | [`deepseek-harness-handbook`](https://github.com/kamanager2012/deepseek-harness-handbook) | Knowledge / Evidence | Documentation and operational evidence |
 | [`dsh-community-plugins`](https://github.com/kamanager2012/dsh-community-plugins) | Verification registry | 9 third-party plugins install/compose-tested on rc.6; supply-chain CI continues to verify evidence |
-| [`dsh-marketplace`](https://github.com/kamanager2012/dsh-marketplace) | Discovery / install UX | Stable maintenance, 11/11 tests green; install still goes through official `dsh plugin add` |
+| This repo `packages/marketplace` | Discovery / install CLI | `pnpm marketplace`; install still goes through official `dsh plugin add`. The old [dsh-marketplace](https://github.com/kamanager2012/dsh-marketplace) repo is a redirect only |
 | [`dsh-community-edition`](https://github.com/kamanager2012/dsh-community-edition) | Archived | Do not download from here |
 
 ## Layout and further reading
@@ -120,6 +120,7 @@ exists, use it; add community code only where a verified gap remains.
 ```text
 contracts/              Official CLI and package surface snapshots
 packages/dsh-bridge     Runtime process and lifecycle boundary
+packages/marketplace    Plugin discovery CLI (`dsh-marketplace`)
 packages/tui-adapter    Community TUI adapter and patch surface
 packages/shared-types   Community-owned types, not an official event fork
 apps/desktop            Official `dsh web` shell and session entry
