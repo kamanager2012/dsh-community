@@ -34,7 +34,7 @@ is **not** a Community endpoint.
 | 2 | Windows Desktop | `DSH Community Setup.exe` | Stable (published Latest) |
 | 3 | macOS Desktop | `dsh-community-*.dmg` | Stable (published Latest) |
 | 4 | Linux Desktop AppImage | `dsh-community-*.AppImage` | Beta (Release artifact; CLI users still start at Terminal) |
-| 5 | Android Mobile | APK (WebView + nodejs-mobile) | `[UNVERIFIED]` in Labs (`deepseek-harness-suite`) until Reality Gate |
+| 5 | Android Mobile | APK (WebView + nodejs-mobile) | `[UNVERIFIED]`; prototype in archived Labs, not on Latest |
 
 ### 1. WSL / Linux Terminal
 
@@ -78,10 +78,9 @@ start at the Terminal.
 ### 5. Android Mobile
 
 A thin APK: WebView hosts official Web UI; embedded Node runs published
-`@deepseek-ai/dsh`. Source currently lives in
+`@deepseek-ai/dsh`. Historical source lives in archived
 [`deepseek-harness-suite/apps/android`](https://github.com/kamanager2012/deepseek-harness-suite).
-It stays `[UNVERIFIED]` and off the `dsh-community` Latest download list until the Termux
-Reality Gate passes.
+It stays `[UNVERIFIED]` and off the `dsh-community` Latest download list.
 
 ## Official Web is an upstream companion
 

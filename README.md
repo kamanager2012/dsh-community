@@ -30,7 +30,7 @@ Desktop 与 TUI 的身份应显示为：`DeepSeek Harness Community v0.1.1-rc.2 
 | Windows 桌面 | **社区端 2：Desktop** | [Latest `v0.1.1-rc.2`](https://github.com/kamanager2012/dsh-community/releases/latest) Setup.exe，或 `pnpm desktop` |
 | macOS 桌面 | **社区端 3：Desktop** | [Latest `v0.1.1-rc.2`](https://github.com/kamanager2012/dsh-community/releases/latest) dmg，或 `pnpm desktop` |
 | Linux AppImage | **社区端 4：Desktop** | 随 Release 附带；CLI 用户仍以终端为主 |
-| Android | **社区端 5：Mobile** | Labs `[UNVERIFIED]`（`deepseek-harness-suite`），未过 Reality Gate |
+| Android | **社区端 5：Mobile** | `[UNVERIFIED]`；原型在已归档的 Labs 仓，不进 Latest 下载 |
 
 > 命名红线：不叫 dsh-TUI / DeepSeek Harness Desktop（那是别人的产品名），不在 npm 冒用 `@deepseek-ai` 或 `dsh-tui` 的包名。我们基于官方内核，不是第二套 Harness。
 
@@ -54,14 +54,15 @@ Desktop 与 TUI 的身份应显示为：`DeepSeek Harness Community v0.1.1-rc.2 
 
 ## 社区生态导航
 
-本仓是唯一用户下载入口。插件发现 CLI 现在也在本仓；注册表和手册仍是独立仓，因为改 catalog / 文档不该触发桌面打包。
+本仓是唯一用户下载入口。插件发现 CLI 也在本仓；注册表和手册仍是独立仓。Labs 与独立 Marketplace 已归档。
 
 | 仓库 | 角色 | 现在实际是 |
 |---|---|---|
-| [`deepseek-harness-suite`](https://github.com/kamanager2012/deepseek-harness-suite) | Labs | 实验源，不是下载渠道 |
-| [`deepseek-harness-handbook`](https://github.com/kamanager2012/deepseek-harness-handbook) | 手册 | 知识 / 证据，还在追代码 |
-| [`dsh-community-plugins`](https://github.com/kamanager2012/dsh-community-plugins) | 验证注册表 | 9 个第三方插件已在 rc.6 上完成安装/组合验证；供应链 CI 持续校验 |
-| 本仓 `packages/marketplace` | 发现 / 安装 CLI | `pnpm marketplace`；安装仍走官方 `dsh plugin add`。旧仓 [dsh-marketplace](https://github.com/kamanager2012/dsh-marketplace) 只保留迁移说明 |
+| [`deepseek-harness-handbook`](https://github.com/kamanager2012/deepseek-harness-handbook) | 手册 | 知识 / 证据 |
+| [`dsh-community-plugins`](https://github.com/kamanager2012/dsh-community-plugins) | 验证注册表 | 9 个第三方插件已在 rc.2 上完成安装/组合验证；供应链 CI 持续校验 |
+| 本仓 `packages/marketplace` | 发现 / 安装 CLI | `pnpm marketplace`；安装仍走官方 `dsh plugin add` |
+| [`deepseek-harness-suite`](https://github.com/kamanager2012/deepseek-harness-suite) | 已归档 Labs | 不要从那里安装 |
+| [`dsh-marketplace`](https://github.com/kamanager2012/dsh-marketplace) | 已归档 | 跳转到本仓 marketplace 包 |
 | [`dsh-community-edition`](https://github.com/kamanager2012/dsh-community-edition) | 已归档 | 不要从那里下载 |
 
 官方执行核心仍是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)。社区层不重新实现 Agent loop、不另建 session 目录、不用 patch 改官方 UI。

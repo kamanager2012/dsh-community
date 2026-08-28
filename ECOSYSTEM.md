@@ -34,7 +34,7 @@ Official Web (upstream companion)
               ├── Windows Desktop
               ├── macOS Desktop
               ├── Linux AppImage
-              └── Android (Labs / UNVERIFIED)
+              └── Android (archived Labs / UNVERIFIED)
 ```
 
 官方 Web 是**兼容对象**,不是我们的发行端。我们真正的五个社区端:
@@ -113,9 +113,9 @@ release reproducibility
 
 ---
 
-## 二、六个仓库不是六个产品
+## 二、公开仓库不是六个产品
 
-产品仓、注册表、手册、Labs 的最终定位如下（Marketplace CLI 已并入产品仓，不再单独作为产品入口）：
+产品仓、注册表、手册是仍在维护的入口。Labs 与独立 Marketplace 已归档（Marketplace CLI 已并入产品仓）：
 
 ```text
                          DeepSeek Official Runtime
@@ -136,8 +136,11 @@ release reproducibility
 ────────────────────────────────────────────────────────────
 
  deepseek-harness-suite                dsh-community-edition
- Community Labs                        Merge & Archive
- 前沿实验舱                            合流归档
+ Archived Labs                         Merge & Archive
+ 已冻结，不要从那里安装                 合流归档
+
+ dsh-marketplace
+ Archived redirect → dsh-community/packages/marketplace
 ```
 
 对应仓库:
@@ -152,7 +155,7 @@ https://github.com/kamanager2012/deepseek-harness-handbook
 https://github.com/kamanager2012/dsh-community-plugins
 
 Marketplace CLI: dsh-community/packages/marketplace
-(legacy URL https://github.com/kamanager2012/dsh-marketplace redirects here)
+(archived URL https://github.com/kamanager2012/dsh-marketplace redirects here)
 
 https://github.com/kamanager2012/dsh-community-edition
 ```

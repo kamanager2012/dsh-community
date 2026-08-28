@@ -32,7 +32,7 @@
 | 2 | Windows 桌面 | `DSH Community Setup.exe` | Stable（已发布 Latest） |
 | 3 | macOS 桌面 | `dsh-community-*.dmg` | Stable（已发布 Latest） |
 | 4 | Linux 桌面 AppImage | `dsh-community-*.AppImage` | Beta（随 Release 附带；Linux CLI 用户仍以终端为主） |
-| 5 | Android 移动端 | APK（WebView + nodejs-mobile） | `[UNVERIFIED]`，当前在 Labs（`deepseek-harness-suite`）孵化，未过 Reality Gate 前不进正式下载页 |
+| 5 | Android 移动端 | APK（WebView + nodejs-mobile） | `[UNVERIFIED]`；源码在已归档 Labs，不进正式下载页 |
 
 ### 1. WSL / Linux 终端
 
@@ -75,7 +75,7 @@ dsh-community-*.dmg
 
 ### 5. Android 移动端
 
-APK 薄壳：WebView 加载官方 Web UI，内嵌 Node 跑官方 `@deepseek-ai/dsh`。源码目前在 [`deepseek-harness-suite/apps/android`](https://github.com/kamanager2012/deepseek-harness-suite)，通过 Termux Reality Gate 之前保持 `[UNVERIFIED]`，不写入 `dsh-community` Latest 下载清单。
+APK 薄壳：WebView 加载官方 Web UI，内嵌 Node 跑官方 `@deepseek-ai/dsh`。历史源码在已归档的 [`deepseek-harness-suite/apps/android`](https://github.com/kamanager2012/deepseek-harness-suite)，保持 `[UNVERIFIED]`，不写入 `dsh-community` Latest 下载清单。
 
 ## 官方 Web 是伙伴入口，不是我们的产品
 

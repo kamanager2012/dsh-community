@@ -57,9 +57,7 @@ session persistence, official UI, and core lifecycle.
 | Read operational guidance | [DeepSeek Harness Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/) |
 | Verified community plugins | Desktop marketplace page, in-repo `pnpm marketplace`, and the [verification registry](https://github.com/kamanager2012/dsh-community-plugins) — not an awesome list |
 
-Only this repository is the download entry. The other repos are roles (labs, docs,
-verification, discovery, archive), not a finished ecosystem loop and not competing
-products.
+Only this repository is the download entry. Handbook and the plugin registry are the other live repos. Suite, the standalone marketplace, and Edition are archived.
 
 ## Current release status
 
@@ -68,7 +66,7 @@ official core `@deepseek-ai/dsh@0.1.1-rc.2`. GitHub Latest is that same tag.
 Earlier independent numbers `v0.1.2`–`v0.1.6` are historical only.
 The Linux AppImage is community endpoint 4; the primary Linux CLI path remains WSL/Linux
 Terminal. Official Web is an upstream companion, not a Community endpoint. Android is
-endpoint 5 and stays `[UNVERIFIED]` in Labs.
+endpoint 5 and stays `[UNVERIFIED]`. The Android prototype lives in the archived Labs repo.
 
 ## From source
 
@@ -109,10 +107,11 @@ exists, use it; add community code only where a verified gap remains.
 | Repository | Role | User-facing status |
 |---|---|---|
 | [`dsh-community`](https://github.com/kamanager2012/dsh-community) | Canonical Product | **唯一正式下载入口 / only official community download** |
-| [`deepseek-harness-suite`](https://github.com/kamanager2012/deepseek-harness-suite) | Community Labs | Experimental source; not a release channel |
+| [`deepseek-harness-suite`](https://github.com/kamanager2012/deepseek-harness-suite) | Archived Labs | Frozen; do not install |
 | [`deepseek-harness-handbook`](https://github.com/kamanager2012/deepseek-harness-handbook) | Knowledge / Evidence | Documentation and operational evidence |
-| [`dsh-community-plugins`](https://github.com/kamanager2012/dsh-community-plugins) | Verification registry | 9 third-party plugins install/compose-tested on rc.6; supply-chain CI continues to verify evidence |
-| This repo `packages/marketplace` | Discovery / install CLI | `pnpm marketplace`; install still goes through official `dsh plugin add`. The old [dsh-marketplace](https://github.com/kamanager2012/dsh-marketplace) repo is a redirect only |
+| [`dsh-community-plugins`](https://github.com/kamanager2012/dsh-community-plugins) | Verification registry | 9 third-party plugins install/compose-tested on rc.2; supply-chain CI continues to verify evidence |
+| This repo `packages/marketplace` | Discovery / install CLI | `pnpm marketplace`; install still goes through official `dsh plugin add` |
+| [`dsh-marketplace`](https://github.com/kamanager2012/dsh-marketplace) | Archived | Redirect only |
 | [`dsh-community-edition`](https://github.com/kamanager2012/dsh-community-edition) | Archived | Do not download from here |
 
 ## Layout and further reading

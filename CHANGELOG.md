@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Marketplace CLI 并入本仓 `packages/marketplace`（`pnpm marketplace`）。独立仓 `dsh-marketplace` 改为迁移入口，不再作为开发真源。
+- Marketplace CLI 并入本仓 `packages/marketplace`（`pnpm marketplace`）。独立仓 `dsh-marketplace` 与 Community Labs `deepseek-harness-suite` 已归档。
 - `DshMcpBridge` 从 `@dsh-community/dsh-bridge` 导出。Windows / macOS 发行任务在打包后同样跑 asar vendor=0 护栏。
 
 ## 0.1.1-rc.2 — 2026-08-22
