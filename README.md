@@ -138,6 +138,10 @@ apps/tui                官方 `dsh --profile` / `--resume` 启动器
 tests/upstream-contract vendor=0、pin、CLI
 ```
 
+## Security
+
+见 [SECURITY.md](SECURITY.md)：Desktop 的 Electron 加固边界（contextIsolation / 权限默认拒绝 / 导航白名单）、cosign keyless 发行签名的验证方法、`~/.dsh` 会话数据共享范围，以及如何私下报告安全问题。
+
 ## License
 
 MIT。运行时版权与第三方声明见 [NOTICE](NOTICE) 和官方包。

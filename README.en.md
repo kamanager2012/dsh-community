@@ -138,6 +138,13 @@ Use explicit status labels such as `[REAL]`, `[PARTIAL]`, `[LABS]`, `[PROBE]`,
 a successful fallback, or a README statement is not by itself proof of a real
 Runtime E2E.
 
+## Security
+
+See [SECURITY.md](SECURITY.md) for the Desktop shell's Electron hardening
+(contextIsolation, default-deny permissions, allow-listed navigation), how to
+verify a release's cosign keyless signature, the `~/.dsh` session-sharing
+boundary, and how to report a security issue privately.
+
 ## License
 
 MIT. Runtime and third-party notices are documented in [NOTICE](NOTICE) and the
