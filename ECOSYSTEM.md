@@ -1,5 +1,7 @@
 # DeepSeek Harness Community 生态项目统一说明
 
+> **2026-08-29：** 用户入口只有 [`dsh-community`](https://github.com/kamanager2012/dsh-community) 和本手册仓。Suite / Marketplace / Plugins / Edition 已归档。下面正文是 2026-08-21 的 handoff 长稿，角色表可能落后；以产品仓 README 为准。
+
 ## Project Handoff / Current Source of Truth
 
 **日期:2026-08-21**
