@@ -58,3 +58,4 @@ it with two unrelated version labels.
 - Update the changelog with both version identities.
 - Verify the Desktop and TUI Dual-Badge output.
 - Run `pnpm typecheck`, `pnpm test`, and the upstream pin-consistency checks.
+- The local release script and GitHub `release` workflow both run the same `scripts/validate-release-tag.mjs` identity gate. A pushed `v*` tag must equal the workspace product version and agree with the official pin, `current-release.json`, Dual-Badge, asset names, and CHANGELOG before any OS release build starts.
