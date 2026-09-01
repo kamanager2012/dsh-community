@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "asOf": "2026-08-22",
+  "asOf": "2026-09-02",
   "officialKernel": {
     "package": "@deepseek-ai/dsh",
     "version": "0.1.2-alpha.3"
