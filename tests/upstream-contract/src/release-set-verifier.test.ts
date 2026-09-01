@@ -40,9 +40,11 @@ function addSbom(artifacts: string, signed: string, body?: string) {
     specVersion: '1.5',
     metadata: {
       component: {
+        'bom-ref': 'dsh-community-official-runtime-lock@0.0.0',
         type: 'application',
-        name: 'dsh-community-official-runtime-lock',
+        name: 'runtime-lock',
         version: '0.0.0',
+        purl: 'pkg:npm/dsh-community-official-runtime-lock@0.0.0',
       },
     },
     components: [
@@ -170,13 +172,20 @@ describe('verify-release-set CLI', () => {
     addSbom(artifacts, signed, JSON.stringify({
       bomFormat: 'CycloneDX',
       specVersion: '1.5',
-      metadata: { component: { name: 'dsh-community-official-runtime-lock' } },
+      metadata: {
+        component: {
+          'bom-ref': 'dsh-community-official-runtime-lock@0.0.0',
+          name: 'runtime-lock',
+          version: '0.0.0',
+          purl: 'pkg:npm/dsh-community-official-runtime-lock@0.0.0',
+        },
+      },
       components: [],
     }))
 
     const result = runVerifier(artifacts, signed)
     expect(result.status).toBe(1)
-    expect(result.stderr).toContain('does not include @deepseek-ai/dsh')
+    expect(result.stderr).toContain('does not include exact @deepseek-ai/dsh@0.1.1-rc.2')
   })
   it('rejects a sidecar that names a different file', () => {
     const { artifacts, signed } = makeRoot()
