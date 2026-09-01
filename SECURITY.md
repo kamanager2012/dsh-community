@@ -112,17 +112,18 @@ Out of scope (report upstream instead):
 ## Dependency security
 
 - Dependabot monitors both npm dependencies and GitHub Actions weekly.
-- Pull requests that change the dependency graph run GitHub's dependency
-  review action. A newly introduced **high** or **critical** severity advisory
-  fails that PR check; moderate advisories remain visible for maintainer
-  triage instead of turning every dependency update into an automatic hard
-  failure.
 - The existing frozen-lockfile install and repository supply-chain policy
   checks remain part of normal CI. Release assets are separately covered by
   the keyless signing and artifact verification controls above.
+- Dependency updates are reviewed as normal pull requests; advisory severity,
+  runtime exposure, and transitive impact are part of maintainer triage.
 
 ## Known gaps
 
+- A dependency-graph-backed PR blocking gate is not enabled today. The
+  repository's GitHub Dependency Graph is not currently available to the
+  dependency-review action, so that action is intentionally not wired as a
+  permanent red check.
 - There is no separate scheduled `pnpm audit` hard gate today. Moderate
   advisories are in scope and should be triaged, but they are not an automatic
   merge blocker unless maintainers explicitly raise the gate.
