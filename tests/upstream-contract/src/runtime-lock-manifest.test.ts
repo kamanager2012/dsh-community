@@ -16,6 +16,7 @@ interface LockedPackage {
   optional?: boolean
   os?: string[]
   cpu?: string[]
+  hasInstallScript?: boolean
 }
 
 interface RuntimeLock {
@@ -88,6 +89,60 @@ describe('official runtime lock', () => {
     expect(violations).toEqual([])
   })
 
+  it('pins every non-root tarball to the public npm registry', () => {
+    const lock = JSON.parse(
+      readFileSync(join(runtimeLockRoot, 'package-lock.json'), 'utf8'),
+    ) as RuntimeLock
+    const violations = Object.entries(lock.packages ?? {})
+      .filter(([name]) => name !== '')
+      .filter(([, entry]) => !entry.resolved?.startsWith('https://registry.npmjs.org/'))
+      .map(([name, entry]) => `${name}: ${String(entry.resolved)}`)
+
+    expect(violations).toEqual([])
+  })
+
+  it('requires an explicit decision for every lifecycle-script package', () => {
+    const lock = JSON.parse(
+      readFileSync(join(runtimeLockRoot, 'package-lock.json'), 'utf8'),
+    ) as RuntimeLock
+    const policy = JSON.parse(
+      readFileSync(join(runtimeLockRoot, 'lifecycle-scripts.json'), 'utf8'),
+    ) as {
+      schemaVersion?: number
+      allowed?: Array<{ name: string; version: string; reason: string }>
+      denied?: Array<{ name: string; version: string; reason: string }>
+    }
+
+    expect(policy.schemaVersion).toBe(1)
+    expect(policy.allowed?.map(({ name, version }) => `${name}@${version}`).sort()).toEqual([
+      '@deepseek-ai/dsh-subprocess-local@0.1.1-rc.2',
+      'koffi@3.1.6',
+      'node-pty@1.2.0-beta.15',
+      'protobufjs@7.6.6',
+    ])
+    expect(policy.denied?.map(({ name, version }) => `${name}@${version}`).sort()).toEqual([
+      '@google/genai@1.52.0',
+    ])
+    for (const entry of [...(policy.allowed ?? []), ...(policy.denied ?? [])]) {
+      expect(entry.reason.length, entry.name + ' review reason').toBeGreaterThan(20)
+    }
+
+    const observed = Object.entries(lock.packages ?? {})
+      .filter(([, entry]) => entry.hasInstallScript === true)
+      .map(([path, entry]) => {
+        const marker = 'node_modules/'
+        const index = path.lastIndexOf(marker)
+        const name = index === -1 ? path : path.slice(index + marker.length)
+        return `${name}@${String(entry.version)}`
+      })
+      .sort()
+    const reviewed = [...(policy.allowed ?? []), ...(policy.denied ?? [])]
+      .map(({ name, version }) => `${name}@${version}`)
+      .sort()
+
+    expect(observed).toEqual(reviewed)
+  })
+
   it('retains cross-platform optional native entries in the shared lock', () => {
     const lock = JSON.parse(
       readFileSync(join(runtimeLockRoot, 'package-lock.json'), 'utf8'),
@@ -158,8 +213,11 @@ describe('official runtime lock', () => {
 
     expect(stage).toContain("const runtimeLockPath = join(runtimeLockRoot, 'package-lock.json')")
     expect(stage).toContain("copyFileSync(runtimeLockPath, join(stageRoot, 'package-lock.json'))")
-    expect(stage).toMatch(/spawnSync\('npm', \[\s*'ci',/u)
+    expect(stage).toContain("'ci',\n  '--ignore-scripts',")
+    expect(stage).toContain("'rebuild',\n    entry.name,")
     expect(stage).not.toMatch(/spawnSync\('npm', \[\s*'install',/u)
+    expect(stage).toContain('runtime lifecycle-script surface drifted')
+    expect(stage).toContain('reviewed lifecycle package version drifted')
     expect(stage).toContain('runtime package-lock does not contain the exact official DSH package')
   })
 })
