@@ -100,8 +100,10 @@ Out of scope (report upstream instead):
   publish job calls `gh release create`, it re-computes SHA256 mappings,
   rejects missing/orphan sidecars and bundles, and runs `cosign verify-blob`
   on every downloaded asset against the **exact current tag** release-workflow
-  identity. `artifact-smoke` then independently re-verifies the published
-  Latest assets. Verification steps and the exact `cosign verify-blob` command are in
+  identity. `artifact-smoke` then independently re-verifies the same single
+  resolved release tag and the same exact signer identity. Unsigned bypass is
+  limited to the explicit pre-signing historical tags; an unknown/new unsigned
+  tag fails the smoke. Verification steps and the exact `cosign verify-blob` command are in
   [docs/release.md#artifact-signing-keyless](docs/release.md#artifact-signing-keyless).
   A passing verification means the asset was built by this repo's
   `release.yml` on a tag ref — it does not mean the binary is malware-free.
