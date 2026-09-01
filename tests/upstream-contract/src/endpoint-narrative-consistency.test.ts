@@ -56,7 +56,15 @@ describe('current endpoint narrative', () => {
   })
 
   it('keeps Source Candidate and Published Latest separate in public/maintainer narrative', () => {
-    for (const rel of ['README.md', 'README.en.md', 'AGENTS.md', 'ECOSYSTEM.md']) {
+    for (const rel of [
+      'README.md',
+      'README.en.md',
+      'AGENTS.md',
+      'ECOSYSTEM.md',
+      'docs/getting-started.md',
+      'docs/getting-started.en.md',
+      'docs/current-release.md',
+    ]) {
       const text = read(rel)
       expect(text, rel).toMatch(/Source Candidate/u)
       expect(text, rel).toMatch(/Published Latest/u)
@@ -68,6 +76,8 @@ describe('current endpoint narrative', () => {
     )
     expect(read('AGENTS.md')).toMatch(/Never infer one from the other/u)
     expect(read('ECOSYSTEM.md')).toMatch(/no single "current version" invariant/u)
+    expect(read('docs/getting-started.md')).toMatch(/源码候选可以领先于已发布下载/u)
+    expect(read('docs/getting-started.en.md')).toMatch(/source may lead the published download/u)
   })
 
   it('does not apply current-narrative rules to historical archives or changelog', () => {
