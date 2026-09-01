@@ -18,6 +18,20 @@ Official Harness is in developer preview and **will break**. This repo is design
 9. Refresh official snapshots: `pnpm contracts:extract`. Commit the diff and note any public-surface move in `contracts/compatibility/breaking-changes.md`.
 10. Only then consider recommending the candidate as `latest-tested`. Do not treat that as publication: GitHub Latest and published installer names move only when the release exists.
 
+## Frozen candidate rule
+
+An upstream prerelease discovered **after** an upgrade baseline has been frozen
+does not silently replace that baseline. The current cycle is pinned in
+`contracts/compatibility/upstream-candidate-watch.json`.
+
+For this cycle, `0.1.2-alpha.3` is frozen. Upstream `0.1.2-alpha.4` was
+published later and is recorded as `NEXT_UPGRADE_CYCLE`: its Web readiness
+implementation and CLI argument parser are unchanged from alpha.3, but the
+release interval contains substantive composition changes. Do not mix alpha.4
+pins, lockfiles, snapshots, or evidence into the alpha.3 acceptance commit.
+Advancing the target requires a new explicit upgrade cycle and fresh contract
+extraction.
+
 ## What a failure means
 
 | Failure | Meaning |
