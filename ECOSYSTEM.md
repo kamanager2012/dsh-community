@@ -101,9 +101,11 @@ Release evidence
 The repository records **latest tested**, not merely npm latest. An upstream
 version is not treated as compatible until its actual surface has been checked.
 
-Current release facts and evidence labels live in
-[docs/current-release.json](docs/current-release.json). Do not duplicate a
-second current-version truth in ecosystem documents.
+Candidate Source, Published Latest, published assets, and evidence labels live
+in [docs/current-release.json](docs/current-release.json). There is deliberately
+no single "current version" invariant: source compatibility may advance before
+publication, plugin verification, or real User-Loop evidence. Ecosystem
+documents must not collapse those independent states into one number.
 
 ## Plugin ecosystem
 

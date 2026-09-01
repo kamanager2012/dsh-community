@@ -21,9 +21,14 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 22
-      - name: Validate immutable release identity
+      - name: Validate immutable candidate release identity
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         run: node scripts/validate-release-tag.mjs "$GITHUB_REF_NAME"
+      - name: Verify current Published Latest against GitHub
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/validate-published-latest.mjs
       - name: Manual diagnostic build
         if: ${{ github.event_name == 'workflow_dispatch' && !startsWith(github.ref, 'refs/tags/v') }}
         run: echo "workflow_dispatch without a release tag; identity gate intentionally does not classify this as a publishable release"
@@ -275,12 +280,13 @@ jobs:
         run: |
           TAG="${GITHUB_REF_NAME}"
           EXTRA=()
-          # 1:1 official-core mirrors (plain or -rc.N) are the current download.
-          # Independent community suffixes stay GitHub pre-releases.
-          if [[ "$TAG" == *-community.* || "$TAG" == *preview* || "$TAG" == *beta* ]]; then
-            EXTRA+=(--prerelease)
-          else
+          # Only plain semver and -rc.N mirrors may become GitHub Latest.
+          # Every other prerelease identifier (alpha, beta, preview, community, etc.)
+          # remains a GitHub pre-release and must not displace Published Latest.
+          if [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]]; then
             EXTRA+=(--latest)
+          else
+            EXTRA+=(--prerelease)
           fi
           shopt -s nullglob
           assets=(
