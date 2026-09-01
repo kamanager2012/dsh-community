@@ -1,6 +1,6 @@
 # Community 端定义
 
-官方是内核，社区基于官方内核。这是已经锁定的产品端定义。不要混淆 **操作系统目标**、**UI 形态** 和 **社区端**。
+官方是内核，社区基于官方内核。下面按当前真实发行状态定义产品端；不要混淆 **操作系统目标**、**UI 形态**、**已发行端** 和 **实验端**。
 
 [English](community-endpoints.en.md) · [中文使用指南](getting-started.md) · [在线 Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/)
 
@@ -10,11 +10,12 @@
 |---|---:|---|
 | 代码可以构建的 OS 目标 | 4 | Linux、Windows、macOS、Android |
 | Community UI 形态 | 3 | Terminal / TUI、Desktop、Mobile 壳 |
-| 我们发行给用户的社区端 | **5** | WSL/Linux 终端、Windows 桌面、macOS 桌面、Linux AppImage、Android |
+| 我们发行给用户的社区端 | **4** | WSL/Linux 终端、Windows 桌面、macOS 桌面、Linux AppImage |
+| 实验端（不进入 Latest） | **1** | Android `[UNVERIFIED]`；仅保留于已归档 Labs |
 
 官方 Web 是 DeepSeek 官方界面。它与 Community 共享 `~/.dsh`，但**不是社区端**。
 
-## 五个 Community 端
+## 四个已发行 Community 端 + 一个实验端
 
 ```text
                     Official DeepSeek Harness Runtime
@@ -32,7 +33,7 @@
 | 2 | Windows 桌面 | `DSH Community Setup.exe` | Stable（已发布 Latest） |
 | 3 | macOS 桌面 | `dsh-community-*.dmg` | Stable（已发布 Latest） |
 | 4 | Linux 桌面 AppImage | `dsh-community-*.AppImage` | Beta（随 Release 附带；Linux CLI 用户仍以终端为主） |
-| 5 | Android 移动端 | APK（WebView + nodejs-mobile） | `[UNVERIFIED]`；源码在已归档 Labs，不进正式下载页 |
+| — | Android 移动端（实验） | APK 原型（WebView + nodejs-mobile） | `[UNVERIFIED]`；源码在已归档 Labs，不进正式下载页 |
 
 ### 1. WSL / Linux 终端
 
@@ -69,11 +70,11 @@ dsh-community-*.dmg
 
 ### 4. Linux 桌面 AppImage
 
-面向需要图形桌面、但不走 Windows/macOS 安装包的 Linux 用户。它是正式第五套客户端里的第 4 端，不是“随便附带的构建垃圾”。
+面向需要图形桌面、但不走 Windows/macOS 安装包的 Linux 用户。它是四个正式发行入口中的第 4 端，不是“随便附带的构建垃圾”。
 
 同时：WSL / 无桌面服务器用户的默认路径仍是终端，不要告诉他们必须装 AppImage。
 
-### 5. Android 移动端
+### 实验端：Android 移动端
 
 APK 薄壳：WebView 加载官方 Web UI，内嵌 Node 跑官方 `@deepseek-ai/dsh`。历史源码在已归档的 [`deepseek-harness-suite/apps/android`](https://github.com/kamanager2012/deepseek-harness-suite)，保持 `[UNVERIFIED]`，不写入 `dsh-community` Latest 下载清单。
 
@@ -85,17 +86,17 @@ APK 薄壳：WebView 加载官方 Web UI，内嵌 Node 跑官方 `@deepseek-ai/d
           ┌─────────────────┼──────────────────┐
           │                 │                  │
           ▼                 ▼                  ▼
-   Official Web       Community TUI      Community Desktop / Mobile
-   DeepSeek ships     we ship            we ship
+   Official Web       Community TUI      Community Desktop / experimental Mobile
+   DeepSeek ships     we ship            shipped / Labs
                                          ├── Windows
                                          ├── macOS
                                          ├── Linux AppImage
-                                         └── Android (Labs)
+                                         └── Android (Labs, not shipped)
 ```
 
 正确说法：
 
-> 一套官方 Runtime，五个 Community 端；与官方 Web 共用同一份 `~/.dsh`。
+> 一套官方 Runtime，四个已发行 Community 端；Android 仅为 `[UNVERIFIED]` 实验端。与官方 Web 共用同一份 `~/.dsh`。
 
 错误说法：
 
@@ -107,12 +108,12 @@ APK 薄壳：WebView 加载官方 Web UI，内嵌 Node 跑官方 `@deepseek-ai/d
 
 优先使用：
 
-> **One Harness. Five Community Endpoints.**
+> **One Harness. Four shipped community endpoints.**
 
-> **一套 Harness，五个社区端：WSL/Linux 终端、Windows 桌面、macOS 桌面、Linux AppImage、Android。**
+> **一套 Harness，四个已发行社区端：WSL/Linux 终端、Windows 桌面、macOS 桌面、Linux AppImage；Android 为未验证实验端。**
 
 同时说明：
 
 > 与官方 Web 共用官方 `~/.dsh` Session 存储。Official Web 不是 Community 发行端。
 
-不要再把 **One Harness. Three Surfaces.** 或 **Three Community Endpoints** 当作当前产品口号。
+不要把 Android 实验原型计入当前已发行端数量，也不要把官方 Web 误写成 Community 发行端。
