@@ -107,7 +107,7 @@ describe('docs/current-release.json', () => {
     expect(facts.officialKernel.version).toBe(PINNED_DSH_VERSION)
     expect(facts.communityProduct.version).toBe(version)
     expect(facts.candidateTag).toBe(`v${version}`)
-    expect(facts.communityProduct.githubLatestTag).toMatch(/^v\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?$/u)
+    expect(facts.communityProduct.githubLatestTag).toMatch(/^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u)
     const publishedVersion = facts.communityProduct.githubLatestTag.slice(1)
     expect(facts.publishedAssets).toEqual(facts.assets)
     expect(facts.dualBadge).toBe(
