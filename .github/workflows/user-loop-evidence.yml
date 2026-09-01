@@ -23,15 +23,14 @@ concurrency:
 
 jobs:
   linux-terminal:
+    if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    env:
-      GH_TOKEN: ${{ github.token }}
-      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
     steps:
       - name: Resolve exact release tag
         id: release
         env:
+          GH_TOKEN: ${{ github.token }}
           TAG_INPUT: ${{ github.event.inputs.tag }}
         run: |
           set -euo pipefail
@@ -45,6 +44,8 @@ jobs:
           echo "Exact release under test: $TAG"
 
       - name: Require explicit real-model credential
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
         run: |
           if [ -z "$DEEPSEEK_API_KEY" ]; then
             echo "::error::Repository secret DEEPSEEK_API_KEY is required. This workflow never falls back to a mock."
@@ -89,6 +90,7 @@ jobs:
 
       - name: Run real new -> answer -> resume -> answer loop
         env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           DSH_HOME: ${{ runner.temp }}/user-loop-dsh-home
           EVIDENCE_TAG: ${{ steps.release.outputs.tag }}
         run: |
