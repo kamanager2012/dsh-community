@@ -17,10 +17,6 @@ function readJson(path) {
   return JSON.parse(readFileSync(path, 'utf8'))
 }
 
-function commandName(name) {
-  return process.platform === 'win32' ? name + '.cmd' : name
-}
-
 function run(command, args, options = {}) {
   process.stdout.write('\n> ' + command + ' ' + args.join(' ') + '\n')
   const result = spawnSync(command, args, {
@@ -28,7 +24,7 @@ function run(command, args, options = {}) {
     env: options.env ?? process.env,
     stdio: options.capture ? ['ignore', 'pipe', 'pipe'] : 'inherit',
     encoding: options.capture ? 'utf8' : undefined,
-    shell: false,
+    shell: options.shell ?? false,
     windowsHide: true,
   })
   if (result.error) {
@@ -123,8 +119,7 @@ function main() {
   const acceptedCommit = assertFrozenTarget()
   const git = assertCleanIntegrationTree(acceptedCommit)
   const candidateTag = 'v' + EXPECTED_TARGET
-  const pnpm = commandName('pnpm')
-  const npm = commandName('npm')
+  const packageShell = process.platform === 'win32'
   const runtimeRoot = join(ROOT, 'apps/desktop/runtime-lock')
 
   process.stdout.write(
@@ -139,20 +134,22 @@ function main() {
   run(process.execPath, ['scripts/validate-published-latest.mjs'])
 
   // One consolidated dependency realization after all source edits are complete.
-  run(pnpm, ['install', '--frozen-lockfile'])
+  run('pnpm', ['install', '--frozen-lockfile'], { shell: packageShell })
 
   // Mirror the runtime-lock PR contract locally, without lifecycle scripts.
-  run(npm, ['ci', '--ignore-scripts', '--omit=dev', '--no-audit', '--no-fund'], {
+  run('npm', ['ci', '--ignore-scripts', '--omit=dev', '--no-audit', '--no-fund'], {
     cwd: runtimeRoot,
+    shell: packageShell,
   })
   verifyInstalledRuntime()
-  run(npm, ['audit', '--package-lock-only', '--omit=dev', '--audit-level', 'high'], {
+  run('npm', ['audit', '--package-lock-only', '--omit=dev', '--audit-level', 'high'], {
     cwd: runtimeRoot,
+    shell: packageShell,
   })
 
   // Deterministic repository acceptance. Do not split this into edit-by-edit runs.
-  run(pnpm, ['typecheck'])
-  run(pnpm, ['test'])
+  run('pnpm', ['typecheck'], { shell: packageShell })
+  run('pnpm', ['test'], { shell: packageShell })
   run(process.execPath, ['packages/marketplace/scripts/verify.mjs', '--offline'])
 
   process.stdout.write(
