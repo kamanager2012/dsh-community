@@ -8,6 +8,9 @@ name: artifact-smoke
 # This is install / first-ready / missing-key. It is not a full user loop.
 
 on:
+  pull_request:
+    paths:
+      - '.github/workflows/artifact-smoke.yml'
   workflow_dispatch:
     inputs:
       tag:
@@ -137,6 +140,7 @@ jobs:
 
   windows-desktop:
     needs: resolve
+    if: ${{ github.event_name != 'pull_request' }}
     runs-on: windows-latest
     timeout-minutes: 30
     env:
@@ -256,6 +260,7 @@ jobs:
 
   macos-desktop:
     needs: resolve
+    if: ${{ github.event_name != 'pull_request' }}
     runs-on: macos-latest
     timeout-minutes: 30
     env:
@@ -308,6 +313,7 @@ jobs:
 
   linux-terminal:
     needs: resolve
+    if: ${{ github.event_name != 'pull_request' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
