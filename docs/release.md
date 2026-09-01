@@ -15,7 +15,8 @@ matrix. See [Version and identity policy](version-policy.md).
 
 | Channel | Tag | Notes |
 |---|---|---|
-| Official-core mirror | `vX.Y.Z` or `vX.Y.Z-rc.N` | Community version exactly mirrors the official core; this is GitHub Latest |
+| Latest-eligible official-core mirror | `vX.Y.Z` or `vX.Y.Z-rc.N` | Community version exactly mirrors the official core; may become GitHub Latest |
+| Upstream prerelease candidate | `vX.Y.Z-alpha.N`, `vX.Y.Z-beta.N`, etc. | Candidate/testing channel only; GitHub pre-release, never displaces Published Latest |
 | Community patch | `vX.Y.Z[-prerelease]-community.N` | Community-owned fix on the same official core; GitHub pre-release |
 
 Windows / macOS artifacts are built by GitHub Actions (`release` workflow) — nobody needs to sit on those OSes.
@@ -41,7 +42,7 @@ The script checks a clean tree and a free tag, then runs the canonical release-i
 2. **Windows** — NSIS installer (`DSH Community Setup x.y.z.exe`) + sha256. Portable zip is deferred until NSIS is reliably green.
 3. **macOS** — dmg + sha256
 
-The `publish` job collects all assets and creates the GitHub Release with the CHANGELOG section as notes. Official-core mirrors (`vX.Y.Z` or `vX.Y.Z-rc.N`) become Latest. Only `-community.N` / `-preview` / `-beta` tags are GitHub pre-releases.
+The `publish` job collects all assets and creates the GitHub Release with the CHANGELOG section as notes. Only plain `vX.Y.Z` or `vX.Y.Z-rc.N` tags are eligible for `--latest`. Any other prerelease identifier, including `alpha`, `beta`, `preview`, or `community.N`, is forced to `--prerelease`.
 
 ### Official runtime staging is lock-based
 
