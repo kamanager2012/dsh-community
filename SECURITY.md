@@ -96,10 +96,12 @@ Out of scope (report upstream instead):
 - Every release asset published since `v0.1.1-rc.2` (each installer plus its
   `.sha256` sidecar) ships a cosign **keyless** signature bundle
   (`<file>.sigstore.json`): GitHub OIDC → ephemeral Fulcio certificate → Rekor
-  transparency log, no long-lived private key. `release.yml` refuses to
-  publish an asset without one; `artifact-smoke` fails if any asset on
-  Latest lacks a bundle. Verification steps and the exact `cosign
-  verify-blob` command are in
+  transparency log, no long-lived private key. Before the sole `contents: write`
+  publish job calls `gh release create`, it re-computes SHA256 mappings,
+  rejects missing/orphan sidecars and bundles, and runs `cosign verify-blob`
+  on every downloaded asset against the **exact current tag** release-workflow
+  identity. `artifact-smoke` then independently re-verifies the published
+  Latest assets. Verification steps and the exact `cosign verify-blob` command are in
   [docs/release.md#artifact-signing-keyless](docs/release.md#artifact-signing-keyless).
   A passing verification means the asset was built by this repo's
   `release.yml` on a tag ref — it does not mean the binary is malware-free.
