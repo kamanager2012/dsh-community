@@ -96,22 +96,27 @@ describe('docs/current-release.json', () => {
     ) as {
       officialKernel: { package: string; version: string }
       communityProduct: { version: string; githubLatestTag: string }
+      candidateTag: string
       dualBadge: string
       assets: { linuxAppImage: string; macosDmg: string; windowsSetup: string }
+      publishedAssets: { linuxAppImage: string; macosDmg: string; windowsSetup: string }
       historicalIndependentTags: string[]
     }
     const version = COMMUNITY_PRODUCT_VERSION
     expect(facts.officialKernel.package).toBe(OFFICIAL_DSH_PACKAGE)
     expect(facts.officialKernel.version).toBe(PINNED_DSH_VERSION)
     expect(facts.communityProduct.version).toBe(version)
-    const expectedLatestTag = version === PINNED_DSH_VERSION ? `v${version}` : `v${PINNED_DSH_VERSION}`
-    expect(facts.communityProduct.githubLatestTag).toBe(expectedLatestTag)
+    expect(facts.candidateTag).toBe(`v${version}`)
+    expect(facts.communityProduct.githubLatestTag).toMatch(/^v\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?$/u)
+    const publishedVersion = facts.communityProduct.githubLatestTag.slice(1)
+    expect(facts.publishedAssets).toEqual(facts.assets)
     expect(facts.dualBadge).toBe(
       `DeepSeek Harness Community v${version} [Official Core: ${OFFICIAL_DSH_PACKAGE}@${PINNED_DSH_VERSION}]`,
     )
-    expect(facts.assets.linuxAppImage).toBe(`dsh-community-${version}.AppImage`)
-    expect(facts.assets.macosDmg).toBe(`dsh-community-${version}.dmg`)
-    expect(facts.assets.windowsSetup).toBe(`DSH.Community.Setup.${version}.exe`)
+    expect(facts.assets.linuxAppImage).toBe(`dsh-community-${publishedVersion}.AppImage`)
+    expect(facts.assets.macosDmg).toBe(`dsh-community-${publishedVersion}.dmg`)
+    expect(facts.assets.windowsSetup).toBe(`DSH.Community.Setup.${publishedVersion}.exe`)
     expect(facts.historicalIndependentTags).not.toContain(`v${version}`)
+    expect(facts.historicalIndependentTags).not.toContain(facts.communityProduct.githubLatestTag)
   })
 })
