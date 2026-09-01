@@ -15,9 +15,9 @@
 | Use the WSL/Linux Terminal | `dsh-community` / `pnpm tui` | Primary Linux Community endpoint |
 | Read the full operational guide | [DeepSeek Harness Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/en/) | Providers, Sessions, security, automation, and acceptance |
 
-Do not download a formal client from archived Suite, the standalone Marketplace, the standalone Plugins registry, or Edition. The current release is **v0.1.1-rc.2**, 1:1 with official core `@deepseek-ai/dsh@0.1.1-rc.2`; release assets carry keyless cosign signatures (`.sigstore.json`). Do not download historical `v0.1.2`–`v0.1.6` as the current product. Official Web is an upstream companion, not a Community endpoint. See [community-endpoints.en.md](community-endpoints.en.md) and the [version policy](version-policy.md).
+Do not download a formal client from archived Suite, the standalone Marketplace, the standalone Plugins registry, or Edition. **Published Latest** is defined by [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) plus `githubLatestTag / publishedAssets / publishedReleaseEvidence` in `current-release.json`; published assets carry keyless cosign signatures (`.sigstore.json`). Do not download historical `v0.1.2`–`v0.1.6` as the current product. Official Web is an upstream companion, not a Community endpoint. See [community-endpoints.en.md](community-endpoints.en.md) and the [version policy](version-policy.md).
 
-Desktop and TUI should show: `DeepSeek Harness Community v0.1.1-rc.2 [Official Core: @deepseek-ai/dsh@0.1.1-rc.2]`.
+A source checkout displays the **Source Candidate** Dual-Badge, not the Published Latest version. Candidate core, community product version, `candidateTag`, and Dual-Badge are read from [`current-release.json`](current-release.json); source may lead the published download.
 
 ## Current published download assets
 
@@ -106,7 +106,7 @@ The catalog is not a security guarantee and does not replace the official instal
 | `dsh-community: command not found` | Use the source commands or fix the package PATH | Do not publish this repository as `@deepseek-ai/dsh` |
 | No model response | `DEEPSEEK_API_KEY`, Provider settings, and `dsh web --help` | Do not treat a passing `doctor` as a successful model call |
 | Port already in use | `doctor` output and the official `dsh web` process | Do not use `killall node` against unrelated projects |
-| Unsure which release to download | [v0.1.1-rc.2](https://github.com/kamanager2012/dsh-community/releases/latest) | Do not download historical `v0.1.2`–`v0.1.6` |
+| Unsure which release to download | [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) | Exact tag/file names: `current-release.json`; do not download historical `v0.1.2`–`v0.1.6` |
 | Want unpublished SDK / Checkpoint experiments | Those experiments are frozen in archived Labs | Do not install from the archived repo |
 
 ## Continue reading
