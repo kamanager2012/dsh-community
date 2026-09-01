@@ -14,6 +14,11 @@ updates:
       - dependency-name: "*"
         update-types:
           - version-update:semver-major
+      # esbuild is pre-1.0; a 0.x minor jump may carry breaking changes.
+      # Keep routine automation to patch updates within the reviewed minor line.
+      - dependency-name: "esbuild"
+        update-types:
+          - version-update:semver-minor
     groups:
       npm-dependencies:
         patterns:
