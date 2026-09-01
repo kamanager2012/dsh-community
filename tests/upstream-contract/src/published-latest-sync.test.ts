@@ -156,7 +156,9 @@ describe('Published Latest synchronization', () => {
 
   it('fails closed on duplicate release asset names', () => {
     const { root, release } = makeRoot()
-    release.assets.push({ ...release.assets[0], id: 104 })
+    const firstAsset = release.assets[0]
+    if (!firstAsset) throw new Error('fixture must contain a release asset')
+    release.assets.push({ ...firstAsset, id: 104 })
     writeFileSync(join(root, 'latest.json'), JSON.stringify(release, null, 2) + '\n')
     const result = run(root, true)
     expect(result.status).toBe(1)
