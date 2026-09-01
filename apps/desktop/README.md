@@ -8,7 +8,7 @@ pnpm --filter @dsh-community/desktop start
 
 默认共用官方 `~/.dsh`。生命周期 IPC 只有重启 / 快照 / 诊断日志 / 打开官方 UI / 市场目录刷新。壳自己的设置、复制 `--resume`、页面切换走 `dsh:desktop:*`，不要在这里长 agent 协议。
 
-Version Manager 在菜单 **Host → Runtime**。它读 `contracts/compatibility/latest-tested.json`，把 pin 写进 Desktop `userData`，不改官方 session 目录。
+Version Manager 在菜单 **Host → Runtime**。它读 `contracts/compatibility/latest-tested.json`，把兼容性推荐写进 Desktop `userData`；`latest-tested` 不等于 Candidate Source pin，也不等于 GitHub Published Latest。它不改官方 session 目录。
 
 官方 Session 列表在 **Host → Official sessions** / 托盘「官方 Session」/ 壳顶栏 **Session**，只读当前官方 home 下的 `sessions/`。可复制 `dsh-community-tui --resume <id>`，不在 Desktop 里恢复对话。
 
