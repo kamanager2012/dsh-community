@@ -68,11 +68,6 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Typecheck
         run: pnpm typecheck
-      - name: Disable Windows Defender realtime
-        shell: pwsh
-        run: |
-          Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction SilentlyContinue
-          Set-MpPreference -DisableBehaviorMonitoring $true -ErrorAction SilentlyContinue
       - name: Package NSIS
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'

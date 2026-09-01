@@ -109,6 +109,10 @@ Out of scope (report upstream instead):
   macOS notarization (`CSC_IDENTITY_AUTO_DISCOVERY=false`). Expect SmartScreen
   and Gatekeeper warnings on first run; verify via the sha256 sidecar and the
   cosign bundle instead of OS trust prompts.
+- Windows packaging keeps hosted-runner antimalware protection enabled. The
+  packager confines electron-builder to a staging workspace to keep scanning
+  bounded, and a path-scoped Windows PR smoke proves NSIS packaging without
+  disabling Defender.
 - Workspace packages (`@dsh-community/*`) are never published to npm.
 
 ## Dependency security
