@@ -104,7 +104,8 @@ describe('docs/current-release.json', () => {
     expect(facts.officialKernel.package).toBe(OFFICIAL_DSH_PACKAGE)
     expect(facts.officialKernel.version).toBe(PINNED_DSH_VERSION)
     expect(facts.communityProduct.version).toBe(version)
-    expect(facts.communityProduct.githubLatestTag).toBe(`v${version}`)
+    const expectedLatestTag = version === PINNED_DSH_VERSION ? `v${version}` : `v${PINNED_DSH_VERSION}`
+    expect(facts.communityProduct.githubLatestTag).toBe(expectedLatestTag)
     expect(facts.dualBadge).toBe(
       `DeepSeek Harness Community v${version} [Official Core: ${OFFICIAL_DSH_PACKAGE}@${PINNED_DSH_VERSION}]`,
     )
