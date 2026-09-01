@@ -79,6 +79,17 @@ describe('verify-release-set', () => {
     expect(() => verifyReleaseSet({ artifactsRoot: artifacts, signedRoot: signed })).toThrow(/orphan sigstore bundle/u)
   })
 
+  it('rejects an orphan checksum sidecar without a primary asset', () => {
+    const { artifacts, signed } = makeRoot()
+    addAsset(artifacts, signed, 'linux', 'dsh-community.AppImage', 'linux-bytes')
+    addAsset(artifacts, signed, 'windows', 'DSH Community Setup.exe', 'windows-bytes')
+    addAsset(artifacts, signed, 'macos', 'dsh-community.dmg', 'macos-bytes')
+    writeFileSync(join(artifacts, 'linux', 'ghost.bin.sha256'), '0'.repeat(64) + '  ghost.bin\n')
+    writeFileSync(join(signed, 'linux', 'ghost.bin.sha256.sigstore.json'), '{"bundle":true}\n')
+
+    expect(() => verifyReleaseSet({ artifactsRoot: artifacts, signedRoot: signed })).toThrow(/orphan sha256 sidecar/u)
+  })
+
   it('rejects a sidecar that names a different file', () => {
     const { artifacts, signed } = makeRoot()
     addAsset(artifacts, signed, 'linux', 'dsh-community.AppImage', 'linux-bytes')
