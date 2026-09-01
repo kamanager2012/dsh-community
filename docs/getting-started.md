@@ -15,9 +15,9 @@
 | 使用 WSL/Linux 终端 | `dsh-community` / `pnpm tui` | Linux 的主力 Community endpoint |
 | 查完整操作手册 | [DeepSeek Harness Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/) | Provider、Session、安全、自动化和验收 |
 
-不要从已归档的 Suite、独立 Marketplace、独立 Plugins 或 Edition 下载正式客户端。当前发行是 **v0.1.1-rc.2**，与官方核心 `@deepseek-ai/dsh@0.1.1-rc.2` 1:1 同号，发行产物带 keyless cosign 签名（`.sigstore.json`）。不要下载历史编号 `v0.1.2`–`v0.1.6` 当当前产品。官方 Web 是上游兼容入口，不是 Community 发行端。当前四个已发行端与 Android `[UNVERIFIED]` 实验端的定义见 [community-endpoints.md](community-endpoints.md)。详见[版本策略](version-policy.md)。
+不要从已归档的 Suite、独立 Marketplace、独立 Plugins 或 Edition 下载正式客户端。**Published Latest** 仍以 [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) 和 `current-release.json` 中的 `githubLatestTag / publishedAssets / publishedReleaseEvidence` 为准；发行产物带 keyless cosign 签名（`.sigstore.json`）。不要下载历史编号 `v0.1.2`–`v0.1.6` 当当前产品。官方 Web 是上游兼容入口，不是 Community 发行端。当前四个已发行端与 Android `[UNVERIFIED]` 实验端的定义见 [community-endpoints.md](community-endpoints.md)。详见[版本策略](version-policy.md)。
 
-Desktop 与 TUI 的身份应显示为：`DeepSeek Harness Community v0.1.1-rc.2 [Official Core: @deepseek-ai/dsh@0.1.1-rc.2]`。
+从源码运行时，Desktop/TUI 显示的是 **Candidate Source** 的 Dual-Badge，而不是 Published Latest 的版本号。候选 core、产品号、`candidateTag` 与 Dual-Badge 统一读取 [`current-release.json`](current-release.json)；源码候选可以领先于已发布下载。
 
 ## 当前已发布下载资产
 
@@ -106,7 +106,7 @@ packages/marketplace/catalog.json
 | `dsh-community: command not found` | 先用源码命令，或确认安装包 PATH | 不要把本仓库发布成 `@deepseek-ai/dsh` |
 | 没有模型响应 | `DEEPSEEK_API_KEY`、Provider 配置和 `dsh web --help` | 不要把 `doctor` 通过当成模型调用通过 |
 | 端口被占用 | `doctor` 输出和官方 `dsh web` 进程 | 不要用 `killall node` 误杀其他项目 |
-| 不知道下载哪个版本 | [v0.1.1-rc.2](https://github.com/kamanager2012/dsh-community/releases/latest) | 不要下历史 `v0.1.2`–`v0.1.6` |
+| 不知道下载哪个版本 | [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) | 精确 tag / 文件名看 `current-release.json`；不要下历史 `v0.1.2`–`v0.1.6` |
 | 想试未发布的 SDK / Checkpoint 实验 | 那些实验已随 Labs 仓归档，不是产品通道 | 不要从归档仓安装 |
 
 ## 继续阅读
