@@ -13,7 +13,6 @@ import { fileURLToPath } from 'node:url'
 const PRIMARY_SUFFIXES = ['.AppImage', '.exe', '.zip', '.dmg']
 
 function fail(message) {
-  process.stderr.write(`release-set verification failed: ${message}\n`)
   throw new Error(message)
 }
 
@@ -164,5 +163,11 @@ function main() {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
-  main()
+  try {
+    main()
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    process.stderr.write(`release-set verification failed: ${message}\n`)
+    process.exitCode = 1
+  }
 }
