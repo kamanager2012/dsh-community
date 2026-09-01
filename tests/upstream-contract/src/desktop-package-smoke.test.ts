@@ -39,7 +39,7 @@ describe('pre-tag Desktop package coverage', () => {
     expect(workflow).toContain('sha256 mismatch for ')
     expect(workflow).toContain('--appimage-extract')
     expect(workflow).toContain('hdiutil attach')
-    expect(workflow).toContain("find "$mount" -maxdepth 1 -type d -name '*.app'")
+    expect(workflow).toContain("find \"$mount\" -maxdepth 1 -type d -name '*.app'")
   })
 
   it('runs when release or Desktop packaging inputs change', () => {
