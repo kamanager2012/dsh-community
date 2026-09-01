@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -107,6 +108,46 @@ describe('official runtime lock', () => {
       expect(packages[name], name).toBeDefined()
       expect(packages[name]?.optional, name).toBe(true)
     }
+  })
+
+  it('binds the committed lock bytes to recorded generation provenance', () => {
+    const raw = readFileSync(join(runtimeLockRoot, 'package-lock.json'))
+    const lock = JSON.parse(raw.toString('utf8')) as RuntimeLock
+    const evidence = JSON.parse(
+      readFileSync(join(runtimeLockRoot, 'evidence.json'), 'utf8'),
+    ) as {
+      source?: string
+      workflowRunId?: number
+      artifactId?: number
+      artifactZipSha256?: string
+      lockSha256?: string
+      runnerImage?: string
+      nodeVersion?: string
+      npmVersion?: string
+      command?: string
+      officialPackage?: string
+      officialVersion?: string
+      lockfileVersion?: number
+      packageEntries?: number
+    }
+
+    expect(createHash('sha256').update(raw).digest('hex')).toBe(
+      evidence.lockSha256,
+    )
+    expect(evidence.source).toBe('github-actions')
+    expect(evidence.workflowRunId).toBe(33466316081)
+    expect(evidence.artifactId).toBe(9785175407)
+    expect(evidence.artifactZipSha256).toMatch(/^[0-9a-f]{64}$/u)
+    expect(evidence.runnerImage).toBe('ubuntu-24.04')
+    expect(evidence.nodeVersion).toBe('v22.23.2')
+    expect(evidence.npmVersion).toBe('10.9.8')
+    expect(evidence.command).toBe(
+      'npm install --package-lock-only --ignore-scripts --no-audit --no-fund',
+    )
+    expect(evidence.officialPackage).toBe(OFFICIAL_DSH_PACKAGE)
+    expect(evidence.officialVersion).toBe(PINNED_DSH_VERSION)
+    expect(evidence.lockfileVersion).toBe(lock.lockfileVersion)
+    expect(evidence.packageEntries).toBe(Object.keys(lock.packages ?? {}).length)
   })
 
   it('stages from committed package-lock with npm ci, never a free npm install', () => {
