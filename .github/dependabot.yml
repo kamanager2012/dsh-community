@@ -8,10 +8,19 @@ updates:
       time: "04:30"
       timezone: Etc/UTC
     open-pull-requests-limit: 5
+    # Routine maintenance stays reviewable. Major framework/runtime upgrades
+    # are intentional engineering projects, not unattended maintenance.
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
     groups:
       npm-dependencies:
         patterns:
           - "*"
+        update-types:
+          - minor
+          - patch
 
   - package-ecosystem: github-actions
     directory: /
@@ -21,7 +30,16 @@ updates:
       time: "05:00"
       timezone: Etc/UTC
     open-pull-requests-limit: 5
+    # Release/signing workflows are production infrastructure. Do not jump
+    # action majors without an explicit compatibility review.
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
     groups:
       github-actions:
         patterns:
           - "*"
+        update-types:
+          - minor
+          - patch
