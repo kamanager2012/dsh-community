@@ -46,11 +46,8 @@ describe('current-release human index consistency', () => {
     )
     expect(human).toContain('release ID \`' + facts.publishedReleaseEvidence.releaseId + '\`')
     expect(human).toContain('published \`' + facts.publishedReleaseEvidence.publishedAt + '\`')
-    expect(human).toMatch(
-      new RegExp(
-        '\\| Full user loop \\| \\[\\`?' + facts.evidence.userLoop.status + '\\`?\\]',
-        'u',
-      ),
+    expect(human).toContain(
+      `| Full user loop | \`[${facts.evidence.userLoop.status}]\``,
     )
     expect(human).toContain(
       `| Plugin \`testedDsh\` | \`${facts.evidence.pluginRegistryLastVerified.testedDsh}\``,
