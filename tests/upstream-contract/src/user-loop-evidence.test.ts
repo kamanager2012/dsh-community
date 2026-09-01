@@ -18,6 +18,26 @@ describe('real user-loop evidence workflow', () => {
     expect(workflow).toContain('This workflow never falls back to a mock')
   })
 
+  it('keeps repository and model credentials out of install/build steps', () => {
+    const workflow = readFileSync(workflowPath, 'utf8')
+    const jobHeader = workflow.slice(
+      workflow.indexOf('  linux-terminal:'),
+      workflow.indexOf('    steps:'),
+    )
+    expect(jobHeader).toContain("if: ${{ github.ref == 'refs/heads/main' }}")
+    expect(jobHeader).not.toContain('\n    env:')
+
+    expect(workflow.match(/secrets\.DEEPSEEK_API_KEY/gu)?.length).toBe(2)
+    expect(workflow.match(/github\.token/gu)?.length).toBe(1)
+
+    const untrustedBuildWindow = workflow.slice(
+      workflow.indexOf('      - name: Checkout evidence runner'),
+      workflow.indexOf('      - name: Run real new -> answer -> resume -> answer loop'),
+    )
+    expect(untrustedBuildWindow).not.toContain('DEEPSEEK_API_KEY')
+    expect(untrustedBuildWindow).not.toContain('GH_TOKEN')
+  })
+
   it('tests an immutable release checkout without replacing the evidence runner', () => {
     const workflow = readFileSync(workflowPath, 'utf8')
     expect(workflow).toContain('path: release-src')

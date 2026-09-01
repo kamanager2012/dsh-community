@@ -39,8 +39,16 @@ It does not export the Session transcript or API key.
 ## Running it
 
 The repository must have a GitHub Actions secret named `DEEPSEEK_API_KEY`.
-Then use **Actions → user-loop-evidence → Run workflow**. Leave the tag empty
-to test GitHub Latest, or enter an exact release tag.
+Run the workflow from the repository's `main` branch. Leave the tag empty to
+test GitHub Latest, or enter an exact release tag.
+
+Credential scope is intentionally narrow:
+
+- the repository token is exposed only to the exact-release resolution step;
+- `DEEPSEEK_API_KEY` is exposed only to the explicit missing-secret check and
+  the real model loop step;
+- checkout, exact-tag `pnpm install`, build, and version verification do not
+  receive either credential through job environment variables.
 
 The workflow fails closed if the secret is missing. It never swaps in a mock
 provider and never changes `docs/current-release.json` automatically.
