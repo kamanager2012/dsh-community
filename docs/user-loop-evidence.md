@@ -18,7 +18,9 @@ Windows/macOS packaged Desktop user loop has passed.
 The evidence runner:
 
 1. resolves an exact GitHub Release tag;
-2. checks out that immutable tag into a dedicated `release-src/` directory;
+2. checks out that tag into a dedicated `release-src/` directory and records
+   the resulting full 40-character Git commit SHA as the immutable tested
+   source identity;
 3. installs the exact tag with the frozen lockfile and builds the Terminal endpoint;
 4. uses an isolated temporary `DSH_HOME`;
 5. starts `dsh-community new` in a real pseudo-terminal;
@@ -33,8 +35,9 @@ The evidence runner:
     transcript advanced;
 12. publishes a sanitized JSON evidence artifact.
 
-The artifact contains a SHA-256 of the Session ID, not the Session ID itself.
-It does not export the Session transcript or API key.
+The artifact contains the release tag and exact tested Git commit SHA, plus a
+SHA-256 of the Session ID rather than the Session ID itself. It does not export
+the Session transcript or API key.
 
 ## Running it
 

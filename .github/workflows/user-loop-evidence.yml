@@ -83,21 +83,31 @@ jobs:
         run: pnpm build:tui
 
       - name: Confirm release/runtime identity
+        id: identity
         run: |
           set -euo pipefail
+          commit=$(git -C release-src rev-parse HEAD)
+          if ! printf '%s' "$commit" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "::error::exact-release checkout did not resolve to a full commit SHA"
+            exit 1
+          fi
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
           node release-src/apps/tui/dist/bin.js version | tee runtime-version.txt
           grep -q '@deepseek-ai/dsh' runtime-version.txt
+          echo "release commit: $commit"
 
       - name: Run real new -> answer -> resume -> answer loop
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           DSH_HOME: ${{ runner.temp }}/user-loop-dsh-home
           EVIDENCE_TAG: ${{ steps.release.outputs.tag }}
+          EVIDENCE_COMMIT: ${{ steps.identity.outputs.commit }}
         run: |
           set -euo pipefail
           python3 "${GITHUB_WORKSPACE}/scripts/e2e/user-loop.py" \
             --launcher release-src/apps/tui/dist/bin.js \
             --tag "$EVIDENCE_TAG" \
+            --commit "$EVIDENCE_COMMIT" \
             --timeout-seconds "${{ github.event.inputs.timeout_seconds }}" \
             --evidence-out user-loop-evidence.json
 
@@ -108,6 +118,7 @@ jobs:
             echo "## Real user-loop evidence"
             echo
             echo "- Release: ${{ steps.release.outputs.tag }}"
+            echo "- Commit: ${{ steps.identity.outputs.commit }}"
             echo "- Endpoint: WSL/Linux Terminal"
             if [ -f user-loop-evidence.json ]; then
               echo "- Result: **PASS**"

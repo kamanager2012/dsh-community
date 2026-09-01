@@ -196,7 +196,12 @@ def main() -> int:
     parser.add_argument("--timeout-seconds", type=float, default=180.0)
     parser.add_argument("--evidence-out", default="user-loop-evidence.json")
     parser.add_argument("--tag", default=os.environ.get("EVIDENCE_TAG", "unknown"))
+    parser.add_argument("--commit", default=os.environ.get("EVIDENCE_COMMIT", ""))
     args = parser.parse_args()
+
+    if not re.fullmatch(r"[0-9a-f]{40}", args.commit):
+        print("release commit must be a full lowercase 40-character Git SHA", file=sys.stderr)
+        return 2
 
     api_key = os.environ.get("DEEPSEEK_API_KEY", "").strip()
     if not api_key:
@@ -301,6 +306,7 @@ def main() -> int:
         "status": "PASS",
         "generatedAt": now_iso(),
         "releaseTag": args.tag,
+        "releaseCommit": args.commit,
         "endpoint": "linux-terminal",
         "runtimeIdentity": version,
         "githubRun": (

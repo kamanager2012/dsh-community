@@ -38,6 +38,21 @@ describe('real user-loop evidence workflow', () => {
     expect(untrustedBuildWindow).not.toContain('GH_TOKEN')
   })
 
+  it('records the exact Git commit that was actually tested', () => {
+    const workflow = readFileSync(workflowPath, 'utf8')
+    expect(workflow).toContain('git -C release-src rev-parse HEAD')
+    expect(workflow).toContain('EVIDENCE_COMMIT: ${{ steps.identity.outputs.commit }}')
+    expect(workflow).toContain('--commit "$EVIDENCE_COMMIT"')
+    expect(workflow).toContain('steps.identity.outputs.commit')
+
+    const runner = readFileSync(
+      join(repoRoot, 'scripts/e2e/user-loop.py'),
+      'utf8',
+    )
+    expect(runner).toContain('parser.add_argument("--commit"')
+    expect(runner).toContain('"releaseCommit": args.commit')
+    expect(runner).toContain('full lowercase 40-character Git SHA')
+  })
   it('tests an immutable release checkout without replacing the evidence runner', () => {
     const workflow = readFileSync(workflowPath, 'utf8')
     expect(workflow).toContain('path: release-src')
