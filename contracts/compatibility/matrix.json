@@ -1,6 +1,12 @@
 {
   "policy": "Recommend latest tested, not latest published.",
   "runtimes": {
+    "0.1.2-alpha.3": {
+      "desktop": "unverified",
+      "tui": "unverified",
+      "contracts": "snapshotted",
+      "notes": "Frozen Candidate Source. CLI grammar/readiness prefix stable; config rows 135→146 and published package surface 134→145. Desktop exact runtime closure is pinned to alpha.3; final integrated acceptance not yet run. latest-tested remains rc.2."
+    },
     "0.1.1-rc.2": {
       "desktop": "unverified",
       "tui": "tested",

@@ -3,6 +3,23 @@
 Record the delta here when contract CI or a pin bump hits a public-surface move.
 Do not invent a compatibility shim in Desktop IPC.
 
+## 0.1.2-alpha.3
+
+- surface: package / config-row / published-files
+- what moved:
+  - Candidate Source is exactly `@deepseek-ai/dsh@0.1.2-alpha.3`; GitHub Published Latest remains the independently recorded rc.2 release.
+  - Launcher and Web CLI must-contain grammar is unchanged: `--profile`, `--dump-config`, `--dump-default-config`, `web`, `plugin`, plus Web `--host`, `--port`, `--no-open`; readiness prefix remains `dsh web: `.
+  - Official Web config snapshot grows **135 → 146** rows. Added ids: `deepseek-llm-api-extensions`, `plugin-package-inventory-deepseek`, `session-controller`, `session-log-deepseek`, `session-turn-outline`, `settings-controller`, `subagent-model-selection-settings`, `ui-approval`, `ui-chat`, `ui-schedule`, `ui-session`, `web-fetch-http`, `workspace-controller`. Removed ids: `api-gateway`, `client-runtime`.
+  - Published package snapshot grows **134 → 145** entries. Added: `dsh-api-session-controller`, `dsh-api-settings-controller`, `dsh-api-workspace-controller`, `dsh-client-ui-approval`, `dsh-client-ui-chat`, `dsh-client-ui-schedule`, `dsh-client-ui-session`, `dsh-deepseek-llm-api-extensions`, `dsh-plugin-package-inventory-deepseek`, `dsh-session-log-deepseek`, `dsh-session-turn-outline`, `dsh-tool-subagent/model-selection-settings`, `dsh-web-fetch-http`. Removed: `dsh-client-runtime`, `dsh-host-apiproxy`.
+  - The published CLI manifest no longer ships a top-level `config` directory in `files`; it ships `lib/*.js` only. Community code must use the supported profile/config-tree surface instead of assuming packaged config files.
+  - npm resolution after alpha.4 publication can otherwise produce a mixed runtime (alpha.3 root with alpha.4 DSH transitive packages). The Desktop runtime lock therefore freezes the complete published DSH family to alpha.3 and verifies zero mixed-family versions.
+- community action:
+  - Keep every direct Candidate Source pin and TUI official peer exact at `0.1.2-alpha.3`; no semver ranges.
+  - Regenerate pnpm and Desktop runtime locks from the exact candidate; preserve the reviewed five-package lifecycle-script name set.
+  - Re-extract all four `contracts/upstream` snapshots and record the row/package removals rather than hiding them behind compatibility shims.
+  - Keep `latest-tested` on rc.2 until the final integrated typecheck/full test/runtime acceptance gate passes.
+  - Treat upstream alpha.4 as a separate upgrade cycle; do not mix alpha.4 packages or evidence into this baseline.
+
 ## 0.1.1-rc.2
 
 - surface: package / pin / config-row
