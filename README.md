@@ -1,12 +1,16 @@
 # dsh-community
 
-**One Harness. Five Community Endpoints.**（一套 Harness，五个社区端）
+**DeepSeek Harness 的社区发行、兼容性与安全验证层。**
 
-官方 DeepSeek Harness 是内核。本仓基于官方内核：同一套 Runtime、同一套 `~/.dsh`、同一套官方插件。五个社区端（**WSL/Linux 终端、Windows 桌面、macOS 桌面、Linux AppImage、Android**）只是入口；官方 Web 是内核自带界面，不是我们的发行端——进的是同一个世界。不是第二套 Harness，也不另造执行核心。
+官方 DeepSeek Harness 是唯一执行内核。本仓不重写 Agent Runtime，而是在已发布的 `@deepseek-ai/dsh` 周围维护四件事：**精确上游版本与契约跟踪、跨平台社区发行、第三方插件兼容性注册表、发行与插件安全证据**。
 
-你今天在官方 Web 开的对话，关掉以后用 `dsh-community` 终端可以接着聊；再打开 Desktop，还是同一条会话。
+当前实际发行入口是 **4 个**：WSL/Linux 终端、Windows Desktop、macOS Desktop、Linux AppImage。Android 仅保留为已归档 Labs 中的 **[UNVERIFIED] 实验原型**，不属于 Latest 下载。所有已发行入口默认共享官方 Runtime、官方插件链和同一个 `~/.dsh` Session 真源。
 
-> **One Harness. Five Community Endpoints.** 官方是内核，社区基于官方内核。同一套 Runtime / Session / 插件；五个入口 = WSL/Linux 终端 + Windows 桌面 + macOS 桌面 + Linux AppImage + Android。不重写 Harness，不 patch 官方表面。
+你今天在官方 Web 开的对话，关掉以后用 `dsh-community` 终端可以接着聊；再打开 Desktop，仍然是同一条会话。
+
+> **One Harness. Four shipped community endpoints.** Runtime / Session / 插件事实仍归官方内核所有；社区层只维护发行、UX、兼容性与验证，不 vendor 官方源码，不另建第二套 Agent loop 或 Session store。
+
+本仓的 Compatibility Registry 不是 awesome-list：第三方插件条目记录实际 `testedDsh` 版本、包完整性以及 network / data egress / credentials / filesystem / process / persistence 等结构化安全元数据；安装仍走官方 `dsh plugin add` 链。
 
 [English](README.en.md) | 简体中文
 
@@ -17,7 +21,7 @@
 | **当前发行** | [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest)（`v0.1.1-rc.2`） |
 | **历史 / Pre-release** | [Releases](https://github.com/kamanager2012/dsh-community/releases) 里旧的独立编号 |
 
-当前 Latest、官方内核、五个端、安装包文件名和证据标签以 [current-release](docs/current-release.md) / [`current-release.json`](docs/current-release.json) 为准。版本规则见 [Version policy](docs/version-policy.md)。
+当前 Latest、官方内核、四个已发行入口、Android 实验状态、安装包文件名和证据标签以 [current-release](docs/current-release.md) / [`current-release.json`](docs/current-release.json) 为准。版本规则见 [Version policy](docs/version-policy.md)。
 
 当前发行 **v0.1.1-rc.2**：根目录、Desktop、TUI、workspace 包全部同号，1:1 镜像官方核心 `@deepseek-ai/dsh@0.1.1-rc.2`；契约面与 rc.1 一致（135 行配置树零漂移）。发行产物带 keyless cosign 签名（`.sigstore.json`），验证方法见 [release 文档](docs/release.md#artifact-signing-keyless)。
 
@@ -30,7 +34,7 @@ Desktop 与 TUI 的身份应显示为：`DeepSeek Harness Community v0.1.1-rc.2 
 | Windows 桌面 | **社区端 2：Desktop** | [Latest `v0.1.1-rc.2`](https://github.com/kamanager2012/dsh-community/releases/latest) Setup.exe，或 `pnpm desktop` |
 | macOS 桌面 | **社区端 3：Desktop** | [Latest `v0.1.1-rc.2`](https://github.com/kamanager2012/dsh-community/releases/latest) dmg，或 `pnpm desktop` |
 | Linux AppImage | **社区端 4：Desktop** | 随 Release 附带；CLI 用户仍以终端为主 |
-| Android | **社区端 5：Mobile** | `[UNVERIFIED]`；原型在已归档的 Labs 仓，不进 Latest 下载 |
+| Android | **实验性 Mobile（非当前发行）** | `[UNVERIFIED]`；原型在已归档的 Labs 仓，不进 Latest 下载 |
 
 > 命名红线：不叫 dsh-TUI / DeepSeek Harness Desktop（那是别人的产品名），不在 npm 冒用 `@deepseek-ai` 或 `dsh-tui` 的包名。我们基于官方内核，不是第二套 Harness。
 
@@ -38,7 +42,7 @@ Desktop 与 TUI 的身份应显示为：`DeepSeek Harness Community v0.1.1-rc.2 
 
 开发基础是已发布的 `@deepseek-ai/dsh`。我们不 vendor 官方源码，也不用 `patch-package` 改官方 UI。扩展走外围发行层、契约层和插件验证层。
 
-中文 | [使用指南](docs/getting-started.md) · [五个社区端定义](docs/community-endpoints.md) · [Architecture](ARCHITECTURE.md) · [重构说明](docs/reconstruction.md) · [Upgrade](docs/upgrade.md) · [TUI adapter](docs/tui-adapter.md) · [contracts](contracts/README.md) · [Version Manager](docs/version-manager.md)
+中文 | [使用指南](docs/getting-started.md) · [发行端与实验端定义](docs/community-endpoints.md) · [Architecture](ARCHITECTURE.md) · [重构说明](docs/reconstruction.md) · [Upgrade](docs/upgrade.md) · [TUI adapter](docs/tui-adapter.md) · [contracts](contracts/README.md) · [Version Manager](docs/version-manager.md)
 
 ## 现在能给谁用
 

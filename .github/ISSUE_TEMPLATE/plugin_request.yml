@@ -1,0 +1,51 @@
+name: Plugin registry request
+description: Propose a third-party plugin for the in-repo compatibility registry.
+title: "[Plugin] "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A request does not add a plugin to the registry. The actual catalog change lands through a pull request after compatibility and security evidence is supplied.
+  - type: input
+    id: package
+    attributes:
+      label: Package name and version
+      placeholder: package-name@1.0.0
+    validations:
+      required: true
+  - type: input
+    id: repository
+    attributes:
+      label: Public source repository
+      placeholder: https://github.com/owner/repo
+    validations:
+      required: true
+  - type: input
+    id: tested-dsh
+    attributes:
+      label: DSH version tested
+      placeholder: 0.1.1-rc.2
+    validations:
+      required: true
+  - type: textarea
+    id: install-compose
+    attributes:
+      label: Install and compose evidence
+      description: Show the official dsh plugin add / dump-config path and actual result.
+    validations:
+      required: true
+  - type: textarea
+    id: security
+    attributes:
+      label: Security-relevant behavior
+      description: Describe network, data egress, credentials, filesystem, process execution, and persistence.
+    validations:
+      required: true
+  - type: textarea
+    id: runtime
+    attributes:
+      label: Runtime smoke evidence
+      description: Optional if requesting PARTIAL status; required before claiming VERIFIED runtime compatibility.
+    validations:
+      required: false

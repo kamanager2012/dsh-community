@@ -27,6 +27,13 @@ import { describe, expect, it } from 'vitest'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..')
 
+/**
+ * Metadata-only config may name third-party packages because its job is to
+ * describe/review them. It must never be treated as a runtime composition
+ * surface. Marketplace-specific schema and install-chain tests cover it.
+ */
+const METADATA_ONLY_CONFIG_PATHS = new Set([join('packages', 'marketplace', 'catalog.json')])
+
 /** Third-party packages that are harness products or harness surface implementations. */
 const FORBIDDEN_PACKAGE_PATTERNS = [
   /@deepseek-harness-tui\//u,
@@ -34,7 +41,7 @@ const FORBIDDEN_PACKAGE_PATTERNS = [
   /@dsh-community\/dsh-tui/u,
 ]
 
-/** Only manifests and composition rows count; tests/docs may discuss them. */
+/** Only runtime manifests/composition/config rows count; tests/docs and registry metadata may discuss third-party packages. */
 const SCAN_EXTENSION = /\.(json|yml|yaml)$/u
 
 /**
@@ -94,7 +101,7 @@ function scanSurfaceFiles(): string[] {
   walk(join(root, 'apps'), files)
   walk(join(root, 'packages'), files)
   walk(join(root, 'contracts'), files)
-  return files.sort()
+  return files.filter((file) => !METADATA_ONLY_CONFIG_PATHS.has(relative(root, file))).sort()
 }
 
 /** Every pnpm-workspace member manifest (packages/*, apps/*, tests/*) plus the root. */
@@ -132,6 +139,15 @@ function collectRuntimeDeps(): DepRef[] {
 }
 
 describe('third-party harness products are reference-only, never shipped', () => {
+  it('keeps marketplace registry metadata outside the runtime composition sweep', () => {
+    const catalogPath = join(root, 'packages', 'marketplace', 'catalog.json')
+    expect(existsSync(catalogPath)).toBe(true)
+    expect(scanSurfaceFiles()).not.toContain(catalogPath)
+
+    const catalog = JSON.parse(readFileSync(catalogPath, 'utf8')) as { plugins?: unknown[] }
+    expect(catalog.plugins?.length ?? 0).toBeGreaterThan(0)
+  })
+
   it('no manifest or composition row mounts a third-party TUI/harness package', () => {
     const files = scanSurfaceFiles()
     const hits: string[] = []

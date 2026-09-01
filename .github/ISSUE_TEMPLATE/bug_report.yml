@@ -1,0 +1,65 @@
+name: Bug report
+description: Report a reproducible problem in the community TUI, Desktop, bridge, packaging, or compatibility layer.
+title: "[Bug] "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For suspected vulnerabilities, do not use this form. Follow SECURITY.md and report privately.
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Affected surface
+      options:
+        - WSL/Linux Terminal
+        - Windows Desktop
+        - macOS Desktop
+        - Linux AppImage
+        - Marketplace / plugin compatibility
+        - Release / signing / artifact verification
+        - Upstream contract / compatibility
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: community-version
+    attributes:
+      label: dsh-community version
+      placeholder: v0.1.1-rc.2
+    validations:
+      required: true
+  - type: input
+    id: official-version
+    attributes:
+      label: Official @deepseek-ai/dsh version
+      placeholder: 0.1.1-rc.2
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction
+      description: Minimal steps, commands, or inputs needed to reproduce.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior and evidence
+      description: Include exit codes/log excerpts where useful; remove secrets and private data.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Node version, install path, and whether isolated DSH mode is enabled.
+    validations:
+      required: true
