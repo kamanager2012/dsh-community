@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security report
+    url: https://github.com/kamanager2012/dsh-community/security/advisories/new
+    about: Report suspected vulnerabilities privately.
+  - name: DeepSeek Harness Handbook
+    url: https://kamanager2012.github.io/deepseek-harness-handbook/
+    about: Operational guidance, setup, and troubleshooting.
