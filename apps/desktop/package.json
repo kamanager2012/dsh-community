@@ -20,9 +20,9 @@
     "@dsh-community/shared-types": "workspace:*"
   },
   "devDependencies": {
-    "electron": "43.4.0",
+    "electron": "44.0.0",
     "electron-builder": "26.15.3",
-    "esbuild": "^0.25.9"
+    "esbuild": "^0.28.2"
   },
   "build": {
     "appId": "dev.dshcommunity.desktop",
