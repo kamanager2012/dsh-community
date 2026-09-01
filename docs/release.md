@@ -49,14 +49,20 @@ vendor or patch official source. The packaging boundary lives under
 `stage-official-runtime.mjs` validates that the Desktop pin, runtime manifest,
 and lock all name the exact same official `@deepseek-ai/dsh` version. It then
 copies the committed manifest + lock into an isolated staging directory and
-runs `npm ci` with lifecycle scripts enabled before applying the existing
-module-resolution, node-pty native-binary, classic-node_modules, and runtime-tar
-size checks.
+runs `npm ci --ignore-scripts`. The committed lifecycle policy must exactly
+cover every locked package marked `hasInstallScript`; staging explicitly
+rebuilds only the reviewed allowlist after verifying the installed version.
+The current allowlist is `@deepseek-ai/dsh-subprocess-local`, `koffi`,
+`node-pty`, and `protobufjs`. `@google/genai` is the current reviewed
+deny entry and is not rebuilt. The existing module-resolution, node-pty
+native-binary, classic-node_modules, and runtime-tar size checks then run on
+the resulting staged tree.
 
 The lock is verified independently on Linux, Windows, and macOS by
 `runtime-lock-verify`, and its separate npm audit fails at high severity and
-above. A pin bump therefore requires a reviewed lock/evidence update before a
-release build may use a different transitive dependency tree.
+above. A pin bump therefore requires a reviewed lock/evidence update plus an
+explicit lifecycle-policy review before a release build may use a different
+transitive dependency or install-script surface.
 
 ## Artifact naming
 
