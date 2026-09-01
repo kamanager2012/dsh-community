@@ -19,10 +19,10 @@
 | 状态 | 去哪看 |
 |---|---|
 | **Published Latest** | [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest)；真实 tag、安装包名、release/asset 证据以 [`current-release.json`](docs/current-release.json) 为准 |
-| **Source Candidate** | 当前源码候选的 `candidateTag`、官方 core pin、workspace 产品号与 Dual-Badge 以 [`current-release.json`](docs/current-release.json) 为准 |
+| **Candidate Source** | 当前源码候选的 `candidateTag`、官方 core pin、workspace 产品号与 Dual-Badge 以 [`current-release.json`](docs/current-release.json) 为准 |
 | **Historical / Pre-release** | [Releases](https://github.com/kamanager2012/dsh-community/releases) |
 
-**Source Candidate 与 Published Latest 是两条独立状态。** 源码可以先升级到新的官方候选版本，而 GitHub Latest、已发布安装包、插件 `testedDsh` 和真实 User-Loop 证据继续停留在上一个已验证版本。不要从 `releases/latest` 的版本号反推当前 workspace 版本，也不要从源码候选版本伪造尚未发布的安装包。
+**Candidate Source 与 Published Latest 是两条独立状态。** 源码可以先升级到新的官方候选版本，而 GitHub Latest、已发布安装包、插件 `testedDsh` 和真实 User-Loop 证据继续停留在上一个已验证版本。不要从 `releases/latest` 的版本号反推当前 workspace 版本，也不要从源码候选版本伪造尚未发布的安装包。
 
 四个已发行入口、Android 实验状态、Candidate / Published 身份、安装包名和证据标签统一以 [current-release](docs/current-release.md) / [`current-release.json`](docs/current-release.json) 为准。发行产物使用 keyless cosign 签名；验证方法见 [release 文档](docs/release.md#artifact-signing-keyless)。
 
