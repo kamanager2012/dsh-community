@@ -25,6 +25,7 @@ When Candidate Source equals Published Latest (as it does on the current rc.2 li
 | Official kernel | `@deepseek-ai/dsh@0.1.1-rc.2` |
 | Community product | `0.1.1-rc.2` |
 | GitHub Latest | [`v0.1.1-rc.2`](https://github.com/kamanager2012/dsh-community/releases/latest) |
+| Published release evidence | GitHub release ID `374950921`; published `2026-08-22T14:25:10Z`; primary installer asset IDs/digests pinned in `current-release.json` |
 | Dual-Badge | `DeepSeek Harness Community v0.1.1-rc.2 [Official Core: @deepseek-ai/dsh@0.1.1-rc.2]` |
 | Shipped Community endpoints | WSL/Linux Terminal, Windows Desktop, macOS Desktop, Linux AppImage |
 | Experimental endpoint | Android Labs `[UNVERIFIED]`, not on the Latest download page |
