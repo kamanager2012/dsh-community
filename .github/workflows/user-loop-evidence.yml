@@ -52,19 +52,19 @@ jobs:
           fi
 
       - name: Checkout evidence runner
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Checkout exact release under test
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ steps.release.outputs.tag }}
           path: release-src
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 11.21.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -115,7 +115,7 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always() && hashFiles('user-loop-evidence.json') != ''
         with:
           name: user-loop-evidence-${{ steps.release.outputs.tag }}

@@ -17,11 +17,11 @@ jobs:
     env:
       NODE_OPTIONS: --max-old-space-size=4096
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
         with:
           version: 11.21.0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -37,7 +37,7 @@ jobs:
         run: pnpm vitest run apps/desktop/tests/asar-purity.test.ts
       - name: Checksum
         run: node scripts/checksum-release.mjs apps/desktop/release/*.AppImage
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: linux
           path: |
@@ -52,11 +52,11 @@ jobs:
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       NODE_OPTIONS: --max-old-space-size=4096
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
         with:
           version: 11.21.0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -78,7 +78,7 @@ jobs:
       - name: Checksum
         shell: bash
         run: node scripts/checksum-release.mjs 'apps/desktop/release/*.exe'
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: windows
           path: |
@@ -92,11 +92,11 @@ jobs:
     env:
       NODE_OPTIONS: --max-old-space-size=4096
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
         with:
           version: 11.21.0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -113,7 +113,7 @@ jobs:
       - name: Checksum
         shell: bash
         run: node scripts/checksum-release.mjs 'apps/desktop/release/*.dmg'
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: macos
           path: |
@@ -134,7 +134,7 @@ jobs:
       contents: read
       id-token: write # required for keyless OIDC signing in GitHub Actions
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist-artifacts
           merge-multiple: false
@@ -144,7 +144,7 @@ jobs:
       # (curl 22 / 404 observed on the first tagged run). v2.6.1 still ships
       # detached .sig assets and supports sign-blob/verify-blob --bundle with
       # Fulcio/Rekor keyless verification.
-      - uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
         with:
           cosign-release: 'v2.6.1'
       - name: Sign artifacts (keyless)
@@ -166,7 +166,7 @@ jobs:
           done
           # upload signatures only; blobs are re-downloaded by publish
           find dist-artifacts -type f ! -name '*.sigstore.json' -delete
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: signed
           path: dist-artifacts
@@ -181,12 +181,12 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           path: dist-artifacts
           merge-multiple: false
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: signed
           path: dist-signed
