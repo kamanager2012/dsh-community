@@ -17,11 +17,29 @@ function readJson(path) {
   return JSON.parse(readFileSync(path, 'utf8'))
 }
 
+const PROVIDER_SECRET_KEYS = new Set([
+  'OPENAI_API_KEY',
+  'ANTHROPIC_API_KEY',
+  'DEEPSEEK_API_KEY',
+  'XAI_API_KEY',
+  'GROK_API_KEY',
+  'GOOGLE_API_KEY',
+  'GEMINI_API_KEY',
+  'MISTRAL_API_KEY',
+  'COHERE_API_KEY',
+])
+
+function providerSafeEnv() {
+  const env = { ...process.env }
+  for (const key of PROVIDER_SECRET_KEYS) delete env[key]
+  return env
+}
+
 function run(command, args, options = {}) {
   process.stdout.write('\n> ' + command + ' ' + args.join(' ') + '\n')
   const result = spawnSync(command, args, {
     cwd: options.cwd ?? ROOT,
-    env: options.env ?? process.env,
+    env: options.env ?? providerSafeEnv(),
     stdio: options.capture ? ['ignore', 'pipe', 'pipe'] : 'inherit',
     encoding: options.capture ? 'utf8' : undefined,
     shell: options.shell ?? false,
