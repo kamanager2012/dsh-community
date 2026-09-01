@@ -16,23 +16,22 @@
 
 [![ci](https://github.com/kamanager2012/dsh-community/actions/workflows/ci.yml/badge.svg)](https://github.com/kamanager2012/dsh-community/actions/workflows/ci.yml)
 
-| 通道 | 去哪下 |
+| 状态 | 去哪看 |
 |---|---|
-| **当前发行** | [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest)（`v0.1.1-rc.2`） |
-| **历史 / Pre-release** | [Releases](https://github.com/kamanager2012/dsh-community/releases) 里旧的独立编号 |
+| **Published Latest** | [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest)；真实 tag、安装包名、release/asset 证据以 [`current-release.json`](docs/current-release.json) 为准 |
+| **Source Candidate** | 当前源码候选的 `candidateTag`、官方 core pin、workspace 产品号与 Dual-Badge 以 [`current-release.json`](docs/current-release.json) 为准 |
+| **Historical / Pre-release** | [Releases](https://github.com/kamanager2012/dsh-community/releases) |
 
-当前 Latest、官方内核、四个已发行入口、Android 实验状态、安装包文件名和证据标签以 [current-release](docs/current-release.md) / [`current-release.json`](docs/current-release.json) 为准。版本规则见 [Version policy](docs/version-policy.md)。
+**Source Candidate 与 Published Latest 是两条独立状态。** 源码可以先升级到新的官方候选版本，而 GitHub Latest、已发布安装包、插件 `testedDsh` 和真实 User-Loop 证据继续停留在上一个已验证版本。不要从 `releases/latest` 的版本号反推当前 workspace 版本，也不要从源码候选版本伪造尚未发布的安装包。
 
-当前发行 **v0.1.1-rc.2**：根目录、Desktop、TUI、workspace 包全部同号，1:1 镜像官方核心 `@deepseek-ai/dsh@0.1.1-rc.2`；契约面与 rc.1 一致（135 行配置树零漂移）。发行产物带 keyless cosign 签名（`.sigstore.json`），验证方法见 [release 文档](docs/release.md#artifact-signing-keyless)。
-
-Desktop 与 TUI 的身份应显示为：`DeepSeek Harness Community v0.1.1-rc.2 [Official Core: @deepseek-ai/dsh@0.1.1-rc.2]`。
+四个已发行入口、Android 实验状态、Candidate / Published 身份、安装包名和证据标签统一以 [current-release](docs/current-release.md) / [`current-release.json`](docs/current-release.json) 为准。发行产物使用 keyless cosign 签名；验证方法见 [release 文档](docs/release.md#artifact-signing-keyless)。
 
 | 发行面 | 命名 | 入口 |
 |---|---|---|
 | 官方 Web | 官方上游兼容入口，不是 Community 发行端 | [`npx @deepseek-ai/dsh web`](https://github.com/deepseek-ai/deepseek-harness) |
 | WSL/Linux 终端 | **社区端 1：Terminal / TUI** | `dsh-community` / `dsh-community-tui` / `pnpm tui` |
-| Windows 桌面 | **社区端 2：Desktop** | [Latest `v0.1.1-rc.2`](https://github.com/kamanager2012/dsh-community/releases/latest) Setup.exe，或 `pnpm desktop` |
-| macOS 桌面 | **社区端 3：Desktop** | [Latest `v0.1.1-rc.2`](https://github.com/kamanager2012/dsh-community/releases/latest) dmg，或 `pnpm desktop` |
+| Windows 桌面 | **社区端 2：Desktop** | [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) Setup.exe，或 `pnpm desktop` |
+| macOS 桌面 | **社区端 3：Desktop** | [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) dmg，或 `pnpm desktop` |
 | Linux AppImage | **社区端 4：Desktop** | 随 Release 附带；CLI 用户仍以终端为主 |
 | Android | **实验性 Mobile（非当前发行）** | `[UNVERIFIED]`；原型在已归档的 Labs 仓，不进 Latest 下载 |
 
@@ -50,7 +49,7 @@ Desktop 与 TUI 的身份应显示为：`DeepSeek Harness Community v0.1.1-rc.2 
 |---|---|
 | 真正跑 agent | 官方 [`npx @deepseek-ai/dsh web`](https://github.com/deepseek-ai/deepseek-harness) |
 | 终端 | 本仓 `dsh-community`（启动官方 `dsh --profile headless`，不挂第三方 TUI） |
-| 下载安装包 | [Latest `v0.1.1-rc.2`](https://github.com/kamanager2012/dsh-community/releases/latest)（cosign 签名验证见 [release 文档](docs/release.md#artifact-signing-keyless)） |
+| 下载安装包 | [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest)（具体 tag / 文件名见 `docs/current-release.json`；cosign 验证见 [release 文档](docs/release.md#artifact-signing-keyless)） |
 | 已验证能装的社区插件 | Desktop 市场页 · 本仓 `pnpm marketplace` · [`packages/marketplace/catalog.json`](packages/marketplace/catalog.json)（不是 awesome 目录） |
 | 官方表面快照 / 升 rc 契约 | **本仓** |
 
