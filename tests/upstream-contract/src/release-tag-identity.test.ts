@@ -128,7 +128,7 @@ describe('release tag identity validator', () => {
     write(root, 'docs/current-release.json', JSON.stringify(facts, null, 2) + '\n')
     const result = run(root)
     expect(result.status).toBe(1)
-    expect(result.stderr).toContain('current-release GitHub tag')
+    expect(result.stderr).toContain('current-release GitHub Latest')
   })
 
   it('keeps scripts/release.mjs on the same canonical validator', () => {
