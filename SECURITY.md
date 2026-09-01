@@ -109,12 +109,23 @@ Out of scope (report upstream instead):
   cosign bundle instead of OS trust prompts.
 - Workspace packages (`@dsh-community/*`) are never published to npm.
 
+## Dependency security
+
+- Dependabot monitors both npm dependencies and GitHub Actions weekly.
+- Pull requests that change the dependency graph run GitHub's dependency
+  review action. A newly introduced **high** or **critical** severity advisory
+  fails that PR check; moderate advisories remain visible for maintainer
+  triage instead of turning every dependency update into an automatic hard
+  failure.
+- The existing frozen-lockfile install and repository supply-chain policy
+  checks remain part of normal CI. Release assets are separately covered by
+  the keyless signing and artifact verification controls above.
+
 ## Known gaps
 
-- This repository's own `pnpm-lock.yaml` (Desktop/TUI/Bridge dependencies)
-  has no automated `pnpm audit` or Dependabot check wired into CI yet. A
-  report of a moderate-or-higher severity advisory in a direct dependency is
-  welcome and in scope.
+- There is no separate scheduled `pnpm audit` hard gate today. Moderate
+  advisories are in scope and should be triaged, but they are not an automatic
+  merge blocker unless maintainers explicitly raise the gate.
 - `artifact-smoke` (see [docs/release.md](docs/release.md)) is a partial
   install / first-ready / missing-key check, not a full
   new-session/resume/plugin/restart loop. Do not read a green run as a
