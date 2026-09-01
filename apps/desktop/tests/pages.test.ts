@@ -107,7 +107,7 @@ describe('shell pages', () => {
     expect(html).toMatch(/copyText/)
   })
 
-  it('shows latest-tested instead of npm latest on the runtime page', () => {
+  it('shows latest-tested as compatibility evidence, not a source or publication identity', () => {
     const html = renderRuntimePage({
       product: 'DSH Community',
       installed: '0.1.0-rc.6',
@@ -121,7 +121,9 @@ describe('shell pages', () => {
       isolated: false,
     })
     expect(html).toMatch(/latest-tested/)
-    expect(html).toMatch(/不是 npm latest/)
+    expect(html).toMatch(/不是 Candidate Source pin/)
+    expect(html).toMatch(/npm latest/)
+    expect(html).toMatch(/GitHub Published Latest/)
     expect(html).toMatch(/runtime-versions\.json/)
   })
 })
