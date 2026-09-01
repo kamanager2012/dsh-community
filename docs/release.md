@@ -2,10 +2,14 @@
 
 Official `@deepseek-ai/dsh` is the **development foundation**. We build TUI and Desktop on the pinned official runtime. A newer official rc is an upgrade of that foundation (pin + contract extract), not a gate that pauses product work.
 
-Current official pin, Latest tag, Dual-Badge, and asset names live in
-[`current-release.json`](current-release.json). Update that file in the same
-commit as `pin.ts` when cutting a release. See [Version and identity
-policy](version-policy.md).
+Candidate Source and Published Latest both live in
+[`current-release.json`](current-release.json), but they are independent states.
+A source bump moves the candidate core/product/tag and Dual-Badge with `pin.ts`;
+it does **not** move GitHub Latest, published installer names, plugin evidence, or
+user-loop evidence. `publishedReleaseEvidence` records the real GitHub release
+ID plus primary asset IDs/digests, and `scripts/validate-published-latest.mjs`
+re-checks those facts against GitHub before a release tag can enter the build
+matrix. See [Version and identity policy](version-policy.md).
 
 ## Channels
 
