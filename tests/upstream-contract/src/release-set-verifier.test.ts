@@ -34,6 +34,33 @@ function addAsset(artifacts: string, signed: string, bucket: string, name: strin
   return asset
 }
 
+function addSbom(artifacts: string, signed: string, body?: string) {
+  const sbom = body ?? JSON.stringify({
+    bomFormat: 'CycloneDX',
+    specVersion: '1.5',
+    metadata: {
+      component: {
+        type: 'application',
+        name: 'dsh-community-official-runtime-lock',
+        version: '0.0.0',
+      },
+    },
+    components: [
+      {
+        type: 'application',
+        name: '@deepseek-ai/dsh',
+        version: '0.1.1-rc.2',
+      },
+    ],
+  })
+  return addAsset(
+    artifacts,
+    signed,
+    'sbom',
+    'dsh-community-0.1.1-rc.2-official-runtime.cdx.json',
+    sbom + '\n',
+  )
+}
 function runVerifier(artifacts: string, signed: string) {
   return spawnSync(process.execPath, [verifier, artifacts, signed], {
     encoding: 'utf8',
@@ -50,10 +77,13 @@ describe('verify-release-set CLI', () => {
     addAsset(artifacts, signed, 'linux', 'dsh-community.AppImage', 'linux-bytes')
     addAsset(artifacts, signed, 'windows', 'DSH Community Setup.exe', 'windows-bytes')
     addAsset(artifacts, signed, 'macos', 'dsh-community.dmg', 'macos-bytes')
+    addSbom(artifacts, signed)
 
     const result = runVerifier(artifacts, signed)
     expect(result.status).toBe(0)
-    expect(result.stdout).toContain('release-set verified: primary=3 sidecars=3 bundles=6')
+    expect(result.stdout).toContain(
+      'release-set verified: primary=3 metadata=1 sidecars=4 bundles=8',
+    )
   })
 
   it('rejects a tampered binary even when sidecars and bundles still exist', () => {
@@ -61,6 +91,7 @@ describe('verify-release-set CLI', () => {
     const linux = addAsset(artifacts, signed, 'linux', 'dsh-community.AppImage', 'linux-bytes')
     addAsset(artifacts, signed, 'windows', 'DSH Community Setup.exe', 'windows-bytes')
     addAsset(artifacts, signed, 'macos', 'dsh-community.dmg', 'macos-bytes')
+    addSbom(artifacts, signed)
     writeFileSync(linux, 'tampered')
 
     const result = runVerifier(artifacts, signed)
@@ -73,6 +104,7 @@ describe('verify-release-set CLI', () => {
     addAsset(artifacts, signed, 'linux', 'dsh-community.AppImage', 'linux-bytes')
     addAsset(artifacts, signed, 'windows', 'DSH Community Setup.exe', 'windows-bytes')
     addAsset(artifacts, signed, 'macos', 'dsh-community.dmg', 'macos-bytes')
+    addSbom(artifacts, signed)
     rmSync(join(signed, 'windows', 'DSH Community Setup.exe.sigstore.json'))
 
     const result = runVerifier(artifacts, signed)
@@ -85,6 +117,7 @@ describe('verify-release-set CLI', () => {
     addAsset(artifacts, signed, 'linux', 'dsh-community.AppImage', 'linux-bytes')
     addAsset(artifacts, signed, 'windows', 'DSH Community Setup.exe', 'windows-bytes')
     addAsset(artifacts, signed, 'macos', 'dsh-community.dmg', 'macos-bytes')
+    addSbom(artifacts, signed)
     writeFileSync(join(signed, 'linux', 'ghost.bin.sigstore.json'), '{"bundle":true}\n')
 
     const result = runVerifier(artifacts, signed)
@@ -97,6 +130,7 @@ describe('verify-release-set CLI', () => {
     addAsset(artifacts, signed, 'linux', 'dsh-community.AppImage', 'linux-bytes')
     addAsset(artifacts, signed, 'windows', 'DSH Community Setup.exe', 'windows-bytes')
     addAsset(artifacts, signed, 'macos', 'dsh-community.dmg', 'macos-bytes')
+    addSbom(artifacts, signed)
     writeFileSync(join(artifacts, 'linux', 'ghost.bin.sha256'), '0'.repeat(64) + '  ghost.bin\n')
     writeFileSync(join(signed, 'linux', 'ghost.bin.sha256.sigstore.json'), '{"bundle":true}\n')
 
@@ -105,11 +139,51 @@ describe('verify-release-set CLI', () => {
     expect(result.stderr).toContain('orphan sha256 sidecar')
   })
 
+  it('rejects a release with no official-runtime SBOM', () => {
+    const { artifacts, signed } = makeRoot()
+    addAsset(artifacts, signed, 'linux', 'dsh-community.AppImage', 'linux-bytes')
+    addAsset(artifacts, signed, 'windows', 'DSH Community Setup.exe', 'windows-bytes')
+    addAsset(artifacts, signed, 'macos', 'dsh-community.dmg', 'macos-bytes')
+
+    const result = runVerifier(artifacts, signed)
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain('expected exactly one official-runtime CycloneDX SBOM')
+  })
+
+  it('rejects malformed official-runtime SBOM JSON', () => {
+    const { artifacts, signed } = makeRoot()
+    addAsset(artifacts, signed, 'linux', 'dsh-community.AppImage', 'linux-bytes')
+    addAsset(artifacts, signed, 'windows', 'DSH Community Setup.exe', 'windows-bytes')
+    addAsset(artifacts, signed, 'macos', 'dsh-community.dmg', 'macos-bytes')
+    addSbom(artifacts, signed, '{not-json')
+
+    const result = runVerifier(artifacts, signed)
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain('invalid JSON in official-runtime SBOM')
+  })
+
+  it('rejects an SBOM that does not describe official DSH', () => {
+    const { artifacts, signed } = makeRoot()
+    addAsset(artifacts, signed, 'linux', 'dsh-community.AppImage', 'linux-bytes')
+    addAsset(artifacts, signed, 'windows', 'DSH Community Setup.exe', 'windows-bytes')
+    addAsset(artifacts, signed, 'macos', 'dsh-community.dmg', 'macos-bytes')
+    addSbom(artifacts, signed, JSON.stringify({
+      bomFormat: 'CycloneDX',
+      specVersion: '1.5',
+      metadata: { component: { name: 'dsh-community-official-runtime-lock' } },
+      components: [],
+    }))
+
+    const result = runVerifier(artifacts, signed)
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain('does not include @deepseek-ai/dsh')
+  })
   it('rejects a sidecar that names a different file', () => {
     const { artifacts, signed } = makeRoot()
     addAsset(artifacts, signed, 'linux', 'dsh-community.AppImage', 'linux-bytes')
     addAsset(artifacts, signed, 'windows', 'DSH Community Setup.exe', 'windows-bytes')
     const mac = addAsset(artifacts, signed, 'macos', 'dsh-community.dmg', 'macos-bytes')
+    addSbom(artifacts, signed)
     const digest = createHash('sha256').update('macos-bytes').digest('hex')
     writeFileSync(mac + '.sha256', digest + '  wrong-name.dmg\n')
 
