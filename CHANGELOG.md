@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Desktop 三平台打包前移到 PR 验收：Windows NSIS、Linux AppImage、macOS DMG 均使用与正式 Release 相同的 packaging 命令。Linux 额外完成 AppImage 无 FUSE 解包并找到 `resources/app.asar`；macOS 实际挂载 DMG 并确认 `.app/Contents/MacOS` 可执行文件；三平台继续执行 asar vendor=0 与 SHA256 校验。首轮真实 Linux AppImage 为 189,145,947 bytes，macOS DMG 为 169,845,018 bytes。
 - Release tag 身份统一为单一机器规则：本地 `scripts/release.mjs` 与 GitHub `release` workflow 共用 canonical validator；手工 push 的 `v*` tag 必须与 workspace 产品号、官方 DSH pin、`current-release.json`、Dual-Badge、资产名与 CHANGELOG 一致，三个 OS build 才会启动；sole `contents: write` publisher 仅在所有依赖 job `success()` 后运行。
 - Desktop 官方 Runtime 暂存改为可复现依赖树：新增 runtime-only npm `package-lock.json`（512 entries，非根条目全部有 `resolved + sha512 integrity`）与 generation provenance，`stage-official-runtime.mjs` 从自由 `npm install` 改为 committed lock + `npm ci`。同一 lock 已在 Ubuntu / macOS / Windows 三平台安装通过，独立 npm audit 输出 `found 0 vulnerabilities`；真实 Windows protected-package smoke 完成 lifecycle staging → NSIS → asar guard → SHA256。该 run 中 stage+archive 从历史约 29.5 分钟降到约 29.65 秒（观察值，非跨机器性能保证）。
 - OSS 维护入口补齐：外部贡献指南、治理、行为准则、支持路由、Issue/PR 模板与 CODEOWNERS 现在统一公开；项目仍诚实标注为单维护者，不虚构多人 maintainer。
