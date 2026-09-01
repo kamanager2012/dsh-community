@@ -12,6 +12,7 @@ describe('alpha.3 consolidated acceptance runner', () => {
       "scripts/validate-release-tag.mjs",
       "scripts/validate-published-latest.mjs",
       "['install', '--frozen-lockfile']",
+      "['contracts:extract']",
       "['ci', '--ignore-scripts', '--omit=dev', '--no-audit', '--no-fund']",
       "['audit', '--package-lock-only', '--omit=dev', '--audit-level', 'high']",
       "['typecheck']",
@@ -24,7 +25,7 @@ describe('alpha.3 consolidated acceptance runner', () => {
 
     expect(source).toContain("EXPECTED_TARGET = '0.1.2-alpha.3'")
     expect(source).toContain("merge-base', '--is-ancestor'")
-    expect(source).toContain("git', ['status', '--porcelain']")
+    expect(source.match(/git', \['status', '--porcelain'\]/gu)?.length).toBeGreaterThanOrEqual(2)
     expect(source).toContain("DSH_COMMUNITY_ALLOW_UNPINNED")
     expect(source).toContain('providerSafeEnv')
     expect(source).toContain("'DEEPSEEK_API_KEY'")
