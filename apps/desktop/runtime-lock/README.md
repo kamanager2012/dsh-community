@@ -9,9 +9,16 @@ runtime embedded in Desktop release artifacts.
 not independently re-resolve the 500+ package transitive tree.
 
 `stage-official-runtime.mjs` copies this manifest and lock into an isolated
-staging directory and runs `npm ci` **with lifecycle scripts enabled**. The
-existing runtime checks then require the official CLI, transitive imports, the
-platform node-pty binary, and the minimum runtime tar size before packaging.
+staging directory and runs `npm ci --ignore-scripts`. It then reads
+`lifecycle-scripts.json` and explicitly rebuilds only the reviewed packages
+whose lifecycle steps are required by the packaged official runtime. The
+current allowlist is `@deepseek-ai/dsh-subprocess-local`, `koffi`, `node-pty`,
+and `protobufjs`; `@google/genai` remains installed with its consumer lifecycle
+script suppressed, matching the repository-wide pnpm build policy. Any new or
+version-drifted `hasInstallScript` entry makes staging fail until the policy is
+reviewed and updated. Existing runtime checks still require the official CLI,
+transitive imports, the platform node-pty binary, and the minimum runtime tar
+size before packaging.
 
 ## Current lock provenance
 
@@ -38,9 +45,12 @@ When the official DSH pin changes:
 2. regenerate `package-lock.json` from a clean Node 22 environment;
 3. review the lock diff, especially new registries, packages, lifecycle/native
    surfaces, and integrity changes;
-4. update `evidence.json` from the generation run and exact lock SHA-256;
-5. require normal CI, `runtime-lock-verify` on Linux/Windows/macOS,
-   dependency audit, and the Windows protected-package smoke to pass.
+4. update `lifecycle-scripts.json` if and only if the reviewed
+   `hasInstallScript` surface changed; keep it aligned with the root pnpm build
+   policy;
+5. update `evidence.json` from the generation run and exact lock SHA-256;
+6. require normal CI, `runtime-lock-verify` on Linux/Windows/macOS, dependency
+   audit, plus Windows/Linux/macOS package smokes to pass.
 
 Do not replace `npm ci` with `npm install` in release staging. A build that
 needs a different dependency tree requires a reviewed lock update first.

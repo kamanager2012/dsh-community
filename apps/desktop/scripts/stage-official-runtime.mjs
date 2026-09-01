@@ -3,8 +3,10 @@
  *
  * npm's classic node_modules (no symlinks, no virtual store) is the only
  * layout that is both Node-resolvable after extraction and safe for Windows
- * tar extraction. node-pty compiles natively on Linux during install
- * (its postinstall); darwin ships prebuilds in the npm tarball; Windows 1.2
+ * tar extraction. Lifecycle scripts are denied by default during npm ci and
+ * then selectively rebuilt from runtime-lock/lifecycle-scripts.json.
+ * node-pty may materialize a native binary during that reviewed rebuild;
+ * darwin ships prebuilds in the npm tarball; Windows 1.2
  * ships `conpty.node` (not `pty.node`).
  *
  * v0.1.4 lesson: a tar that only carries @deepseek-ai/dsh and not its deps
@@ -27,6 +29,7 @@ const archive = join(extra, 'official-dsh.tar')
 const runtimeLockRoot = join(appRoot, 'runtime-lock')
 const runtimeManifestPath = join(runtimeLockRoot, 'package.json')
 const runtimeLockPath = join(runtimeLockRoot, 'package-lock.json')
+const lifecyclePolicyPath = join(runtimeLockRoot, 'lifecycle-scripts.json')
 const require = createRequire(join(appRoot, 'package.json'))
 const desktopManifest = require('./package.json')
 const pin = desktopManifest.dependencies['@deepseek-ai/dsh']
@@ -52,35 +55,92 @@ if (lockedDsh?.version !== pin || typeof lockedDsh.integrity !== 'string' || typ
   throw new Error('runtime package-lock does not contain the exact official DSH package with registry integrity')
 }
 
+const lifecyclePolicy = JSON.parse(readFileSync(lifecyclePolicyPath, 'utf8'))
+if (lifecyclePolicy.schemaVersion !== 1 || !Array.isArray(lifecyclePolicy.allowed) || !Array.isArray(lifecyclePolicy.denied)) {
+  throw new Error('runtime lifecycle policy must use schemaVersion 1 with allowed/denied arrays')
+}
+
+function packageNameFromLockPath(lockPath) {
+  const marker = 'node_modules/'
+  const index = lockPath.lastIndexOf(marker)
+  return index === -1 ? null : lockPath.slice(index + marker.length)
+}
+
+const observedLifecycle = Object.entries(runtimeLock.packages ?? {})
+  .filter(([, entry]) => entry?.hasInstallScript === true)
+  .map(([lockPath, entry]) => {
+    const name = packageNameFromLockPath(lockPath)
+    if (!name || typeof entry.version !== 'string') {
+      throw new Error(`invalid lifecycle-script lock entry: ${lockPath}`)
+    }
+    return `${name}@${entry.version}`
+  })
+  .sort()
+const reviewedLifecycle = [...lifecyclePolicy.allowed, ...lifecyclePolicy.denied]
+  .map((entry) => `${entry.name}@${entry.version}`)
+  .sort()
+if (JSON.stringify(observedLifecycle) !== JSON.stringify(reviewedLifecycle)) {
+  throw new Error(
+    `runtime lifecycle-script surface drifted; observed=${observedLifecycle.join(', ')} reviewed=${reviewedLifecycle.join(', ')}`,
+  )
+}
+
 await rm(stageRoot, { recursive: true, force: true })
 await mkdir(stageRoot, { recursive: true })
 copyFileSync(runtimeManifestPath, join(stageRoot, 'package.json'))
 copyFileSync(runtimeLockPath, join(stageRoot, 'package-lock.json'))
 
 process.stdout.write(
-  `staging official @deepseek-ai/dsh@${pin} with npm ci from committed package-lock (classic node_modules)…\n`,
+  `staging official @deepseek-ai/dsh@${pin} with npm ci --ignore-scripts from committed package-lock (classic node_modules)…\n`,
 )
 const nodeOptions = process.env.NODE_OPTIONS ?? ''
 const heapFlag = '--max-old-space-size=4096'
-const installed = spawnSync('npm', [
+const npmEnv = {
+  ...process.env,
+  npm_config_fund: 'false',
+  npm_config_audit: 'false',
+  NODE_OPTIONS: nodeOptions.includes('max-old-space-size') ? nodeOptions : `${nodeOptions} ${heapFlag}`.trim(),
+}
+
+function runNpm(args, label) {
+  const result = spawnSync('npm', args, {
+    cwd: stageRoot,
+    stdio: 'inherit',
+    env: npmEnv,
+    shell: process.platform === 'win32',
+    windowsHide: true,
+  })
+  if (result.error) throw new Error(`${label} failed: ${result.error.message}`)
+  if (result.status !== 0) throw new Error(`${label} failed (status ${String(result.status)})`)
+}
+
+runNpm([
   'ci',
+  '--ignore-scripts',
   '--omit=dev',
   '--no-fund',
   '--no-audit',
-], {
-  cwd: stageRoot,
-  stdio: 'inherit',
-  env: {
-    ...process.env,
-    npm_config_fund: 'false',
-    npm_config_audit: 'false',
-    NODE_OPTIONS: nodeOptions.includes('max-old-space-size') ? nodeOptions : `${nodeOptions} ${heapFlag}`.trim(),
-  },
-  shell: process.platform === 'win32',
-  windowsHide: true,
-})
-if (installed.error) throw new Error(`npm ci failed: ${installed.error.message}`)
-if (installed.status !== 0) throw new Error(`npm ci failed (status ${String(installed.status)})`)
+], 'npm ci --ignore-scripts')
+
+for (const entry of lifecyclePolicy.allowed) {
+  const manifestPath = join(stageRoot, 'node_modules', entry.name, 'package.json')
+  if (!existsSync(manifestPath)) {
+    throw new Error(`reviewed lifecycle package missing after npm ci: ${entry.name}`)
+  }
+  const installedManifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
+  if (installedManifest.version !== entry.version) {
+    throw new Error(
+      `reviewed lifecycle package version drifted: ${entry.name}@${String(installedManifest.version)} expected ${entry.version}`,
+    )
+  }
+  process.stdout.write(`rebuilding reviewed runtime package ${entry.name}@${entry.version}…\n`)
+  runNpm([
+    'rebuild',
+    entry.name,
+    '--no-fund',
+    '--no-audit',
+  ], `npm rebuild ${entry.name}`)
+}
 
 const modules = join(stageRoot, 'node_modules')
 const officialBin = join(modules, '@deepseek-ai/dsh/lib/bin.js')

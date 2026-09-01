@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "allowed": [
+    {
+      "name": "@deepseek-ai/dsh-subprocess-local",
+      "version": "0.1.1-rc.2",
+      "reason": "Official DSH local subprocess package; its install step is part of the reviewed runtime surface."
+    },
+    {
+      "name": "koffi",
+      "version": "3.1.6",
+      "reason": "Native FFI package used by the official runtime; platform materialization is required."
+    },
+    {
+      "name": "node-pty",
+      "version": "1.2.0-beta.15",
+      "reason": "Native PTY package required by the official terminal runtime; stage checks require the platform binary."
+    },
+    {
+      "name": "protobufjs",
+      "version": "7.6.6",
+      "reason": "Reviewed protobufjs postinstall used by the locked runtime tree."
+    }
+  ],
+  "denied": [
+    {
+      "name": "@google/genai",
+      "version": "1.52.0",
+      "reason": "The repository build policy explicitly denies this consumer lifecycle script; the locked package remains installed with scripts suppressed."
+    }
+  ]
+}
