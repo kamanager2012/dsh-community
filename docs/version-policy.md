@@ -28,9 +28,11 @@ release instead. Independent community numbers such as `0.1.2` / `0.1.6` that
 do not 1:1-mirror the official core stay historical; they must not remain
 GitHub Latest after a correct 1:1 tag exists.
 
-When the official current release is itself an rc, GitHub Latest uses the 1:1
-tag `vX.Y.Z-rc.N`. Only `-community.N`, `-preview`, and `-beta` tags are GitHub
-pre-releases.
+When the official current release is itself an rc, GitHub Latest may use the
+1:1 tag `vX.Y.Z-rc.N`. Only plain `vX.Y.Z` and `vX.Y.Z-rc.N` are eligible
+to become GitHub Latest. Any other prerelease identifier — including `alpha`,
+`beta`, `preview`, or `community.N` — is published as a GitHub pre-release
+and must not displace the existing Published Latest.
 
 ## Candidate and publication state
 
