@@ -35,6 +35,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..')
 const METADATA_ONLY_CONFIG_PATHS = new Set([
   join('packages', 'marketplace', 'catalog.json'),
   join('apps', 'desktop', 'runtime-lock', 'package-lock.json'),
+  join('apps', 'desktop', 'runtime-lock', 'lifecycle-scripts.json'),
 ])
 
 /** Third-party packages that are harness products or harness surface implementations. */
@@ -163,6 +164,20 @@ describe('third-party harness products are reference-only, never shipped', () =>
       packages?: Record<string, unknown>
     }
     expect(Object.keys(lock.packages ?? {}).length).toBeGreaterThan(500)
+  })
+
+  it('keeps runtime lifecycle review metadata outside the composition sweep', () => {
+    const policyPath = join(root, 'apps', 'desktop', 'runtime-lock', 'lifecycle-scripts.json')
+    const manifestPath = join(root, 'apps', 'desktop', 'runtime-lock', 'package.json')
+    expect(existsSync(policyPath)).toBe(true)
+    expect(scanSurfaceFiles()).not.toContain(policyPath)
+    expect(scanSurfaceFiles()).toContain(manifestPath)
+
+    const policy = JSON.parse(readFileSync(policyPath, 'utf8')) as {
+      allowed?: unknown[]
+      denied?: unknown[]
+    }
+    expect((policy.allowed?.length ?? 0) + (policy.denied?.length ?? 0)).toBeGreaterThan(0)
   })
 
   it('no manifest or composition row mounts a third-party TUI/harness package', () => {
