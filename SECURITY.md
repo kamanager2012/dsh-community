@@ -111,7 +111,7 @@ Out of scope (report upstream instead):
 
 ## Dependency security
 
-- Dependabot monitors both npm dependencies and GitHub Actions weekly.
+- Dependabot monitors both npm dependencies and GitHub Actions weekly for minor/patch updates. Semver-major upgrades are intentionally excluded from routine bot PRs and require an explicit compatibility review.
 - The existing frozen-lockfile install and repository supply-chain policy
   checks remain part of normal CI. Release assets are separately covered by
   the keyless signing and artifact verification controls above.
