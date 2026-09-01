@@ -67,6 +67,7 @@ function makeFixture() {
   )
   const assets = publishedAssets()
   write(root, 'docs/current-release.json', JSON.stringify({
+    schemaVersion: 2,
     officialKernel: { package: official, version: candidateVersion },
     communityProduct: { version: candidateVersion, githubLatestTag: publishedTag },
     candidateTag,
@@ -74,6 +75,29 @@ function makeFixture() {
       + ' [Official Core: ' + official + '@' + candidateVersion + ']',
     assets,
     publishedAssets: { ...assets },
+    publishedReleaseEvidence: {
+      releaseId: 374950921,
+      tag: publishedTag,
+      url: 'https://github.com/kamanager2012/dsh-community/releases/tag/' + publishedTag,
+      publishedAt: '2026-08-22T14:25:10Z',
+      primaryAssets: {
+        linuxAppImage: {
+          name: assets.linuxAppImage,
+          assetId: 525116665,
+          digest: 'sha256:' + '1'.repeat(64),
+        },
+        macosDmg: {
+          name: assets.macosDmg,
+          assetId: 525116664,
+          digest: 'sha256:' + '2'.repeat(64),
+        },
+        windowsSetup: {
+          name: assets.windowsSetup,
+          assetId: 525116662,
+          digest: 'sha256:' + '3'.repeat(64),
+        },
+      },
+    },
     historicalIndependentTags: ['v0.1.2'],
   }, null, 2) + '\n')
   write(root, 'CHANGELOG.md', '# Changelog\n\n## ' + candidateVersion + '\n\n- fixture\n')
@@ -170,6 +194,30 @@ describe('release tag identity validator', () => {
     const result = run(root)
     expect(result.status).toBe(1)
     expect(result.stderr).toContain('disagrees with assets')
+  })
+
+  it('rejects Published Latest drift even when matching asset filenames are also edited', () => {
+    const root = makeFixture()
+    const facts = JSON.parse(readFileSync(join(root, 'docs/current-release.json'), 'utf8'))
+    const staleTag = facts.communityProduct.githubLatestTag
+    facts.communityProduct.githubLatestTag = 'v0.1.1-rc.1'
+    facts.assets = publishedAssets('0.1.1-rc.1')
+    facts.publishedAssets = { ...facts.assets }
+    write(root, 'docs/current-release.json', JSON.stringify(facts, null, 2) + '\n')
+    const result = run(root)
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain('publishedReleaseEvidence tag')
+    expect(staleTag).toBe(publishedTag)
+  })
+
+  it('rejects Published Latest evidence with a malformed digest', () => {
+    const root = makeFixture()
+    const facts = JSON.parse(readFileSync(join(root, 'docs/current-release.json'), 'utf8'))
+    facts.publishedReleaseEvidence.primaryAssets.linuxAppImage.digest = 'sha256:not-a-digest'
+    write(root, 'docs/current-release.json', JSON.stringify(facts, null, 2) + '\n')
+    const result = run(root)
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain('digest is invalid')
   })
 
   it('keeps scripts/release.mjs on the same canonical validator', () => {
