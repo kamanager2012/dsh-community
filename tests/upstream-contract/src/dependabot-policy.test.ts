@@ -14,4 +14,10 @@ describe('Dependabot maintenance policy', () => {
     expect(dependabot).toMatch(/package-ecosystem: github-actions[\s\S]*?update-types:\n\s+- minor\n\s+- patch/u)
     expect(dependabot).not.toMatch(/^\s+- major\s*$/mu)
   })
+
+  it('treats pre-1.0 esbuild minor jumps as compatibility work', () => {
+    expect(dependabot).toMatch(
+      /dependency-name: "esbuild"[\s\S]*?version-update:semver-minor/u,
+    )
+  })
 })
