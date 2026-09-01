@@ -1,6 +1,7 @@
 /**
  * Desktop-owned version pins. This file does not live under ~/.dsh.
- * Recommend latest tested (contract CI), never "whatever npm latest is".
+ * Recommend compatibility latest-tested (contract validation). It is neither
+ * Candidate Source nor GitHub Published Latest, and never "whatever npm latest is".
  */
 
 export interface RuntimeCatalog {
