@@ -18,6 +18,26 @@ Official Harness is in developer preview and **will break**. This repo is design
 9. Refresh official snapshots: `pnpm contracts:extract`. Commit the diff and note any public-surface move in `contracts/compatibility/breaking-changes.md`.
 10. Only then consider recommending the candidate as `latest-tested`. Do not treat that as publication: GitHub Latest and published installer names move only when the release exists.
 
+## Consolidated local acceptance
+
+After the exact accepted alpha.3 commit is present in the integration branch and
+all hardening conflicts are resolved, run exactly one consolidated local gate:
+
+```sh
+node scripts/accept-alpha3-integration.mjs
+```
+
+The runner requires a clean non-main branch and verifies that the accepted local
+commit recorded in `remote-integration-gate.json` is an ancestor of HEAD. It
+then verifies Candidate/Published identities, realizes the frozen pnpm lock once,
+mirrors the runtime-lock install/audit contract, runs typecheck, the full Vitest
+suite, and the offline marketplace check. It does not create a tag, open a PR,
+dispatch Actions, or invoke a model/provider.
+
+Do not use the old fixed `73 files / 290 tests` count as the final pass
+criterion: hardening adds contract tests. The final criterion is the discovered
+post-integration suite completing green in this single run.
+
 ## Remote integration gate
 
 Do not open the alpha.3 pull request until the accepted local upgrade commit has
