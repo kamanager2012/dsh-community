@@ -139,7 +139,8 @@ The gate must also cover uninstall/reinstall, upgrade, missing key, bad network,
 broken or interrupted Runtime extraction. Record Official Web ↔ WSL/Linux TUI ↔
 Windows/macOS Desktop Session sharing and the exact asset filename plus SHA256.
 `artifact-smoke` is only a partial install / first-ready / missing-key check; it is not
-a full user loop. Earlier smokes (`v0.1.2`, `v0.1.1-rc.1`)
+a full user loop. The manual, billable exact-release WSL/Linux new/resume gate is
+[`user-loop-evidence`](user-loop-evidence.md); it never runs on a schedule, push, or PR. Earlier smokes (`v0.1.2`, `v0.1.1-rc.1`)
 ([32470195309](https://github.com/kamanager2012/dsh-community/actions/runs/32470195309),
 [32578918509](https://github.com/kamanager2012/dsh-community/actions/runs/32578918509))
 do not constitute the full user loop for `v0.1.1-rc.2`. Re-run `artifact-smoke` against the new tag; until

@@ -6,7 +6,7 @@ Official DeepSeek Harness is the kernel. This repo is based on published `@deeps
 
 - Runtime: published `@deepseek-ai/dsh` only. Pin is `packages/dsh-bridge/src/pin.ts`.
 - Community suite version 1:1-mirrors the official pin (`docs/version-policy.md`). Optional `-community.N` suffix for community-only patches. Dual-Badge via `formatCommunityIdentity()`. Current numbers: `docs/current-release.json`. Other repos link that file; they must not copy a second Latest number.
-- Product count is **five community endpoints** (`docs/community-endpoints.md`). Official Web is not one of them.
+- Product count is **four shipped community endpoints** (`docs/community-endpoints.md`): WSL/Linux Terminal, Windows Desktop, macOS Desktop, and Linux AppImage. Android is an `[UNVERIFIED]` archived-Labs experiment, not a shipped endpoint. Official Web is not a Community endpoint.
 - Official apps today are cli+web. That is an architecture signal, not “official will never ship a TUI”.
 - stdout/stderr are diagnostics. IPC is lifecycle only (pid/port/start/crash). No Desktop Runtime Protocol.
 - Default: do not rewrite DSH_HOME. Sessions stay in official ~/.dsh so TUI/Web/Desktop share one log.
