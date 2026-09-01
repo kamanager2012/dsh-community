@@ -192,8 +192,9 @@ const packManifest = {
 }
 
 await writeFile(join(packRoot, 'package.json'), `${JSON.stringify(packManifest, null, 2)}\n`)
-// Keep electron-builder inside this directory. If it walks up into the
-// monorepo pnpm store, Windows Defender turns a 2-minute pack into a hang.
+// Keep electron-builder inside this directory so Windows scanning stays
+// bounded to the staging workspace. Do not disable host antimalware protection
+// in CI to compensate for monorepo traversal.
 await writeFile(join(packRoot, 'pnpm-workspace.yaml'), 'packages:\n  - "."\n')
 await mkdir(join(packRoot, 'node_modules'), { recursive: true })
 
