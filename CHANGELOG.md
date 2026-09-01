@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- OSS 维护入口补齐：外部贡献指南、治理、行为准则、支持路由、Issue/PR 模板与 CODEOWNERS 现在统一公开；项目仍诚实标注为单维护者，不虚构多人 maintainer。
+- 修复 upstream-contract 对 Marketplace 元数据的误判：`packages/marketplace/catalog.json` 允许引用第三方包作为注册表元数据，但 runtime manifest / composition / patch 仍禁止挂载第三方 Harness/TUI；主 CI 恢复为真实绿灯。
+- 对外产品事实统一为 **4 个已发行 Community endpoints**（WSL/Linux Terminal、Windows Desktop、macOS Desktop、Linux AppImage）；Android 仅保留为 archived Labs 的 `[UNVERIFIED]` 实验端，不进入 Latest。旧 2026-08-21 ecosystem handoff 已归档，当前叙事加机器一致性守卫。
+- 依赖维护收紧：Dependabot 每周监控 npm 与 GitHub Actions，routine 自动升级限制为 minor/patch；semver-major 必须显式兼容性评审，pre-1.0 的 `esbuild` 跨 minor 也不混入日常机器人 PR。依赖变更 PR 与每周计划任务新增 `pnpm audit --audit-level high`，首轮真实 audit 输出 `No known vulnerabilities found`。
+- GitHub Actions 供应链加固：所有外部 Actions 固定到完整 commit SHA，checkout 禁止持久化仓库凭据；checkout / setup-node / pnpm bootstrap 与 artifact upload/download 已迁到 Node 24 action majors，并分别通过 CI、插件 compose/validate、dependency audit 和真实 artifact upload→download→SHA256 round-trip 验证。
+- Release 发布前闭环加固：sole `contents: write` publish job 在 `gh release create` 前重新校验跨平台 release set、实算 SHA256、拒绝缺失/孤儿 sidecar 或 Sigstore bundle，并对每个 asset 用当前**精确 tag** 的 Fulcio workflow identity 执行 `cosign verify-blob`。
+- Post-release `artifact-smoke` 改为单次解析一个 exact tag，签名验证与 Windows/macOS/Linux smoke 共用同一 release identity；cosign 从 repo-wide tag regex 收紧为 exact tag identity。零 bundle 只允许 8 个明确的 pre-signing 历史 tag，新/未知 unsigned release 直接失败。PR 修改 smoke 逻辑时会真实验证当前签名 Release，但跳过重型 endpoint 安装 smoke。
+- Windows Release 不再执行 `Set-MpPreference` 关闭 Defender。新增 `windows-package-smoke` 在真实 `windows-latest`、主机防护保持开启时完成 frozen install → typecheck → NSIS → asar vendor=0 → SHA256 → installer/sidecar 检查；CI 同时禁止重新引入关闭 Defender 的命令。
+- 新增手动、billable 的 exact-release WSL/Linux user-loop evidence gate：`new → real model ACK → clean exit → resume same official Session → second real model ACK`，隔离 `DSH_HOME` 且只输出脱敏证据。当前仍保持 `[UNVERIFIED]`，直到有真实 `DEEPSEEK_API_KEY` 的成功 Release run，workflow 存在本身不升级证据等级。
 - Marketplace CLI 并入本仓 `packages/marketplace`（`pnpm marketplace`）。独立仓 `dsh-marketplace`、`dsh-community-plugins` 与 Community Labs `deepseek-harness-suite` 已归档。插件兼容性目录现为 `packages/marketplace/catalog.json`。
 - `DshMcpBridge` 从 `@dsh-community/dsh-bridge` 导出。Windows / macOS 发行任务在打包后同样跑 asar vendor=0 护栏。
 
