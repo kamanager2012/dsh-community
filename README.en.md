@@ -34,10 +34,10 @@ process execution, and persistence. Installation still uses the official
 | State | Source of truth |
 |---|---|
 | **Published Latest** | [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest); exact tag, asset names, release ID, and asset evidence live in [`current-release.json`](docs/current-release.json) |
-| **Source Candidate** | `candidateTag`, official-core pin, workspace product version, and Dual-Badge live in [`current-release.json`](docs/current-release.json) |
+| **Candidate Source** | `candidateTag`, official-core pin, workspace product version, and Dual-Badge live in [`current-release.json`](docs/current-release.json) |
 | **Historical / Pre-release** | [Releases](https://github.com/kamanager2012/dsh-community/releases) |
 
-**Source Candidate and Published Latest are independent states.** Source may move
+**Candidate Source and Published Latest are independent states.** Source may move
 to a newer reviewed upstream candidate while GitHub Latest, published installers,
 plugin `testedDsh`, and real User-Loop evidence remain on the last version that
 actually passed those gates. Do not infer workspace version from
@@ -79,7 +79,7 @@ Only this repository is the download entry. Handbook is the other live repo. Sui
 
 ## Source and publication status
 
-The workspace has one **Source Candidate** identity (community product + official
+The workspace has one **Candidate Source** identity (community product + official
 core pin + Dual-Badge), while GitHub exposes a separate **Published Latest**
 identity backed by real release assets. They may be equal after a release, but
 the repository does not depend on that equality. Exact current values live only
