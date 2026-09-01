@@ -154,6 +154,16 @@ function main() {
   // One consolidated dependency realization after all source edits are complete.
   run('pnpm', ['install', '--frozen-lockfile'], { shell: packageShell })
 
+  // Re-extract official contracts exactly once from the final installed candidate.
+  // A clean tree afterwards proves committed snapshots are current.
+  run('pnpm', ['contracts:extract'], { shell: packageShell })
+  const contractDrift = run('git', ['status', '--porcelain'], { capture: true })
+  if (contractDrift !== '') {
+    fail(
+      'contracts:extract changed the integration tree; inspect and commit the official contract drift before acceptance',
+    )
+  }
+
   // Mirror the runtime-lock PR contract locally, without lifecycle scripts.
   run('npm', ['ci', '--ignore-scripts', '--omit=dev', '--no-audit', '--no-fund'], {
     cwd: runtimeRoot,
