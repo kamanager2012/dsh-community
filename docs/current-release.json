@@ -69,5 +69,12 @@
       "testedDsh": "0.1.1-rc.2",
       "note": "9 plugins: official dsh plugin add + dump-config compose on 0.1.1-rc.2. Restart/user-loop still UNVERIFIED."
     }
+  },
+  "candidateTag": "v0.1.1-rc.2",
+  "publishedAssets": {
+    "linuxAppImage": "dsh-community-0.1.1-rc.2.AppImage",
+    "macosDmg": "dsh-community-0.1.1-rc.2.dmg",
+    "windowsSetup": "DSH.Community.Setup.0.1.1-rc.2.exe",
+    "note": "GitHub may show Windows spaces as dots. Use the exact names on the Release page."
   }
 }
