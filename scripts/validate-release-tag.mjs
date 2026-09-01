@@ -36,11 +36,15 @@ function fail(message) {
 
 function sourceConstant(root, rel, name) {
   const text = readFileSync(join(root, rel), 'utf8')
-  const match = text.match(new RegExp('\\b' + name + '\\s*=\\s*[\\'"]([^\\'"]+)[\\'"]', 'u'))
+  const pattern = "\\b" + name + "\\s*=\\s*['\"]([^'\"]+)['\"]"
+  const match = text.match(new RegExp(pattern, 'u'))
   if (!match?.[1]) fail('cannot read ' + name + ' from ' + rel)
   return match[1]
 }
 
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')
+}
 function assertReleaseTag(tag, label) {
   if (typeof tag !== 'string' || !RELEASE_TAG.test(tag)) {
     fail(label + ' has invalid release tag syntax: ' + String(tag))
@@ -185,9 +189,9 @@ export function validateReleaseTag(tag, root = process.cwd()) {
   }
 
   const changelog = readFileSync(join(root, 'CHANGELOG.md'), 'utf8')
-  const marker = '## ' + productVersion
-  if (!changelog.split(/\r?\n/u).some((line) => line.trim() === marker)) {
-    fail('CHANGELOG.md has no exact section for candidate ' + productVersion)
+  const marker = new RegExp('^## ' + escapeRegex(productVersion) + '(?:\\s|$)', 'u')
+  if (!changelog.split(/\r?\n/u).some((line) => marker.test(line.trim()))) {
+    fail('CHANGELOG.md has no section for candidate ' + productVersion)
   }
 
   return {
