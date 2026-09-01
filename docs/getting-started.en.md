@@ -17,7 +17,7 @@
 
 Do not download a formal client from archived Suite, the standalone Marketplace, the standalone Plugins registry, or Edition. **Published Latest** is defined by [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) plus `githubLatestTag / publishedAssets / publishedReleaseEvidence` in `current-release.json`; published assets carry keyless cosign signatures (`.sigstore.json`). Do not download historical `v0.1.2`–`v0.1.6` as the current product. Official Web is an upstream companion, not a Community endpoint. See [community-endpoints.en.md](community-endpoints.en.md) and the [version policy](version-policy.md).
 
-A source checkout displays the **Source Candidate** Dual-Badge, not the Published Latest version. Candidate core, community product version, `candidateTag`, and Dual-Badge are read from [`current-release.json`](current-release.json); source may lead the published download.
+A source checkout displays the **Candidate Source** Dual-Badge, not the Published Latest version. Candidate core, community product version, `candidateTag`, and Dual-Badge are read from [`current-release.json`](current-release.json); source may lead the published download.
 
 ## Current published download assets
 
