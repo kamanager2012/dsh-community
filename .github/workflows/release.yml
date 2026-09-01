@@ -280,12 +280,13 @@ jobs:
         run: |
           TAG="${GITHUB_REF_NAME}"
           EXTRA=()
-          # 1:1 official-core mirrors (plain or -rc.N) are the current download.
-          # Independent community suffixes stay GitHub pre-releases.
-          if [[ "$TAG" == *-community.* || "$TAG" == *preview* || "$TAG" == *beta* ]]; then
-            EXTRA+=(--prerelease)
-          else
+          # Only plain semver and -rc.N mirrors may become GitHub Latest.
+          # Every other prerelease identifier (alpha, beta, preview, community, etc.)
+          # remains a GitHub pre-release and must not displace Published Latest.
+          if [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]]; then
             EXTRA+=(--latest)
+          else
+            EXTRA+=(--prerelease)
           fi
           shopt -s nullglob
           assets=(
