@@ -132,10 +132,7 @@ describe('release tag identity validator', () => {
   })
 
   it('keeps scripts/release.mjs on the same canonical validator', () => {
-    const releaseScript = require('node:fs').readFileSync(
-      join(repoRoot, 'scripts/release.mjs'),
-      'utf8',
-    )
+    const releaseScript = readFileSync(join(repoRoot, 'scripts/release.mjs'), 'utf8')
     expect(releaseScript).toContain("run(process.execPath, ['scripts/validate-release-tag.mjs', tag])")
   })
 })
