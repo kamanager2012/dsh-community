@@ -25,6 +25,8 @@ const OFFICIAL_DEPENDENCY_MANIFESTS = [
 const OFFICIAL_PACKAGE = '@deepseek-ai/dsh'
 const COMMUNITY_SUFFIX = /-community\.(?:0|[1-9]\d*)$/u
 const RELEASE_TAG = /^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u
+const DIGEST = /^sha256:[0-9a-f]{64}$/u
+const PUBLISHED_AT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/u
 
 function readJson(root, rel) {
   return JSON.parse(readFileSync(join(root, rel), 'utf8'))
@@ -82,6 +84,49 @@ function assertPublishedAssets(facts, publishedVersion) {
     }
   }
 }
+
+function assertPublishedReleaseEvidence(facts, publishedLatestTag) {
+  if (!Number.isInteger(facts.schemaVersion) || facts.schemaVersion < 2) {
+    fail('current-release schemaVersion must be >= 2 for Published Latest evidence')
+  }
+
+  const evidence = facts.publishedReleaseEvidence
+  if (!evidence || typeof evidence !== 'object') {
+    fail('current-release has no publishedReleaseEvidence')
+  }
+  if (evidence.tag !== publishedLatestTag) {
+    fail('publishedReleaseEvidence tag does not match Published Latest')
+  }
+  if (!Number.isInteger(evidence.releaseId) || evidence.releaseId <= 0) {
+    fail('publishedReleaseEvidence releaseId is invalid')
+  }
+  const expectedUrl =
+    'https://github.com/kamanager2012/dsh-community/releases/tag/' + publishedLatestTag
+  if (evidence.url !== expectedUrl) {
+    fail('publishedReleaseEvidence URL does not match Published Latest tag')
+  }
+  if (typeof evidence.publishedAt !== 'string' || !PUBLISHED_AT.test(evidence.publishedAt)) {
+    fail('publishedReleaseEvidence publishedAt is invalid')
+  }
+
+  const publishedAssets = facts.publishedAssets ?? facts.assets
+  for (const key of ['linuxAppImage', 'macosDmg', 'windowsSetup']) {
+    const recorded = evidence.primaryAssets?.[key]
+    if (!recorded || typeof recorded !== 'object') {
+      fail('publishedReleaseEvidence missing primary asset ' + key)
+    }
+    if (recorded.name !== publishedAssets?.[key]) {
+      fail('publishedReleaseEvidence asset name drift for ' + key)
+    }
+    if (!Number.isInteger(recorded.assetId) || recorded.assetId <= 0) {
+      fail('publishedReleaseEvidence assetId is invalid for ' + key)
+    }
+    if (typeof recorded.digest !== 'string' || !DIGEST.test(recorded.digest)) {
+      fail('publishedReleaseEvidence digest is invalid for ' + key)
+    }
+  }
+}
+
 
 export function validateReleaseTag(tag, root = process.cwd()) {
   assertReleaseTag(tag, 'requested release tag')
@@ -167,6 +212,7 @@ export function validateReleaseTag(tag, root = process.cwd()) {
   assertReleaseTag(publishedLatestTag, 'current-release GitHub Latest')
   const publishedVersion = publishedLatestTag.slice(1)
   assertPublishedAssets(facts, publishedVersion)
+  assertPublishedReleaseEvidence(facts, publishedLatestTag)
 
   const expectedBadge =
     'DeepSeek Harness Community v' + productVersion
