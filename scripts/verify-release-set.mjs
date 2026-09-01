@@ -8,12 +8,12 @@ import {
   readdirSync,
 } from 'node:fs'
 import { basename, join, relative, resolve, sep } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 const PRIMARY_SUFFIXES = ['.AppImage', '.exe', '.zip', '.dmg']
 
 function fail(message) {
   process.stderr.write(`release-set verification failed: ${message}\n`)
-  process.exitCode = 1
   throw new Error(message)
 }
 
@@ -154,6 +154,6 @@ function main() {
   for (const rel of result.publishable) process.stdout.write(`verified: ${rel}\n`)
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === resolve(new URL(import.meta.url).pathname)) {
+if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
   main()
 }
