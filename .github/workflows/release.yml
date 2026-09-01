@@ -39,36 +39,13 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 22
-      - name: Generate official-runtime CycloneDX SBOM
-        working-directory: apps/desktop/runtime-lock
+      - name: Generate and validate official-runtime CycloneDX SBOM
         run: |
           set -euo pipefail
-          VERSION=$(node -p "require(process.env.GITHUB_WORKSPACE + '/package.json').version")
-          mkdir -p "$GITHUB_WORKSPACE/release-metadata"
+          VERSION=$(node -p "require('./package.json').version")
           OUT="$GITHUB_WORKSPACE/release-metadata/dsh-community-${VERSION}-official-runtime.cdx.json"
-          npm sbom --package-lock-only --sbom-format cyclonedx --sbom-type application > "$OUT"
-          test -s "$OUT"
+          node scripts/generate-runtime-sbom.mjs "$OUT"
           echo "SBOM_PATH=$OUT" >> "$GITHUB_ENV"
-      - name: Validate SBOM identity
-        run: |
-          set -euo pipefail
-          node - <<'NODE'
-          const fs = require('fs')
-          const bom = JSON.parse(fs.readFileSync(process.env.SBOM_PATH, 'utf8'))
-          const runtime = require('./apps/desktop/runtime-lock/package.json')
-          const pin = runtime.dependencies['@deepseek-ai/dsh']
-          if (bom.bomFormat !== 'CycloneDX' || typeof bom.specVersion !== 'string') {
-            throw new Error('npm sbom did not produce CycloneDX')
-          }
-          if (bom.metadata?.component?.name !== 'dsh-community-official-runtime-lock') {
-            throw new Error('SBOM root component mismatch')
-          }
-          const official = (bom.components ?? []).find((item) => item.name === '@deepseek-ai/dsh')
-          if (!official || official.version !== pin) {
-            throw new Error('SBOM official DSH component mismatch')
-          }
-          console.log('SBOM OK:', bom.specVersion, '@deepseek-ai/dsh@' + pin)
-          NODE
       - name: Checksum SBOM
         run: node scripts/checksum-release.mjs "$SBOM_PATH"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
