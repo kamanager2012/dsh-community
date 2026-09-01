@@ -122,6 +122,10 @@ Out of scope (report upstream instead):
   arrive as explicit reviewable diffs.
 - Dependency updates are reviewed as normal pull requests; advisory severity,
   runtime exposure, and transitive impact are part of maintainer triage.
+- Dependency-changing pull requests run `pnpm audit --audit-level high`, and the
+  same audit runs weekly plus on explicit manual dispatch. High/critical npm
+  advisories therefore fail that focused gate without making unrelated PRs
+  depend on the registry audit endpoint.
 
 ## Known gaps
 
@@ -129,9 +133,10 @@ Out of scope (report upstream instead):
   repository's GitHub Dependency Graph is not currently available to the
   dependency-review action, so that action is intentionally not wired as a
   permanent red check.
-- There is no separate scheduled `pnpm audit` hard gate today. Moderate
-  advisories are in scope and should be triaged, but they are not an automatic
-  merge blocker unless maintainers explicitly raise the gate.
+- Moderate npm advisories are in scope and should be triaged, but the automated
+  `pnpm audit` gate currently blocks at **high** severity and above. Raising the
+  threshold to moderate is an explicit policy decision, not implied by the
+  existence of the audit workflow.
 - `artifact-smoke` (see [docs/release.md](docs/release.md)) is a partial
   install / first-ready / missing-key check, not a full
   new-session/resume/plugin/restart loop. Do not read a green run as a
