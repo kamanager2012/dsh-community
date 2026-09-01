@@ -1,0 +1,44 @@
+name: artifact-action-smoke
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/release.yml'
+      - '.github/workflows/user-loop-evidence.yml'
+      - '.github/workflows/artifact-action-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  roundtrip:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Create deterministic payload
+        run: |
+          set -euo pipefail
+          mkdir -p smoke-src
+          printf '%s\n' 'dsh-community-artifact-action-smoke-v1' > smoke-src/payload.txt
+          sha256sum smoke-src/payload.txt | sed 's#smoke-src/##' > smoke-src/payload.sha256
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: artifact-action-smoke-${{ github.run_id }}
+          path: smoke-src/
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Download artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: artifact-action-smoke-${{ github.run_id }}
+          path: smoke-dst
+
+      - name: Verify round-trip bytes
+        working-directory: smoke-dst
+        run: |
+          set -euo pipefail
+          sha256sum -c payload.sha256
