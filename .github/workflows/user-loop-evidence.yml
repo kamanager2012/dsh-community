@@ -68,6 +68,7 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+          cache-dependency-path: release-src/pnpm-lock.yaml
 
       - name: Install exact tag
         working-directory: release-src
@@ -89,8 +90,8 @@ jobs:
           EVIDENCE_TAG: ${{ steps.release.outputs.tag }}
         run: |
           set -euo pipefail
-          python3 "\${GITHUB_WORKSPACE}/scripts/e2e/user-loop.py" \
-            --launcher apps/tui/dist/bin.js \
+          python3 "${GITHUB_WORKSPACE}/scripts/e2e/user-loop.py" \
+            --launcher release-src/apps/tui/dist/bin.js \
             --tag "$EVIDENCE_TAG" \
             --timeout-seconds "${{ github.event.inputs.timeout_seconds }}" \
             --evidence-out user-loop-evidence.json
