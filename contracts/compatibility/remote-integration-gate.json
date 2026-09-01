@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 2,
+  "purpose": "Prevent accidental GitHub Actions spend before the alpha.3 integration tree is final.",
+  "safeRemoteOperation": {
+    "operation": "push-to-non-main-branch",
+    "actionsExpected": 0,
+    "rationale": "Current push-triggered workflows are scoped to main/master or tags; the upgrade branch has no push-triggered workflow."
+  },
+  "blockedUntilFinalAcceptance": {
+    "operation": "open-pull-request",
+    "reason": "The current alpha.3 integration diff would fan out into multiple pull_request workflows.",
+    "workflows": [
+      "ci",
+      "dependency-audit",
+      "linux-macos-package-smoke",
+      "windows-package-smoke",
+      "runtime-lock-verify",
+      "runtime-sbom-smoke",
+      "artifact-action-smoke"
+    ]
+  },
+  "manualOnly": [
+    "user-loop-evidence"
+  ],
+  "releaseOnly": [
+    "release"
+  ],
+  "acceptedBaseline": {
+    "commit": "7a6c14815fcf159c104e564fa768fbe32e6c196f",
+    "branch": "staging/dsh-0.1.2-alpha.3-local",
+    "origin": "remote-reconstruction",
+    "note": "Exact alpha.3 Candidate Source manifests, pnpm lock, Desktop npm runtime lock, lifecycle policy, and four upstream contract snapshots. Temporary lock-generation workflow/trigger removed; runtime lock contains zero alpha.4 DSH packages."
+  }
+}

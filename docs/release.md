@@ -2,16 +2,21 @@
 
 Official `@deepseek-ai/dsh` is the **development foundation**. We build TUI and Desktop on the pinned official runtime. A newer official rc is an upgrade of that foundation (pin + contract extract), not a gate that pauses product work.
 
-Current official pin, Latest tag, Dual-Badge, and asset names live in
-[`current-release.json`](current-release.json). Update that file in the same
-commit as `pin.ts` when cutting a release. See [Version and identity
-policy](version-policy.md).
+Candidate Source and Published Latest both live in
+[`current-release.json`](current-release.json), but they are independent states.
+A source bump moves the candidate core/product/tag and Dual-Badge with `pin.ts`;
+it does **not** move GitHub Latest, published installer names, plugin evidence, or
+user-loop evidence. `publishedReleaseEvidence` records the real GitHub release
+ID plus primary asset IDs/digests, and `scripts/validate-published-latest.mjs`
+re-checks those facts against GitHub before a release tag can enter the build
+matrix. See [Version and identity policy](version-policy.md).
 
 ## Channels
 
 | Channel | Tag | Notes |
 |---|---|---|
-| Official-core mirror | `vX.Y.Z` or `vX.Y.Z-rc.N` | Community version exactly mirrors the official core; this is GitHub Latest |
+| Latest-eligible official-core mirror | `vX.Y.Z` or `vX.Y.Z-rc.N` | Community version exactly mirrors the official core; may become GitHub Latest |
+| Upstream prerelease candidate | `vX.Y.Z-alpha.N`, `vX.Y.Z-beta.N`, etc. | Candidate/testing channel only; GitHub pre-release, never displaces Published Latest |
 | Community patch | `vX.Y.Z[-prerelease]-community.N` | Community-owned fix on the same official core; GitHub pre-release |
 
 Windows / macOS artifacts are built by GitHub Actions (`release` workflow) — nobody needs to sit on those OSes.
@@ -37,7 +42,28 @@ The script checks a clean tree and a free tag, then runs the canonical release-i
 2. **Windows** — NSIS installer (`DSH Community Setup x.y.z.exe`) + sha256. Portable zip is deferred until NSIS is reliably green.
 3. **macOS** — dmg + sha256
 
-The `publish` job collects all assets and creates the GitHub Release with the CHANGELOG section as notes. Official-core mirrors (`vX.Y.Z` or `vX.Y.Z-rc.N`) become Latest. Only `-community.N` / `-preview` / `-beta` tags are GitHub pre-releases.
+The `publish` job collects all assets and creates the GitHub Release with the CHANGELOG section as notes. Only plain `vX.Y.Z` or `vX.Y.Z-rc.N` tags are eligible for `--latest`. Any other prerelease identifier, including `alpha`, `beta`, `preview`, or `community.N`, is forced to `--prerelease`.
+
+## Promote Published Latest facts after publication
+
+Publishing and source promotion are deliberately separate operations.
+
+For an `alpha`, `beta`, `preview`, or `community.N` pre-release, GitHub
+Latest does not move, so the existing Published Latest facts stay unchanged.
+
+After a successful Latest-eligible `vX.Y.Z` or `vX.Y.Z-rc.N` release:
+
+```sh
+node scripts/sync-published-latest.mjs          # dry-run; exits 3 if a sync is needed
+node scripts/sync-published-latest.mjs --write  # explicit mutation after review
+node scripts/validate-published-latest.mjs      # re-check the written facts against GitHub
+```
+
+The sync is intentionally narrow. It may update only
+`communityProduct.githubLatestTag`, `assets` / `publishedAssets`,
+`publishedReleaseEvidence`, `schemaVersion`, and `asOf`. It snapshots and
+refuses to mutate Candidate core/product/tag, Dual-Badge, plugin evidence, or
+real User-Loop evidence. Those states advance only through their own gates.
 
 ### Official runtime staging is lock-based
 

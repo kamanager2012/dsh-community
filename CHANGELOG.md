@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Release identity contract now separates **Candidate Source** from **Published Latest**: candidate core/product/tag and Dual-Badge may advance for review while GitHub Latest and installer names remain bound to the last real release. The validator also rejects ranged official-runtime pins and fabricated candidate assets. Desktop readiness accepts the official alpha.3 `?token=` bootstrap URL only on canonical loopback HTTP, discards the token before returning the origin, and never echoes it on rejection.
 - Release 供应链新增 **official-runtime CycloneDX SBOM**：使用 Node/npm 自带 `npm sbom --package-lock-only` 从 committed runtime lock 生成，只声明嵌入的官方 DSH 依赖树而不冒充整个 Electron 产品 SBOM。SBOM 作为正式 release asset 必须有独立 SHA256 与 Sigstore bundle；pre-publish verifier 要求唯一一份有效 CycloneDX、根组件正确且包含精确官方 DSH，否则拒绝发布。新增只读 PR smoke 真实生成并复算 checksum。
 - Desktop 官方 Runtime 的安装脚本执行面改为 deny-by-default：staging 先 `npm ci --ignore-scripts`，再只 rebuild 4 个已审查包（`@deepseek-ai/dsh-subprocess-local`、`koffi`、`node-pty`、`protobufjs`）；`@google/genai@1.52.0` 明确保持禁止执行。机器契约要求 runtime lock 中全部 `hasInstallScript` 条目必须与 lifecycle policy 精确一致，所有非根 tarball 必须来自 `registry.npmjs.org` 且带 sha512 integrity。真实 Windows/Linux/macOS package smoke 均通过。
 - Desktop 三平台打包前移到 PR 验收：Windows NSIS、Linux AppImage、macOS DMG 均使用与正式 Release 相同的 packaging 命令。Linux 额外完成 AppImage 无 FUSE 解包并找到 `resources/app.asar`；macOS 实际挂载 DMG 并确认 `.app/Contents/MacOS` 可执行文件；三平台继续执行 asar vendor=0 与 SHA256 校验。首轮真实 Linux AppImage 为 189,145,947 bytes，macOS DMG 为 169,845,018 bytes。
@@ -18,6 +19,18 @@
 - 新增手动、billable 的 exact-release WSL/Linux user-loop evidence gate：`new → real model ACK → clean exit → resume same official Session → second real model ACK`，隔离 `DSH_HOME` 且只输出脱敏证据。当前仍保持 `[UNVERIFIED]`，直到有真实 `DEEPSEEK_API_KEY` 的成功 Release run，workflow 存在本身不升级证据等级。
 - Marketplace CLI 并入本仓 `packages/marketplace`（`pnpm marketplace`）。独立仓 `dsh-marketplace`、`dsh-community-plugins` 与 Community Labs `deepseek-harness-suite` 已归档。插件兼容性目录现为 `packages/marketplace/catalog.json`。
 - `DshMcpBridge` 从 `@dsh-community/dsh-bridge` 导出。Windows / macOS 发行任务在打包后同样跑 asar vendor=0 护栏。
+
+## 0.1.2-alpha.3 — Candidate Source (2026-09-02)
+
+This is a reviewed **Candidate Source**, not GitHub Published Latest. Published Latest remains `v0.1.1-rc.2` until the independent release gate is completed.
+
+- Workspace product/core identity and all direct official DSH dependencies are exact `0.1.2-alpha.3`; TUI official peers are exact alpha.3 as well.
+- Official contracts were freshly extracted from alpha.3: Web config rows **135 → 146** (+13/-2), published package surface **134 → 145** (+13/-2), while launcher/Web must-contain CLI grammar and readiness prefix remain stable.
+- The published `@deepseek-ai/dsh` manifest no longer includes the top-level `config` directory in its `files` list; Community code follows the supported profile/config-tree surface instead of packaged config files.
+- After upstream alpha.4 became available, plain npm prerelease-range resolution produced a mixed Desktop runtime (alpha.3 root with alpha.4 DSH transitives). The committed runtime manifest now freezes the complete published DSH family to alpha.3, including peer-resolved `dsh-brand`, `dsh-credentials`, and `dsh-session`; regenerated runtime lock contains **zero alpha.4 DSH packages**.
+- The reviewed lifecycle-script package-name set remains unchanged: allowed `dsh-subprocess-local`, `koffi`, `node-pty`, `protobufjs`; denied `@google/genai`.
+- `latest-tested`, plugin `testedDsh`, Published Latest, published installers, and real User-Loop evidence do **not** advance merely because Candidate Source advanced.
+- Upstream `0.1.2-alpha.4` is recorded as `NEXT_UPGRADE_CYCLE`; it is not mixed into this acceptance baseline.
 
 ## 0.1.1-rc.2 — 2026-08-22
 
