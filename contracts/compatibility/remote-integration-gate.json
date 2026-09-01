@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Prevent accidental GitHub Actions spend before the alpha.3 integration tree is final.",
+  "safeRemoteOperation": {
+    "operation": "push-to-non-main-branch",
+    "actionsExpected": 0,
+    "rationale": "Current push-triggered workflows are scoped to main/master or tags; the upgrade branch has no push-triggered workflow."
+  },
+  "blockedUntilFinalAcceptance": {
+    "operation": "open-pull-request",
+    "reason": "The current alpha.3 integration diff would fan out into multiple pull_request workflows.",
+    "workflows": [
+      "ci",
+      "dependency-audit",
+      "linux-macos-package-smoke",
+      "windows-package-smoke",
+      "runtime-lock-verify",
+      "runtime-sbom-smoke",
+      "artifact-action-smoke"
+    ]
+  },
+  "manualOnly": [
+    "user-loop-evidence"
+  ],
+  "releaseOnly": [
+    "release"
+  ],
+  "nextRequiredRemoteInput": {
+    "localAcceptedCommit": "4ed0f3cdcd4927e2b2a8f13c639ebfe355b9cbfb",
+    "action": "Push the exact accepted local alpha.3 commit to a non-main remote branch, without opening a PR. Then integrate the two hardening commits and re-run the consolidated local acceptance suite before any PR."
+  }
+}
