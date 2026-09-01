@@ -68,7 +68,7 @@ and the Rekor transparency-log proof in a single file. The workflows pin cosign
 **v2.6.1**: newer v3.x releases no longer ship the detached `.sig` assets that
 `cosign-installer`'s self-verification downloads (observed as a curl 22 / 404 on
 the first tagged run), and v2.6.1 produces the identical bundle via `--bundle`.
-The `release` workflow refuses to publish an asset without its bundle. Before the sole `contents: write` publish job calls `gh release create`, it re-validates the complete downloaded release set: every primary binary must have a correctly named SHA256 sidecar whose digest is recomputed from the downloaded bytes, every binary and sidecar must have exactly one non-empty Sigstore bundle, orphan sidecars/bundles are rejected, and `cosign verify-blob` must validate every asset against the **exact current tag** workflow identity. `artifact-smoke` then independently re-verifies the published release after publication.
+The `release` workflow refuses to publish an asset without its bundle. Before the sole `contents: write` publish job calls `gh release create`, it re-validates the complete downloaded release set: every primary binary must have a correctly named SHA256 sidecar whose digest is recomputed from the downloaded bytes, every binary and sidecar must have exactly one non-empty Sigstore bundle, orphan sidecars/bundles are rejected, and `cosign verify-blob` must validate every asset against the **exact current tag** workflow identity. `artifact-smoke` then resolves one release tag once and independently re-verifies that same tag after publication. Only the explicit pre-signing historical tags may skip the signature gate; an unknown/new unsigned tag fails.
 
 **Who signs.** The `sign` job runs keylessly: GitHub issues a short-lived OIDC token
 (`id-token: write`), Fulcio issues an ephemeral certificate bound to the workflow
@@ -92,14 +92,12 @@ curl -fLO "$BASE/dsh-community-0.1.1-rc.2.AppImage" \
 cosign verify-blob \
   --bundle dsh-community-0.1.1-rc.2.AppImage.sigstore.json \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  --certificate-identity-regexp \
-    '^https://github.com/kamanager2012/dsh-community/\.github/workflows/release\.yml@refs/tags/' \
+  --certificate-identity \
+    "https://github.com/kamanager2012/dsh-community/.github/workflows/release.yml@refs/tags/$TAG" \
   dsh-community-0.1.1-rc.2.AppImage
 ```
 
-A passing check means: signed by this repo's `release.yml` on a tag ref, cert chain
-rooted at Sigstore's Fulcio CA, logged in Rekor, and the blob bytes match the
-signature. It does not mean the binary is malware-free.
+A passing check means: signed by this repo's `release.yml` on the **exact release tag being checked**, cert chain rooted at Sigstore's Fulcio CA, logged in Rekor, and the blob bytes match the signature. `artifact-smoke` reuses one resolved tag across signature, Windows, macOS, and Linux checks; it does not re-read Latest mid-run. It does not mean the binary is malware-free.
 
 **OS-level signing: absent.** Windows Authenticode and macOS codesign /
 notarization are out of scope and not configured (`CSC_IDENTITY_AUTO_DISCOVERY=false`
