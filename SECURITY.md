@@ -132,6 +132,19 @@ Out of scope (report upstream instead):
   to a PR round-trip smoke that uploads deterministic bytes, downloads the same
   artifact, and verifies SHA-256. The smoke must use the exact same immutable
   action commits as the release and user-loop workflows.
+- Desktop release staging has a separate runtime-only npm lock under
+  `apps/desktop/runtime-lock/`. It contains exactly the pinned official
+  `@deepseek-ai/dsh` root dependency; every committed non-root package entry
+  is bound to a registry `resolved` URL and sha512 `integrity`. The stage
+  script copies that manifest + lock into an isolated directory and runs
+  `npm ci` with lifecycle scripts enabled, so Linux/Windows/macOS builds do
+  not independently re-resolve the 500+ package tree. `evidence.json` binds
+  the committed lock bytes to the generation run and SHA-256.
+- `runtime-lock-verify` is read-only: it audits the independent npm lock and
+  installs it on Ubuntu, Windows, and macOS. The acceptance run for the current
+  lock passed all three installs and reported `found 0 vulnerabilities` from
+  npm audit. The full Windows protected-package smoke also passed the
+  lifecycle-script staging → NSIS → checksum path from the same committed lock.
 - Dependency updates are reviewed as normal pull requests; advisory severity,
   runtime exposure, and transitive impact are part of maintainer triage.
 - Dependency-changing pull requests run `pnpm audit --audit-level high`, and the
@@ -146,9 +159,9 @@ Out of scope (report upstream instead):
   dependency-review action, so that action is intentionally not wired as a
   permanent red check.
 - Moderate npm advisories are in scope and should be triaged, but the automated
-  `pnpm audit` gate currently blocks at **high** severity and above. Raising the
-  threshold to moderate is an explicit policy decision, not implied by the
-  existence of the audit workflow.
+  root `pnpm audit` and independent runtime-lock `npm audit` gates currently
+  block at **high** severity and above. Raising the threshold to moderate is an
+  explicit policy decision, not implied by the existence of either audit workflow.
 - `artifact-smoke` (see [docs/release.md](docs/release.md)) is a partial
   install / first-ready / missing-key check, not a full
   new-session/resume/plugin/restart loop. Do not read a green run as a
