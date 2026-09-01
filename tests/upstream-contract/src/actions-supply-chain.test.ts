@@ -42,20 +42,14 @@ describe('GitHub Actions supply-chain pins', () => {
         if (!lines[i]?.includes('uses: actions/checkout@')) continue
         checkouts += 1
 
-        const indent = lines[i]?.match(/^ */u)?.[0].length ?? 0
-        const block: string[] = []
-        for (let j = i + 1; j < lines.length; j += 1) {
-          const line = lines[j] ?? ''
-          if (line.trim() === '') {
-            block.push(line)
-            continue
-          }
-          const nextIndent = line.match(/^ */u)?.[0].length ?? 0
-          if (nextIndent <= indent) break
-          block.push(line)
-        }
+        // checkout's `with:` is either nested under "- uses:" or a sibling
+        // of `uses:` in a named step. The credential setting must appear
+        // immediately after checkout, before another action can begin.
+        const block = lines.slice(i + 1, Math.min(lines.length, i + 6))
+        const nextAction = block.findIndex((line) => line.includes('uses: '))
+        const checkoutConfig = nextAction === -1 ? block : block.slice(0, nextAction)
 
-        if (!block.some((line) => line.trim() === 'persist-credentials: false')) {
+        if (!checkoutConfig.some((line) => line.trim() === 'persist-credentials: false')) {
           violations.push(name + ':' + String(i + 1))
         }
       }
