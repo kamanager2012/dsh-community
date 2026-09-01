@@ -44,6 +44,19 @@ describe('post-release signature verification boundary', () => {
     expect(workflow).not.toContain('mode=transition')
   })
 
+  it('runs a real signature-only check when the smoke workflow itself changes', () => {
+    expect(workflow).toContain('pull_request:')
+    expect(workflow).toContain("'.github/workflows/artifact-smoke.yml'")
+    for (const job of ['windows-desktop', 'macos-desktop', 'linux-terminal']) {
+      expect(workflow).toMatch(
+        new RegExp(
+          '  ' + job + ':\\n    needs: resolve\\n    if: \\$\\{\\{ github\\.event_name != \'pull_request\' \\}\\}',
+          'u',
+        ),
+      )
+    }
+  })
+
   it('keeps current signed release outside the unsigned legacy allowlist', () => {
     const caseLine = workflow
       .split('\n')
