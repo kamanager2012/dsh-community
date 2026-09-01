@@ -93,7 +93,7 @@ Terminal. Official Web is an upstream companion, not a Community endpoint. Andro
 ## From source
 
 Requirements: Node.js 22.15+, pnpm, and a configured `DEEPSEEK_API_KEY`.
-Since official 0.1.0-rc.8, session JSONL uses `node:zlib` zstd APIs added in 22.15 (current pin: contracts/compatibility/latest-tested.json).
+Since official 0.1.0-rc.8, session JSONL uses `node:zlib` zstd APIs added in 22.15. Candidate Source pin comes from `packages/dsh-bridge/src/pin.ts` / `current-release.json`; `latest-tested.json` is compatibility evidence, not the pin source of truth.
 Sessions continue to use the official `~/.dsh` data source.
 
 ```sh
