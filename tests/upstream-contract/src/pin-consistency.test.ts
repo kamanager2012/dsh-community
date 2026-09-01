@@ -133,7 +133,7 @@ describe('docs/current-release.json', () => {
       `https://github.com/kamanager2012/dsh-community/releases/tag/${facts.communityProduct.githubLatestTag}`,
     )
     expect(facts.publishedReleaseEvidence.publishedAt).toMatch(
-      /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$/u,
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/u,
     )
     for (const key of ['linuxAppImage', 'macosDmg', 'windowsSetup'] as const) {
       const evidence = facts.publishedReleaseEvidence.primaryAssets[key]
