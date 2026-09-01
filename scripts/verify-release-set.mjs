@@ -81,6 +81,15 @@ export function verifyReleaseSet({
     fail(`unexpected downloaded artifact file: ${normalizeRel(artifactsAbs, unexpected[0])}`)
   }
 
+  const primarySet = new Set(primary)
+
+  for (const sidecar of sidecars) {
+    const asset = sidecar.slice(0, -'.sha256'.length)
+    if (!primarySet.has(asset)) {
+      fail(`orphan sha256 sidecar: ${normalizeRel(artifactsAbs, sidecar)}`)
+    }
+  }
+
   for (const asset of primary) {
     const sidecar = `${asset}.sha256`
     if (!existsSync(sidecar)) {
