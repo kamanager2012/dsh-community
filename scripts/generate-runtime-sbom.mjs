@@ -52,10 +52,13 @@ export function generateRuntimeSbom(outputPath) {
   if (bom?.bomFormat !== 'CycloneDX' || typeof bom?.specVersion !== 'string') {
     fail('npm sbom did not emit a CycloneDX document')
   }
-  if (bom?.metadata?.component?.name !== 'dsh-community-official-runtime-lock') {
+  const root = bom?.metadata?.component
+  const expectedRef = `${manifest.name}@${manifest.version}`
+  const expectedPurl = `pkg:npm/${manifest.name}@${manifest.version}`
+  if (root?.['bom-ref'] !== expectedRef || root?.purl !== expectedPurl) {
     fail(
       'SBOM root component does not match runtime-lock manifest: ' +
-        JSON.stringify(bom?.metadata?.component ?? null),
+        JSON.stringify(root ?? null),
     )
   }
   const official = Array.isArray(bom?.components)
