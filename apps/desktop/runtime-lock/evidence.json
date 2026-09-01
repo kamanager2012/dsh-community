@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "source": "github-actions",
+  "workflowRunId": 33466316081,
+  "artifactId": 9785175407,
+  "artifactZipSha256": "bb559fd9ac8d4899d7ec379e0d6c1ab369b4690677a4a5a29d6d7caccc182637",
+  "lockSha256": "bf71de76abdd715d43007fb14c527aebbc7098c7c521baadbf1fa31547bd773c",
+  "generatedAt": "2026-09-01T03:38:31Z",
+  "runnerImage": "ubuntu-24.04",
+  "nodeVersion": "v22.23.2",
+  "npmVersion": "10.9.8",
+  "command": "npm install --package-lock-only --ignore-scripts --no-audit --no-fund",
+  "officialPackage": "@deepseek-ai/dsh",
+  "officialVersion": "0.1.1-rc.2",
+  "lockfileVersion": 3,
+  "packageEntries": 512
+}
