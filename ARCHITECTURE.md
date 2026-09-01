@@ -59,6 +59,22 @@ Default: do not rewrite `DSH_HOME`. TUI, official Web, and Desktop see the same 
 
 Isolated Desktop runtime is opt-in (`DSH_COMMUNITY_ISOLATED=1`, or Desktop Settings). Session list and `dsh web` then use `userData/isolated-dsh`.
 
+## Distribution runtime lock is not a fork
+
+Desktop installers must carry a self-contained copy of the **published official**
+runtime so first launch does not depend on a fresh dependency solve. That
+distribution concern is isolated under `apps/desktop/runtime-lock/`.
+
+The committed npm lock records registry URLs and integrity digests for the
+official runtime's transitive package tree. `stage-official-runtime.mjs` uses
+`npm ci` to materialize those published packages and archives the resulting
+classic `node_modules` tree. Community does not edit those packages or copy
+official source into this repository; the lock is dependency-resolution
+metadata, not a second runtime implementation. The runtime-only `package.json`
+remains inside the strict composition scan, while the generated
+`package-lock.json` is treated as metadata and verified by dedicated lock
+contracts.
+
 ## contracts/ snapshots official surface
 
 Snapshot official exports, CLI, config rows, and packages. Do not maintain `event-types.ts` as “our DSH types”.
