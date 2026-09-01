@@ -44,6 +44,27 @@ The script checks a clean tree and a free tag, then runs the canonical release-i
 
 The `publish` job collects all assets and creates the GitHub Release with the CHANGELOG section as notes. Only plain `vX.Y.Z` or `vX.Y.Z-rc.N` tags are eligible for `--latest`. Any other prerelease identifier, including `alpha`, `beta`, `preview`, or `community.N`, is forced to `--prerelease`.
 
+## Promote Published Latest facts after publication
+
+Publishing and source promotion are deliberately separate operations.
+
+For an `alpha`, `beta`, `preview`, or `community.N` pre-release, GitHub
+Latest does not move, so the existing Published Latest facts stay unchanged.
+
+After a successful Latest-eligible `vX.Y.Z` or `vX.Y.Z-rc.N` release:
+
+```sh
+node scripts/sync-published-latest.mjs          # dry-run; exits 3 if a sync is needed
+node scripts/sync-published-latest.mjs --write  # explicit mutation after review
+node scripts/validate-published-latest.mjs      # re-check the written facts against GitHub
+```
+
+The sync is intentionally narrow. It may update only
+`communityProduct.githubLatestTag`, `assets` / `publishedAssets`,
+`publishedReleaseEvidence`, `schemaVersion`, and `asOf`. It snapshots and
+refuses to mutate Candidate core/product/tag, Dual-Badge, plugin evidence, or
+real User-Loop evidence. Those states advance only through their own gates.
+
 ### Official runtime staging is lock-based
 
 Desktop artifacts embed the **published official** DSH runtime; they do not
