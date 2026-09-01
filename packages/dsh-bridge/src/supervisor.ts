@@ -57,12 +57,12 @@ export function createWebSupervisor(options: WebSupervisorOptions): WebSuperviso
   const credentialSafeDiagnostic = (append: (chunk: string) => void) => {
     let pending = ''
     const redact = (value: string): string =>
-      value.replace(/([?&]token=)[^\\s)]+/gu, '$1<redacted>')
+      value.replace(/([?&]token=)[^\s)]+/gu, '$1<redacted>')
     return {
       push(chunk: string) {
         pending += chunk
         for (;;) {
-          const newline = pending.indexOf('\\n')
+          const newline = pending.indexOf('\n')
           if (newline === -1) return
           append(redact(pending.slice(0, newline + 1)))
           pending = pending.slice(newline + 1)
