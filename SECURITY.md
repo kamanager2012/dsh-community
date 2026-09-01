@@ -115,6 +115,11 @@ Out of scope (report upstream instead):
 - The existing frozen-lockfile install and repository supply-chain policy
   checks remain part of normal CI. Release assets are separately covered by
   the keyless signing and artifact verification controls above.
+- Every external GitHub Action used by CI/release workflows is pinned to an
+  immutable full commit SHA. Checkout steps set `persist-credentials: false`
+  so the repository token is not left in git configuration for subsequent
+  build/install steps. Dependabot still monitors GitHub Actions so pin updates
+  arrive as explicit reviewable diffs.
 - Dependency updates are reviewed as normal pull requests; advisory severity,
   runtime exposure, and transitive impact are part of maintainer triage.
 
