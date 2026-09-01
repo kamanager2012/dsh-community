@@ -34,7 +34,9 @@ describe('alpha.3 consolidated acceptance runner', () => {
       'create_pull_request',
       'workflow_dispatch',
       'user-loop-evidence',
-      'provider',
+      'openai',
+      'anthropic',
+      'deepseek-chat',
     ]) {
       expect(source, forbidden).not.toContain(forbidden)
     }
