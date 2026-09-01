@@ -29,7 +29,7 @@ Candidate Source and Published Latest may coincide after publication, but they a
 | GitHub Latest | [`v0.1.1-rc.2`](https://github.com/kamanager2012/dsh-community/releases/latest) |
 | Published release evidence | GitHub release ID `374950921`; published `2026-08-22T14:25:10Z`; primary installer asset IDs/digests pinned in `current-release.json` |
 | Candidate Dual-Badge | `DeepSeek Harness Community v0.1.2-alpha.3 [Official Core: @deepseek-ai/dsh@0.1.2-alpha.3]` |
-| Latest tested | `0.1.2-alpha.3` — consolidated acceptance PASS ([run 33569245572](https://github.com/kamanager2012/dsh-community/actions/runs/33569245572)); this is compatibility evidence, not publication |
+| Latest tested | `0.1.2-alpha.3` — consolidated acceptance PASS ([run 33569520030](https://github.com/kamanager2012/dsh-community/actions/runs/33569520030)); this is compatibility evidence, not publication |
 | Shipped Community endpoints | WSL/Linux Terminal, Windows Desktop, macOS Desktop, Linux AppImage |
 | Experimental endpoint | Android Labs `[UNVERIFIED]`, not on the Latest download page |
 | Official Web | Kernel UI, not a community endpoint |
