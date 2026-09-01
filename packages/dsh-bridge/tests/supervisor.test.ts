@@ -13,6 +13,31 @@ describe('createWebSupervisor', () => {
     await supervisor.shutdown()
   })
 
+
+  it('captures the bootstrap credential separately and redacts it from diagnostics', async () => {
+    const child = fakeChild()
+    const token = 'S'.repeat(43)
+    const bootstraps: string[] = []
+    let log = ''
+    const supervisor = createWebSupervisor({
+      spawnHost: () => child,
+      onBrowserBootstrapUrl: (url) => {
+        bootstraps.push(url)
+      },
+      log: (chunk) => {
+        log += chunk
+      },
+    })
+    const started = supervisor.start()
+    child.emitData(`${READINESS_PREFIX}http://127.0.0.1:4311/?to`)
+    child.emitData(`ken=${token}\n`)
+    await expect(started).resolves.toBe('http://127.0.0.1:4311')
+    expect(bootstraps).toEqual([`http://127.0.0.1:4311/?token=${token}`])
+    expect(log).toContain('token=<redacted>')
+    expect(log).not.toContain(token)
+    await supervisor.shutdown()
+  })
+
   it('fails if the child dies before ready', async () => {
     const child = fakeChild()
     const supervisor = createWebSupervisor({ spawnHost: () => child })
