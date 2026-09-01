@@ -120,6 +120,10 @@ Out of scope (report upstream instead):
   so the repository token is not left in git configuration for subsequent
   build/install steps. Dependabot still monitors GitHub Actions so pin updates
   arrive as explicit reviewable diffs.
+- Release artifact upload/download Actions run on Node 24 majors and are bound
+  to a PR round-trip smoke that uploads deterministic bytes, downloads the same
+  artifact, and verifies SHA-256. The smoke must use the exact same immutable
+  action commits as the release and user-loop workflows.
 - Dependency updates are reviewed as normal pull requests; advisory severity,
   runtime exposure, and transitive impact are part of maintainer triage.
 - Dependency-changing pull requests run `pnpm audit --audit-level high`, and the
