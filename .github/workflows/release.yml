@@ -28,6 +28,57 @@ jobs:
         if: ${{ github.event_name == 'workflow_dispatch' && !startsWith(github.ref, 'refs/tags/v') }}
         run: echo "workflow_dispatch without a release tag; identity gate intentionally does not classify this as a publishable release"
 
+  runtime-sbom:
+    needs: release-identity
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+      - name: Generate official-runtime CycloneDX SBOM
+        working-directory: apps/desktop/runtime-lock
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require(process.env.GITHUB_WORKSPACE + '/package.json').version")
+          mkdir -p "$GITHUB_WORKSPACE/release-metadata"
+          OUT="$GITHUB_WORKSPACE/release-metadata/dsh-community-${VERSION}-official-runtime.cdx.json"
+          npm sbom --package-lock-only --sbom-format cyclonedx --sbom-type application > "$OUT"
+          test -s "$OUT"
+          echo "SBOM_PATH=$OUT" >> "$GITHUB_ENV"
+      - name: Validate SBOM identity
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const fs = require('fs')
+          const bom = JSON.parse(fs.readFileSync(process.env.SBOM_PATH, 'utf8'))
+          const runtime = require('./apps/desktop/runtime-lock/package.json')
+          const pin = runtime.dependencies['@deepseek-ai/dsh']
+          if (bom.bomFormat !== 'CycloneDX' || typeof bom.specVersion !== 'string') {
+            throw new Error('npm sbom did not produce CycloneDX')
+          }
+          if (bom.metadata?.component?.name !== 'dsh-community-official-runtime-lock') {
+            throw new Error('SBOM root component mismatch')
+          }
+          const official = (bom.components ?? []).find((item) => item.name === '@deepseek-ai/dsh')
+          if (!official || official.version !== pin) {
+            throw new Error('SBOM official DSH component mismatch')
+          }
+          console.log('SBOM OK:', bom.specVersion, '@deepseek-ai/dsh@' + pin)
+          NODE
+      - name: Checksum SBOM
+        run: node scripts/checksum-release.mjs "$SBOM_PATH"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: sbom
+          path: |
+            release-metadata/*-official-runtime.cdx.json
+            release-metadata/*-official-runtime.cdx.json.sha256
+          if-no-files-found: error
+
   build-linux:
     needs: release-identity
     runs-on: ubuntu-latest
@@ -149,7 +200,7 @@ jobs:
     # bundle per blob: <asset>.sigstore.json (signature + Fulcio certificate +
     # Rekor transparency-log proof). OS-level signing (Authenticode / codesign) is
     # out of scope and stays absent — see docs/release.md "Artifact signing".
-    needs: [build-linux, build-windows, build-macos]
+    needs: [build-linux, build-windows, build-macos, runtime-sbom]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -196,7 +247,7 @@ jobs:
 
   publish:
     if: ${{ startsWith(github.ref, 'refs/tags/v') && success() }}
-    needs: [build-linux, build-windows, build-macos, sign]
+    needs: [build-linux, build-windows, build-macos, runtime-sbom, sign]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # Sole writer in this workflow: creates the GitHub Release and uploads assets.
@@ -260,6 +311,7 @@ jobs:
             dist-artifacts/*/*.exe
             dist-artifacts/*/*.zip
             dist-artifacts/*/*.dmg
+            dist-artifacts/*/*-official-runtime.cdx.json
             dist-artifacts/*/*.sha256
             dist-signed/*/*.sigstore.json
           )
