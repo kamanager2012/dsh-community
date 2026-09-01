@@ -28,5 +28,7 @@ jobs:
         run: pnpm typecheck
       - name: Catalog shape
         run: node packages/marketplace/scripts/verify.mjs --offline
+      - name: Evidence runner syntax
+        run: python3 -m py_compile scripts/e2e/user-loop.py
       - name: Test and official contracts
         run: pnpm test
