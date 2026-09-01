@@ -39,6 +39,25 @@ The script checks a clean tree and a free tag, then runs the canonical release-i
 
 The `publish` job collects all assets and creates the GitHub Release with the CHANGELOG section as notes. Official-core mirrors (`vX.Y.Z` or `vX.Y.Z-rc.N`) become Latest. Only `-community.N` / `-preview` / `-beta` tags are GitHub pre-releases.
 
+### Official runtime staging is lock-based
+
+Desktop artifacts embed the **published official** DSH runtime; they do not
+vendor or patch official source. The packaging boundary lives under
+`apps/desktop/runtime-lock/`: a runtime-only `package.json`, committed npm
+`package-lock.json`, and generation provenance.
+
+`stage-official-runtime.mjs` validates that the Desktop pin, runtime manifest,
+and lock all name the exact same official `@deepseek-ai/dsh` version. It then
+copies the committed manifest + lock into an isolated staging directory and
+runs `npm ci` with lifecycle scripts enabled before applying the existing
+module-resolution, node-pty native-binary, classic-node_modules, and runtime-tar
+size checks.
+
+The lock is verified independently on Linux, Windows, and macOS by
+`runtime-lock-verify`, and its separate npm audit fails at high severity and
+above. A pin bump therefore requires a reviewed lock/evidence update before a
+release build may use a different transitive dependency tree.
+
 ## Artifact naming
 
 ```text
