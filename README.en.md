@@ -1,15 +1,31 @@
 # DSH Community
 
-**One Harness. Five Community Endpoints.**
+**Community distribution, compatibility, and security-validation infrastructure for DeepSeek Harness.**
 
-Official DeepSeek Harness is the kernel. This repo is based on that kernel:
-one runtime, one `~/.dsh` session store, one official plugin chain. The
-five community endpoints (**WSL/Linux terminal, Windows Desktop, macOS Desktop,
-Linux AppImage, and Android**) are launchers, not a second Harness. Official Web
-is the kernel's own UI — not a surface we ship — but it lives in the same world.
+Official DeepSeek Harness remains the only execution kernel. This repository
+does not reimplement the Agent Runtime; it maintains four surrounding concerns:
+**exact upstream pin and contract tracking, cross-platform community
+distribution, a third-party plugin compatibility registry, and release/plugin
+security evidence**.
+
+There are **four currently shipped community endpoints**: WSL/Linux Terminal,
+Windows Desktop, macOS Desktop, and Linux AppImage. Android remains an
+**[UNVERIFIED] experimental prototype** in archived Labs and is not part of
+Latest. Shipped endpoints share the official Runtime, official plugin chain,
+and the same `~/.dsh` Session source of truth by default.
 
 A conversation you start in official Web is the same conversation you resume in
 `dsh-community` and then open again in Desktop.
+
+> **One Harness. Four shipped community endpoints.** Runtime, Session, and
+> plugin execution remain owned by the official kernel; the community layer
+> owns distribution, UX, compatibility, and verification only.
+
+The in-repo Compatibility Registry is not an awesome list: third-party entries
+carry an actual `testedDsh` line, package integrity evidence, and structured
+security metadata for network access, data egress, credentials, filesystem,
+process execution, and persistence. Installation still uses the official
+`dsh plugin add` chain.
 
 [简体中文](README.md) | **English**
 
@@ -20,7 +36,7 @@ A conversation you start in official Web is the same conversation you resume in
 | **Current** | [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) (`v0.1.1-rc.2`) |
 | **Historical / Pre-release** | older independent numbers on [Releases](https://github.com/kamanager2012/dsh-community/releases) |
 
-Current Latest, official kernel, five endpoints, asset names, and evidence labels
+Current Latest, official kernel, four shipped endpoints, Android experimental status, asset names, and evidence labels
 are in [current-release](docs/current-release.md) /
 [`current-release.json`](docs/current-release.json). Rules:
 [version policy](docs/version-policy.md).
@@ -64,9 +80,9 @@ Only this repository is the download entry. Handbook is the other live repo. Sui
 Community version is one workspace-wide identity: **0.1.1-rc.2**, 1:1 with
 official core `@deepseek-ai/dsh@0.1.1-rc.2`. GitHub Latest is that same tag.
 Earlier independent numbers `v0.1.2`–`v0.1.6` are historical only.
-The Linux AppImage is community endpoint 4; the primary Linux CLI path remains WSL/Linux
-Terminal. Official Web is an upstream companion, not a Community endpoint. Android is
-endpoint 5 and stays `[UNVERIFIED]`. The Android prototype lives in the archived Labs repo.
+The Linux AppImage is shipped endpoint 4; the primary Linux CLI path remains WSL/Linux
+Terminal. Official Web is an upstream companion, not a Community endpoint. Android stays
+`[UNVERIFIED]`, is not shipped in Latest, and its prototype lives in the archived Labs repo.
 
 ## From source
 
