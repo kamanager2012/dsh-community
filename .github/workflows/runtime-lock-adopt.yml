@@ -51,5 +51,18 @@ jobs:
       - name: Commit exact reviewed lock to PR branch
         run: |
           set -euo pipefail
-          encoded=$(base64 -w0 lock-artifact/package-lock.json)
-          gh api             --method PUT             -H 'Accept: application/vnd.github+json'             "repos/$GITHUB_REPOSITORY/contents/apps/desktop/runtime-lock/package-lock.json"             -f message='build(runtime): commit reviewed official runtime lock'             -f content="$encoded"             -f branch="$HEAD_REF"             --jq '.commit.sha'
+          node - <<'NODE'
+          const fs = require('fs')
+          const content = fs.readFileSync('lock-artifact/package-lock.json').toString('base64')
+          fs.writeFileSync('lock-put.json', JSON.stringify({
+            message: 'build(runtime): commit reviewed official runtime lock',
+            content,
+            branch: process.env.HEAD_REF,
+          }))
+          NODE
+          gh api \
+            --method PUT \
+            -H 'Accept: application/vnd.github+json' \
+            "repos/$GITHUB_REPOSITORY/contents/apps/desktop/runtime-lock/package-lock.json" \
+            --input lock-put.json \
+            --jq '.commit.sha'
