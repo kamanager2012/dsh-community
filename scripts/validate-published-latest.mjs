@@ -46,6 +46,9 @@ export function validatePublishedLatestFacts(facts, release) {
   if (release.draft === true) {
     fail('GitHub Latest unexpectedly resolves to a draft release')
   }
+  if (release.prerelease === true) {
+    fail('GitHub Latest unexpectedly resolves to a pre-release')
+  }
   if (Number(release.id) !== Number(evidence.releaseId)) {
     fail('GitHub Latest release id does not match publishedReleaseEvidence')
   }
@@ -56,11 +59,13 @@ export function validatePublishedLatestFacts(facts, release) {
     fail('GitHub Latest published_at does not match publishedReleaseEvidence')
   }
 
-  const actualAssets = new Map(
-    Array.isArray(release.assets)
-      ? release.assets.map((asset) => [asset.name, asset])
-      : [],
-  )
+  const actualAssets = new Map()
+  for (const asset of Array.isArray(release.assets) ? release.assets : []) {
+    if (actualAssets.has(asset.name)) {
+      fail('GitHub Latest contains duplicate asset name ' + String(asset.name))
+    }
+    actualAssets.set(asset.name, asset)
+  }
   const expectedNames = expectedPrimaryAssets(facts)
   const evidenceAssets = evidence.primaryAssets
 
@@ -111,7 +116,11 @@ async function fetchLatestRelease() {
   if (process.env.GITHUB_TOKEN) {
     headers.Authorization = 'Bearer ' + process.env.GITHUB_TOKEN
   }
-  const response = await fetch(DEFAULT_LATEST_API, { headers })
+  const response = await fetch(DEFAULT_LATEST_API, {
+    headers,
+    redirect: 'error',
+    signal: AbortSignal.timeout(15_000),
+  })
   if (!response.ok) {
     fail('GitHub Latest query failed with HTTP ' + response.status)
   }
