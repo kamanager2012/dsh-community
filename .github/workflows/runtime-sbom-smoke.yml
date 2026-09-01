@@ -1,0 +1,58 @@
+name: runtime-sbom-smoke
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/release.yml'
+      - '.github/workflows/runtime-sbom-smoke.yml'
+      - 'scripts/generate-runtime-sbom.mjs'
+      - 'scripts/verify-release-set.mjs'
+      - 'apps/desktop/runtime-lock/package.json'
+      - 'apps/desktop/runtime-lock/package-lock.json'
+      - 'package.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+
+      - name: Generate official-runtime CycloneDX SBOM
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./package.json').version")
+          OUT="$RUNNER_TEMP/dsh-community-${VERSION}-official-runtime.cdx.json"
+          node scripts/generate-runtime-sbom.mjs "$OUT"
+          echo "SBOM_PATH=$OUT" >> "$GITHUB_ENV"
+
+      - name: Checksum and verify SBOM bytes
+        run: |
+          set -euo pipefail
+          node scripts/checksum-release.mjs "$SBOM_PATH"
+          cd "$(dirname "$SBOM_PATH")"
+          sha256sum -c "$(basename "$SBOM_PATH").sha256"
+
+      - name: Summarize SBOM
+        run: |
+          node - <<'NODE'
+          const fs = require('fs')
+          const bom = JSON.parse(fs.readFileSync(process.env.SBOM_PATH, 'utf8'))
+          const official = (bom.components ?? []).find((item) => item.name === '@deepseek-ai/dsh')
+          console.log(JSON.stringify({
+            bomFormat: bom.bomFormat,
+            specVersion: bom.specVersion,
+            root: bom.metadata?.component?.name,
+            officialDsh: official?.version,
+            components: bom.components?.length ?? 0,
+          }, null, 2))
+          NODE
