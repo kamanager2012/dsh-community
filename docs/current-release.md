@@ -20,7 +20,7 @@ Rules (1:1 kernel mirror, Dual-Badge, immutable tags) stay in
 | Experimental endpoint | Android Labs `[UNVERIFIED]`, not on the Latest download page |
 | Official Web | Kernel UI, not a community endpoint |
 | artifact-smoke | `[PARTIAL]` on `v0.1.1-rc.2` ([run 32579569995](https://github.com/kamanager2012/dsh-community/actions/runs/32579569995)): checksum + cosign bundle verify (12 assets) + Windows/macOS first-ready + Linux TUI; full user loop still separate |
-| Full user loop | `[UNVERIFIED]` |
+| Full user loop | `[UNVERIFIED]` — manual exact-release WSL/Linux new→answer→resume→answer gate now lives in [`user-loop-evidence.yml`](../.github/workflows/user-loop-evidence.yml); no successful release run is recorded yet, so status stays unchanged |
 | Plugin `testedDsh` | `0.1.1-rc.2` (compose: `plugin add` + `--dump-config`; restart/user-loop still `[UNVERIFIED]`) |
 | Historical tags | `v0.1.2`–`v0.1.6` are not the current download |
 
@@ -31,4 +31,6 @@ Release-page filenames (GitHub may show Windows spaces as dots):
 - `DSH.Community.Setup.0.1.1-rc.2.exe`
 
 When the pin or Latest tag changes, update `current-release.json` in the same
-commit as `pin.ts` / `package.json`. CI checks they match.
+commit as `pin.ts` / `package.json`. CI checks they match. User-loop evidence
+policy and the sanitized artifact contract are documented in
+[`user-loop-evidence.md`](user-loop-evidence.md).
