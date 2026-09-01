@@ -28,6 +28,18 @@ describe('release publish verification boundary', () => {
     expect(publish).not.toContain('id-token: write')
   })
 
+  it('keeps alpha/beta/preview/community tags as pre-releases and only plain/rc as Latest', () => {
+    expect(release).toContain('^v[0-9]+\\.[0-9]+\\.[0-9]+(-rc\\.[0-9]+)?
+    expect(release).not.toMatch(/Verify release set structure and SHA256[\s\S]{0,240}continue-on-error:\s*true/u)
+    expect(release).not.toMatch(/Verify every release signature[\s\S]{0,500}continue-on-error:\s*true/u)
+  })
+})
+)
+    expect(release).toContain('EXTRA+=(--latest)')
+    expect(release).toContain('EXTRA+=(--prerelease)')
+    expect(release).not.toContain('*-community.* || "$TAG" == *preview* || "$TAG" == *beta*')
+  })
+
   it('does not allow verification failure to be ignored', () => {
     expect(release).not.toMatch(/Verify release set structure and SHA256[\s\S]{0,240}continue-on-error:\s*true/u)
     expect(release).not.toMatch(/Verify every release signature[\s\S]{0,500}continue-on-error:\s*true/u)
