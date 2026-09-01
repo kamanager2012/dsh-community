@@ -6,7 +6,6 @@
  */
 
 import { spawnSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
 
 const tag = process.argv[2]
 if (tag === undefined || !/^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(tag)) {
@@ -30,10 +29,8 @@ const hasTag = spawnSync('git', ['tag', '--list', tag], { encoding: 'utf8' })
 if (hasTag.stdout.trim() === tag) {
   throw new Error(`tag ${tag} already exists`)
 }
-const changelog = readFileSync('CHANGELOG.md', 'utf8')
-if (!changelog.includes(`## ${tag.slice(1)}`)) {
-  throw new Error(`CHANGELOG.md has no section for ${tag.slice(1)}`)
-}
+process.stdout.write('0/5 validate release identity\n')
+run(process.execPath, ['scripts/validate-release-tag.mjs', tag])
 
 function productRemote() {
   const out = spawnSync('git', ['remote', '-v'], { encoding: 'utf8' })
@@ -52,17 +49,17 @@ function productRemote() {
 
 const remote = productRemote()
 
-process.stdout.write('1/4 typecheck + test\n')
+process.stdout.write('1/5 typecheck + test\n')
 run('pnpm', ['install', '--frozen-lockfile'])
 run('pnpm', ['typecheck'])
 run('pnpm', ['test'])
 
-process.stdout.write('2/4 build AppImage locally (sanity check)\n')
+process.stdout.write('2/5 build AppImage locally (sanity check)\n')
 run('pnpm', ['desktop:package', '--', '--appimage'])
 
-process.stdout.write('3/4 tag\n')
+process.stdout.write('3/5 tag\n')
 run('git', ['tag', tag])
 
-process.stdout.write(`4/4 push tag to ${remote} (starts the 3-OS release workflow)\n`)
+process.stdout.write(`4/5 push tag to ${remote} (starts the 3-OS release workflow)\n`)
 run('git', ['push', remote, tag])
 process.stdout.write(`\n${tag} pushed. Watch https://github.com/kamanager2012/dsh-community/actions\n`)
