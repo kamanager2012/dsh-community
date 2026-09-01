@@ -1,0 +1,131 @@
+name: alpha3-lockgen-temp
+
+on:
+  push:
+    branches:
+      - 'staging/dsh-0.1.2-alpha.3-local'
+    paths:
+      - '.alpha3-lockgen-trigger'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: alpha3-lockgen-temp
+  cancel-in-progress: false
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CI: 'true'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: true
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          version: 11.21.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+
+      - name: Generate pnpm lock from exact Candidate Source
+        run: |
+          set -euo pipefail
+          pnpm install --lockfile-only
+          pnpm install --frozen-lockfile
+
+      - name: Generate exact Desktop runtime package-lock
+        working-directory: apps/desktop/runtime-lock
+        run: |
+          set -euo pipefail
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+
+      - name: Reconcile reviewed lifecycle versions without changing package names
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs'
+
+          const lockPath = 'apps/desktop/runtime-lock/package-lock.json'
+          const policyPath = 'apps/desktop/runtime-lock/lifecycle-scripts.json'
+          const lock = JSON.parse(readFileSync(lockPath, 'utf8'))
+          const policy = JSON.parse(readFileSync(policyPath, 'utf8'))
+
+          const observed = Object.entries(lock.packages ?? {})
+            .filter(([, entry]) => entry?.hasInstallScript === true)
+            .map(([path, entry]) => ({
+              name: path.slice(path.lastIndexOf('node_modules/') + 'node_modules/'.length),
+              version: entry.version,
+            }))
+            .sort((a, b) => a.name.localeCompare(b.name))
+
+          const reviewedNames = [...policy.allowed, ...policy.denied]
+            .map(entry => entry.name)
+            .sort()
+          const observedNames = observed.map(entry => entry.name).sort()
+
+          if (JSON.stringify(reviewedNames) !== JSON.stringify(observedNames)) {
+            throw new Error(
+              'lifecycle package-name drift: reviewed=' + reviewedNames.join(',')
+                + ' observed=' + observedNames.join(','),
+            )
+          }
+
+          const versions = new Map(observed.map(entry => [entry.name, entry.version]))
+          for (const group of [policy.allowed, policy.denied]) {
+            for (const entry of group) entry.version = versions.get(entry.name)
+          }
+          writeFileSync(policyPath, JSON.stringify(policy, null, 2) + '\n')
+          console.log('reviewed lifecycle names unchanged:', observedNames.join(', '))
+          NODE
+
+      - name: Extract official alpha.3 contracts
+        run: |
+          set -euo pipefail
+          pnpm contracts:extract
+
+      - name: Verify generated write boundary
+        run: |
+          set -euo pipefail
+          git status --short
+          python3 - <<'PY'
+          import subprocess
+          allowed = {
+              'pnpm-lock.yaml',
+              'apps/desktop/runtime-lock/package-lock.json',
+              'apps/desktop/runtime-lock/lifecycle-scripts.json',
+              'contracts/upstream/exports.snapshot.json',
+              'contracts/upstream/cli.snapshot.json',
+              'contracts/upstream/config-rows.snapshot.json',
+              'contracts/upstream/packages.snapshot.json',
+          }
+          changed = set(subprocess.check_output(
+              ['git', 'status', '--porcelain=v1'], text=True
+          ).splitlines())
+          paths = {line[3:] for line in changed if len(line) >= 4}
+          unexpected = sorted(paths - allowed)
+          if unexpected:
+              raise SystemExit('unexpected generated paths: ' + ', '.join(unexpected))
+          required = {
+              'pnpm-lock.yaml',
+              'apps/desktop/runtime-lock/package-lock.json',
+              'contracts/upstream/exports.snapshot.json',
+              'contracts/upstream/cli.snapshot.json',
+              'contracts/upstream/config-rows.snapshot.json',
+              'contracts/upstream/packages.snapshot.json',
+          }
+          missing = sorted(required - paths)
+          if missing:
+              raise SystemExit('expected alpha.3 generated paths unchanged/missing: ' + ', '.join(missing))
+          PY
+
+      - name: Commit generated alpha.3 evidence
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add             pnpm-lock.yaml             apps/desktop/runtime-lock/package-lock.json             apps/desktop/runtime-lock/lifecycle-scripts.json             contracts/upstream/exports.snapshot.json             contracts/upstream/cli.snapshot.json             contracts/upstream/config-rows.snapshot.json             contracts/upstream/packages.snapshot.json
+          git commit -m 'chore(alpha3): regenerate locks and upstream contracts'
+          git push origin HEAD:refs/heads/staging/dsh-0.1.2-alpha.3-local
