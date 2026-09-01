@@ -267,14 +267,14 @@ export function renderOfficialSessionsPage(model: OfficialSessionsPageModel): st
 
 export function renderRuntimePage(model: RuntimePageModel): string {
   const rec = model.recommendation === 'stay'
-    ? '当前安装就是契约验证过的版本，不必追 npm latest。'
+    ? '当前安装就是契约 latest-tested，不必追 npm latest；这不代表 GitHub Published Latest。'
     : model.canSwitchToTested
       ? '契约已验证更新的版本，可从菜单钉住 latest-tested。'
       : '契约 latest-tested 与当前安装不同，但本仓还只暂存一个官方包；先升 pin 并跑 contract CI，不要从 stdout 猜兼容性。'
   return shellDocument(
     `${model.product} · 运行时`,
     `<h1>Version Manager</h1>
-     <p>这是 Desktop 发行能力：推荐 <code>latest-tested</code>，不是 npm latest。不实现第二套 runtime。</p>
+     <p>这是 Desktop 兼容性能力：<code>latest-tested</code> 只表示契约验证推荐，不是 Candidate Source pin、npm latest 或 GitHub Published Latest。不实现第二套 runtime。</p>
      <dl>
        <dt>已安装官方包</dt><dd><code>@deepseek-ai/dsh@${escapeHtml(model.installed)}</code></dd>
        <dt>latest-tested</dt><dd><code>${escapeHtml(model.latestTested)}</code></dd>
