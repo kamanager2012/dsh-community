@@ -31,7 +31,7 @@ The current download is `v0.1.1-rc.2` on
 Do not download historical `v0.1.2`–`v0.1.6` as the current product. Never move
 or overwrite a published tag.
 
-The script checks a clean tree, a free tag, and a matching CHANGELOG section, then builds the AppImage locally as a sanity check and pushes the tag. The tag push starts the 3-OS `release` workflow:
+The script checks a clean tree and a free tag, then runs the canonical release-identity validator before building the AppImage locally and pushing the tag. The GitHub `release` workflow independently runs the same validator on the pushed tag **before any OS build starts**; a manually pushed tag cannot bypass the workspace/pin/current-release/CHANGELOG identity checks. Non-tag `workflow_dispatch` remains available for diagnostic builds. The tag push then starts the 3-OS build:
 
 1. **Linux** — typecheck + test + AppImage + sha256
 2. **Windows** — NSIS installer (`DSH Community Setup x.y.z.exe`) + sha256. Portable zip is deferred until NSIS is reliably green.
