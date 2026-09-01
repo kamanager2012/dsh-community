@@ -118,6 +118,17 @@ describe('release tag identity validator', () => {
     expect(result.stderr).toContain('apps/tui/package.json version')
   })
 
+  it('rejects semver ranges for the official runtime dependency', () => {
+    const root = makeFixture()
+    write(root, 'apps/desktop/package.json', JSON.stringify({
+      name: 'apps/desktop/package.json',
+      version: candidateVersion,
+      dependencies: { [official]: '^' + candidateVersion },
+    }, null, 2) + '\n')
+    const result = run(root)
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain('expected exact ' + candidateVersion)
+  })
   it('rejects a candidate product that does not mirror the official pin', () => {
     const root = makeFixture()
     write(
