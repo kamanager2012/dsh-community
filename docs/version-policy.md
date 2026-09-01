@@ -32,6 +32,17 @@ When the official current release is itself an rc, GitHub Latest uses the 1:1
 tag `vX.Y.Z-rc.N`. Only `-community.N`, `-preview`, and `-beta` tags are GitHub
 pre-releases.
 
+## Candidate and publication state
+
+A source upgrade is allowed to precede publication. During that window:
+
+- workspace/product/core identity follows the candidate version;
+- `candidateTag` is the tag that would identify that candidate;
+- `communityProduct.githubLatestTag` remains the latest tag that is actually published;
+- release asset names remain bound to Published Latest, not to Candidate Source;
+- plugin and real user-loop evidence retain the last version actually verified.
+
+`scripts/validate-release-tag.mjs` enforces these as separate machine contracts. It must reject fabricated candidate installers and ranged official-runtime dependencies.
 ## Dual-Badge identity
 
 Desktop and TUI display the same two-part identity:
@@ -58,4 +69,4 @@ it with two unrelated version labels.
 - Update the changelog with both version identities.
 - Verify the Desktop and TUI Dual-Badge output.
 - Run `pnpm typecheck`, `pnpm test`, and the upstream pin-consistency checks.
-- The local release script and GitHub `release` workflow both run the same `scripts/validate-release-tag.mjs` identity gate. A pushed `v*` tag must equal the workspace product version and agree with the official pin, `current-release.json`, Dual-Badge, asset names, and CHANGELOG before any OS release build starts.
+- The local release script and GitHub `release` workflow both run the same `scripts/validate-release-tag.mjs` identity gate. A pushed `v*` tag must equal Candidate Source and agree with the official pin, workspace manifests, `candidateTag`, Dual-Badge, and CHANGELOG. Published Latest and asset names are validated independently against each other, so an unpublished candidate cannot masquerade as an existing release.
