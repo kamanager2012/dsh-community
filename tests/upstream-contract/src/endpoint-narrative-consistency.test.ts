@@ -55,6 +55,21 @@ describe('current endpoint narrative', () => {
     expect(gettingStarted).toMatch(/Android.*UNVERIFIED/u)
   })
 
+  it('keeps Source Candidate and Published Latest separate in public/maintainer narrative', () => {
+    for (const rel of ['README.md', 'README.en.md', 'AGENTS.md', 'ECOSYSTEM.md']) {
+      const text = read(rel)
+      expect(text, rel).toMatch(/Source Candidate/u)
+      expect(text, rel).toMatch(/Published Latest/u)
+    }
+
+    expect(read('README.md')).not.toMatch(/当前发行[^\n]{0,160}根目录[^\n]{0,80}workspace/u)
+    expect(read('README.en.md')).not.toMatch(
+      /current release[^\n]{0,160}root[^\n]{0,80}workspace/iu,
+    )
+    expect(read('AGENTS.md')).toMatch(/Never infer one from the other/u)
+    expect(read('ECOSYSTEM.md')).toMatch(/no single "current version" invariant/u)
+  })
+
   it('does not apply current-narrative rules to historical archives or changelog', () => {
     // Historical material is allowed to preserve what the project claimed at
     // that time. The guard intentionally scopes only currentNarrativeFiles.
