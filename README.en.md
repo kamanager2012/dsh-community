@@ -161,6 +161,13 @@ See [SECURITY.md](SECURITY.md) for the Desktop shell's Electron hardening
 verify a release's cosign keyless signature, the `~/.dsh` session-sharing
 boundary, and how to report a security issue privately.
 
+## Community
+
+Project collaboration and maintenance entry points:
+[Contributing](CONTRIBUTING.md) · [Governance](GOVERNANCE.md) ·
+[Community Conduct](CODE_OF_CONDUCT.md) · [Support](SUPPORT.md) ·
+[Security](SECURITY.md).
+
 ## License
 
 MIT. Runtime and third-party notices are documented in [NOTICE](NOTICE) and the

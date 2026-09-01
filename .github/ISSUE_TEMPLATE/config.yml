@@ -3,6 +3,9 @@ contact_links:
   - name: Security report
     url: https://github.com/kamanager2012/dsh-community/security/advisories/new
     about: Report suspected vulnerabilities privately.
+  - name: Support and issue routing
+    url: https://github.com/kamanager2012/dsh-community/blob/main/SUPPORT.md
+    about: Decide whether a problem belongs here, upstream, or with a third-party plugin.
   - name: DeepSeek Harness Handbook
     url: https://kamanager2012.github.io/deepseek-harness-handbook/
     about: Operational guidance, setup, and troubleshooting.
