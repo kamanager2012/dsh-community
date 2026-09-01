@@ -94,12 +94,20 @@ describe('docs/current-release.json', () => {
     const facts = JSON.parse(
       readFileSync(join(repoRoot, 'docs/current-release.json'), 'utf8'),
     ) as {
+      schemaVersion: number
       officialKernel: { package: string; version: string }
       communityProduct: { version: string; githubLatestTag: string }
       candidateTag: string
       dualBadge: string
       assets: { linuxAppImage: string; macosDmg: string; windowsSetup: string }
       publishedAssets: { linuxAppImage: string; macosDmg: string; windowsSetup: string }
+      publishedReleaseEvidence: {
+        releaseId: number
+        tag: string
+        url: string
+        publishedAt: string
+        primaryAssets: Record<string, { name: string; assetId: number; digest: string }>
+      }
       historicalIndependentTags: string[]
     }
     const version = COMMUNITY_PRODUCT_VERSION
@@ -118,5 +126,20 @@ describe('docs/current-release.json', () => {
     expect(facts.assets.windowsSetup).toBe(`DSH.Community.Setup.${publishedVersion}.exe`)
     expect(facts.historicalIndependentTags).not.toContain(`v${version}`)
     expect(facts.historicalIndependentTags).not.toContain(facts.communityProduct.githubLatestTag)
+    expect(facts.schemaVersion).toBeGreaterThanOrEqual(2)
+    expect(facts.publishedReleaseEvidence.tag).toBe(facts.communityProduct.githubLatestTag)
+    expect(facts.publishedReleaseEvidence.releaseId).toBeGreaterThan(0)
+    expect(facts.publishedReleaseEvidence.url).toBe(
+      `https://github.com/kamanager2012/dsh-community/releases/tag/${facts.communityProduct.githubLatestTag}`,
+    )
+    expect(facts.publishedReleaseEvidence.publishedAt).toMatch(
+      /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$/u,
+    )
+    for (const key of ['linuxAppImage', 'macosDmg', 'windowsSetup'] as const) {
+      const evidence = facts.publishedReleaseEvidence.primaryAssets[key]
+      expect(evidence?.name, key).toBe(facts.publishedAssets[key])
+      expect(evidence?.assetId, key).toBeGreaterThan(0)
+      expect(evidence?.digest, key).toMatch(/^sha256:[0-9a-f]{64}$/u)
+    }
   })
 })
