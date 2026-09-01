@@ -42,13 +42,14 @@ jobs:
           echo "verifying $TAG"
 
   verify-signatures:
+    needs: resolve
     # Cosign keyless verification of the exact release assets (Latest by default,
-    # or the workflow_dispatch tag). One-time transition design:
-    #   - no *.sigstore.json bundle on the target release  → ::warning:: WARN, exit 0
-    #     (releases cut before signing went live stay green)
-    #   - at least one bundle present                      → strict mode: EVERY
-    #     released asset must have a matching bundle that passes
-    #     cosign verify-blob against this repo's release.yml identity; anything
+    # or the workflow_dispatch tag). Signing transition is now closed:
+    #   - no *.sigstore.json bundle on an explicit pre-signing legacy tag → WARN
+    #   - no bundle on any other tag → hard FAIL
+    #   - at least one bundle present → strict mode: EVERY released asset must
+    #     have a matching bundle that passes cosign verify-blob against this
+    #     exact tag's release.yml identity; anything
     #     missing or failing is a hard FAIL. A new unsigned release turns the
     #     daily smoke red on purpose — that closed loop is intentional.
     runs-on: ubuntu-latest
@@ -57,27 +58,29 @@ jobs:
       contents: read
     env:
       GH_TOKEN: ${{ github.token }}
+      TAG: ${{ needs.resolve.outputs.tag }}
       COSIGN_OIDC_ISSUER: https://token.actions.githubusercontent.com
-      # Fulcio bakes the triggering workflow + ref into the certificate SAN:
-      # https://github.com/<owner>/<repo>/.github/workflows/release.yml@refs/tags/<tag>
-      COSIGN_IDENTITY_REGEXP: '^https://github.com/kamanager2012/dsh-community/\.github/workflows/release\.yml@refs/tags/'
     steps:
       - name: Scan release for cosign bundles
         id: scan
         run: |
           set -euo pipefail
-          TAG="${{ github.event.inputs.tag }}"
-          if [ -z "$TAG" ]; then
-            TAG=$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name)
-          fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "== assets of $TAG =="
           names=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/$TAG" --paginate --jq '.assets[].name')
           printf '%s\n' "$names"
           bundles=$(printf '%s\n' "$names" | grep -c '\.sigstore\.json$' || true)
           if [ "$bundles" -eq 0 ]; then
-            echo "::warning::$TAG carries no cosign bundles yet (pre-signing release); strict signature verification skipped"
-            echo "mode=transition" >> "$GITHUB_OUTPUT"
+            case "$TAG" in
+              v0.1.0-preview|v0.1.1-preview|v0.1.1|v0.1.2-preview|v0.1.2|v0.1.3|v0.1.4|v0.1.1-rc.1)
+                echo "::warning::$TAG is an explicit pre-signing legacy release; signature verification skipped"
+                echo "mode=legacy" >> "$GITHUB_OUTPUT"
+                ;;
+              *)
+                echo "::error::$TAG has no cosign bundles but is not in the explicit pre-signing legacy allowlist"
+                exit 1
+                ;;
+            esac
           else
             echo "found $bundles bundle(s); entering strict mode"
             echo "mode=strict" >> "$GITHUB_OUTPUT"
@@ -92,8 +95,6 @@ jobs:
           cosign-release: 'v2.6.1'
       - name: Verify every asset against its keyless bundle (strict)
         if: steps.scan.outputs.mode == 'strict'
-        env:
-          TAG: ${{ steps.scan.outputs.tag }}
         run: |
           set -euo pipefail
           work="$RUNNER_TEMP/verify"; mkdir -p "$work"
@@ -111,10 +112,11 @@ jobs:
             echo "== verifying $name =="
             curl -fSL --retry 3 -o "$work/$name" "$url"
             curl -fSL --retry 3 -o "$work/$bundle" "$bundle_url"
+            identity="https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@refs/tags/$TAG"
             if cosign verify-blob \
               --bundle "$work/$bundle" \
               --certificate-oidc-issuer "$COSIGN_OIDC_ISSUER" \
-              --certificate-identity-regexp "$COSIGN_IDENTITY_REGEXP" \
+              --certificate-identity "$identity" \
               "$work/$name"; then
               verified=$((verified+1))
             else
@@ -128,10 +130,10 @@ jobs:
             fail=$((fail+1))
           fi
           [ "$fail" -eq 0 ] || { echo "signature verification failures: $fail"; exit 1; }
-      - name: Transition notice (unsigned legacy release)
-        if: steps.scan.outputs.mode == 'transition'
+      - name: Legacy signature notice
+        if: steps.scan.outputs.mode == 'legacy'
         run: |
-          echo "release ${{ steps.scan.outputs.tag }} predates keyless signing; only sha256 sidecar checks apply in this mode"
+          echo "release $TAG is explicitly allowlisted as pre-signing history; only this signature gate is skipped"
 
   windows-desktop:
     needs: resolve
