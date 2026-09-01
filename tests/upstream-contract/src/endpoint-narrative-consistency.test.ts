@@ -55,7 +55,7 @@ describe('current endpoint narrative', () => {
     expect(gettingStarted).toMatch(/Android.*UNVERIFIED/u)
   })
 
-  it('keeps Source Candidate and Published Latest separate in public/maintainer narrative', () => {
+  it('keeps Candidate Source and Published Latest separate in public/maintainer narrative', () => {
     for (const rel of [
       'README.md',
       'README.en.md',
@@ -66,7 +66,7 @@ describe('current endpoint narrative', () => {
       'docs/current-release.md',
     ]) {
       const text = read(rel)
-      expect(text, rel).toMatch(/Source Candidate/u)
+      expect(text, rel).toMatch(/Candidate Source/u)
       expect(text, rel).toMatch(/Published Latest/u)
     }
 
