@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { readFileSync } from 'node:fs'
-import { basename, join, resolve } from 'node:path'
+import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const WORKSPACE_MANIFESTS = [
@@ -109,9 +109,11 @@ export function validateReleaseTag(tag, root = process.cwd()) {
       `current-release product version ${String(facts.communityProduct?.version)} does not match ${productVersion}`,
     )
   }
-  if (facts.communityProduct?.githubLatestTag !== tag) {
+  const isCommunityPatch = COMMUNITY_SUFFIX.test(productVersion)
+  const expectedLatestTag = isCommunityPatch ? `v${officialPin}` : tag
+  if (facts.communityProduct?.githubLatestTag !== expectedLatestTag) {
     fail(
-      `current-release GitHub tag ${String(facts.communityProduct?.githubLatestTag)} does not match ${tag}`,
+      `current-release GitHub Latest ${String(facts.communityProduct?.githubLatestTag)} does not match expected ${expectedLatestTag}`,
     )
   }
 
