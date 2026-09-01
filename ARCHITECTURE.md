@@ -67,13 +67,15 @@ distribution concern is isolated under `apps/desktop/runtime-lock/`.
 
 The committed npm lock records registry URLs and integrity digests for the
 official runtime's transitive package tree. `stage-official-runtime.mjs` uses
-`npm ci` to materialize those published packages and archives the resulting
-classic `node_modules` tree. Community does not edit those packages or copy
-official source into this repository; the lock is dependency-resolution
-metadata, not a second runtime implementation. The runtime-only `package.json`
-remains inside the strict composition scan, while the generated
-`package-lock.json` is treated as metadata and verified by dedicated lock
-contracts.
+`npm ci --ignore-scripts` to materialize those published packages, then
+selectively rebuilds only lifecycle packages listed in the reviewed runtime
+policy. A new or version-drifted `hasInstallScript` package is therefore a
+review event, not an implicitly executable dependency. The resulting classic
+`node_modules` tree is archived for Desktop packaging. Community does not edit
+those packages or copy official source into this repository; the lock and
+lifecycle policy are distribution metadata, not a second runtime implementation.
+The runtime-only `package.json` remains inside the strict composition scan,
+while generated/review metadata is verified by dedicated lock contracts.
 
 ## contracts/ snapshots official surface
 
