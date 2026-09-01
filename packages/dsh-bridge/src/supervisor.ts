@@ -12,6 +12,7 @@ export interface WebSupervisorOptions {
   readonly readinessTimeoutMs?: number
   readonly shutdownTimeoutMs?: number
   readonly log?: (line: string) => void
+  readonly onBrowserBootstrapUrl?: (url: string) => void
   readonly onUnexpectedExit?: (detail: { code: number | null; signal: NodeJS.Signals | null }) => void
 }
 
@@ -53,6 +54,28 @@ export function createWebSupervisor(options: WebSupervisorOptions): WebSuperviso
     options.log?.(chunk)
   }
 
+  const credentialSafeDiagnostic = (append: (chunk: string) => void) => {
+    let pending = ''
+    const redact = (value: string): string =>
+      value.replace(/([?&]token=)[^\\s)]+/gu, '$1<redacted>')
+    return {
+      push(chunk: string) {
+        pending += chunk
+        for (;;) {
+          const newline = pending.indexOf('\\n')
+          if (newline === -1) return
+          append(redact(pending.slice(0, newline + 1)))
+          pending = pending.slice(newline + 1)
+        }
+      },
+      flush() {
+        if (pending === '') return
+        append(redact(pending))
+        pending = ''
+      },
+    }
+  }
+
   const start = (): Promise<string> => {
     if (startPromise !== undefined) return startPromise
     if (shutdownPromise !== undefined) {
@@ -60,13 +83,19 @@ export function createWebSupervisor(options: WebSupervisorOptions): WebSuperviso
     }
 
     startPromise = new Promise<string>((resolve, reject) => {
-      const parser = createReadinessParser()
+      const parser = createReadinessParser({
+        ...(options.onBrowserBootstrapUrl === undefined
+          ? {}
+          : { onBrowserBootstrapUrl: options.onBrowserBootstrapUrl }),
+      })
       const spawned = options.spawnHost()
       child = spawned
       const exitResult = deferred<void>()
       exited = exitResult.promise
       let settled = false
       const startupCleanups: Array<() => void> = []
+      const stdoutDiagnostic = credentialSafeDiagnostic(appendOutput)
+      const stderrDiagnostic = credentialSafeDiagnostic(appendOutput)
 
       const cleanupStartup = (): void => {
         clearTimeout(timer)
@@ -93,11 +122,13 @@ export function createWebSupervisor(options: WebSupervisorOptions): WebSuperviso
           spawned.kill('SIGKILL')
           await exitResult.promise
         }
+        stdoutDiagnostic.flush()
+        stderrDiagnostic.flush()
         const diagnostic = output === '' ? '' : `\nHost output:\n${output}`
         reject(new Error(`${error instanceof Error ? error.message : String(error)}${diagnostic}`))
       }
       const acceptChunk = (chunk: string): void => {
-        appendOutput(chunk)
+        stdoutDiagnostic.push(chunk)
         try {
           const url = parser.push(chunk)
           if (url === undefined || settled) return
@@ -117,7 +148,9 @@ export function createWebSupervisor(options: WebSupervisorOptions): WebSuperviso
       }, readinessTimeoutMs)
 
       startupCleanups.push(spawned.stdout.onData(acceptChunk))
-      startupCleanups.push(spawned.stderr.onData(appendOutput))
+      startupCleanups.push(spawned.stderr.onData((chunk) => {
+        stderrDiagnostic.push(chunk)
+      }))
       spawned.onError((error) => {
         exitResult.resolve()
         void failAfterChildExit(new Error(`official dsh web failed to spawn: ${error.message}`))
