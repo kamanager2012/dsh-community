@@ -68,9 +68,7 @@ and the Rekor transparency-log proof in a single file. The workflows pin cosign
 **v2.6.1**: newer v3.x releases no longer ship the detached `.sig` assets that
 `cosign-installer`'s self-verification downloads (observed as a curl 22 / 404 on
 the first tagged run), and v2.6.1 produces the identical bundle via `--bundle`.
-The `release` workflow refuses to publish
-an asset without its bundle, and `artifact-smoke` fails once any bundle exists on
-Latest but some asset lacks one.
+The `release` workflow refuses to publish an asset without its bundle. Before the sole `contents: write` publish job calls `gh release create`, it re-validates the complete downloaded release set: every primary binary must have a correctly named SHA256 sidecar whose digest is recomputed from the downloaded bytes, every binary and sidecar must have exactly one non-empty Sigstore bundle, orphan sidecars/bundles are rejected, and `cosign verify-blob` must validate every asset against the **exact current tag** workflow identity. `artifact-smoke` then independently re-verifies the published release after publication.
 
 **Who signs.** The `sign` job runs keylessly: GitHub issues a short-lived OIDC token
 (`id-token: write`), Fulcio issues an ephemeral certificate bound to the workflow
