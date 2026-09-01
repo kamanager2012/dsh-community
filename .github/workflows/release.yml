@@ -143,6 +143,7 @@ jobs:
           if-no-files-found: error
 
   sign:
+    if: ${{ startsWith(github.ref, 'refs/tags/v') && success() }}
     # Sigstore keyless signing of every release asset (installers + sha256 sidecars).
     # cosign >= v3 removed --output-signature/--output-certificate; the v3 way is one
     # bundle per blob: <asset>.sigstore.json (signature + Fulcio certificate +
