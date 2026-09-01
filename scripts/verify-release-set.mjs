@@ -7,10 +7,15 @@ import {
   readFileSync,
   readdirSync,
 } from 'node:fs'
-import { basename, join, relative, resolve, sep } from 'node:path'
+import { basename, dirname, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const PRIMARY_SUFFIXES = ['.AppImage', '.exe', '.zip', '.dmg']
+const METADATA_SUFFIXES = ['-official-runtime.cdx.json']
+const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
+const RUNTIME_MANIFEST = JSON.parse(
+  readFileSync(resolve(SCRIPT_DIR, '../apps/desktop/runtime-lock/package.json'), 'utf8'),
+)
 
 function fail(message) {
   throw new Error(message)
@@ -41,6 +46,14 @@ function isPrimary(file) {
   return PRIMARY_SUFFIXES.some((suffix) => file.endsWith(suffix))
 }
 
+function isMetadata(file) {
+  return METADATA_SUFFIXES.some((suffix) => file.endsWith(suffix))
+}
+
+function isPayload(file) {
+  return isPrimary(file) || isMetadata(file)
+}
+
 function sha256(file) {
   return createHash('sha256').update(readFileSync(file)).digest('hex')
 }
@@ -63,8 +76,10 @@ export function verifyReleaseSet({
   const signedFiles = walk(signedAbs)
 
   const primary = artifactFiles.filter(isPrimary)
+  const metadata = artifactFiles.filter(isMetadata)
+  const payload = [...primary, ...metadata].sort()
   const sidecars = artifactFiles.filter((file) => file.endsWith('.sha256'))
-  const publishable = [...primary, ...sidecars].sort()
+  const publishable = [...payload, ...sidecars].sort()
 
   if (primary.length === 0) fail('no primary release artifacts found')
   for (const required of ['.AppImage', '.exe', '.dmg']) {
@@ -73,23 +88,48 @@ export function verifyReleaseSet({
     }
   }
 
+  if (metadata.length !== 1) {
+    fail(`expected exactly one official-runtime CycloneDX SBOM; found ${metadata.length}`)
+  }
+  let sbom
+  try {
+    sbom = JSON.parse(readFileSync(metadata[0], 'utf8'))
+  } catch {
+    fail(`invalid JSON in official-runtime SBOM: ${normalizeRel(artifactsAbs, metadata[0])}`)
+  }
+  if (sbom?.bomFormat !== 'CycloneDX' || typeof sbom?.specVersion !== 'string') {
+    fail('official-runtime SBOM is not a CycloneDX document')
+  }
+  const root = sbom?.metadata?.component
+  const expectedRootRef = `${RUNTIME_MANIFEST.name}@${RUNTIME_MANIFEST.version}`
+  const expectedRootPurl = `pkg:npm/${RUNTIME_MANIFEST.name}@${RUNTIME_MANIFEST.version}`
+  if (root?.['bom-ref'] !== expectedRootRef || root?.purl !== expectedRootPurl) {
+    fail('official-runtime SBOM root component is not the reviewed runtime-lock manifest')
+  }
+  const officialPin = RUNTIME_MANIFEST.dependencies?.['@deepseek-ai/dsh']
+  if (!Array.isArray(sbom?.components) || !sbom.components.some(
+    (component) => component?.name === '@deepseek-ai/dsh' && component?.version === officialPin,
+  )) {
+    fail(`official-runtime SBOM does not include exact @deepseek-ai/dsh@${String(officialPin)}`)
+  }
+
   const unexpected = artifactFiles.filter(
-    (file) => !isPrimary(file) && !file.endsWith('.sha256'),
+    (file) => !isPayload(file) && !file.endsWith('.sha256'),
   )
   if (unexpected.length > 0) {
     fail(`unexpected downloaded artifact file: ${normalizeRel(artifactsAbs, unexpected[0])}`)
   }
 
-  const primarySet = new Set(primary)
+  const payloadSet = new Set(payload)
 
   for (const sidecar of sidecars) {
     const asset = sidecar.slice(0, -'.sha256'.length)
-    if (!primarySet.has(asset)) {
+    if (!payloadSet.has(asset)) {
       fail(`orphan sha256 sidecar: ${normalizeRel(artifactsAbs, sidecar)}`)
     }
   }
 
-  for (const asset of primary) {
+  for (const asset of payload) {
     const sidecar = `${asset}.sha256`
     if (!existsSync(sidecar)) {
       fail(`missing sha256 sidecar for ${normalizeRel(artifactsAbs, asset)}`)
@@ -147,6 +187,7 @@ export function verifyReleaseSet({
 
   return {
     primaryCount: primary.length,
+    metadataCount: metadata.length,
     sidecarCount: sidecars.length,
     bundleCount: bundleFiles.length,
     publishable: [...publishableRel].sort(),
@@ -157,7 +198,7 @@ function main() {
   const [artifactsRoot = 'dist-artifacts', signedRoot = 'dist-signed'] = process.argv.slice(2)
   const result = verifyReleaseSet({ artifactsRoot, signedRoot })
   process.stdout.write(
-    `release-set verified: primary=${result.primaryCount} sidecars=${result.sidecarCount} bundles=${result.bundleCount}\n`,
+    `release-set verified: primary=${result.primaryCount} metadata=${result.metadataCount} sidecars=${result.sidecarCount} bundles=${result.bundleCount}\n`,
   )
   for (const rel of result.publishable) process.stdout.write(`verified: ${rel}\n`)
 }
