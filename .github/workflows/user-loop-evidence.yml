@@ -26,21 +26,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      GH_TOKEN: \${{ github.token }}
-      DEEPSEEK_API_KEY: \${{ secrets.DEEPSEEK_API_KEY }}
+      GH_TOKEN: ${{ github.token }}
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
     steps:
       - name: Resolve exact release tag
         id: release
         env:
-          TAG_INPUT: \${{ github.event.inputs.tag }}
+          TAG_INPUT: ${{ github.event.inputs.tag }}
         run: |
           set -euo pipefail
           if [ -n "$TAG_INPUT" ]; then
             TAG="$TAG_INPUT"
           else
-            TAG=$(gh api "repos/\${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name)
+            TAG=$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name)
           fi
-          gh api "repos/\${GITHUB_REPOSITORY}/releases/tags/$TAG" --jq .tag_name >/dev/null
+          gh api "repos/${GITHUB_REPOSITORY}/releases/tags/$TAG" --jq .tag_name >/dev/null
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "Exact release under test: $TAG"
 
@@ -51,9 +51,14 @@ jobs:
             exit 2
           fi
 
-      - uses: actions/checkout@v4
+      - name: Checkout evidence runner
+        uses: actions/checkout@v4
+
+      - name: Checkout exact release under test
+        uses: actions/checkout@v4
         with:
-          ref: \${{ steps.release.outputs.tag }}
+          ref: ${{ steps.release.outputs.tag }}
+          path: release-src
 
       - uses: pnpm/action-setup@v4
         with:
@@ -65,27 +70,29 @@ jobs:
           cache: pnpm
 
       - name: Install exact tag
+        working-directory: release-src
         run: pnpm install --frozen-lockfile
 
       - name: Build exact-tag Terminal endpoint
+        working-directory: release-src
         run: pnpm build:tui
 
       - name: Confirm release/runtime identity
         run: |
           set -euo pipefail
-          node apps/tui/dist/bin.js version | tee runtime-version.txt
+          node release-src/apps/tui/dist/bin.js version | tee runtime-version.txt
           grep -q '@deepseek-ai/dsh' runtime-version.txt
 
       - name: Run real new -> answer -> resume -> answer loop
         env:
-          DSH_HOME: \${{ runner.temp }}/user-loop-dsh-home
-          EVIDENCE_TAG: \${{ steps.release.outputs.tag }}
+          DSH_HOME: ${{ runner.temp }}/user-loop-dsh-home
+          EVIDENCE_TAG: ${{ steps.release.outputs.tag }}
         run: |
           set -euo pipefail
           python3 "\${GITHUB_WORKSPACE}/scripts/e2e/user-loop.py" \
             --launcher apps/tui/dist/bin.js \
             --tag "$EVIDENCE_TAG" \
-            --timeout-seconds "\${{ github.event.inputs.timeout_seconds }}" \
+            --timeout-seconds "${{ github.event.inputs.timeout_seconds }}" \
             --evidence-out user-loop-evidence.json
 
       - name: Publish sanitized evidence summary
@@ -94,7 +101,7 @@ jobs:
           {
             echo "## Real user-loop evidence"
             echo
-            echo "- Release: \`\${{ steps.release.outputs.tag }}\`"
+            echo "- Release: ${{ steps.release.outputs.tag }}"
             echo "- Endpoint: WSL/Linux Terminal"
             if [ -f user-loop-evidence.json ]; then
               echo "- Result: **PASS**"
@@ -110,7 +117,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always() && hashFiles('user-loop-evidence.json') != ''
         with:
-          name: user-loop-evidence-\${{ steps.release.outputs.tag }}
+          name: user-loop-evidence-${{ steps.release.outputs.tag }}
           path: user-loop-evidence.json
           if-no-files-found: error
           retention-days: 90
