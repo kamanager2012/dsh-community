@@ -1,0 +1,46 @@
+name: runtime-lock-verify
+
+on:
+  pull_request:
+    paths:
+      - 'apps/desktop/package.json'
+      - 'apps/desktop/runtime-lock/package.json'
+      - 'apps/desktop/runtime-lock/package-lock.json'
+      - 'apps/desktop/scripts/stage-official-runtime.mjs'
+      - 'packages/dsh-bridge/src/pin.ts'
+      - '.github/workflows/runtime-lock-verify.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+
+      - name: Install exact committed runtime lock without lifecycle scripts
+        working-directory: apps/desktop/runtime-lock
+        run: npm ci --ignore-scripts --omit=dev --no-audit --no-fund
+
+      - name: Verify installed official runtime matches lock manifest
+        working-directory: apps/desktop/runtime-lock
+        run: >-
+          node -e "const expected=require('./package.json').dependencies['@deepseek-ai/dsh'];
+          const actual=require('./node_modules/@deepseek-ai/dsh/package.json').version;
+          if(actual!==expected) throw new Error('installed DSH '+actual+' != '+expected);
+          console.log('locked official runtime OK:', actual, process.platform, process.arch)"
