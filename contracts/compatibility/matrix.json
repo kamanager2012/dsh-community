@@ -5,7 +5,7 @@
       "desktop": "tested",
       "tui": "tested",
       "contracts": "snapshotted",
-      "notes": "Consolidated acceptance PASS on run 33569245572: exact Candidate/Published identity, frozen pnpm install, zero contract re-extract drift, exact alpha.3 Desktop runtime closure, npm audit 0 vulnerabilities, typecheck, 322 tests passed (1 skipped), real authenticated official-Web lifecycle, and marketplace offline verification. Published Latest remains rc.2."
+      "notes": "Final promoted latest-tested tree passed consolidated acceptance on run 33569520030: exact Candidate/Published identity, frozen pnpm install, zero contract re-extract drift, exact alpha.3 Desktop runtime closure, npm audit 0 vulnerabilities, typecheck, 322 tests passed (1 skipped), real authenticated official-Web lifecycle, and marketplace offline verification. Published Latest remains rc.2."
     },
     "0.1.1-rc.2": {
       "desktop": "unverified",
