@@ -141,6 +141,17 @@ describe('official runtime lock', () => {
       .sort()
 
     expect(observed).toEqual(reviewed)
+
+    const workspace = readFileSync(join(repoRoot, 'pnpm-workspace.yaml'), 'utf8')
+    for (const line of [
+      "  '@deepseek-ai/dsh-subprocess-local': true",
+      '  koffi: true',
+      '  node-pty: true',
+      '  protobufjs: true',
+      "  '@google/genai': false",
+    ]) {
+      expect(workspace, 'pnpm build policy drift: ' + line).toContain(line)
+    }
   })
 
   it('retains cross-platform optional native entries in the shared lock', () => {
