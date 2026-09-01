@@ -21,9 +21,14 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 22
-      - name: Validate immutable release identity
+      - name: Validate immutable candidate release identity
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         run: node scripts/validate-release-tag.mjs "$GITHUB_REF_NAME"
+      - name: Verify current Published Latest against GitHub
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/validate-published-latest.mjs
       - name: Manual diagnostic build
         if: ${{ github.event_name == 'workflow_dispatch' && !startsWith(github.ref, 'refs/tags/v') }}
         run: echo "workflow_dispatch without a release tag; identity gate intentionally does not classify this as a publishable release"
