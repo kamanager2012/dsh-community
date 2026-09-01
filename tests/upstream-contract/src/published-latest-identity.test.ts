@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -86,6 +86,26 @@ function run(root: string) {
 
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
+})
+
+describe('Published Latest release-gate wiring', () => {
+  it('runs the online Published Latest validator before local tagging', () => {
+    const releaseScript = readFileSync(join(repoRoot, 'scripts/release.mjs'), 'utf8')
+    const publishedIndex = releaseScript.indexOf("run(process.execPath, ['scripts/validate-published-latest.mjs'])")
+    const tagIndex = releaseScript.indexOf("run('git', ['tag', tag])")
+    expect(publishedIndex).toBeGreaterThan(-1)
+    expect(tagIndex).toBeGreaterThan(publishedIndex)
+  })
+
+  it('runs the Published Latest validator in the tag identity job before release builds', () => {
+    const workflow = readFileSync(join(repoRoot, '.github/workflows/release.yml'), 'utf8')
+    const candidateIndex = workflow.indexOf('node scripts/validate-release-tag.mjs')
+    const publishedIndex = workflow.indexOf('node scripts/validate-published-latest.mjs')
+    const buildIndex = workflow.indexOf('runtime-sbom:')
+    expect(candidateIndex).toBeGreaterThan(-1)
+    expect(publishedIndex).toBeGreaterThan(candidateIndex)
+    expect(buildIndex).toBeGreaterThan(publishedIndex)
+  })
 })
 
 describe('Published Latest identity validator', () => {
