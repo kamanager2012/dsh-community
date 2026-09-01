@@ -141,11 +141,16 @@ Out of scope (report upstream instead):
 - Desktop release staging has a separate runtime-only npm lock under
   `apps/desktop/runtime-lock/`. It contains exactly the pinned official
   `@deepseek-ai/dsh` root dependency; every committed non-root package entry
-  is bound to a registry `resolved` URL and sha512 `integrity`. The stage
-  script copies that manifest + lock into an isolated directory and runs
-  `npm ci` with lifecycle scripts enabled, so Linux/Windows/macOS builds do
-  not independently re-resolve the 500+ package tree. `evidence.json` binds
-  the committed lock bytes to the generation run and SHA-256.
+  is bound to `https://registry.npmjs.org/` plus sha512 `integrity`. The
+  stage script copies that manifest + lock into an isolated directory and runs
+  `npm ci --ignore-scripts`, so Linux/Windows/macOS builds neither re-resolve
+  the 500+ package tree nor execute arbitrary transitive install hooks.
+  `lifecycle-scripts.json` must exactly cover every locked `hasInstallScript`
+  package. The current reviewed set contains five packages: four explicitly
+  rebuilt (`@deepseek-ai/dsh-subprocess-local`, `koffi`, `node-pty`,
+  `protobufjs`) and `@google/genai`, which remains installed with its
+  consumer lifecycle script suppressed. `evidence.json` separately binds the
+  committed lock bytes to the generation run and SHA-256.
 - `runtime-lock-verify` is read-only: it audits the independent npm lock and
   installs it on Ubuntu, Windows, and macOS. The acceptance run for the current
   lock passed all three installs and reported `found 0 vulnerabilities` from
