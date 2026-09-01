@@ -1,16 +1,16 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "asOf": "2026-08-22",
   "officialKernel": {
     "package": "@deepseek-ai/dsh",
-    "version": "0.1.1-rc.2"
+    "version": "0.1.2-alpha.3"
   },
   "communityProduct": {
-    "version": "0.1.1-rc.2",
+    "version": "0.1.2-alpha.3",
     "githubLatestTag": "v0.1.1-rc.2",
     "download": "https://github.com/kamanager2012/dsh-community/releases/latest"
   },
-  "dualBadge": "DeepSeek Harness Community v0.1.1-rc.2 [Official Core: @deepseek-ai/dsh@0.1.1-rc.2]",
+  "dualBadge": "DeepSeek Harness Community v0.1.2-alpha.3 [Official Core: @deepseek-ai/dsh@0.1.2-alpha.3]",
   "endpoints": [
     {
       "id": "linux-terminal",
@@ -68,6 +68,36 @@
     "pluginRegistryLastVerified": {
       "testedDsh": "0.1.1-rc.2",
       "note": "9 plugins: official dsh plugin add + dump-config compose on 0.1.1-rc.2. Restart/user-loop still UNVERIFIED."
+    }
+  },
+  "candidateTag": "v0.1.2-alpha.3",
+  "publishedAssets": {
+    "linuxAppImage": "dsh-community-0.1.1-rc.2.AppImage",
+    "macosDmg": "dsh-community-0.1.1-rc.2.dmg",
+    "windowsSetup": "DSH.Community.Setup.0.1.1-rc.2.exe",
+    "note": "GitHub may show Windows spaces as dots. Use the exact names on the Release page."
+  },
+  "publishedReleaseEvidence": {
+    "releaseId": 374950921,
+    "tag": "v0.1.1-rc.2",
+    "url": "https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.1-rc.2",
+    "publishedAt": "2026-08-22T14:25:10Z",
+    "primaryAssets": {
+      "linuxAppImage": {
+        "name": "dsh-community-0.1.1-rc.2.AppImage",
+        "assetId": 525116665,
+        "digest": "sha256:52b7b786681a5a4e2726f91696e3baf532cb3fdbddf8d7714e57e2eef22beee6"
+      },
+      "macosDmg": {
+        "name": "dsh-community-0.1.1-rc.2.dmg",
+        "assetId": 525116664,
+        "digest": "sha256:f3889c4f5c10e206d2e315bfb7c8fbdc3afbb50dd20400e9fdbcd797b5836229"
+      },
+      "windowsSetup": {
+        "name": "DSH.Community.Setup.0.1.1-rc.2.exe",
+        "assetId": 525116662,
+        "digest": "sha256:c2a24e0fb8be45d14a3ea9f08d361907f94cdc3f77f49c6fcfcb8750aa7d6777"
+      }
     }
   }
 }
