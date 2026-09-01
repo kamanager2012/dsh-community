@@ -1,0 +1,9 @@
+{
+  "name": "dsh-community-official-runtime-lock",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Lock-only manifest for the staged official DeepSeek Harness runtime.",
+  "dependencies": {
+    "@deepseek-ai/dsh": "0.1.1-rc.2"
+  }
+}

@@ -12,7 +12,7 @@
  * symlinks the rest — broken on Windows extraction. Keep it classic.
  */
 
-import { existsSync, lstatSync, statSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, lstatSync, readFileSync, statSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { mkdir, readdir, rm } from 'node:fs/promises'
 import { createRequire } from 'node:module'
@@ -24,6 +24,9 @@ const appRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const stageRoot = resolve(appRoot, 'runtime-stage')
 const extra = resolve(appRoot, 'runtime-host')
 const archive = join(extra, 'official-dsh.tar')
+const runtimeLockRoot = join(appRoot, 'runtime-lock')
+const runtimeManifestPath = join(runtimeLockRoot, 'package.json')
+const runtimeLockPath = join(runtimeLockRoot, 'package-lock.json')
 const require = createRequire(join(appRoot, 'package.json'))
 const desktopManifest = require('./package.json')
 const pin = desktopManifest.dependencies['@deepseek-ai/dsh']
@@ -31,19 +34,36 @@ if (typeof pin !== 'string' || pin.length === 0) {
   throw new Error('apps/desktop/package.json is missing @deepseek-ai/dsh')
 }
 
+const runtimeManifest = JSON.parse(readFileSync(runtimeManifestPath, 'utf8'))
+if (runtimeManifest.dependencies?.['@deepseek-ai/dsh'] !== pin) {
+  throw new Error(
+    `runtime-lock/package.json pins ${String(runtimeManifest.dependencies?.['@deepseek-ai/dsh'])}; expected ${pin}`,
+  )
+}
+const runtimeLock = JSON.parse(readFileSync(runtimeLockPath, 'utf8'))
+if (runtimeLock.lockfileVersion !== 3) {
+  throw new Error(`runtime package-lock must use lockfileVersion 3, got ${String(runtimeLock.lockfileVersion)}`)
+}
+if (runtimeLock.packages?.['']?.dependencies?.['@deepseek-ai/dsh'] !== pin) {
+  throw new Error('runtime package-lock root dependency does not match Desktop official pin')
+}
+const lockedDsh = runtimeLock.packages?.['node_modules/@deepseek-ai/dsh']
+if (lockedDsh?.version !== pin || typeof lockedDsh.integrity !== 'string' || typeof lockedDsh.resolved !== 'string') {
+  throw new Error('runtime package-lock does not contain the exact official DSH package with registry integrity')
+}
+
 await rm(stageRoot, { recursive: true, force: true })
 await mkdir(stageRoot, { recursive: true })
-writeFileSync(join(stageRoot, 'package.json'), `${JSON.stringify({
-  name: 'dsh-community-host',
-  private: true,
-  dependencies: { '@deepseek-ai/dsh': pin },
-}, null, 2)}\n`)
+copyFileSync(runtimeManifestPath, join(stageRoot, 'package.json'))
+copyFileSync(runtimeLockPath, join(stageRoot, 'package-lock.json'))
 
-process.stdout.write(`staging official @deepseek-ai/dsh@${pin} with npm (classic node_modules)…\n`)
+process.stdout.write(
+  `staging official @deepseek-ai/dsh@${pin} with npm ci from committed package-lock (classic node_modules)…\n`,
+)
 const nodeOptions = process.env.NODE_OPTIONS ?? ''
 const heapFlag = '--max-old-space-size=4096'
 const installed = spawnSync('npm', [
-  'install',
+  'ci',
   '--omit=dev',
   '--no-fund',
   '--no-audit',
@@ -59,12 +79,12 @@ const installed = spawnSync('npm', [
   shell: process.platform === 'win32',
   windowsHide: true,
 })
-if (installed.error) throw new Error(`npm install failed: ${installed.error.message}`)
-if (installed.status !== 0) throw new Error(`npm install failed (status ${String(installed.status)})`)
+if (installed.error) throw new Error(`npm ci failed: ${installed.error.message}`)
+if (installed.status !== 0) throw new Error(`npm ci failed (status ${String(installed.status)})`)
 
 const modules = join(stageRoot, 'node_modules')
 const officialBin = join(modules, '@deepseek-ai/dsh/lib/bin.js')
-if (!existsSync(officialBin)) throw new Error('npm install left no official bin')
+if (!existsSync(officialBin)) throw new Error('npm ci left no official bin')
 if (lstatSync(officialBin).isSymbolicLink()) {
   throw new Error('official bin is a symlink; classic node_modules expected')
 }

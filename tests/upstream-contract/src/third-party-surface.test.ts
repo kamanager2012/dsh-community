@@ -32,7 +32,10 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..')
  * describe/review them. It must never be treated as a runtime composition
  * surface. Marketplace-specific schema and install-chain tests cover it.
  */
-const METADATA_ONLY_CONFIG_PATHS = new Set([join('packages', 'marketplace', 'catalog.json')])
+const METADATA_ONLY_CONFIG_PATHS = new Set([
+  join('packages', 'marketplace', 'catalog.json'),
+  join('apps', 'desktop', 'runtime-lock', 'package-lock.json'),
+])
 
 /** Third-party packages that are harness products or harness surface implementations. */
 const FORBIDDEN_PACKAGE_PATTERNS = [
@@ -146,6 +149,20 @@ describe('third-party harness products are reference-only, never shipped', () =>
 
     const catalog = JSON.parse(readFileSync(catalogPath, 'utf8')) as { plugins?: unknown[] }
     expect(catalog.plugins?.length ?? 0).toBeGreaterThan(0)
+  })
+
+  it('keeps generated runtime dependency resolution metadata out of the composition sweep', () => {
+    const lockPath = join(root, 'apps', 'desktop', 'runtime-lock', 'package-lock.json')
+    const manifestPath = join(root, 'apps', 'desktop', 'runtime-lock', 'package.json')
+    expect(existsSync(lockPath)).toBe(true)
+    expect(existsSync(manifestPath)).toBe(true)
+    expect(scanSurfaceFiles()).not.toContain(lockPath)
+    expect(scanSurfaceFiles()).toContain(manifestPath)
+
+    const lock = JSON.parse(readFileSync(lockPath, 'utf8')) as {
+      packages?: Record<string, unknown>
+    }
+    expect(Object.keys(lock.packages ?? {}).length).toBeGreaterThan(500)
   })
 
   it('no manifest or composition row mounts a third-party TUI/harness package', () => {
