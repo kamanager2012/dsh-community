@@ -115,6 +115,12 @@ Out of scope (report upstream instead):
   packager confines electron-builder to a staging workspace to keep scanning
   bounded, and a path-scoped Windows PR smoke proves NSIS packaging without
   disabling Defender.
+- All three Desktop release targets now have pre-tag PR package smokes using
+  the same packaging commands as `release.yml`: Windows NSIS, Linux AppImage,
+  and macOS DMG. Linux additionally extracts the AppImage and requires
+  `resources/app.asar`; macOS mounts the DMG read-only and requires a valid
+  `.app/Contents/MacOS` executable. Every smoke runs the asar vendor=0 guard
+  and independently recomputes the published SHA-256 sidecar.
 - Workspace packages (`@dsh-community/*`) are never published to npm.
 
 ## Dependency security
