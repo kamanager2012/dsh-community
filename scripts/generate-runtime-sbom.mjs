@@ -53,7 +53,10 @@ export function generateRuntimeSbom(outputPath) {
     fail('npm sbom did not emit a CycloneDX document')
   }
   if (bom?.metadata?.component?.name !== 'dsh-community-official-runtime-lock') {
-    fail('SBOM root component does not match runtime-lock manifest')
+    fail(
+      'SBOM root component does not match runtime-lock manifest: ' +
+        JSON.stringify(bom?.metadata?.component ?? null),
+    )
   }
   const official = Array.isArray(bom?.components)
     ? bom.components.find((component) => component?.name === '@deepseek-ai/dsh')
