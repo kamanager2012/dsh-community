@@ -2,12 +2,13 @@
 
 The only code in this workspace that is allowed to know how to launch official DSH.
 
-- Pin: `PINNED_DSH_VERSION` → `@deepseek-ai/dsh@0.1.1-rc.2`
+- Pin: `PINNED_DSH_VERSION` → `@deepseek-ai/dsh@0.1.2-alpha.3`
 - Resolve: `node_modules/@deepseek-ai/dsh/lib/bin.js` (or `DSH_COMMUNITY_BIN`)
 - Spawn: `node <bin> web --host 127.0.0.1 --port 0 --no-open`
-- Ready: parse `dsh web: http://127.0.0.1:<port>` (ignore the 0.1.0-rc.8-era browser-handoff line)
-- Restart: `createOfficialHost` replaces a dead generation; it does not embed Cordis
-- Lifecycle only: pid / origin / phase. stdout is diagnostics, not a business protocol
-- Data dirs: default leave `DSH_HOME` alone (`~/.dsh`)
+- Ready: parse the official `dsh web:` loopback URL. Alpha.3 prints a one-time `?token=` browser bootstrap credential.
+- Browser auth: the Host keeps that token out of lifecycle snapshots and diagnostics, exposes it through a one-shot in-process bootstrap channel, and Desktop lets the official Web surface exchange it for its signed cookie before settling on the clean root URL.
+- Restart: `createOfficialHost` replaces a dead generation; it does not embed Cordis.
+- Lifecycle only: pid / clean origin / phase. stdout/stderr are credential-redacted diagnostics, not a business protocol.
+- Data dirs: default leave `DSH_HOME` alone (`~/.dsh`).
 
 This package does not implement the agent loop.

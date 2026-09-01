@@ -31,21 +31,23 @@ process execution, and persistence. Installation still uses the official
 
 [![CI](https://github.com/kamanager2012/dsh-community/actions/workflows/ci.yml/badge.svg)](https://github.com/kamanager2012/dsh-community/actions/workflows/ci.yml)
 
-| Channel | Download |
+| State | Source of truth |
 |---|---|
-| **Current** | [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) (`v0.1.1-rc.2`) |
-| **Historical / Pre-release** | older independent numbers on [Releases](https://github.com/kamanager2012/dsh-community/releases) |
+| **Published Latest** | [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest); exact tag, asset names, release ID, and asset evidence live in [`current-release.json`](docs/current-release.json) |
+| **Candidate Source** | `candidateTag`, official-core pin, workspace product version, and Dual-Badge live in [`current-release.json`](docs/current-release.json) |
+| **Historical / Pre-release** | [Releases](https://github.com/kamanager2012/dsh-community/releases) |
 
-Current Latest, official kernel, four shipped endpoints, Android experimental status, asset names, and evidence labels
-are in [current-release](docs/current-release.md) /
-[`current-release.json`](docs/current-release.json). Rules:
-[version policy](docs/version-policy.md).
+**Candidate Source and Published Latest are independent states.** Source may move
+to a newer reviewed upstream candidate while GitHub Latest, published installers,
+plugin `testedDsh`, and real User-Loop evidence remain on the last version that
+actually passed those gates. Do not infer workspace version from
+`releases/latest`, and never synthesize installer names from an unpublished
+candidate.
 
-The current release is **v0.1.1-rc.2**: root, Desktop, TUI, and every workspace
-package share the number, 1:1 with official core `@deepseek-ai/dsh@0.1.1-rc.2`
-(contract surface identical to rc.1 — 135 config rows, zero drift). Release
-assets carry keyless cosign signatures (`.sigstore.json`); see
-[release docs](docs/release.md#artifact-signing-keyless) for verification.
+Endpoint status, Candidate/Published identity, asset names, and evidence labels
+are centralized in [current-release](docs/current-release.md) /
+[`current-release.json`](docs/current-release.json). Published assets carry
+keyless cosign signatures; see [release docs](docs/release.md#artifact-signing-keyless).
 
 [Official Runtime](https://github.com/deepseek-ai/deepseek-harness)
 
@@ -66,19 +68,23 @@ session persistence, official UI, and core lifecycle.
 | Goal | Use |
 |---|---|
 | Run the official Runtime directly | [`npx @deepseek-ai/dsh web`](https://github.com/deepseek-ai/deepseek-harness) |
-| Download the community product | [Latest `v0.1.1-rc.2`](https://github.com/kamanager2012/dsh-community/releases/latest) — cosign signature verification: [release docs](docs/release.md#artifact-signing-keyless) |
+| Download the community product | [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) — exact tag/file names: `docs/current-release.json`; cosign verification: [release docs](docs/release.md#artifact-signing-keyless) |
 | Use the WSL/Linux Terminal / TUI | `pnpm tui` or `dsh-community` after a source install |
-| Use the Windows Desktop shell | [Latest `v0.1.1-rc.2`](https://github.com/kamanager2012/dsh-community/releases/latest) Setup.exe, or `pnpm desktop` |
-| Use the macOS Desktop shell | [Latest `v0.1.1-rc.2`](https://github.com/kamanager2012/dsh-community/releases/latest) dmg, or `pnpm desktop` |
+| Use the Windows Desktop shell | [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) Setup.exe, or `pnpm desktop` |
+| Use the macOS Desktop shell | [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) dmg, or `pnpm desktop` |
 | Read operational guidance | [DeepSeek Harness Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/) |
 | Verified community plugins | Desktop marketplace page, in-repo `pnpm marketplace`, and [`packages/marketplace/catalog.json`](packages/marketplace/catalog.json) — not an awesome list |
 
 Only this repository is the download entry. Handbook is the other live repo. Suite, the standalone marketplace, the standalone plugins registry, and Edition are archived.
 
-## Current release status
+## Source and publication status
 
-Community version is one workspace-wide identity: **0.1.1-rc.2**, 1:1 with
-official core `@deepseek-ai/dsh@0.1.1-rc.2`. GitHub Latest is that same tag.
+The workspace has one **Candidate Source** identity (community product + official
+core pin + Dual-Badge), while GitHub exposes a separate **Published Latest**
+identity backed by real release assets. They may be equal after a release, but
+the repository does not depend on that equality. Exact current values live only
+in `docs/current-release.json`.
+
 Earlier independent numbers `v0.1.2`–`v0.1.6` are historical only.
 The Linux AppImage is shipped endpoint 4; the primary Linux CLI path remains WSL/Linux
 Terminal. Official Web is an upstream companion, not a Community endpoint. Android stays
@@ -87,7 +93,7 @@ Terminal. Official Web is an upstream companion, not a Community endpoint. Andro
 ## From source
 
 Requirements: Node.js 22.15+, pnpm, and a configured `DEEPSEEK_API_KEY`.
-Since official 0.1.0-rc.8, session JSONL uses `node:zlib` zstd APIs added in 22.15 (current pin: contracts/compatibility/latest-tested.json).
+Since official 0.1.0-rc.8, session JSONL uses `node:zlib` zstd APIs added in 22.15. Candidate Source pin comes from `packages/dsh-bridge/src/pin.ts` / `current-release.json`; `latest-tested.json` is compatibility evidence, not the pin source of truth.
 Sessions continue to use the official `~/.dsh` data source.
 
 ```sh

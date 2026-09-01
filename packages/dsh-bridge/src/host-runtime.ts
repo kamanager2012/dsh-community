@@ -22,6 +22,11 @@ export interface OfficialHostOptions {
 export interface OfficialHost {
   snapshot(): HostSnapshot
   logs(): string
+  /**
+   * Consume the current generation's credential-bearing browser bootstrap URL once.
+   * It is never present in snapshot() or logs().
+   */
+  takeBrowserBootstrapUrl(): string | undefined
   start(): Promise<string>
   restart(): Promise<string>
   shutdown(): Promise<void>
@@ -42,6 +47,7 @@ export function createOfficialHost(options: OfficialHostOptions): OfficialHost {
   let log = ''
   let startInFlight: Promise<string> | undefined
   let restartInFlight: Promise<string> | undefined
+  let pendingBrowserBootstrapUrl: string | undefined
   let stopped = false
 
   const emit = (next: HostSnapshot): void => {
@@ -66,6 +72,7 @@ export function createOfficialHost(options: OfficialHostOptions): OfficialHost {
     if (startInFlight !== undefined) return startInFlight
 
     generation += 1
+    pendingBrowserBootstrapUrl = undefined
     emit({ phase: 'starting', generation })
     const current = createWebSupervisor({
       spawnHost: spawnTracked,
@@ -76,6 +83,9 @@ export function createOfficialHost(options: OfficialHostOptions): OfficialHost {
         ? {}
         : { shutdownTimeoutMs: options.shutdownTimeoutMs }),
       log: appendLog,
+      onBrowserBootstrapUrl: (url) => {
+        pendingBrowserBootstrapUrl = url
+      },
       onUnexpectedExit: ({ code, signal }) => {
         if (stopped) return
         emit({
@@ -102,6 +112,7 @@ export function createOfficialHost(options: OfficialHostOptions): OfficialHost {
       (error: unknown) => {
         if (supervisor !== current) throw error
         startInFlight = undefined
+        pendingBrowserBootstrapUrl = undefined
         const message = error instanceof Error ? error.message : String(error)
         emit({ phase: 'failed', generation, error: message })
         throw error
@@ -114,12 +125,18 @@ export function createOfficialHost(options: OfficialHostOptions): OfficialHost {
     const current = supervisor
     supervisor = undefined
     startInFlight = undefined
+    pendingBrowserBootstrapUrl = undefined
     if (current !== undefined) await current.shutdown()
   }
 
   return {
     snapshot: () => snapshot,
     logs: () => log,
+    takeBrowserBootstrapUrl() {
+      const url = pendingBrowserBootstrapUrl
+      pendingBrowserBootstrapUrl = undefined
+      return url
+    },
     start: () => startGeneration(),
     async restart() {
       if (restartInFlight !== undefined) return restartInFlight

@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
+import { PINNED_DSH_VERSION } from '@dsh-community/dsh-bridge'
 
 const roots: string[] = []
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '../../..')
@@ -51,7 +52,7 @@ function addSbom(artifacts: string, signed: string, body?: string) {
       {
         type: 'application',
         name: '@deepseek-ai/dsh',
-        version: '0.1.1-rc.2',
+        version: PINNED_DSH_VERSION,
       },
     ],
   })
@@ -59,7 +60,7 @@ function addSbom(artifacts: string, signed: string, body?: string) {
     artifacts,
     signed,
     'sbom',
-    'dsh-community-0.1.1-rc.2-official-runtime.cdx.json',
+    `dsh-community-${PINNED_DSH_VERSION}-official-runtime.cdx.json`,
     sbom + '\n',
   )
 }
@@ -185,7 +186,7 @@ describe('verify-release-set CLI', () => {
 
     const result = runVerifier(artifacts, signed)
     expect(result.status).toBe(1)
-    expect(result.stderr).toContain('does not include exact @deepseek-ai/dsh@0.1.1-rc.2')
+    expect(result.stderr).toContain(`does not include exact @deepseek-ai/dsh@${PINNED_DSH_VERSION}`)
   })
   it('rejects a sidecar that names a different file', () => {
     const { artifacts, signed } = makeRoot()

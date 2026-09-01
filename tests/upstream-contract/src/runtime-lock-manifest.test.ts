@@ -115,7 +115,7 @@ describe('official runtime lock', () => {
 
     expect(policy.schemaVersion).toBe(1)
     expect(policy.allowed?.map(({ name, version }) => `${name}@${version}`).sort()).toEqual([
-      '@deepseek-ai/dsh-subprocess-local@0.1.1-rc.2',
+      `@deepseek-ai/dsh-subprocess-local@${PINNED_DSH_VERSION}`,
       'koffi@3.1.6',
       'node-pty@1.2.0-beta.15',
       'protobufjs@7.6.6',
@@ -182,8 +182,12 @@ describe('official runtime lock', () => {
     const evidence = JSON.parse(
       readFileSync(join(runtimeLockRoot, 'evidence.json'), 'utf8'),
     ) as {
+      schemaVersion?: number
       source?: string
+      delivery?: string
       workflowRunId?: number
+      workflowJobId?: number
+      generatorCommit?: string
       artifactId?: number
       artifactZipSha256?: string
       lockSha256?: string
@@ -200,10 +204,14 @@ describe('official runtime lock', () => {
     expect(createHash('sha256').update(raw).digest('hex')).toBe(
       evidence.lockSha256,
     )
+    expect(evidence.schemaVersion).toBe(2)
     expect(evidence.source).toBe('github-actions')
-    expect(evidence.workflowRunId).toBe(33466316081)
-    expect(evidence.artifactId).toBe(9785175407)
-    expect(evidence.artifactZipSha256).toMatch(/^[0-9a-f]{64}$/u)
+    expect(evidence.delivery).toBe('direct-commit')
+    expect(evidence.workflowRunId).toBe(33540607690)
+    expect(evidence.workflowJobId).toBe(99965617854)
+    expect(evidence.generatorCommit).toBe('4458655c7225a308b770d881353ebdec90ff9fd2')
+    expect(evidence.artifactId).toBeUndefined()
+    expect(evidence.artifactZipSha256).toBeUndefined()
     expect(evidence.runnerImage).toBe('ubuntu-24.04')
     expect(evidence.nodeVersion).toBe('v22.23.2')
     expect(evidence.npmVersion).toBe('10.9.8')
@@ -225,7 +233,11 @@ describe('official runtime lock', () => {
     expect(stage).toContain("const runtimeLockPath = join(runtimeLockRoot, 'package-lock.json')")
     expect(stage).toContain("copyFileSync(runtimeLockPath, join(stageRoot, 'package-lock.json'))")
     expect(stage).toContain("'ci',\n  '--ignore-scripts',")
-    expect(stage).toContain("'rebuild',\n    entry.name,")
+    expect(stage).toContain('const exactSpec = `${entry.name}@${entry.version}`')
+    expect(stage).toContain("'rebuild',\n    exactSpec,")
+    expect(stage).toContain('const lockPath = exactLockPackagePath(entry.name, entry.version)')
+    expect(stage).toContain("join(stageRoot, ...lockPath.split('/'), 'package.json')")
+    expect(stage).not.toMatch(/join\(stageRoot, 'node_modules', entry\.name/u)
     expect(stage).not.toMatch(/spawnSync\('npm', \[\s*'install',/u)
     expect(stage).toContain('runtime lifecycle-script surface drifted')
     expect(stage).toContain('reviewed lifecycle package version drifted')

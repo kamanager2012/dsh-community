@@ -66,6 +66,20 @@ function packageNameFromLockPath(lockPath) {
   return index === -1 ? null : lockPath.slice(index + marker.length)
 }
 
+function exactLockPackagePath(name, version) {
+  const matches = Object.entries(runtimeLock.packages ?? {})
+    .filter(([lockPath, entry]) =>
+      packageNameFromLockPath(lockPath) === name && entry?.version === version)
+    .map(([lockPath]) => lockPath)
+
+  if (matches.length !== 1) {
+    throw new Error(
+      `runtime package-lock must contain exactly one ${name}@${version}; found ${String(matches.length)}`,
+    )
+  }
+  return matches[0]
+}
+
 const observedLifecycle = Object.entries(runtimeLock.packages ?? {})
   .filter(([, entry]) => entry?.hasInstallScript === true)
   .map(([lockPath, entry]) => {
@@ -123,23 +137,29 @@ runNpm([
 ], 'npm ci --ignore-scripts')
 
 for (const entry of lifecyclePolicy.allowed) {
-  const manifestPath = join(stageRoot, 'node_modules', entry.name, 'package.json')
+  const lockPath = exactLockPackagePath(entry.name, entry.version)
+  const manifestPath = join(stageRoot, ...lockPath.split('/'), 'package.json')
   if (!existsSync(manifestPath)) {
-    throw new Error(`reviewed lifecycle package missing after npm ci: ${entry.name}`)
+    throw new Error(
+      `reviewed lifecycle package missing after npm ci: ${entry.name}@${entry.version} at ${lockPath}`,
+    )
   }
   const installedManifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
-  if (installedManifest.version !== entry.version) {
+  if (installedManifest.name !== entry.name || installedManifest.version !== entry.version) {
     throw new Error(
       `reviewed lifecycle package version drifted: ${entry.name}@${String(installedManifest.version)} expected ${entry.version}`,
     )
   }
-  process.stdout.write(`rebuilding reviewed runtime package ${entry.name}@${entry.version}…\n`)
+  const exactSpec = `${entry.name}@${entry.version}`
+  process.stdout.write(
+    `rebuilding reviewed runtime package ${exactSpec} from committed lock path ${lockPath}…\n`,
+  )
   runNpm([
     'rebuild',
-    entry.name,
+    exactSpec,
     '--no-fund',
     '--no-audit',
-  ], `npm rebuild ${entry.name}`)
+  ], `npm rebuild ${exactSpec}`)
 }
 
 const modules = join(stageRoot, 'node_modules')
@@ -147,16 +167,6 @@ const officialBin = join(modules, '@deepseek-ai/dsh/lib/bin.js')
 if (!existsSync(officialBin)) throw new Error('npm ci left no official bin')
 if (lstatSync(officialBin).isSymbolicLink()) {
   throw new Error('official bin is a symlink; classic node_modules expected')
-}
-
-const required = [
-  '@deepseek-ai/dsh/lib/bin.js',
-  '@deepseek-ai/dsh-app-boot/package.json',
-  'commander/package.json',
-]
-const missing = required.filter((rel) => !existsSync(join(modules, rel)))
-if (missing.length > 0) {
-  throw new Error(`staged tree is not resolvable: missing ${missing.join(', ')}`)
 }
 
 const ptyPlatform = process.platform === 'darwin' ? 'darwin' : process.platform === 'win32' ? 'win32' : 'linux'

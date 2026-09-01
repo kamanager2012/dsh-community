@@ -3,9 +3,9 @@
 Desktop-owned distribution feature. Not a second harness.
 
 ```
-Official Release
+Candidate Source / exact official package pin
        ↓
-Contract CI
+Contract extraction + validation
        ↓
 contracts/compatibility/latest-tested.json
        ↓
@@ -23,7 +23,7 @@ Under Electron `userData`, never under `~/.dsh`:
 - `desktop-settings.json` — hide-to-tray, isolated official home (Desktop-owned)
 - `logs/host.log` — official stdout/stderr, diagnostics only
 
-`latestTested` is overwritten from the contract file on every boot. A user cannot forge it.
+`latestTested` is overwritten from the contract file on every boot. A user cannot forge it. It means **compatibility-tested recommendation only**: it is neither Candidate Source nor GitHub Published Latest, even when the numbers happen to match.
 
 ## What it does not do
 
@@ -32,4 +32,4 @@ Under Electron `userData`, never under `~/.dsh`:
 - Does not parse agent/tool/session state
 - Does not move sessions into Desktop AppData
 
-When contract CI promotes rc.N, bump the workspace pin, extract snapshots, then latest-tested moves. Version Manager will then show “offer-tested”. Multi-rc staging is later.
+When a Candidate Source pin has passed the required contract extraction/validation, `latest-tested` may move to that exact version. This does not publish a GitHub release or advance Published Latest. Version Manager will then show “offer-tested”. Multi-rc staging is later.
