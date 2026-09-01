@@ -78,8 +78,9 @@ export function adaptNodeChild(child: ChildProcess): HostChild {
  * Launcher argv the contract tests lock.
  *
  * Since official 0.1.0-rc.8, `dsh web` opens the default browser after a local
- * start unless `--no-open` is passed (historical behavior note; the current
- * pin is recorded in contracts/compatibility/latest-tested.json). Desktop
+ * start unless `--no-open` is passed (historical behavior note). Candidate
+ * Source pin lives in `pin.ts`; `latest-tested.json` is separate compatibility
+ * evidence, not the source pin. Desktop
  * embeds official Web; do not also hand off to a browser.
  */
 export function officialWebArgv(bind: OfficialWebBind = { host: '127.0.0.1', port: 0 }): readonly string[] {
