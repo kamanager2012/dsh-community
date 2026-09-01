@@ -138,6 +138,12 @@ Out of scope (report upstream instead):
   to a PR round-trip smoke that uploads deterministic bytes, downloads the same
   artifact, and verifies SHA-256. The smoke must use the exact same immutable
   action commits as the release and user-loop workflows.
+- New releases include an **official-runtime CycloneDX SBOM** generated with
+  the Node/npm CLI from the committed runtime lock. It is explicitly scoped to
+  the embedded official DSH dependency tree, not claimed as a whole-product
+  Electron SBOM. The SBOM is checksumed and keyless-signed like executable
+  assets; pre-publish verification requires exactly one valid SBOM containing
+  the official DSH component before the release writer can start.
 - Desktop release staging has a separate runtime-only npm lock under
   `apps/desktop/runtime-lock/`. It contains exactly the pinned official
   `@deepseek-ai/dsh` root dependency; every committed non-root package entry
