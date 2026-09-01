@@ -18,6 +18,18 @@ Official Harness is in developer preview and **will break**. This repo is design
 9. Refresh official snapshots: `pnpm contracts:extract`. Commit the diff and note any public-surface move in `contracts/compatibility/breaking-changes.md`.
 10. Only then consider recommending the candidate as `latest-tested`. Do not treat that as publication: GitHub Latest and published installer names move only when the release exists.
 
+## Remote integration gate
+
+Do not open the alpha.3 pull request until the accepted local upgrade commit has
+been pushed to a non-main branch, integrated with the hardening commits, and the
+consolidated local acceptance suite has passed on the final tree.
+
+A push to a non-main integration branch is the no-Actions staging path under the
+current workflow triggers. Opening a pull request is not: the alpha.3 diff fans
+out into CI, dependency audit, Linux/macOS package smoke, Windows package smoke,
+runtime-lock verification, runtime-SBOM smoke, and artifact-action smoke.
+Machine-readable state: `contracts/compatibility/remote-integration-gate.json`.
+
 ## Frozen candidate rule
 
 An upstream prerelease discovered **after** an upgrade baseline has been frozen
