@@ -26,6 +26,10 @@ describe('alpha.3 consolidated acceptance runner', () => {
     expect(source).toContain("merge-base', '--is-ancestor'")
     expect(source).toContain("git', ['status', '--porcelain']")
     expect(source).toContain("DSH_COMMUNITY_ALLOW_UNPINNED")
+    expect(source).toContain('providerSafeEnv')
+    expect(source).toContain("'DEEPSEEK_API_KEY'")
+    expect(source).toContain("'OPENAI_API_KEY'")
+    expect(source).toContain("'ANTHROPIC_API_KEY'")
     expect(source).toContain('ALPHA3_INTEGRATION_ACCEPTANCE=PASS')
 
     for (const forbidden of [
