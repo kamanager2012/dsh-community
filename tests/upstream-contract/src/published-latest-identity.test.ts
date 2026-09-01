@@ -138,7 +138,9 @@ describe('Published Latest identity validator', () => {
 
   it('rejects a mutated primary asset digest', () => {
     const { root, facts, release } = makeRoot()
-    release.assets[0].digest = 'sha256:' + '0'.repeat(64)
+    const firstAsset = release.assets[0]
+    if (!firstAsset) throw new Error('fixture must contain a primary asset')
+    firstAsset.digest = 'sha256:' + '0'.repeat(64)
     writeFixture(root, facts, release)
     const result = run(root)
     expect(result.status).toBe(1)

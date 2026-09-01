@@ -129,7 +129,7 @@ function verifyInstalledRuntime() {
   }
 
   const dshFamily = Object.entries(lock.packages ?? {})
-    .filter(([path]) => /node_modules\\/@deepseek-ai\\/dsh[^/]+$/u.test(path))
+    .filter(([path]) => /node_modules\/@deepseek-ai\/dsh[^/]+$/u.test(path))
     .map(([path, entry]) => ({
       path,
       version: entry?.version,

@@ -23,6 +23,23 @@ describe('createOfficialHost', () => {
     expect(host.snapshot()).toMatchObject({ phase: 'ready', generation: 2, origin: 'http://127.0.0.1:4002', pid: 12 })
   })
 
+
+  it('exposes the browser bootstrap once without placing it in lifecycle state or logs', async () => {
+    const child = fakeChild()
+    const token = 'H'.repeat(43)
+    const host = createOfficialHost({ spawn: () => child })
+    const started = host.start()
+    child.emitData(`${READINESS_PREFIX}http://127.0.0.1:4012/?token=${token}\n`)
+    await expect(started).resolves.toBe('http://127.0.0.1:4012')
+    expect(JSON.stringify(host.snapshot())).not.toContain(token)
+    expect(host.logs()).not.toContain(token)
+    expect(host.takeBrowserBootstrapUrl()).toBe(
+      `http://127.0.0.1:4012/?token=${token}`,
+    )
+    expect(host.takeBrowserBootstrapUrl()).toBeUndefined()
+    await host.shutdown()
+  })
+
   it('surfaces an unexpected exit as failed so the shell can offer restart', async () => {
     const child = fakeChild()
     const host = createOfficialHost({ spawn: () => child })

@@ -103,6 +103,7 @@ let window: BrowserWindow | undefined
 let officialView: WebContentsView | undefined
 let tray: Tray | undefined
 let origin = ''
+let officialBootstrapUrl: string | undefined
 let showingOfficial = false
 let quitting = false
 let settings = DEFAULT_DESKTOP_SETTINGS
@@ -259,10 +260,13 @@ async function showOfficial(nextOrigin: string): Promise<void> {
   origin = nextOrigin
   showingOfficial = true
   await loadWindowSafely(dataUrl(renderChromePage(chromeModel('official'))))
+  const bootstrap = officialBootstrapUrl
+  officialBootstrapUrl = undefined
+  const target = bootstrap ?? nextOrigin
   const current = officialView.webContents.getURL()
-  if (current !== nextOrigin && !current.startsWith(`${nextOrigin}/`)) {
+  if (bootstrap !== undefined || (current !== nextOrigin && !current.startsWith(`${nextOrigin}/`))) {
     try {
-      await officialView.webContents.loadURL(nextOrigin)
+      await officialView.webContents.loadURL(target)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       if (!message.includes('ERR_ABORTED')) throw error
@@ -500,6 +504,7 @@ async function startOfficial(): Promise<void> {
   if (host === undefined) throw new Error('official host is not created')
   await showHtml(renderLoadingPage())
   const next = await host.start()
+  officialBootstrapUrl = host.takeBrowserBootstrapUrl()
   await waitForOfficialWeb(next, 8_000)
   await showOfficial(next)
 }
@@ -509,6 +514,7 @@ async function restartOfficial(then: 'official' | 'settings' = 'official'): Prom
   await showHtml(renderLoadingPage())
   const next = await host.restart()
   origin = next
+  officialBootstrapUrl = host.takeBrowserBootstrapUrl()
   await waitForOfficialWeb(next, 8_000)
   if (then === 'settings') await showSettings()
   else await showOfficial(next)
