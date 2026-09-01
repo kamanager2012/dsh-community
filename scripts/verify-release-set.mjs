@@ -7,11 +7,15 @@ import {
   readFileSync,
   readdirSync,
 } from 'node:fs'
-import { basename, join, relative, resolve, sep } from 'node:path'
+import { basename, dirname, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const PRIMARY_SUFFIXES = ['.AppImage', '.exe', '.zip', '.dmg']
 const METADATA_SUFFIXES = ['-official-runtime.cdx.json']
+const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
+const RUNTIME_MANIFEST = JSON.parse(
+  readFileSync(resolve(SCRIPT_DIR, '../apps/desktop/runtime-lock/package.json'), 'utf8'),
+)
 
 function fail(message) {
   throw new Error(message)
@@ -96,13 +100,17 @@ export function verifyReleaseSet({
   if (sbom?.bomFormat !== 'CycloneDX' || typeof sbom?.specVersion !== 'string') {
     fail('official-runtime SBOM is not a CycloneDX document')
   }
-  if (sbom?.metadata?.component?.name !== 'dsh-community-official-runtime-lock') {
+  const root = sbom?.metadata?.component
+  const expectedRootRef = `${RUNTIME_MANIFEST.name}@${RUNTIME_MANIFEST.version}`
+  const expectedRootPurl = `pkg:npm/${RUNTIME_MANIFEST.name}@${RUNTIME_MANIFEST.version}`
+  if (root?.['bom-ref'] !== expectedRootRef || root?.purl !== expectedRootPurl) {
     fail('official-runtime SBOM root component is not the reviewed runtime-lock manifest')
   }
+  const officialPin = RUNTIME_MANIFEST.dependencies?.['@deepseek-ai/dsh']
   if (!Array.isArray(sbom?.components) || !sbom.components.some(
-    (component) => component?.name === '@deepseek-ai/dsh',
+    (component) => component?.name === '@deepseek-ai/dsh' && component?.version === officialPin,
   )) {
-    fail('official-runtime SBOM does not include @deepseek-ai/dsh')
+    fail(`official-runtime SBOM does not include exact @deepseek-ai/dsh@${String(officialPin)}`)
   }
 
   const unexpected = artifactFiles.filter(
