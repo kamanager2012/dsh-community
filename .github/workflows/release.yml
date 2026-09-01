@@ -11,7 +11,25 @@ permissions:
   contents: read
 
 jobs:
+  release-identity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+      - name: Validate immutable release identity
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        run: node scripts/validate-release-tag.mjs "$GITHUB_REF_NAME"
+      - name: Manual diagnostic build
+        if: ${{ github.event_name == 'workflow_dispatch' && !startsWith(github.ref, 'refs/tags/v') }}
+        run: echo "workflow_dispatch without a release tag; identity gate intentionally does not classify this as a publishable release"
+
   build-linux:
+    needs: release-identity
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -48,6 +66,7 @@ jobs:
           if-no-files-found: error
 
   build-windows:
+    needs: release-identity
     runs-on: windows-latest
     timeout-minutes: 45
     env:
@@ -86,6 +105,7 @@ jobs:
           if-no-files-found: error
 
   build-macos:
+    needs: release-identity
     runs-on: macos-latest
     timeout-minutes: 45
     env:
@@ -174,7 +194,7 @@ jobs:
           if-no-files-found: error
 
   publish:
-    if: ${{ startsWith(github.ref, 'refs/tags/v') && !cancelled() }}
+    if: ${{ startsWith(github.ref, 'refs/tags/v') && success() }}
     needs: [build-linux, build-windows, build-macos, sign]
     runs-on: ubuntu-latest
     timeout-minutes: 30
