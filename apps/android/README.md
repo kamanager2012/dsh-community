@@ -1,10 +1,17 @@
 # DSH Community Android
 
-This is the restored first-party Android endpoint source for DSH Community.
+This is the first-party Android endpoint source for DSH Community.
 
-- **Runtime:** official `@deepseek-ai/dsh@0.1.2-alpha.4` only.
-- **Target architecture:** Android WebView shell + embedded compatible Node.js host; no community Agent loop, Session store, or tool executor.
-- **Status:** `[UNVERIFIED]` / runtime substrate `BLOCKED`. Source is active; no Android Published Latest artifact is claimed yet.
+- **Target architecture:** lightweight **Remote Client**. Android does not carry Node.js, `@deepseek-ai/dsh`, a repository/toolchain, credentials, Agent loop, Session store, or tool executor.
+- **Execution Host:** official DeepSeek Harness runs on a trusted desktop/server Host and is projected through the Community Remote Host Adapter using verified public seams only.
+- **Transport target:** Noise IK E2EE over LAN direct -> WebRTC P2P -> Community-owned blind WebSocket relay fallback.
+- **Status:** `[LABS]` / `[UNVERIFIED]`. No Remote transport or Android production acceptance is claimed yet. See [Remote Host-Client Architecture](../../docs/remote-host-client.md) and issue #67.
+- **Migration rule:** the embedded Node/DSH work below is retained only as **legacy embedded-runtime evidence** until the remote path reaches its Android migration gate. It is no longer the target product architecture and must not be interpreted as the Android release path.
+
+## Legacy embedded-runtime evidence (migration-only)
+
+- **Historical runtime target:** official `@deepseek-ai/dsh@0.1.2-alpha.4` embedded on Android.
+- **Historical status:** runtime substrate `BLOCKED`; no Android Published Latest artifact was claimed.
 - **Current blocker:** official DSH alpha.4 requires Node `^22.19.0 || >=24.0.0`; the latest stock nodejs-mobile Android release observed on 2026-09-02 is Node 18.20.4. The restored Labs Gradle plugin declaration was removed instead of being presented as a working Node 22 integration.
 - **Package-closure blocker:** the published top-level `@deepseek-ai/dsh` package eagerly pulls the current native closure; profile-only row disabling does not remove those install dependencies. Run `node scripts/audit-android-official-cli-closure.mjs`.
 - **Reality gate:** compatible Node 22.19+ Android substrate → `scripts/termux-verify.sh` → embedded-runtime E2E → APK smoke on arm64/x86_64 → release evidence.
