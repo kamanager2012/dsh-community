@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "asOf": "2026-09-02",
+  "status": "BLOCKED",
+  "endpointState": "ACTIVE_SOURCE_UNVERIFIED",
+  "officialDsh": {
+    "package": "@deepseek-ai/dsh",
+    "version": "0.1.2-alpha.4",
+    "nodeEngine": "^22.19.0 || >=24.0.0"
+  },
+  "stockNodejsMobile": {
+    "latestObserved": "18.20.4",
+    "androidAssetObserved": "nodejs-mobile-v18.20.4-android.zip",
+    "compatibleWithOfficialDsh": false,
+    "source": "https://github.com/nodejs-mobile/nodejs-mobile/releases/tag/v18.20.4"
+  },
+  "gradleIntegration": {
+    "status": "UNVERIFIED",
+    "removedHistoricalPluginId": "com.github.nodejs-mobile"
+  },
+  "decision": "Keep Android active. Do not claim an embedded local DSH runtime or publish an APK until a Node 22.19+ Android substrate and real-device Reality Gate are proven."
+}

@@ -13,17 +13,17 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 
 /**
- * Foreground service that owns the embedded nodejs-mobile runtime.
+ * Foreground service reserved for the future embedded official runtime.
  *
  * Responsibilities:
- *  - start the nodejs-mobile process (official @deepseek-ai/dsh runtime)
+ *  - start the verified Android Node substrate (official @deepseek-ai/dsh runtime)
  *  - keep it alive while the session is active (Android kills background
  *    processes aggressively; the foreground notification is required)
  *  - forward approval prompts from the runtime to a system notification
  *
- * The runtime project is bundled under `nodejs-project/` — see
- * nodejs-mobile-gradle-plugin (`nodejs-mobile-build` task) and the
- * nodejs-project README for how the official runtime is wired in.
+ * The target Node project is kept under `nodejs-project/`, but no embedded
+ * runtime is claimed until `runtime-substrate.json` becomes PASS through a
+ * real Android Reality Gate.
  */
 class RuntimeService : Service() {
 
@@ -53,14 +53,20 @@ class RuntimeService : Service() {
     }
 
     private fun startNodeRuntime() {
-        // TODO(android): wire the nodejs-mobile bootstrap here.
-        // Reference:
-        //   NodeJS.runScript("require('@deepseek-ai/dsh')...") or a bundled
-        //   main.js that starts `dsh web --port <RUNTIME_PORT>`.
-        //
-        // Reality Gate: do not claim runtime readiness before the Termux
-        // verification (scripts/termux-verify.sh) passes on a real device.
-        Log.i(DshApp.TAG, "node runtime bootstrap placeholder")
+        if (!DshApp.RUNTIME_SUBSTRATE_READY) {
+            Log.w(
+                DshApp.TAG,
+                "Android runtime substrate is BLOCKED; refusing to pretend the official runtime started"
+            )
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+            return
+        }
+
+        // TODO(android): start the verified Node 22.19+ Android substrate here.
+        // This branch must remain unreachable until the machine-readable
+        // runtime-substrate gate and real-device Reality Gate are promoted.
+        error("RUNTIME_SUBSTRATE_READY cannot be true before bootstrap is implemented")
     }
 
     private fun buildNotification(text: String): Notification =

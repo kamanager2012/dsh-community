@@ -20,9 +20,33 @@ describe('active Android endpoint source contract', () => {
     expect(bootstrap).not.toMatch(/HOST:\s*['"]0\.0\.0\.0['"]/u)
   })
 
-  it('does not promote Android beyond its real evidence state', () => {
+  it('fails loud while the Android runtime substrate is blocked', () => {
+    const state = JSON.parse(
+      readFileSync(resolve(ROOT, 'apps/android/runtime-substrate.json'), 'utf8'),
+    ) as {
+      status?: string
+      endpointState?: string
+      stockNodejsMobile?: { latestObserved?: string; compatibleWithOfficialDsh?: boolean }
+    }
+    expect(state.status).toBe('BLOCKED')
+    expect(state.endpointState).toBe('ACTIVE_SOURCE_UNVERIFIED')
+    expect(state.stockNodejsMobile?.latestObserved).toBe('18.20.4')
+    expect(state.stockNodejsMobile?.compatibleWithOfficialDsh).toBe(false)
+
+    const rootGradle = readFileSync(resolve(ROOT, 'apps/android/build.gradle.kts'), 'utf8')
+    const appGradle = readFileSync(resolve(ROOT, 'apps/android/app/build.gradle.kts'), 'utf8')
+    expect(rootGradle).not.toContain('com.github.nodejs-mobile')
+    expect(appGradle).not.toContain('com.github.nodejs-mobile')
+
+    const app = readFileSync(
+      resolve(ROOT, 'apps/android/app/src/main/java/org/dsh/community/android/DshApp.kt'),
+      'utf8',
+    )
+    expect(app).toContain('RUNTIME_SUBSTRATE_READY = false')
+
     const doc = readFileSync(resolve(ROOT, 'docs/android-endpoint.md'), 'utf8')
     expect(doc).toContain('[UNVERIFIED]')
+    expect(doc).toContain('BLOCKED')
     expect(doc).toMatch(/Reality Gate/u)
   })
 })
