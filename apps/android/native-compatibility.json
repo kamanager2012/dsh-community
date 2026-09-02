@@ -98,19 +98,21 @@
       "status": "COMMUNITY_PROVIDER_WIRED_NODE_PTY_AND_REAL_DEVICE_PROBE_REQUIRED",
       "severity": "HARD",
       "facts": [
-        "Android composition now disables only the official subprocess-local row and inserts a first-party AndroidSubprocessRuntime through the official patch layer.",
+        "Android composition disables only the official subprocess-local row and inserts a first-party AndroidSubprocessRuntime through the official patch layer.",
         "AndroidSubprocessRuntime subclasses the published LocalSubprocessRuntime, so resolveExecutable(), ordinary spawn(), process-tree ownership, and non-PTY lifecycle remain official code.",
         "Only spawnTerminal() is replaced. The Android handle owns PTY bytes, foreground process-group signalling, PID-starttime reuse fences, POSIX-session membership, and TERM→KILL quiescence.",
         "node-pty is not a Community direct dependency; the provider resolves it from the frozen official subprocess-local dependency closure.",
         "Android /proc may not expose syscall/memory details needed to prove stdin wait. The provider therefore returns false when it cannot prove waiting, matching the public seam's conservative semantics and the official E2B provider precedent.",
-        "The provider wiring is not evidence. node-pty Android cross-build/load plus real-device minimal/persistent-terminal behavior remain NOT_RUN."
+        "The manual native-addon device gate now chains android-pty-provider-device-probe.mjs after raw node-pty loading. It exercises provider write, foreground SIGINT, post-signal recovery, and session cleanup under adb shell.",
+        "adb-shell provider success is explicitly preliminary and cannot promote APK app-UID/minimal-preset evidence. Real app-UID persistent-terminal behavior remains NOT_RUN."
       ],
       "releaseBlocking": true,
       "scope": [
         "minimal preset",
         "persistent terminal"
       ],
-      "provider": "apps/android/nodejs-project/src/main/js/android-subprocess-provider.mjs"
+      "provider": "apps/android/nodejs-project/src/main/js/android-subprocess-provider.mjs",
+      "preliminaryProbe": "apps/android/nodejs-project/src/main/js/android-pty-provider-device-probe.mjs"
     },
     {
       "id": "sandbox-platform-chain",
@@ -145,7 +147,7 @@
       "preflight": "apps/android/nodejs-project/src/main/js/android-app-uid-preflight.cjs"
     }
   ],
-  "conclusion": "Android Local remains blocked. Sandbox and app-private hard-link checks are wired into app-UID preflight; PTY now has a production-shaped provider that reuses official ordinary subprocess semantics but still needs node-pty Android build/load and real-device terminal evidence; fs-search remains blocked on an upstream ripgrep path seam or Android package.",
+  "conclusion": "Android Local remains blocked. Sandbox and hard-link app-UID preflight are wired; PTY has both a production-shaped provider and a preliminary provider-level adb-shell Reality Gate but still needs exact-carrier build plus real APK minimal/persistent-terminal evidence; fs-search remains blocked on an upstream ripgrep path seam or Android package.",
   "portableDependencyAudit": "scripts/audit-android-portable-deps.mjs",
   "sandboxProbe": "scripts/android-sandbox-landlock-probe.sh",
   "androidCompositionPatch": "apps/android/nodejs-project/src/main/js/android.cordis.patch.yml",
@@ -170,7 +172,10 @@
         "cordis"
       ],
       "realDeviceEvidence": "NOT_RUN",
-      "reason": "Android replaces only spawnTerminal() while inheriting official LocalSubprocessRuntime resolveExecutable/spawn semantics. The provider adds /proc identity fencing, foreground group signalling, session cleanup, and conservative input-wait evidence. It remains blocked until node-pty cross-build/load and real-device minimal/persistent-terminal smoke pass."
+      "reason": "Android replaces only spawnTerminal() while inheriting official LocalSubprocessRuntime resolveExecutable/spawn semantics. The raw native-addon gate now chains a provider-level adb-shell smoke that validates the Community Android inspector/terminal handle, foreground signalling, post-signal recovery, and session cleanup. adb-shell success remains preliminary; release still requires real APK app-UID minimal/persistent-terminal evidence.",
+      "preliminaryDeviceProbe": "apps/android/nodejs-project/src/main/js/android-pty-provider-device-probe.mjs",
+      "adbShellEvidence": "NOT_RUN",
+      "appUidMinimalPresetEvidence": "NOT_RUN"
     },
     "sandbox": {
       "servicePackage": "@deepseek-ai/dsh-sandbox",
@@ -221,5 +226,6 @@
   },
   "appUidPreflight": "apps/android/nodejs-project/src/main/js/android-app-uid-preflight.cjs",
   "ripgrepSeamAudit": "scripts/audit-android-ripgrep-seam.mjs",
-  "ptyProvider": "apps/android/nodejs-project/src/main/js/android-subprocess-provider.mjs"
+  "ptyProvider": "apps/android/nodejs-project/src/main/js/android-subprocess-provider.mjs",
+  "ptyProviderProbe": "apps/android/nodejs-project/src/main/js/android-pty-provider-device-probe.mjs"
 }

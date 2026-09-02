@@ -48,6 +48,7 @@ EXPECTED_EMNAPI="1.11.3"
 ANDROID_API="${ANDROID_API:-26}"
 ANDROID_ARCH="${ANDROID_ARCH:-arm64}"
 WORK_ROOT="${ANDROID_NATIVE_WORK_ROOT:-${TMPDIR:-/tmp}/dsh-android-native}"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 fail() {
   printf 'android-native-addon-probe: FAIL: %s\n' "$*" >&2
@@ -351,6 +352,10 @@ device_probe() {
   [[ -n "$node_bin" && -f "$node_bin" ]] || fail "NODE_BIN (or NODE_SOURCE_DIR/out/Release/node) is required for device mode"
   [[ -d "$WORK_ROOT/runtime/node_modules/node-pty" ]]     || fail "built node-pty package is missing under ANDROID_NATIVE_WORK_ROOT"
   [[ -f "$WORK_ROOT/artifacts/koffi.node" ]]     || fail "built Koffi addon is missing under ANDROID_NATIVE_WORK_ROOT"
+  local provider_probe="$REPO_ROOT/apps/android/nodejs-project/src/main/js/android-pty-provider-device-probe.mjs"
+  local process_inspector="$REPO_ROOT/apps/android/nodejs-project/src/main/js/android-process-inspector.mjs"
+  local terminal_handle="$REPO_ROOT/apps/android/nodejs-project/src/main/js/android-terminal-handle.mjs"
+  [[ -f "$provider_probe" && -f "$process_inspector" && -f "$terminal_handle" ]]     || fail "Android PTY provider probe sources are missing from the repository"
   prepare_sharp_smoke_tree
 
   require_one_device
@@ -364,6 +369,9 @@ device_probe() {
   "${adb[@]}" push "$WORK_ROOT/runtime/node_modules/node-pty" "$remote/node-pty" >/dev/null
   "${adb[@]}" push "$WORK_ROOT/artifacts/koffi.node" "$remote/koffi.node" >/dev/null
   "${adb[@]}" push "$WORK_ROOT/sharp-smoke/node_modules" "$remote/node_modules" >/dev/null
+  "${adb[@]}" push "$provider_probe" "$remote/android-pty-provider-device-probe.mjs" >/dev/null
+  "${adb[@]}" push "$process_inspector" "$remote/android-process-inspector.mjs" >/dev/null
+  "${adb[@]}" push "$terminal_handle" "$remote/android-terminal-handle.mjs" >/dev/null
   "${adb[@]}" shell chmod 0755 "$remote/node"
 
   local observed
@@ -424,6 +432,8 @@ device_probe() {
       process.stdout.write("NODE_PTY_DEVICE_OK\n");
     });
   ' "$remote/node-pty"
+
+  "${adb[@]}" shell "$remote/node"     "$remote/android-pty-provider-device-probe.mjs"     "$remote/node-pty"     "$remote"
 
   "${adb[@]}" shell rm -rf "$remote" >/dev/null 2>&1 || true
   printf 'android-native-addon-probe: DEVICE_OK node=%s arch=%s\n' "$EXPECTED_NODE" "$ANDROID_ARCH"

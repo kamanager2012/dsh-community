@@ -21,6 +21,10 @@ const PATCH = resolve(
   ROOT,
   'apps/android/nodejs-project/src/main/js/android.cordis.patch.yml',
 )
+const DEVICE_PROBE = resolve(
+  ROOT,
+  'apps/android/nodejs-project/src/main/js/android-pty-provider-device-probe.mjs',
+)
 
 function procStat({
   pid,
@@ -58,8 +62,8 @@ function procStat({
 }
 
 describe('Android subprocess provider', () => {
-  it('keeps provider modules syntax-valid in ordinary CI', () => {
-    for (const file of [INSPECTOR, PROVIDER, HANDLE]) {
+  it('keeps provider and provider-level device-probe modules syntax-valid in ordinary CI', () => {
+    for (const file of [INSPECTOR, PROVIDER, HANDLE, DEVICE_PROBE]) {
       const result = spawnSync(process.execPath, ['--check', file], {
         cwd: ROOT,
         encoding: 'utf8',
@@ -198,6 +202,18 @@ describe('Android subprocess provider', () => {
     expect(handle).toContain('refusing to SIGKILL the terminal shell')
     expect(handle).toContain('signalProcess(this.rootIdentity')
     expect(handle).toContain('observed.session(this.sessionId)')
+  })
+
+  it('keeps the preliminary device probe on the real Android inspector/handle without claiming app-UID acceptance', () => {
+    const probe = readFileSync(DEVICE_PROBE, 'utf8')
+    expect(probe).toContain("import { AndroidProcessInspector } from './android-process-inspector.mjs'")
+    expect(probe).toContain("import { AndroidTerminalHandle } from './android-terminal-handle.mjs'")
+    expect(probe).toContain("await handle.write(\"sleep 30\\n\")")
+    expect(probe).toContain("await handle.signalForeground('SIGINT')")
+    expect(probe).toContain('DSH_PROVIDER_AFTER_SIGNAL_OK')
+    expect(probe).toContain('liveSessionMembers.length !== 0')
+    expect(probe).toContain('ANDROID_PTY_PROVIDER_ADB_SHELL_OK_NOT_APP_UID_ACCEPTANCE')
+    expect(probe).not.toMatch(/RUNTIME_SUBSTRATE_READY|reality-gate\.json/iu)
   })
 
   it('patches only execution-world providers and declares no third-party Android direct dependency', () => {

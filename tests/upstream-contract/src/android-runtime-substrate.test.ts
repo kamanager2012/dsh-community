@@ -16,6 +16,7 @@ describe('Android runtime substrate evidence', () => {
       androidCompositionPatch?: string
       appUidPreflight?: string
       ptyProvider?: string
+      ptyProviderProbe?: string
       packageClosure?: {
         status?: string
         audit?: string
@@ -42,6 +43,7 @@ describe('Android runtime substrate evidence', () => {
     expect(state.androidCompositionPatch).toBe('apps/android/nodejs-project/src/main/js/android.cordis.patch.yml')
     expect(state.appUidPreflight).toBe('apps/android/nodejs-project/src/main/js/android-app-uid-preflight.cjs')
     expect(state.ptyProvider).toBe('apps/android/nodejs-project/src/main/js/android-subprocess-provider.mjs')
+    expect(state.ptyProviderProbe).toBe('apps/android/nodejs-project/src/main/js/android-pty-provider-device-probe.mjs')
     expect(state.packageClosure?.status).toBe('BLOCKED')
     expect(state.packageClosure?.audit).toBe('scripts/audit-android-official-cli-closure.mjs')
     expect(state.packageClosure?.profileOnlyMitigation).toBe('INEFFECTIVE')

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Android PTY 真机门禁从 raw `node-pty` smoke 升级为 provider-level preliminary smoke：新增 `android-pty-provider-device-probe.mjs`，并接入 `scripts/android-native-addon-probe.sh device/verify`。在 raw addon 可加载之后继续复用真实 `AndroidProcessInspector` + `AndroidTerminalHandle`，验证 PTY 写入、foreground `SIGINT`、signal 后恢复写入及整个 POSIX session cleanup。
+- provider-level 成功标记固定为 `ANDROID_PTY_PROVIDER_ADB_SHELL_OK_NOT_APP_UID_ACCEPTANCE`；它只证明 adb-shell execution world 下 provider substrate 可工作，不能升级 `reality-gate.json`，也不能替代 APK app UID + 官方 Web `minimal` persistent-terminal Reality Gate。
+
 - Android PTY G2 从“等待正式 SubprocessRuntime provider”推进到 first-party provider：新增 `android-subprocess-provider.mjs` / `android-process-inspector.mjs` / `android-terminal-handle.mjs`，通过官方 `dsh web --patch` 只替换 `ctx.subprocess` provider。Android provider 继承发布版 `LocalSubprocessRuntime`，普通 `resolveExecutable/spawn` 与非 PTY 进程治理继续走官方代码，仅覆写 `spawnTerminal()`。
 - Android PTY backend 增加 `/proc/<pid>/stat` starttime PID-reuse fence、foreground PGID signalling、POSIX session member 跟踪、TERM→KILL quiescence；Android 无法证明 stdin syscall wait 时保守返回 `inputWaiting=false`，不伪造 readiness。官方 `terminalInspector` test hook 继续禁用。
 - `node-pty@1.2.0-beta.15` 不提升为 Community 直依赖，而是从 frozen `@deepseek-ai/dsh-subprocess-local` 依赖闭包解析。当前状态仍是 `COMMUNITY_PROVIDER_WIRED_NODE_PTY_AND_REAL_DEVICE_PROBE_REQUIRED`：只有 exact Node 22.19 Android carrier 上 build/load + 真机 `minimal` persistent-terminal 启动/写入/foreground signal/session cleanup 全过，才允许升级证据。

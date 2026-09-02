@@ -132,7 +132,12 @@ Out of scope (report upstream instead):
   session members for teardown, and treats stdin-wait as unproven/false when the
   app sandbox does not expose enough kernel state. This conservative fallback
   cannot promote PTY evidence; exact-carrier node-pty and real-device minimal
-  preset behavior remain release-blocking.
+  preset behavior remain release-blocking. The manual native device gate now
+  chains a provider-level adb-shell smoke that uses the actual Android inspector
+  and terminal handle to test write, foreground SIGINT, post-signal recovery,
+  and POSIX-session cleanup. Its success marker explicitly states
+  `NOT_APP_UID_ACCEPTANCE`; adb-shell success never substitutes for the APK
+  app-UID official Web/minimal Reality Gate.
 - `scripts/audit-android-portable-deps.mjs` is a network-free provenance check over
   the committed runtime lock. It distinguishes sharp's exact locked WASM fallback
   from actual optional-byte materialization, records that the frozen
