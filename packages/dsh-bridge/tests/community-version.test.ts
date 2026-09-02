@@ -24,8 +24,8 @@ describe('community version identity', () => {
   it('formats the exact Dual-Badge identity', () => {
     expect(formatCommunityIdentity('@deepseek-ai/dsh', '0.1.0-rc.8', '0.1.0-rc.8-community.1'))
       .toBe('DeepSeek Harness Community v0.1.0-rc.8-community.1 [Official Core: @deepseek-ai/dsh@0.1.0-rc.8]')
-    expect(formatCommunityIdentity('@deepseek-ai/dsh', '0.1.2-alpha.3'))
-      .toBe('DeepSeek Harness Community v0.1.2-alpha.3 [Official Core: @deepseek-ai/dsh@0.1.2-alpha.3]')
+    expect(formatCommunityIdentity('@deepseek-ai/dsh', '0.1.2-alpha.4'))
+      .toBe('DeepSeek Harness Community v0.1.2-alpha.4 [Official Core: @deepseek-ai/dsh@0.1.2-alpha.4]')
   })
 
   it('does not allow a different package name in the official-core badge', () => {
