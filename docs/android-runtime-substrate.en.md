@@ -13,6 +13,12 @@ The primary candidate is now:
 
 > **Cross-build official Node.js `v22.19.0` source for Android using Node's own Android NDK configure path.**
 
+The candidate is pinned to Git object identity, not just a version string:
+
+- verified annotated tag object: `a9d4750074c7b5439c61daa28ea9afb5dc28e43e`
+- tag target commit: `f8fe6858549f75a4b4e9633abf39dd2038dbf496`
+- the probe requires local `refs/tags/v22.19.0`, its peeled commit, and HEAD to match those exact objects, with no tracked source modifications.
+
 Node `v22.19.0` still ships `android_configure.py` and documents the Android build command, but its own `BUILDING.md` explicitly says Android is not a supported platform and is not covered by Node CI. This is therefore a source path we can validate ourselves, not upstream production support.
 
 ## Node 22 is necessary, not sufficient
@@ -45,7 +51,19 @@ ANDROID_NDK_HOME=/abs/android-ndk \
 bash scripts/android-node22-probe.sh verify
 ```
 
-The gate must prove exact Node 22.19.0 source, a successful official Android cross-build, execution on a real Android device, `process.versions.node === "22.19.0"`, and `process.platform === "android"`.
+The gate must prove the exact verified Node tag object and commit, a successful official Android cross-build, execution on a real Android device, `process.versions.node === "22.19.0"`, and `process.platform === "android"`.
+
+### Release fail-closed
+
+Android publication readiness is machine-gated:
+
+```bash
+node scripts/verify-android-release-ready.mjs
+```
+
+Today this command must fail with `android-release-ready: BLOCKED`. It can only pass when the runtime substrate/carrier, selected native closure, every blocker, real-device evidence, official DSH boot, arm64 APK smoke, x86_64 emulator smoke, carrier/APK SHA-256 evidence, and the app runtime gate all agree on PASS.
+
+The explicit empty evidence record is `apps/android/evidence/reality-gate.json` and remains `NOT_RUN`; code or documentation presence is never evidence of a completed Android gate.
 
 ### G2 — Native closure
 

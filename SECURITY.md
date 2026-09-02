@@ -105,11 +105,21 @@ Out of scope (report upstream instead):
   official Node `v22.19.0`; Node upstream itself classifies Android as an
   unsupported platform with no CI coverage, so this candidate cannot advance
   without our real-device gate.
+- The Node 22.19.0 carrier candidate is pinned to the GitHub-verified annotated
+  tag object `a9d4750074c7b5439c61daa28ea9afb5dc28e43e`, which peels to
+  commit `f8fe6858549f75a4b4e9633abf39dd2038dbf496`. The manual probe rejects a
+  different tag object, commit, HEAD, or tracked source modifications before
+  cross-building.
 - A successful Node carrier is not sufficient for DSH: the current native
   closure still includes `node-pty`/`koffi`, `sharp`, platform sandbox
   binaries, and packaged ripgrep. Their machine-readable status lives in
-  `apps/android/native-blockers.json`. No APK or real-device security claim
-  is made until those gates and the Android Reality Gate pass.
+  `apps/android/native-blockers.json`.
+- Android publication is fail-closed through
+  `scripts/verify-android-release-ready.mjs` (`node scripts/verify-android-release-ready.mjs`).
+  It requires coherent PASS evidence for carrier identity, native closure,
+  real-device DSH boot, APK smokes, carrier/APK SHA-256, and the in-app runtime
+  gate. The committed `apps/android/evidence/reality-gate.json` is currently
+  `NOT_RUN`, so Android cannot be promoted or released from current evidence.
 
 ## Session and credential data
 

@@ -15,6 +15,12 @@
 
 > **从官方 Node.js `v22.19.0` 源码使用其自带 Android NDK 交叉编译入口构建 Android carrier。**
 
+该候选已经钉死到 Git 身份，而不是只看版本字符串：
+
+- verified annotated tag object: `a9d4750074c7b5439c61daa28ea9afb5dc28e43e`
+- tag 指向 commit: `f8fe6858549f75a4b4e9633abf39dd2038dbf496`
+- probe 要求本地 `refs/tags/v22.19.0`、tag commit、HEAD 三者全部与上述对象一致，并拒绝 tracked source 修改。
+
 Node 官方 `v22.19.0` 的 `BUILDING.md` 与 `android_configure.py` 仍保留 Android 交叉编译路径，但同时明确声明 **Android is not a supported platform**，且官方 CI 不覆盖 Android。因此它只是我们可以自行验证的源码路径，不是上游支持承诺。
 
 ## 为什么 Node 22 仍然不是终点
@@ -57,13 +63,35 @@ bash scripts/android-node22-probe.sh verify
 
 必须同时证明：
 
-1. 使用的源码版本精确为 Node `22.19.0`
+1. 使用的源码精确匹配 `v22.19.0` verified tag object 与 commit，不接受“同版本号的其他源码”
 2. 通过官方 Node Android configure path 完成交叉编译
 3. 目标 carrier 在真实 Android 设备上可执行
 4. 设备输出 `process.versions.node === "22.19.0"`
 5. 设备输出 `process.platform === "android"`
 
 未完成 G1 前，`runtime-substrate.json.status` 继续是 `BLOCKED`。
+
+### Release fail-closed
+
+Android 发布资格不是人工口头判断。运行：
+
+```bash
+node scripts/verify-android-release-ready.mjs
+```
+
+当前必须返回非零并打印 `android-release-ready: BLOCKED`。只有以下证据同时成立才允许 PASS：
+
+- runtime substrate / carrier = `PASS`
+- release target native closure = `PASS`
+- 所有 native blocker = `RESOLVED`
+- real-device Reality Gate = `PASS`
+- Node carrier 有 SHA-256 + 真机执行证据
+- official DSH boot = `PASS`
+- arm64 真机 APK smoke + x86_64 emulator smoke = `PASS`
+- APK SHA-256 存在
+- App 内 `RUNTIME_SUBSTRATE_READY` 已由证据驱动升级
+
+当前空证据文件是 `apps/android/evidence/reality-gate.json`，状态固定为 `NOT_RUN`；不能凭文档或代码存在性推断通过。
 
 ### G2 — Native closure
 

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Android carrier provenance 与发布门禁继续收紧：官方 Node `v22.19.0` 候选不再只校验版本宏，现精确绑定 GitHub verified annotated tag object `a9d4750074c7b5439c61daa28ea9afb5dc28e43e` 及其 commit `f8fe6858549f75a4b4e9633abf39dd2038dbf496`；手工 probe 同时校验 tag object、peeled commit、HEAD 与 tracked source clean state。
+- 新增 Android fail-closed 发布资格检查 `node scripts/verify-android-release-ready.mjs`：当前 `runtime substrate=BLOCKED`、native blockers=`OPEN`、Reality Gate=`NOT_RUN` 时必须非零退出。只有 carrier/native closure/DSH boot/APK 双架构 smoke、真机身份、carrier/APK SHA-256 与 App runtime gate 全部一致 PASS 才能进入发布；普通 CI 只验证“当前应被阻断”，不伪造真机证据。
+
 - Android Local runtime 路线继续推进到第二层 Reality Gate：stock nodejs-mobile 因 Node 18.20.4 与 DSH alpha.4 的 Node 22.19+ 要求冲突继续判 `BLOCKED`，但已确认官方 Node `v22.19.0` 源码仍保留 Android NDK 交叉编译入口。新增 `scripts/android-node22-probe.sh`，只接受调用方提供的官方 Node 源码/NDK，必须在真机通过 `process.versions.node=22.19.0` 与 `process.platform=android` 才能升级 carrier 证据；普通 CI 不运行这个重型 gate。
 - 新增 `apps/android/native-blockers.json`：完整 Web 与官方 `sdk-minimal` 都不能仅靠 Node 22 自动成立，当前硬阻断包括 `dsh-subprocess-local → node-pty/koffi`、`dsh-attachment-local → sharp`、`dsh-sandbox-local` 的平台 native backend；`dsh-tool-fs-search → @vscode/ripgrep` 为 feature blocker。Android 第五端继续保留，不转成 Remote-only，也不引入 Codex。
 

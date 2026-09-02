@@ -12,7 +12,8 @@
     "latestObserved": "18.20.4",
     "androidAssetObserved": "nodejs-mobile-v18.20.4-android.zip",
     "compatibleWithOfficialDsh": false,
-    "source": "https://github.com/nodejs-mobile/nodejs-mobile/releases/tag/v18.20.4"
+    "source": "https://github.com/nodejs-mobile/nodejs-mobile/releases/tag/v18.20.4",
+    "sourceCommit": "959b6e8637c86fb1f63f1aaf72adc86c7e8c335d"
   },
   "gradleIntegration": {
     "status": "UNVERIFIED",
@@ -30,8 +31,14 @@
       "arm64",
       "x86_64"
     ],
-    "manualProbe": "scripts/android-node22-probe.sh"
+    "manualProbe": "scripts/android-node22-probe.sh",
+    "sourceTag": "v22.19.0",
+    "tagObjectSha": "a9d4750074c7b5439c61daa28ea9afb5dc28e43e",
+    "sourceCommit": "f8fe6858549f75a4b4e9633abf39dd2038dbf496",
+    "tagSignatureVerifiedByGitHub": true
   },
   "nextGate": "Build official Node v22.19.0 from source with Android NDK and execute it on a real Android device; then resolve apps/android/native-blockers.json before DSH host boot can be promoted.",
-  "nativeClosure": "apps/android/native-blockers.json"
+  "nativeClosure": "apps/android/native-blockers.json",
+  "releaseReadinessVerifier": "scripts/verify-android-release-ready.mjs",
+  "realityEvidence": "apps/android/evidence/reality-gate.json"
 }
