@@ -18,6 +18,8 @@ import { BoundedReplayBuffer } from './replay.js'
 
 export interface RemoteAdapterOptions {
   readonly replayCapacity?: number
+  readonly replayByteCapacity?: number
+  readonly maxReplaySessions?: number
   readonly idempotencyCapacity?: number
   readonly terminalStateCapacity?: number
   readonly connectionStateCapacity?: number
@@ -106,6 +108,8 @@ export class RemoteAdapterCore {
   private readonly lastRequestSeq = new Map<string, number>()
   private readonly claimedInteractions = new Set<string>()
   private readonly replayCapacity: number
+  private readonly replayByteCapacity: number
+  private readonly maxReplaySessions: number
   private readonly terminalStateCapacity: number
   private readonly connectionStateCapacity: number
 
@@ -114,6 +118,11 @@ export class RemoteAdapterCore {
     options: RemoteAdapterOptions = {},
   ) {
     this.replayCapacity = options.replayCapacity ?? 500
+    this.replayByteCapacity = options.replayByteCapacity ?? 2 * 1024 * 1024
+    this.maxReplaySessions = options.maxReplaySessions ?? 64
+    if (!Number.isInteger(this.maxReplaySessions) || this.maxReplaySessions < 1) {
+      throw new Error('maxReplaySessions must be a positive integer')
+    }
     this.terminalStateCapacity = options.terminalStateCapacity ?? 4096
     this.connectionStateCapacity = options.connectionStateCapacity ?? 1024
     this.devices = new DeviceRegistry(options.maxDevices ?? 128)
@@ -123,10 +132,26 @@ export class RemoteAdapterCore {
   onOfficialEvent(sessionId: string, event: OfficialSessionEvent): void {
     let buffer = this.replayBySession.get(sessionId)
     if (!buffer) {
-      buffer = new BoundedReplayBuffer(this.replayCapacity)
-      this.replayBySession.set(sessionId, buffer)
+      if (this.replayBySession.size >= this.maxReplaySessions) {
+        const oldestSessionId = this.replayBySession.keys().next().value
+        if (typeof oldestSessionId === 'string') {
+          this.replayBySession.delete(oldestSessionId)
+        }
+      }
+      buffer = new BoundedReplayBuffer(
+        this.replayCapacity,
+        this.replayByteCapacity,
+      )
+    } else {
+      // Refresh insertion order so eviction is least-recently-used by event.
+      this.replayBySession.delete(sessionId)
     }
+    this.replayBySession.set(sessionId, buffer)
     buffer.append(event)
+  }
+
+  forgetSession(sessionId: string): void {
+    this.replayBySession.delete(sessionId)
   }
 
   closeConnection(peer: AuthenticatedPeer): void {
@@ -213,7 +238,17 @@ export class RemoteAdapterCore {
   private async attach(params: SessionAttachParams): Promise<unknown> {
     await this.seams.assertSession(params.sessionId)
     const buffer = this.replayBySession.get(params.sessionId)
-    return buffer?.resume(params.afterSeq) ?? { kind: 'events', events: [] }
+    if (!buffer) {
+      if (params.afterSeq !== undefined) {
+        return { kind: 'reset', reason: 'window-unavailable' }
+      }
+      return { kind: 'events', events: [] }
+    }
+
+    // Refresh insertion order on attach as well as on event receipt.
+    this.replayBySession.delete(params.sessionId)
+    this.replayBySession.set(params.sessionId, buffer)
+    return buffer.resume(params.afterSeq)
   }
 
   private async mutate<TParams, TResult>(

@@ -219,6 +219,66 @@ describe('R1 remote protocol adversarial matrix', () => {
     })
   })
 
+  it('resets when a resume point references a replay window that is not resident', async () => {
+    const { seams } = fakeSeams()
+    const adapter = new RemoteAdapterCore(seams)
+    adapter.devices.trust(peer.deviceId, ['observe'])
+
+    const result = await adapter.handle(
+      peer,
+      request('session.attach', 1, { sessionId: 's1', afterSeq: 42 }),
+    )
+    expect(result).toEqual({
+      kind: 'reset',
+      reason: 'window-unavailable',
+    })
+  })
+
+  it('bounds replay memory across sessions with LRU eviction', async () => {
+    const { seams } = fakeSeams()
+    seams.assertSession = async () => {}
+    const adapter = new RemoteAdapterCore(seams, { maxReplaySessions: 1 })
+    adapter.devices.trust(peer.deviceId, ['observe'])
+
+    adapter.onOfficialEvent('s1', { seq: 1, type: 'test/event' })
+    adapter.onOfficialEvent('s2', { seq: 1, type: 'test/event' })
+
+    const result = await adapter.handle(
+      peer,
+      request('session.attach', 1, { sessionId: 's1', afterSeq: 1 }),
+    )
+    expect(result).toEqual({
+      kind: 'reset',
+      reason: 'window-unavailable',
+    })
+  })
+
+  it('bounds replay memory by serialized event bytes, not only event count', async () => {
+    const { seams } = fakeSeams()
+    const adapter = new RemoteAdapterCore(seams, {
+      replayCapacity: 500,
+      replayByteCapacity: 64,
+    })
+    adapter.devices.trust(peer.deviceId, ['observe'])
+
+    adapter.onOfficialEvent('s1', {
+      seq: 1,
+      type: 'test/event',
+      data: 'x'.repeat(256),
+    })
+
+    const result = await adapter.handle(
+      peer,
+      request('session.attach', 1, { sessionId: 's1', afterSeq: 0 }),
+    )
+    expect(result).toEqual({
+      kind: 'reset',
+      reason: 'window-exceeded',
+      oldestSeq: 1,
+      latestSeq: 1,
+    })
+  })
+
   it('rejects replayed request sequence numbers within one authenticated connection', async () => {
     const { seams } = fakeSeams()
     const adapter = new RemoteAdapterCore(seams)
