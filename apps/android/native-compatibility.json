@@ -240,5 +240,6 @@
   "upgradeCarryForwardRule": "Do not carry Android Community adapters/blockers forward to a newer official DSH version when audit-android-upstream-drift reports REVIEW_REQUIRED. Re-adjudicate first and remove Community adaptation when upstream now owns the capability.",
   "evidenceBackingValidator": "scripts/validate-android-evidence-backing.mjs",
   "evidenceRecords": "apps/android/evidence/records",
-  "evidencePromotionRule": "A PASS claim in reality-gate.json is invalid unless validate-android-evidence-backing finds a matching version-bound evidence record. Evidence records cannot override unresolved architecture blockers."
+  "evidencePromotionRule": "A PASS claim in reality-gate.json is invalid unless validate-android-evidence-backing finds a matching version-bound evidence record. Evidence records cannot override unresolved architecture blockers.",
+  "evidenceRecordCreator": "scripts/create-android-evidence-record.mjs"
 }

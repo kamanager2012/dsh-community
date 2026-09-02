@@ -17,6 +17,7 @@ describe('Android G2 native compatibility', () => {
       androidCompositionPatch?: string
       appUidPreflight?: string
       evidenceBackingValidator?: string
+      evidenceRecordCreator?: string
       evidenceRecords?: string
       evidencePromotionRule?: string
       ripgrepSeamAudit?: string
@@ -81,6 +82,7 @@ describe('Android G2 native compatibility', () => {
     expect(state.androidCompositionPatch).toBe('apps/android/nodejs-project/src/main/js/android.cordis.patch.yml')
     expect(state.appUidPreflight).toBe('apps/android/nodejs-project/src/main/js/android-app-uid-preflight.cjs')
     expect(state.evidenceBackingValidator).toBe('scripts/validate-android-evidence-backing.mjs')
+    expect(state.evidenceRecordCreator).toBe('scripts/create-android-evidence-record.mjs')
     expect(state.evidenceRecords).toBe('apps/android/evidence/records')
     expect(state.evidencePromotionRule).toContain('matching version-bound evidence record')
     expect(state.ripgrepSeamAudit).toBe('scripts/audit-android-ripgrep-seam.mjs')
