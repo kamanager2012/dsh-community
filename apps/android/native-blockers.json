@@ -19,8 +19,16 @@
         "terminal"
       ],
       "severity": "HARD",
-      "evidence": "Official package imports node-pty for terminal sessions and declares node-pty+koffi dependencies.",
-      "status": "OPEN"
+      "evidence": "Official package imports node-pty for terminal sessions and declares node-pty+koffi dependencies. node-pty documents Linux/macOS/Windows support; Koffi's official tested OS matrix does not include Android.",
+      "status": "OPEN",
+      "rowDisableRemovesInstallDependency": false,
+      "failurePhase": "INSTALL_OR_LOAD",
+      "upstreamAndroidSupport": "NO_OFFICIAL_SUPPORT_EVIDENCE",
+      "packagePath": [
+        "@deepseek-ai/dsh",
+        "@deepseek-ai/dsh-base",
+        "@deepseek-ai/dsh-subprocess-local"
+      ]
     },
     {
       "id": "attachment-local",
@@ -33,8 +41,16 @@
         "image attachments"
       ],
       "severity": "HARD",
-      "evidence": "Official package declares sharp as a runtime dependency.",
-      "status": "OPEN"
+      "evidence": "Official package declares sharp as a runtime dependency. sharp 0.35.x publishes platform optional binaries for desktop/server targets but no Android target.",
+      "status": "OPEN",
+      "rowDisableRemovesInstallDependency": false,
+      "failurePhase": "LOAD_OR_IMAGE_USE",
+      "upstreamAndroidSupport": "NO_SHARP_ANDROID_PREBUILD",
+      "packagePath": [
+        "@deepseek-ai/dsh",
+        "@deepseek-ai/dsh-base",
+        "@deepseek-ai/dsh-attachment-local"
+      ]
     },
     {
       "id": "sandbox-local",
@@ -49,8 +65,16 @@
         "local shell confinement"
       ],
       "severity": "HARD",
-      "evidence": "Official Linux Landlock binaries are published for linux-x64/linux-arm64, not Android; Windows backend uses koffi.",
-      "status": "OPEN"
+      "evidence": "Official sandbox-local PLATFORM_CHAINS defines linux, darwin, and win32 only; an unlisted platform fails closed when confinement is requested. The package also imports Landlock and Windows ACL backends.",
+      "status": "OPEN",
+      "rowDisableRemovesInstallDependency": false,
+      "failurePhase": "LOAD_OR_CONFINE",
+      "upstreamAndroidSupport": "NO_ANDROID_PLATFORM_CHAIN",
+      "packagePath": [
+        "@deepseek-ai/dsh",
+        "@deepseek-ai/dsh-base",
+        "@deepseek-ai/dsh-sandbox-local"
+      ]
     },
     {
       "id": "fs-search",
@@ -63,10 +87,19 @@
         "glob/grep search"
       ],
       "severity": "FEATURE_BLOCKER",
-      "evidence": "Official fs-search package is backed by packaged ripgrep binary.",
-      "status": "OPEN"
+      "evidence": "Official DSH tool-fs-search depends on @vscode/ripgrep; the ripgrep package resolves packaged binaries by process.platform/process.arch and exposes no Android target in the audited surface.",
+      "status": "OPEN",
+      "rowDisableRemovesInstallDependency": false,
+      "failurePhase": "LOAD_OR_SEARCH_USE",
+      "upstreamAndroidSupport": "NO_ANDROID_BINARY_TARGET_EVIDENCE",
+      "packagePath": [
+        "@deepseek-ai/dsh",
+        "@deepseek-ai/dsh-tool-fs-search"
+      ]
     }
   ],
-  "conclusion": "A Node 22 carrier is necessary but not sufficient. Full DSH Web and sdk-minimal both still contain native host dependencies that need Android-compatible official composition or native builds.",
-  "releaseTarget": "fullWebProfile"
+  "conclusion": "Node 22 is necessary but insufficient. The published top-level @deepseek-ai/dsh package eagerly carries the native closure, so profile-only row disabling cannot make the current official CLI package Android-safe.",
+  "releaseTarget": "fullWebProfile",
+  "officialCliPackageClosure": "BLOCKED",
+  "profileOnlyMitigation": "INEFFECTIVE"
 }

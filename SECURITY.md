@@ -114,6 +114,12 @@ Out of scope (report upstream instead):
   closure still includes `node-pty`/`koffi`, `sharp`, platform sandbox
   binaries, and packaged ripgrep. Their machine-readable status lives in
   `apps/android/native-blockers.json`.
+- The committed alpha.4 runtime lock proves this is an **installation-closure**
+  problem, not only a runtime-row problem: published `@deepseek-ai/dsh`
+  eagerly depends on `dsh-base` / `sdk-minimal` / `tool-fs-search`, and
+  `dsh-base` pulls the blocker packages before profile selection. The
+  network-free audit is `scripts/audit-android-official-cli-closure.mjs`;
+  profile-only disabling is explicitly classified as ineffective.
 - Android publication is fail-closed through
   `scripts/verify-android-release-ready.mjs` (`node scripts/verify-android-release-ready.mjs`).
   It requires coherent PASS evidence for carrier identity, native closure,

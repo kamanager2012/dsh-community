@@ -18,6 +18,7 @@ describe('Android release readiness is fail-closed', () => {
     expect(result.stdout).toBe('')
     expect(result.stderr).toContain('android-release-ready: BLOCKED')
     expect(result.stderr).toContain('runtime substrate status=BLOCKED')
+    expect(result.stderr).toContain('official CLI package closure status=BLOCKED')
     expect(result.stderr).toContain('carrier candidate status=PROBE_REQUIRED')
     expect(result.stderr).toContain('native blocker subprocess-local status=OPEN')
     expect(result.stderr).toContain('Reality Gate status=NOT_RUN')

@@ -37,8 +37,15 @@
     "sourceCommit": "f8fe6858549f75a4b4e9633abf39dd2038dbf496",
     "tagSignatureVerifiedByGitHub": true
   },
-  "nextGate": "Build official Node v22.19.0 from source with Android NDK and execute it on a real Android device; then resolve apps/android/native-blockers.json before DSH host boot can be promoted.",
+  "nextGate": "First prove the exact Node 22.19.0 Android carrier. In parallel, resolve the published official CLI package/native closure; profile-only row disabling is not a valid bypass.",
   "nativeClosure": "apps/android/native-blockers.json",
   "releaseReadinessVerifier": "scripts/verify-android-release-ready.mjs",
-  "realityEvidence": "apps/android/evidence/reality-gate.json"
+  "realityEvidence": "apps/android/evidence/reality-gate.json",
+  "packageClosure": {
+    "status": "BLOCKED",
+    "sourceLock": "apps/desktop/runtime-lock/package-lock.json",
+    "audit": "scripts/audit-android-official-cli-closure.mjs",
+    "profileOnlyMitigation": "INEFFECTIVE",
+    "reason": "Published @deepseek-ai/dsh@0.1.2-alpha.4 eagerly includes dsh-base/sdk-minimal/tool-fs-search and their native dependency closure before profile selection."
+  }
 }
