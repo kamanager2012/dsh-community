@@ -1,7 +1,7 @@
 {
-  "pin": "0.1.2-alpha.3",
+  "pin": "0.1.2-alpha.4",
   "profile": "web",
-  "count": 146,
+  "count": 145,
   "ids": [
     "timer",
     "hmr",
@@ -67,7 +67,6 @@
     "tool-subagent-list-agents",
     "tool-subagent",
     "tool-subagent-fork",
-    "tool-subagent-report",
     "workflow-worker-thread",
     "tool-workflow",
     "timeout-policy",

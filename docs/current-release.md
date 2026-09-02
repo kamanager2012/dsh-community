@@ -17,18 +17,18 @@ Source can move to a reviewed candidate before GitHub Latest moves. These are se
 - `assets` / `publishedAssets` describe installers that actually exist for Published Latest; never synthesize filenames from an unpublished candidate.
 - plugin `testedDsh` and user-loop evidence are evidence states, not aliases for Candidate Source. They move only after their own verification.
 
-Candidate Source and Published Latest may coincide after publication, but they are not required to. On the current line the Candidate Source is alpha.3 while Published Latest remains rc.2.
+Candidate Source and Published Latest may coincide after publication, but they are not required to. On the current line the Candidate Source is alpha.4 while latest-tested remains alpha.3 and Published Latest remains rc.2.
 
 ## Current line (2026-09-02)
 
 | Fact | Value |
 |---|---|
-| Candidate official kernel | `@deepseek-ai/dsh@0.1.2-alpha.3` |
-| Candidate community product | `0.1.2-alpha.3` |
-| Candidate tag | `v0.1.2-alpha.3` |
+| Candidate official kernel | `@deepseek-ai/dsh@0.1.2-alpha.4` |
+| Candidate community product | `0.1.2-alpha.4` |
+| Candidate tag | `v0.1.2-alpha.4` |
 | GitHub Latest | [`v0.1.1-rc.2`](https://github.com/kamanager2012/dsh-community/releases/latest) |
 | Published release evidence | GitHub release ID `374950921`; published `2026-08-22T14:25:10Z`; primary installer asset IDs/digests pinned in `current-release.json` |
-| Candidate Dual-Badge | `DeepSeek Harness Community v0.1.2-alpha.3 [Official Core: @deepseek-ai/dsh@0.1.2-alpha.3]` |
+| Candidate Dual-Badge | `DeepSeek Harness Community v0.1.2-alpha.4 [Official Core: @deepseek-ai/dsh@0.1.2-alpha.4]` |
 | Latest tested | `0.1.2-alpha.3` — consolidated acceptance PASS ([run 33569520030](https://github.com/kamanager2012/dsh-community/actions/runs/33569520030)); this is compatibility evidence, not publication |
 | Shipped Community endpoints | WSL/Linux Terminal, Windows Desktop, macOS Desktop, Linux AppImage |
 | Experimental endpoint | Android Labs `[UNVERIFIED]`, not on the Latest download page |

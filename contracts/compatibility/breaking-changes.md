@@ -3,6 +3,26 @@
 Record the delta here when contract CI or a pin bump hits a public-surface move.
 Do not invent a compatibility shim in Desktop IPC.
 
+## 0.1.2-alpha.4
+
+- surface: package / config-row / profile composition / runtime closure
+- what moved:
+  - Candidate Source is exactly `@deepseek-ai/dsh@0.1.2-alpha.4`; `latest-tested` remains alpha.3 until consolidated acceptance passes, and GitHub Published Latest remains the independently recorded rc.2 release.
+  - The exact npm registry gate passed before the bump: `npm view @deepseek-ai/dsh@0.1.2-alpha.4 version` returned `0.1.2-alpha.4`.
+  - Launcher/Web must-contain grammar is unchanged: `--profile`, `--dump-config`, `--dump-default-config`, `web`, `plugin`; Web still exposes `--host`, `--port`, `--no-open`; readiness prefix remains `dsh web: `. The alpha.3 one-time browser token exchange contract is unchanged.
+  - Official Web config snapshot shrinks **146 → 145** rows: `tool-subagent-report` is removed and no config-row id is added.
+  - Published package snapshot shrinks **145 → 144** entries: `@deepseek-ai/dsh-tool-subagent-report` is removed and no published package is added.
+  - Root `@deepseek-ai/dsh` package surface is unchanged apart from version: bin remains `lib/bin.js`, ESM remains `type: module`, and published files remain `lib/*.js`.
+  - Official CLI/profile documentation now explicitly includes `acp`, `sdk`, and `sdk-minimal` profiles and updated Web tool composition. This is a composition/documentation move even though the launcher argument parser blob is unchanged.
+  - Regenerated Desktop runtime lock contains **580 package entries** and **214 DSH-family lock entries**, all exactly alpha.4; alpha.3 occurs zero times in both committed runtime and pnpm locks.
+  - The reviewed lifecycle package-name set is unchanged: allow `dsh-subprocess-local`, `koffi`, `node-pty`, `protobufjs`; deny `@google/genai`. Their resolved versions move with the alpha.4 closure.
+  - pnpm supply-chain gating surfaced 29 DSH packages that required explicit exact alpha.4 entries in `minimumReleaseAgeExclude`; they are enumerated rather than replaced by a broad namespace exemption.
+- community action:
+  - Keep every direct Candidate Source pin and TUI official peer exact at `0.1.2-alpha.4`; no semver ranges.
+  - Keep the complete Desktop DSH-family npm override closure exact at alpha.4 and continue resolving lifecycle package paths from the committed lock topology rather than assuming hoisting.
+  - Re-extract all four `contracts/upstream` snapshots and preserve the measured one-row/one-package removal.
+  - Keep `latest-tested` at alpha.3 until final alpha.4 consolidated acceptance passes. Keep Published Latest, published installer evidence, plugin `testedDsh`, and User-Loop evidence independent.
+
 ## 0.1.2-alpha.3
 
 - surface: package / config-row / published-files

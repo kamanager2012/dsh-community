@@ -19,16 +19,16 @@ function makeRoot() {
     asOf: '2026-08-22',
     officialKernel: {
       package: '@deepseek-ai/dsh',
-      version: '0.1.2-alpha.3',
+      version: '0.1.2-alpha.4',
     },
     communityProduct: {
-      version: '0.1.2-alpha.3',
+      version: '0.1.2-alpha.4',
       githubLatestTag: 'v0.1.1-rc.2',
     },
-    candidateTag: 'v0.1.2-alpha.3',
+    candidateTag: 'v0.1.2-alpha.4',
     dualBadge:
-      'DeepSeek Harness Community v0.1.2-alpha.3 '
-      + '[Official Core: @deepseek-ai/dsh@0.1.2-alpha.3]',
+      'DeepSeek Harness Community v0.1.2-alpha.4 '
+      + '[Official Core: @deepseek-ai/dsh@0.1.2-alpha.4]',
     assets: {
       linuxAppImage: 'dsh-community-0.1.1-rc.2.AppImage',
       macosDmg: 'dsh-community-0.1.1-rc.2.dmg',
@@ -117,8 +117,8 @@ describe('Published Latest synchronization', () => {
       readFileSync(join(root, 'docs/current-release.json'), 'utf8'),
     )
     expect(next.officialKernel).toEqual(facts.officialKernel)
-    expect(next.communityProduct.version).toBe('0.1.2-alpha.3')
-    expect(next.candidateTag).toBe('v0.1.2-alpha.3')
+    expect(next.communityProduct.version).toBe('0.1.2-alpha.4')
+    expect(next.candidateTag).toBe('v0.1.2-alpha.4')
     expect(next.dualBadge).toBe(facts.dualBadge)
     expect(next.evidence).toEqual(facts.evidence)
 
@@ -134,9 +134,9 @@ describe('Published Latest synchronization', () => {
 
   it('refuses to sync an alpha tag into Published Latest', () => {
     const { root, release } = makeRoot()
-    release.tag_name = 'v0.1.2-alpha.3'
+    release.tag_name = 'v0.1.2-alpha.4'
     release.html_url =
-      'https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.2-alpha.3'
+      'https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.2-alpha.4'
     writeFileSync(join(root, 'latest.json'), JSON.stringify(release, null, 2) + '\n')
     const result = run(root, true)
     expect(result.status).toBe(1)
