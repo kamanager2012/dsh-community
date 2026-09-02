@@ -1,6 +1,7 @@
 import { RemoteProtocolError } from './errors.js'
 import { IdempotencyStore } from './idempotency.js'
 import { DeviceRegistry } from './policy.js'
+import type { DeviceTrustStore } from './crypto/device-trust.js'
 import {
   REMOTE_PROTOCOL_VERSION,
   parseRemoteRequest,
@@ -24,6 +25,8 @@ export interface RemoteAdapterOptions {
   readonly terminalStateCapacity?: number
   readonly connectionStateCapacity?: number
   readonly maxDevices?: number
+  readonly trustStore?: DeviceTrustStore
+  readonly currentTrustDomainId?: string
 }
 
 function asObject(value: unknown): Record<string, unknown> {
@@ -103,6 +106,7 @@ function parseAck(value: unknown): StreamAckParams {
 
 export class RemoteAdapterCore {
   readonly devices: DeviceRegistry
+  readonly trustStore: DeviceTrustStore
   private readonly idempotency: IdempotencyStore
   private readonly replayBySession = new Map<string, BoundedReplayBuffer>()
   private readonly lastRequestSeq = new Map<string, number>()
@@ -125,7 +129,11 @@ export class RemoteAdapterCore {
     }
     this.terminalStateCapacity = options.terminalStateCapacity ?? 4096
     this.connectionStateCapacity = options.connectionStateCapacity ?? 1024
-    this.devices = new DeviceRegistry(options.maxDevices ?? 128)
+    this.devices = new DeviceRegistry(
+      options.trustStore ?? options.maxDevices ?? 128,
+      options.currentTrustDomainId ?? 'default-trust-domain',
+    )
+    this.trustStore = this.devices.trustStore
     this.idempotency = new IdempotencyStore(options.idempotencyCapacity ?? 4096)
   }
 

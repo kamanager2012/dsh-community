@@ -2,13 +2,20 @@ import { createHash, randomBytes } from 'node:crypto'
 import { inspect } from 'node:util'
 import type { Capability } from '../protocol.js'
 import { RemoteCryptoError } from './errors.js'
+import { computeFingerprint } from './host-identity.js'
+
+export const DEFAULT_PAIRING_TTL_MS = 5 * 60 * 1000 // 5 minutes
+export const MAX_PAIRING_TTL_MS = 5 * 60 * 1000 // 5 minutes ceiling
 
 export interface PairingCandidate {
   readonly candidateId: string
-  readonly clientDeviceId: string
-  readonly clientDisplayName: string
+  readonly remoteStaticPublicKey: Uint8Array
+  readonly deviceId: string
+  readonly displayName: string
   readonly maxAllowedCapabilities: readonly Capability[]
   readonly tokenHash: string
+  readonly trustDomainId: string
+  readonly hostGeneration: number
   readonly expiresAt: number
 }
 
@@ -17,6 +24,7 @@ interface StoredTokenRecord {
   readonly expiresAt: number
   readonly allowedCapabilities: readonly Capability[]
   readonly trustDomainId: string
+  readonly hostGeneration: number
   inReviewCandidateId?: string | undefined
 }
 
@@ -25,6 +33,7 @@ export class PairingToken {
   readonly expiresAt: number
   readonly allowedCapabilities: readonly Capability[]
   readonly trustDomainId: string
+  readonly hostGeneration: number
   private readonly rawToken!: string
 
   constructor(
@@ -33,11 +42,13 @@ export class PairingToken {
     expiresAt: number,
     allowedCapabilities: readonly Capability[],
     trustDomainId: string,
+    hostGeneration: number,
   ) {
     this.tokenHash = tokenHash
     this.expiresAt = expiresAt
     this.allowedCapabilities = allowedCapabilities
     this.trustDomainId = trustDomainId
+    this.hostGeneration = hostGeneration
     Object.defineProperty(this, 'rawToken', {
       value: rawToken,
       enumerable: false,
@@ -56,6 +67,7 @@ export class PairingToken {
       expiresAt: this.expiresAt,
       capabilities: this.allowedCapabilities,
       trustDomainId: this.trustDomainId,
+      hostGeneration: this.hostGeneration,
     }
   }
 
@@ -75,14 +87,15 @@ export class PairingTokenRegistry {
 
   constructor(
     readonly maxPending = 16,
-    readonly defaultTtlMs = 5 * 60 * 1000,
+    readonly defaultTtlMs = DEFAULT_PAIRING_TTL_MS,
+    readonly maxTtlMs = MAX_PAIRING_TTL_MS,
     options?: { clock?: () => number },
   ) {
     if (!Number.isInteger(maxPending) || maxPending < 1) {
       throw new Error('maxPending must be a positive integer')
     }
-    if (!Number.isInteger(defaultTtlMs) || defaultTtlMs < 1) {
-      throw new Error('defaultTtlMs must be a positive integer')
+    if (!Number.isInteger(defaultTtlMs) || defaultTtlMs < 1 || defaultTtlMs > maxTtlMs) {
+      throw new Error(`defaultTtlMs must be a positive integer <= ${maxTtlMs}`)
     }
     this.clock = options?.clock ?? Date.now
   }
@@ -108,6 +121,7 @@ export class PairingTokenRegistry {
 
   createToken(params: {
     trustDomainId: string
+    hostGeneration: number
     ttlMs?: number
     allowedCapabilities?: readonly Capability[]
   }): PairingToken {
@@ -121,7 +135,22 @@ export class PairingTokenRegistry {
       )
     }
 
-    const ttl = params.ttlMs ?? this.defaultTtlMs
+    let ttl = this.defaultTtlMs
+    if (params.ttlMs !== undefined) {
+      if (
+        !Number.isInteger(params.ttlMs) ||
+        !Number.isFinite(params.ttlMs) ||
+        params.ttlMs <= 0 ||
+        params.ttlMs > this.maxTtlMs
+      ) {
+        throw new RemoteCryptoError(
+          'STATE_CAPACITY_EXCEEDED',
+          `custom TTL must be a finite integer between 1 and ${this.maxTtlMs} ms`,
+        )
+      }
+      ttl = params.ttlMs
+    }
+
     const expiresAt = now + ttl
     // Least privilege default: 'observe' only. Never default to approve/full.
     const allowedCapabilities = params.allowedCapabilities ?? ['observe']
@@ -133,6 +162,7 @@ export class PairingTokenRegistry {
       expiresAt,
       allowedCapabilities: [...allowedCapabilities],
       trustDomainId: params.trustDomainId,
+      hostGeneration: params.hostGeneration,
       inReviewCandidateId: undefined,
     }
 
@@ -143,15 +173,18 @@ export class PairingTokenRegistry {
       expiresAt,
       allowedCapabilities,
       params.trustDomainId,
+      params.hostGeneration,
     )
   }
 
   verifyCandidate(params: {
     rawToken: string
-    clientDeviceId: string
-    clientDisplayName: string
+    remoteStaticPublicKey: Uint8Array
+    displayName: string
     currentTrustDomainId: string
-  }): { ok: true; candidate: PairingCandidate } | { ok: false; error: RemoteCryptoError } {
+    currentHostGeneration: number
+    requestedCapabilities?: readonly Capability[] | undefined
+  }): PairingCandidate {
     const now = this.clock()
     const tokenHash = this.hashToken(params.rawToken)
     const record = this.tokens.get(tokenHash)
@@ -161,72 +194,44 @@ export class PairingTokenRegistry {
       if (record && now > record.expiresAt) {
         this.tokens.delete(tokenHash)
       }
-      return {
-        ok: false,
-        error: new RemoteCryptoError('PAIRING_FAILED', 'pairing verification failed'),
-      }
+      throw new RemoteCryptoError('PAIRING_FAILED', 'pairing verification failed')
     }
 
-    if (record.trustDomainId !== params.currentTrustDomainId) {
+    if (
+      record.trustDomainId !== params.currentTrustDomainId ||
+      record.hostGeneration !== params.currentHostGeneration
+    ) {
       this.tokens.delete(tokenHash)
-      return {
-        ok: false,
-        error: new RemoteCryptoError('PAIRING_FAILED', 'pairing verification failed'),
-      }
+      throw new RemoteCryptoError('PAIRING_FAILED', 'pairing verification failed')
     }
 
+    // P0-6: Authoritative deviceId is strictly derived from Noise authenticated public key
+    const derivedDeviceId = computeFingerprint(params.remoteStaticPublicKey)
     const candidateId = `cand-${randomBytes(16).toString('hex')}`
+
     const candidate: PairingCandidate = {
       candidateId,
-      clientDeviceId: params.clientDeviceId,
-      clientDisplayName: params.clientDisplayName,
+      remoteStaticPublicKey: new Uint8Array(params.remoteStaticPublicKey),
+      deviceId: derivedDeviceId,
+      displayName: params.displayName,
       maxAllowedCapabilities: record.allowedCapabilities,
       tokenHash,
+      trustDomainId: record.trustDomainId,
+      hostGeneration: record.hostGeneration,
       expiresAt: record.expiresAt,
     }
 
     record.inReviewCandidateId = candidateId
     this.candidates.set(candidateId, candidate)
 
-    return { ok: true, candidate }
+    return candidate
   }
 
-  confirmCandidate(params: {
-    candidateId: string
-    confirmedCapabilities: readonly Capability[]
-  }): { ok: true; grantedCapabilities: readonly Capability[] } | { ok: false; error: RemoteCryptoError } {
-    const candidate = this.candidates.get(params.candidateId)
-    if (!candidate) {
-      return {
-        ok: false,
-        error: new RemoteCryptoError('PAIRING_FAILED', 'pairing candidate not found or expired'),
-      }
-    }
-
-    const maxSet = new Set(candidate.maxAllowedCapabilities)
-    for (const cap of params.confirmedCapabilities) {
-      if (!maxSet.has(cap)) {
-        return {
-          ok: false,
-          error: new RemoteCryptoError(
-            'PAIRING_FAILED',
-            `cannot grant capability '${cap}' exceeding token permission`,
-          ),
-        }
-      }
-    }
-
-    // Atomically burn token and candidate
-    this.tokens.delete(candidate.tokenHash)
-    this.candidates.delete(params.candidateId)
-
-    return {
-      ok: true,
-      grantedCapabilities: [...params.confirmedCapabilities],
-    }
+  getCandidate(candidateId: string): PairingCandidate | undefined {
+    return this.candidates.get(candidateId)
   }
 
-  rejectCandidate(candidateId: string): void {
+  burnCandidateAndToken(candidateId: string): void {
     const candidate = this.candidates.get(candidateId)
     if (candidate) {
       this.tokens.delete(candidate.tokenHash)

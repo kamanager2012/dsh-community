@@ -1,6 +1,16 @@
-import type { Capability } from '../protocol.js'
+import type { Capability, RemoteMethod } from '../protocol.js'
 import { RemoteCryptoError } from './errors.js'
 import { computeFingerprint } from './host-identity.js'
+import { RemoteProtocolError } from '../errors.js'
+
+export const requiredCapability: Readonly<Partial<Record<RemoteMethod, Capability>>> = {
+  'session.list': 'observe',
+  'session.attach': 'observe',
+  'prompt.submit': 'prompt',
+  'approval.respond': 'approve',
+  'question.respond': 'answer-question',
+  'stream.ack': 'observe',
+}
 
 export interface DeviceRecord {
   readonly deviceId: string
@@ -33,9 +43,21 @@ export interface DeviceTrustStore {
   }): Promise<DeviceRecord>
   remove(deviceId: string): Promise<boolean>
   recordSeen(deviceId: string, timestamp?: number): Promise<void>
-  assertAuthorized(deviceId: string, currentTrustDomainId: string): Promise<DeviceRecord>
+  assertAuthorized(deviceId: string, currentTrustDomainId: string, method?: RemoteMethod): Promise<DeviceRecord>
   list(): Promise<readonly DeviceRecord[]>
   size(): Promise<number>
+
+  // Synchronous contract support to ensure single authoritative store across adapter core
+  getSync(deviceId: string): DeviceRecord | undefined
+  assertAuthorizedSync(deviceId: string, currentTrustDomainId: string, method?: RemoteMethod): DeviceRecord
+  trustSync(params: {
+    staticPublicKey: Uint8Array
+    displayName: string
+    grantedCapabilities: readonly Capability[]
+    trustDomainId: string
+    deviceId?: string
+  }): DeviceRecord
+  revokeSync(deviceId: string): boolean
 }
 
 export class InMemoryDeviceTrustStore implements DeviceTrustStore {
@@ -52,8 +74,12 @@ export class InMemoryDeviceTrustStore implements DeviceTrustStore {
     this.clock = options?.clock ?? Date.now
   }
 
-  async get(deviceId: string): Promise<DeviceRecord | undefined> {
+  getSync(deviceId: string): DeviceRecord | undefined {
     return this.devices.get(deviceId)
+  }
+
+  async get(deviceId: string): Promise<DeviceRecord | undefined> {
+    return this.getSync(deviceId)
   }
 
   async findByPublicKey(staticPublicKey: Uint8Array): Promise<DeviceRecord | undefined> {
@@ -61,13 +87,14 @@ export class InMemoryDeviceTrustStore implements DeviceTrustStore {
     return this.devices.get(fingerprint)
   }
 
-  async trust(params: {
+  trustSync(params: {
     staticPublicKey: Uint8Array
     displayName: string
     grantedCapabilities: readonly Capability[]
     trustDomainId: string
-  }): Promise<DeviceRecord> {
-    const fingerprint = computeFingerprint(params.staticPublicKey)
+    deviceId?: string
+  }): DeviceRecord {
+    const fingerprint = params.deviceId ?? computeFingerprint(params.staticPublicKey)
     const existing = this.devices.get(fingerprint)
     const now = this.clock()
 
@@ -114,11 +141,24 @@ export class InMemoryDeviceTrustStore implements DeviceTrustStore {
     return record
   }
 
-  async revoke(deviceId: string): Promise<boolean> {
+  async trust(params: {
+    staticPublicKey: Uint8Array
+    displayName: string
+    grantedCapabilities: readonly Capability[]
+    trustDomainId: string
+  }): Promise<DeviceRecord> {
+    return this.trustSync(params)
+  }
+
+  revokeSync(deviceId: string): boolean {
     const record = this.devices.get(deviceId)
     if (!record) return false
     record.revokedAt = this.clock()
     return true
+  }
+
+  async revoke(deviceId: string): Promise<boolean> {
+    return this.revokeSync(deviceId)
   }
 
   async adminReEnroll(params: {
@@ -156,18 +196,31 @@ export class InMemoryDeviceTrustStore implements DeviceTrustStore {
     }
   }
 
-  async assertAuthorized(deviceId: string, currentTrustDomainId: string): Promise<DeviceRecord> {
+  assertAuthorizedSync(deviceId: string, currentTrustDomainId: string, method?: RemoteMethod): DeviceRecord {
     const record = this.devices.get(deviceId)
     if (!record) {
-      throw new RemoteCryptoError('DEVICE_NOT_TRUSTED', 'device is not trusted')
+      throw new RemoteProtocolError('DEVICE_UNKNOWN', 'device is not trusted')
     }
     if (record.revokedAt !== undefined) {
-      throw new RemoteCryptoError('DEVICE_REVOKED', 'device authorization is revoked')
+      throw new RemoteProtocolError('DEVICE_REVOKED', 'device authorization is revoked')
     }
-    if (record.trustDomainId !== currentTrustDomainId) {
-      throw new RemoteCryptoError('TRUST_DOMAIN_STALE', 'device trust domain is stale after host rotation')
+    if (currentTrustDomainId && record.trustDomainId !== currentTrustDomainId) {
+      throw new RemoteProtocolError('TRUST_DOMAIN_STALE', 'device trust domain is stale after host rotation')
+    }
+    if (method) {
+      const required = requiredCapability[method]
+      if (required && !record.grantedCapabilities.has(required)) {
+        throw new RemoteProtocolError(
+          'CAPABILITY_DENIED',
+          `device lacks required capability: ${required}`,
+        )
+      }
     }
     return record
+  }
+
+  async assertAuthorized(deviceId: string, currentTrustDomainId: string, method?: RemoteMethod): Promise<DeviceRecord> {
+    return this.assertAuthorizedSync(deviceId, currentTrustDomainId, method)
   }
 
   async list(): Promise<readonly DeviceRecord[]> {

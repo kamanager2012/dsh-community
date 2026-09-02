@@ -1,61 +1,58 @@
-import { RemoteProtocolError } from './errors.js'
+import {
+  InMemoryDeviceTrustStore,
+  requiredCapability,
+  type DeviceRecord,
+  type DeviceTrustStore,
+} from './crypto/device-trust.js'
 import type { Capability, RemoteMethod } from './protocol.js'
 
-interface DeviceRecord {
-  readonly capabilities: ReadonlySet<Capability>
-  revoked: boolean
-}
+export { requiredCapability }
 
-const requiredCapability: Readonly<Partial<Record<RemoteMethod, Capability>>> = {
-  'session.list': 'observe',
-  'session.attach': 'observe',
-  'prompt.submit': 'prompt',
-  'approval.respond': 'approve',
-  'question.respond': 'answer-question',
-  'stream.ack': 'observe',
-}
-
+/**
+ * Single authoritative authorization adapter over DeviceTrustStore.
+ * Holds zero independent device state to prevent any split-brain truth.
+ */
 export class DeviceRegistry {
-  private readonly devices = new Map<string, DeviceRecord>()
+  readonly trustStore: DeviceTrustStore
+  currentTrustDomainId: string
 
-  constructor(readonly maxDevices = 128) {
-    if (!Number.isInteger(maxDevices) || maxDevices < 1) {
-      throw new Error('maxDevices must be a positive integer')
+  constructor(
+    trustStoreOrMaxDevices?: DeviceTrustStore | number,
+    currentTrustDomainId = 'default-trust-domain',
+  ) {
+    if (typeof trustStoreOrMaxDevices === 'number' || trustStoreOrMaxDevices === undefined) {
+      this.trustStore = new InMemoryDeviceTrustStore(trustStoreOrMaxDevices ?? 128)
+    } else {
+      this.trustStore = trustStoreOrMaxDevices
     }
+    this.currentTrustDomainId = currentTrustDomainId
   }
 
-  trust(deviceId: string, capabilities: readonly Capability[]): void {
-    if (!this.devices.has(deviceId) && this.devices.size >= this.maxDevices) {
-      throw new RemoteProtocolError(
-        'STATE_CAPACITY_EXCEEDED',
-        'trusted-device capacity is exhausted',
-      )
-    }
-    this.devices.set(deviceId, {
-      capabilities: new Set(capabilities),
-      revoked: false,
+  trust(
+    deviceId: string,
+    capabilities: readonly Capability[],
+    options?: { staticPublicKey?: Uint8Array; displayName?: string; trustDomainId?: string },
+  ): DeviceRecord {
+    const domainId = options?.trustDomainId ?? this.currentTrustDomainId
+    const staticPublicKey =
+      options?.staticPublicKey ??
+      Buffer.from(deviceId.padEnd(32, '0').slice(0, 32), 'utf8')
+    const displayName = options?.displayName ?? 'Device'
+
+    return this.trustStore.trustSync({
+      staticPublicKey,
+      displayName,
+      grantedCapabilities: capabilities,
+      trustDomainId: domainId,
+      deviceId,
     })
   }
 
   revoke(deviceId: string): void {
-    const record = this.devices.get(deviceId)
-    if (record) record.revoked = true
+    this.trustStore.revokeSync(deviceId)
   }
 
-  assertAuthorized(deviceId: string, method: RemoteMethod): void {
-    const record = this.devices.get(deviceId)
-    if (!record) {
-      throw new RemoteProtocolError('DEVICE_UNKNOWN', 'device is not trusted')
-    }
-    if (record.revoked) {
-      throw new RemoteProtocolError('DEVICE_REVOKED', 'device has been revoked')
-    }
-    const capability = requiredCapability[method]
-    if (capability && !record.capabilities.has(capability)) {
-      throw new RemoteProtocolError(
-        'CAPABILITY_DENIED',
-        `device lacks required capability: ${capability}`,
-      )
-    }
+  assertAuthorized(deviceId: string, method: RemoteMethod): DeviceRecord {
+    return this.trustStore.assertAuthorizedSync(deviceId, this.currentTrustDomainId, method)
   }
 }
