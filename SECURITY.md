@@ -142,6 +142,14 @@ Out of scope (report upstream instead):
   Partial Landlock enforcement is refused. The NDK probe compiles the unmodified
   `src/main.c` shipped in the frozen npm package; adb-shell execution is never
   accepted as a substitute for APK app-UID confinement evidence.
+- The embedded Android Node bootstrap has a second, app-UID-only fail-closed gate
+  before official DSH spawn. Android Context supplies the canonical app data and
+  cache paths; `android-app-uid-preflight.cjs` then executes Node `fs.linkSync()`
+  in app-private storage and repeats the frozen Landlock full probe plus one
+  allowed and one denied write. The denied target is a sibling directory that
+  the same APK UID could otherwise write, so success demonstrates Landlock
+  confinement rather than ordinary Android DAC. The preflight emits no PASS into
+  repository evidence; only captured real-device evidence may promote the gate.
 - `scripts/android-native-addon-probe.sh` is a manual no-download/no-source-patch
   gate over the frozen alpha.4 runtime. It requires the exact G1 Node carrier
   build and uses adb only for explicit device smoke; it does not convert public

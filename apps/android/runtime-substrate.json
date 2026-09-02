@@ -37,7 +37,7 @@
     "sourceCommit": "f8fe6858549f75a4b4e9633abf39dd2038dbf496",
     "tagSignatureVerifiedByGitHub": true
   },
-  "nextGate": "Run G1 Node carrier, G2 node-pty/Koffi/sharp probes, and the frozen-source Landlock NDK probe. Sandbox cannot advance until full enforcement is repeated under the APK app UID; persistent PTY remains blocked until a production Android subprocess provider exists.",
+  "nextGate": "Run G1 Node carrier, G2 node-pty/Koffi/sharp probes, and the frozen-source Landlock NDK build. The embedded carrier then must execute the app-UID preflight (Node hard-link + full Landlock allow/deny smoke) before official DSH starts; persistent PTY remains blocked until a production Android subprocess provider exists.",
   "nativeClosure": "apps/android/native-blockers.json",
   "releaseReadinessVerifier": "scripts/verify-android-release-ready.mjs",
   "realityEvidence": "apps/android/evidence/reality-gate.json",
@@ -51,5 +51,6 @@
   "nativeCompatibility": "apps/android/native-compatibility.json",
   "nativeAddonProbe": "scripts/android-native-addon-probe.sh",
   "sandboxProbe": "scripts/android-sandbox-landlock-probe.sh",
-  "androidCompositionPatch": "apps/android/nodejs-project/src/main/js/android.cordis.patch.yml"
+  "androidCompositionPatch": "apps/android/nodejs-project/src/main/js/android.cordis.patch.yml",
+  "appUidPreflight": "apps/android/nodejs-project/src/main/js/android-app-uid-preflight.cjs"
 }

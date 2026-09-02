@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Android APK app-UID Reality Gate 前移到正式 bootstrap：新增 `android-app-uid-preflight.cjs`，官方 DSH spawn 前先在 Android app data 目录执行真实 Node `fs.linkSync()`（校验 inode / link count / 内容），再用 frozen `landlock-run` 在同一 APK UID 下执行 exact full probe、授权目录写入和同 UID 兄弟目录拒绝。任一失败直接拒绝启动官方 DSH；源码存在不会自动改写 `reality-gate.json`。
+- `RuntimeService` 预先固定未来 verified carrier 的环境契约：`DSH_ANDROID_APP_DATA_DIR = filesDir`、`DSH_ANDROID_CACHE_DIR = cacheDir`、`DSH_RUNTIME_PORT`。因此 app-private hard-link 与 sandbox 证据不能被 Termux、`/data/local/tmp` 或 adb-shell UID 冒充。
+
 - Android sandbox G2 从“官方 local provider 无 Android platform chain”推进到正式 provider seam：新增 `android-sandbox-provider.mjs` + `android.cordis.patch.yml`，由官方 `dsh web --patch` 只替换 `ctx.sandbox` row，不改官方 bundle、不接管 Agent/Session/tool authority。provider 使用官方 `writableRoots(policy)`，保留 `exit 125 + landlock-run:` runner-failure 语义，并且只有 `landlock: fully enforced` 才声明 full，partial 直接 fail-closed。
 - frozen runtime 已确认 `@deepseek-ai/node-addon-landlock-run@0.1.1` npm payload 自带 `src/main.c`。新增 `scripts/android-sandbox-landlock-probe.sh`，直接用 Android NDK 原样编译该官方源码；可选 adb-shell smoke 验证 full probe、workspace write 与越界写拒绝，但输出明确标记 `NOT_APP_UID_ACCEPTANCE`，不能代替 APK app UID Reality Gate。
 - PTY blocker 重新裁决：普通 `LocalSubprocessRuntime.spawn()` 不依赖 terminal inspector，Web 默认 `standard` 也不挂 PTY；但 shipped `minimal` 仍对用户可选且使用 persistent PTY，而 AgentPresets 没有 preset allowlist。官方 `terminalInspector` 属性明确是 test hook，因此不采用该捷径；完整 Android endpoint 仍需正式 Android SubprocessRuntime provider 或上游 PTY 支持。

@@ -114,7 +114,8 @@
         "Android composition disables only the official sandbox-local row and inserts a Community provider through the official --patch layer; no official bundle is modified.",
         "The Community provider uses official writableRoots(policy), preserves exit-125 plus landlock-run signature classification, and advertises full only after an exact fully-enforced launcher probe.",
         "The frozen runtime lock contains @deepseek-ai/node-addon-landlock-run@0.1.1, whose npm payload publishes src/main.c; the Android NDK probe builds that source unmodified.",
-        "adb-shell Landlock success is preliminary only; release requires the same enforcement under the APK app UID."
+        "The embedded Node bootstrap is wired to run android-app-uid-preflight.cjs before official DSH spawn; it repeats the full probe and proves an allowed write plus a denied sibling write under the APK app UID.",
+        "The preflight wiring is not evidence. Sandbox remains blocked until a real APK run records PASS."
       ],
       "releaseBlocking": true
     },
@@ -124,16 +125,19 @@
         "@deepseek-ai/dsh-session-persistence-jsonl",
         "@deepseek-ai/dsh-attachment-local"
       ],
-      "status": "APP_PRIVATE_FS_PROBE_REQUIRED",
+      "status": "APP_UID_PREFLIGHT_WIRED_REAL_DEVICE_REQUIRED",
       "severity": "HARD",
       "facts": [
         "alpha.4 session materialization uses link()+unlink() on every non-win32 platform.",
         "alpha.4 attachment publication also uses link() before removing the staging name.",
-        "The gate must run in the APK app-private filesystem; /data/local/tmp or Termux storage is not equivalent evidence."
-      ]
+        "The embedded Node bootstrap now performs an actual fs.linkSync() inode/link-count/content probe inside the Android app data directory before official DSH starts.",
+        "Only execution under the APK app UID can promote evidence; source presence and Linux CI execution cannot."
+      ],
+      "releaseBlocking": true,
+      "preflight": "apps/android/nodejs-project/src/main/js/android-app-uid-preflight.cjs"
     }
   ],
-  "conclusion": "Android Local remains blocked. Sandbox now has a production-shaped official-seam path, but it still needs frozen-source NDK build plus app-UID enforcement evidence; PTY still needs a production Android subprocess provider because minimal remains exposed.",
+  "conclusion": "Android Local remains blocked. Sandbox and app-private hard-link checks are now wired into the embedded app-UID bootstrap, but require real APK execution evidence; PTY still needs a production Android subprocess provider because minimal remains exposed.",
   "portableDependencyAudit": "scripts/audit-android-portable-deps.mjs",
   "sandboxProbe": "scripts/android-sandbox-landlock-probe.sh",
   "androidCompositionPatch": "apps/android/nodejs-project/src/main/js/android.cordis.patch.yml",
@@ -163,7 +167,9 @@
       "officialLauncherVersion": "0.1.1",
       "officialLauncherIntegrity": "sha512-aHGhlQJEutfobKM/4K59SERbT7RmQdD2oMKzD8Bne/Ps7TeT8AweCN+dpdfuxQhMNbFcJMymrgPnID0WYQ30Tw==",
       "enforcementRequirement": "full",
-      "sourceMutationAllowed": false
+      "sourceMutationAllowed": false,
+      "appUidPreflight": "apps/android/nodejs-project/src/main/js/android-app-uid-preflight.cjs",
+      "appUidEvidence": "NOT_RUN"
     }
   },
   "officialSourceAudit": {
@@ -180,5 +186,6 @@
       "standardPreset": "63b179884004deb79b4f6392e41ebf2ddc80ee7b",
       "minimalPreset": "0e1f2b0f5d6c979895f19a6a3d1f0ca33e66da08"
     }
-  }
+  },
+  "appUidPreflight": "apps/android/nodejs-project/src/main/js/android-app-uid-preflight.cjs"
 }

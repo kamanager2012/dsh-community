@@ -71,7 +71,7 @@
         "local shell confinement"
       ],
       "severity": "HARD",
-      "evidence": "The built-in sandbox-local platform chain has no Android entry, but official @deepseek-ai/dsh-sandbox exposes a public provider seam. Android now wires a first-party Community provider through the official dsh --patch layer. It maps official writableRoots(policy) to the frozen @deepseek-ai/node-addon-landlock-run@0.1.1 CLI, requires a fully-enforced probe, and preserves exit-125/signature runner-failure classification. NDK build and APK app-UID enforcement remain unproven.",
+      "evidence": "The built-in sandbox-local platform chain has no Android entry, but official @deepseek-ai/dsh-sandbox exposes a public provider seam. Android wires a first-party Community provider through the official dsh --patch layer. It maps official writableRoots(policy) to frozen @deepseek-ai/node-addon-landlock-run@0.1.1, requires full enforcement, and preserves exit-125/signature classification. The embedded Node bootstrap is additionally wired to repeat full allow/deny confinement under the APK app UID before official DSH spawn. NDK build and real APK execution remain unproven.",
       "status": "OPEN",
       "rowDisableRemovesInstallDependency": false,
       "failurePhase": "LOAD_OR_CONFINE",
@@ -81,7 +81,7 @@
         "@deepseek-ai/dsh-base",
         "@deepseek-ai/dsh-sandbox-local"
       ],
-      "nextProbe": "scripts/android-sandbox-landlock-probe.sh"
+      "nextProbe": "Build scripts/android-sandbox-landlock-probe.sh, integrate the verified Node carrier, then capture android-app-uid-preflight.cjs PASS under the real APK UID."
     },
     {
       "id": "fs-search",

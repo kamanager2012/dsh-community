@@ -13,6 +13,7 @@
 
 const { spawn } = require('child_process');
 const path = require('path');
+const { runAndroidAppUidPreflight } = require('./android-app-uid-preflight.cjs');
 
 const RUNTIME_PORT = Number(process.env.DSH_RUNTIME_PORT || 17890);
 if (!Number.isInteger(RUNTIME_PORT) || RUNTIME_PORT < 1 || RUNTIME_PORT > 65535) {
@@ -22,6 +23,13 @@ const DSH_BIN = path.join(__dirname, '..', '..', 'node_modules', '.bin', 'dsh');
 const ANDROID_PATCH = path.join(__dirname, 'android.cordis.patch.yml');
 const LANDLOCK_RUN = process.env.DSH_ANDROID_LANDLOCK_RUN
   || path.join(__dirname, 'bin', 'landlock-run');
+
+const appUidPreflight = runAndroidAppUidPreflight({
+  appDataDir: process.env.DSH_ANDROID_APP_DATA_DIR,
+  cacheDir: process.env.DSH_ANDROID_CACHE_DIR,
+  landlockLauncher: LANDLOCK_RUN,
+});
+process.stdout.write(`[dsh-android] APP_UID_PREFLIGHT_OK ${JSON.stringify(appUidPreflight)}\n`);
 
 const child = spawn(
   DSH_BIN,

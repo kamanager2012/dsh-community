@@ -15,6 +15,7 @@ describe('Android G2 native compatibility', () => {
       portableDependencyAudit?: string
       sandboxProbe?: string
       androidCompositionPatch?: string
+      appUidPreflight?: string
       providerSeams?: {
         subprocess?: { status?: string; terminalInspectorHook?: string; shippedPresetExposure?: string[] }
         sandbox?: {
@@ -23,6 +24,8 @@ describe('Android G2 native compatibility', () => {
           officialLauncherVersion?: string
           enforcementRequirement?: string
           sourceMutationAllowed?: boolean
+          appUidPreflight?: string
+          appUidEvidence?: string
         }
       }
       components?: Array<{
@@ -49,6 +52,7 @@ describe('Android G2 native compatibility', () => {
     expect(state.portableDependencyAudit).toBe('scripts/audit-android-portable-deps.mjs')
     expect(state.sandboxProbe).toBe('scripts/android-sandbox-landlock-probe.sh')
     expect(state.androidCompositionPatch).toBe('apps/android/nodejs-project/src/main/js/android.cordis.patch.yml')
+    expect(state.appUidPreflight).toBe('apps/android/nodejs-project/src/main/js/android-app-uid-preflight.cjs')
     expect(state.providerSeams?.subprocess).toMatchObject({
       status: 'PUBLIC_PROVIDER_SEAM_AVAILABLE_PTY_ANDROID_PROVIDER_STILL_REQUIRED',
       terminalInspectorHook: 'TEST_ONLY_NOT_ACCEPTED_FOR_PRODUCTION',
@@ -60,6 +64,8 @@ describe('Android G2 native compatibility', () => {
       officialLauncherVersion: '0.1.1',
       enforcementRequirement: 'full',
       sourceMutationAllowed: false,
+      appUidPreflight: 'apps/android/nodejs-project/src/main/js/android-app-uid-preflight.cjs',
+      appUidEvidence: 'NOT_RUN',
     })
 
     const components = new Map((state.components ?? []).map(item => [item.id, item]))
@@ -106,7 +112,7 @@ describe('Android G2 native compatibility', () => {
       severity: 'HARD',
     })
     expect(blockers.get('posix-hardlink-publication')).toMatchObject({
-      status: 'APP_PRIVATE_FS_PROBE_REQUIRED',
+      status: 'APP_UID_PREFLIGHT_WIRED_REAL_DEVICE_REQUIRED',
       severity: 'HARD',
     })
   })

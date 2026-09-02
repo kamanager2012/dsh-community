@@ -14,6 +14,7 @@ describe('Android runtime substrate evidence', () => {
       nativeAddonProbe?: string
       sandboxProbe?: string
       androidCompositionPatch?: string
+      appUidPreflight?: string
       packageClosure?: {
         status?: string
         audit?: string
@@ -38,6 +39,7 @@ describe('Android runtime substrate evidence', () => {
     expect(state.nativeAddonProbe).toBe('scripts/android-native-addon-probe.sh')
     expect(state.sandboxProbe).toBe('scripts/android-sandbox-landlock-probe.sh')
     expect(state.androidCompositionPatch).toBe('apps/android/nodejs-project/src/main/js/android.cordis.patch.yml')
+    expect(state.appUidPreflight).toBe('apps/android/nodejs-project/src/main/js/android-app-uid-preflight.cjs')
     expect(state.packageClosure?.status).toBe('BLOCKED')
     expect(state.packageClosure?.audit).toBe('scripts/audit-android-official-cli-closure.mjs')
     expect(state.packageClosure?.profileOnlyMitigation).toBe('INEFFECTIVE')
