@@ -118,8 +118,12 @@ function assertFrozenTarget() {
   if (gate.acceptedBaseline?.branch !== 'upgrade/dsh-0.1.2-alpha.4') {
     fail('remote integration gate points at the wrong alpha.4 branch')
   }
-  if (gate.finalAcceptance?.status !== 'PENDING') {
-    fail('alpha.4 final acceptance must be PENDING before this gate runs')
+  const acceptanceStatus = gate.finalAcceptance?.status
+  if (
+    gate.finalAcceptance?.version !== EXPECTED_TARGET
+    || (acceptanceStatus !== 'PENDING' && acceptanceStatus !== 'PASS')
+  ) {
+    fail('alpha.4 final acceptance state does not match the frozen target')
   }
   if (gate.safeRemoteOperation?.actionsExpected !== 0) {
     fail('remote integration gate no longer records the no-Actions staging path')
