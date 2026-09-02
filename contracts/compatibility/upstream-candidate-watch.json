@@ -1,45 +1,50 @@
 {
-  "schemaVersion": 1,
-  "frozenTarget": {
+  "schemaVersion": 2,
+  "previousAccepted": {
     "package": "@deepseek-ai/dsh",
     "version": "0.1.2-alpha.3",
     "upstreamReleaseCommit": "14bab4422b12ab80cd79de59e086c12888fe00be",
     "upstreamMergeCommit": "dd6322d604e00eec1ba5e0c8541159906a21094a",
-    "releasedAt": "2026-08-31T15:53:17Z",
-    "rationale": "This upgrade cycle was completed locally against alpha.3 before alpha.4 was published. Keep the acceptance baseline stable."
+    "acceptedCommunityMain": "4e30f8198b50a3ce88ff66fb39e848f3f05ade58",
+    "disposition": "PREVIOUS_ACCEPTED_BASELINE"
   },
-  "newerObserved": {
+  "frozenTarget": {
+    "package": "@deepseek-ai/dsh",
     "version": "0.1.2-alpha.4",
     "upstreamReleaseCommit": "a9e185f205169262ab39cbbda9fc48b16c37bbe9",
     "upstreamMergeCommit": "4e84901e6471b79ec0338099867ebb4606d12bb5",
     "releasedAt": "2026-09-01T15:37:26Z",
-    "disposition": "NEXT_UPGRADE_CYCLE",
-    "comparison": {
+    "registryGate": {
+      "status": "PASS",
+      "command": "npm view @deepseek-ai/dsh@0.1.2-alpha.4 version",
+      "runId": 33574740829
+    },
+    "comparisonFromPrevious": {
       "commitsBetweenReleaseMerges": 297,
       "changedFiles": 300,
       "readinessImplementation": {
         "path": "packages/bundle/web-app/src/index.ts",
-        "alpha3Blob": "4f0367a44f7db4d234d32721da45abde01681624",
-        "alpha4Blob": "4f0367a44f7db4d234d32721da45abde01681624",
+        "previousBlob": "4f0367a44f7db4d234d32721da45abde01681624",
+        "targetBlob": "4f0367a44f7db4d234d32721da45abde01681624",
         "verdict": "IDENTICAL"
       },
       "cliArgsImplementation": {
         "path": "apps/cli/src/args.ts",
-        "alpha3Blob": "27d92dcf66de0d657e0d40716e7d271125588890",
-        "alpha4Blob": "27d92dcf66de0d657e0d40716e7d271125588890",
+        "previousBlob": "27d92dcf66de0d657e0d40716e7d271125588890",
+        "targetBlob": "27d92dcf66de0d657e0d40716e7d271125588890",
         "verdict": "IDENTICAL"
       },
       "cliReference": {
         "path": "apps/cli/reference/README.md",
-        "alpha3Blob": "f5cbe1659e5181cdaa6eaefcdb9bd8c8fe289e6d",
-        "alpha4Blob": "b43c147036ad230ed85cebafa3df89d67a802f6b",
+        "previousBlob": "f5cbe1659e5181cdaa6eaefcdb9bd8c8fe289e6d",
+        "targetBlob": "b43c147036ad230ed85cebafa3df89d67a802f6b",
         "verdict": "CHANGED",
-        "note": "Web tool composition text changed: web_fetch exposure moved between base/tool row and Web agent presets."
+        "note": "Profile/tool composition changed materially; alpha.4 documents acp, sdk, sdk-minimal and updated Web tool composition."
       }
     }
   },
   "policy": {
     "candidateAdvancement": "EXPLICIT_ONLY",
-    "rule": "A newer upstream prerelease discovered after a frozen upgrade baseline is a separate upgrade cycle. Do not mutate the current pin, lockfiles, snapshots, or evidence merely because a newer prerelease exists."
+    "rule": "The target changes only through an explicit upgrade cycle with registry verification, fresh lockfiles, fresh upstream snapshots, and consolidated acceptance. latest-tested and Published Latest remain independent gates."
   }
 }
