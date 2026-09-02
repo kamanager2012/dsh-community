@@ -49,6 +49,13 @@ export function apply(ctx: CordisContext): (() => void) | void {
 
   const store = createStore()
 
+  // Capture the launcher-provided first turn once, then scrub it before any
+  // agent/tool subprocess can inherit the environment. This keeps task text
+  // out of argv and minimizes its process-environment lifetime.
+  const firstPromptRaw = process.env.DSH_TUI_FIRST_PROMPT
+  delete process.env.DSH_TUI_FIRST_PROMPT
+  const firstPrompt = firstPromptRaw?.trim()
+
   const resumeEnv = (process.env[RESUME_ENV[0]] ?? process.env[RESUME_ENV[1]])?.trim()
   const resumeId = resumeEnv === undefined || resumeEnv === '' ? undefined : resumeEnv
 
@@ -121,7 +128,6 @@ export function apply(ctx: CordisContext): (() => void) | void {
       })
     }
 
-    const firstPrompt = process.env.DSH_TUI_FIRST_PROMPT?.trim()
     if (firstPrompt !== undefined && firstPrompt !== '') {
       enqueueUserInput(firstPrompt)
     }

@@ -3,7 +3,7 @@
 /**
  * Embedded runtime bootstrap for nodejs-mobile.
  *
- * Launches the official DeepSeek Harness CLI (`dsh web --port <port>`) from
+ * Launches the official DeepSeek Harness CLI on explicit loopback with `--no-open` from
  * the bundled node_modules, mirroring the desktop thin-shell pattern:
  * the official runtime owns the agent loop, this project only hosts it.
  *
@@ -15,12 +15,19 @@ const { spawn } = require('child_process');
 const path = require('path');
 
 const RUNTIME_PORT = Number(process.env.DSH_RUNTIME_PORT || 17890);
+if (!Number.isInteger(RUNTIME_PORT) || RUNTIME_PORT < 1 || RUNTIME_PORT > 65535) {
+  throw new Error('DSH_RUNTIME_PORT must be an integer from 1 to 65535');
+}
 const DSH_BIN = path.join(__dirname, '..', '..', 'node_modules', '.bin', 'dsh');
 
-const child = spawn(DSH_BIN, ['web', '--port', String(RUNTIME_PORT)], {
-  stdio: ['ignore', 'pipe', 'pipe'],
-  env: { ...process.env, HOST: '127.0.0.1' },
-});
+const child = spawn(
+  DSH_BIN,
+  ['web', '--host', '127.0.0.1', '--port', String(RUNTIME_PORT), '--no-open'],
+  {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: process.env,
+  },
+);
 
 child.stdout.on('data', (d) => process.stdout.write(`[dsh] ${d}`));
 child.stderr.on('data', (d) => process.stderr.write(`[dsh] ${d}`));

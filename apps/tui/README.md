@@ -53,7 +53,7 @@ cooked 整行(`"y\r"` 这种)送达——按键层按字符规范化,raw/cooked 
 
 ```sh
 dsh-community                 # 有对话就接着最近一条,否则开新
-dsh-community new "任务"      # 新对话
+dsh-community new "任务"      # 新对话；任务正文不会进入子进程 argv
 dsh-community resume last     # 接着最近一条
 dsh-community sessions        # 官方 session 列表
 dsh-community doctor          # 自检(不打印密钥)
@@ -66,6 +66,9 @@ DSH_TUI_FIRST_PROMPT="任务"   启动后直接发送一条消息(非交互场�
 DSH_TUI_DEBUG=1               事件流/按键调试输出(stderr)
 ```
 
-`DSH_TUI_FIRST_PROMPT` 也接受同样的 `/image ...` 语法。
+`DSH_TUI_FIRST_PROMPT` 也接受同样的 `/image ...` 语法。Launcher 用它把
+`new "任务"` / 简写任务从 child argv 中移出；TUI 读取后会立即删除该环境项，
+再通过官方 `agent.followup` seam 提交。它只是短生命周期进程传输，不是秘密存储；
+不要把长期凭据写进 Prompt。
 
 Session 仍在官方 `~/.dsh`。
