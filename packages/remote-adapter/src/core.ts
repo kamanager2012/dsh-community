@@ -82,10 +82,9 @@ function parseAttach(value: unknown): SessionAttachParams {
   ) {
     throw new RemoteProtocolError('INVALID_REQUEST', 'afterSeq must be a non-negative integer')
   }
-  return {
-    sessionId: requiredString(object, 'sessionId'),
-    afterSeq: afterSeq as number | undefined,
-  }
+  const sessionId = requiredString(object, 'sessionId')
+  if (afterSeq === undefined) return { sessionId }
+  return { sessionId, afterSeq: afterSeq as number }
 }
 
 function parseAck(value: unknown): StreamAckParams {
