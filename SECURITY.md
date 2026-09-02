@@ -123,20 +123,23 @@ Out of scope (report upstream instead):
 - Native addon compatibility and Android runtime semantics are tracked separately
   in `apps/android/native-compatibility.json`. A node-pty/Koffi build or load
   success cannot waive the independent terminal, sandbox, app-private hard-link,
-  sharp, or ripgrep gates. Ordinary subprocess spawn does not require the
-  terminal inspector, but the shipped `minimal` preset remains selectable and
-  requires persistent PTY. The official local provider's `terminalInspector`
-  test hook is intentionally not promoted into a production Android contract.
+  sharp, or ripgrep gates. Android replaces the shipped `subprocess` row in
+  place with a first-party provider that **subclasses the official
+  `LocalSubprocessRuntime`**: official executable resolution, ordinary spawn,
+  process-tree ownership, and the public environment scrub remain authoritative;
+  only `spawnTerminal()` is replaced. The official `terminalInspector` test
+  hook is never used.
 - `scripts/audit-android-portable-deps.mjs` is a network-free provenance check over
   the committed runtime lock. It distinguishes sharp's exact locked WASM fallback
   from actual optional-byte materialization, records that the frozen
   `@vscode/ripgrep@1.18.0` wrapper has no Android platform package, and pins
   `@deepseek-ai/node-addon-landlock-run@0.1.1` plus its npm integrity as the
   Android sandbox launcher's source package.
-- Android sandboxing uses the official `ctx.sandbox` provider seam, not an
-  internal hook. The invocation overlay disables only the official
-  `dsh-sandbox-local` row and inserts the first-party Android provider. That
-  provider uses official `writableRoots(policy)`, preserves the launcher's
+- Android same-world providers use the official patch/provider seams, not
+  internal hooks. The invocation overlay replaces the shipped `subprocess`
+  and `sandbox` rows **in place by id**, preserving their service ids and
+  composition order instead of inserting late duplicate providers. The Android
+  sandbox provider uses official `writableRoots(policy)`, preserves the launcher's
   exit-125/signature failure rule, and reports full enforcement only after the
   launcher returns the exact `landlock: fully enforced` functional probe.
   Partial Landlock enforcement is refused. The NDK probe compiles the unmodified
@@ -150,10 +153,30 @@ Out of scope (report upstream instead):
   the same APK UID could otherwise write, so success demonstrates Landlock
   confinement rather than ordinary Android DAC. The preflight emits no PASS into
   repository evidence; only captured real-device evidence may promote the gate.
+- The Android PTY inspector deliberately reads only `/proc/<pid>/stat`:
+  PID/starttime identity, PPID, process group, session, foreground group, and
+  state. It never reads `/proc/<pid>/mem` or task syscall state. When stdin
+  wait cannot be proven, it returns `inputWaiting=false`; official E2B source
+  blob `29af8c29c53c400a0a8dc2bb16c9e16e0ab43808` uses the same
+  conservative fact, while official terminal-bash source blob
+  `d40db28c101f57c8ec3a570514e4ba9e702c1586` retains prompt/foreground
+  and inferred-idle readiness fallbacks.
+- Android terminal allocation additionally preserves the public subprocess
+  environment contract (`scrubbedParentEnv()` plus explicit undefined
+  tombstones) and enforces the official `MAX_TIMER_DELAY_MS` grace bound.
+  The APK app-UID startup preflight now allocates a real node-pty before DSH
+  spawn and requires root identity/session/PGRP/tpgid/tty visibility,
+  foreground-group signal-0 permission, output delivery, and the node-pty exit
+  event. These are fail-closed substrate checks only: repository evidence stays
+  NOT_RUN/BLOCKED until captured on a real APK, and a shipped `minimal`
+  persistent-terminal user path remains separately required.
 - `scripts/android-native-addon-probe.sh` is a manual no-download/no-source-patch
   gate over the frozen alpha.4 runtime. It requires the exact G1 Node carrier
   build and uses adb only for explicit device smoke; it does not convert public
-  Termux results into APK evidence. Its sharp smoke pushes only the frozen sharp
+  Termux results into APK evidence. Its PTY process-control lane validates
+  `/proc` identity, foreground PGID, group SIGINT, and shell recovery but emits
+  `NODE_PTY_PROC_CONTROL_OK_NOT_APP_UID_ACCEPTANCE`; APK app-UID execution is
+  still mandatory. Its sharp smoke pushes only the frozen sharp
   WASM closure and requires a valid PNG result; a missing optional WASM package
   is reported as a staging/materialization gap, not compatibility success.
 - The Android ripgrep boundary is source-audited rather than inferred from

@@ -145,6 +145,7 @@ G2 现在拆成两层，不能再用一个“native build 成功”概括。
 - native addon 手工 probe：`scripts/android-native-addon-probe.sh`
 - sandbox frozen-source NDK probe：`scripts/android-sandbox-landlock-probe.sh`
 - Android composition overlay：`apps/android/nodejs-project/src/main/js/android.cordis.patch.yml`
+- Android subprocess provider：`apps/android/nodejs-project/src/main/js/android-subprocess-provider.mjs`
 - APK app-UID 启动前 probe：`apps/android/nodejs-project/src/main/js/android-app-uid-preflight.cjs`
 
 #### G2-A：原始 frozen addon build/load
@@ -169,7 +170,7 @@ probe 不下载依赖，也不修改上游源码：
 
 - `node-pty@1.2.0-beta.15`：沿 Node 官方 Android GYP/NDK 环境原样 source rebuild；当前精确 upstream tag commit 为 `8f218f6c194be81d98b1eeea344b150e83445824`。
 - `koffi@3.1.6`：使用 frozen npm 包内原始 CMake source + Android NDK toolchain 构建，不给 Koffi 源码打补丁。
-- 真机分别执行 Koffi `getpid()` FFI smoke、node-pty `/system/bin/sh` PTY smoke，以及 frozen `sharp@0.35.4` → `@img/sharp-wasm32@0.35.4` 的 2×2 PNG 生成 smoke。
+- adb-shell device 模式分别执行 Koffi `getpid()` FFI smoke、node-pty `/system/bin/sh` PTY smoke、`/proc/<pid>/stat` + foreground PGID + group SIGINT 恢复 smoke，以及 frozen `sharp@0.35.4` → `@img/sharp-wasm32@0.35.4` 的 2×2 PNG 生成 smoke。进程控制成功明确输出 `NODE_PTY_PROC_CONTROL_OK_NOT_APP_UID_ACCEPTANCE`，不能代替 APK UID。
 - sharp 的 WASM 包必须来自 frozen runtime staging；若 host-specific `npm ci` 没有实际物化该 optional package，probe 会明确报 `sharp WASM materialization gap`，不会把“lock 中存在”冒充“APK 已带 bytes”。
 
 这里故意不预先修 `-lutil`、Bionic、N-API/linker 等问题；如果 unmodified build 失败，真实错误就是下一轮兼容补丁的证据。
@@ -178,14 +179,14 @@ probe 不下载依赖，也不修改上游源码：
 
 即使 G2-A PASS，以下仍是独立硬门：
 
-1. **Terminal / PTY**：alpha.4 的普通 `LocalSubprocessRuntime.spawn()` 不调用 terminal inspector，只有 `spawnTerminal()` 才会进入 `createProcessInspector()`。Web 默认 `standard` preset 不挂 PTY，但 shipped `minimal` preset 仍然对用户可选并挂 persistent PTY；`AgentPresets` 没有 preset allowlist，不能只把 minimal 从 shipped root 隐掉。因此 PTY 仍是当前完整 Android endpoint 的发布硬门。官方 local provider 暴露的 `terminalInspector` 明确标注为 test hook，不作为生产兼容 seam；需要正式 Android `SubprocessRuntime` provider 或上游 Android PTY 支持。
-2. **Sandbox**：这里已经不再是“没有路线”。官方 `@deepseek-ai/dsh-sandbox` 提供正式 `ctx.sandbox` provider seam；Android overlay 只禁用官方 `sandbox-local` row，并经官方 `dsh web --patch` 插入 Community `AndroidLandlockSandboxProvider`，不修改官方 bundle。provider 使用官方 `writableRoots(policy)`，只调用 frozen `@deepseek-ai/node-addon-landlock-run@0.1.1` 的 CLI 协议，并保留 `exit 125 + landlock-run:` runner-failure 分类。它只有在 `--probe` 精确返回 `landlock: fully enforced` 时才声明 `enforcement=full`；partial 直接 fail-closed。frozen npm 包本身发布 `src/main.c`，`scripts/android-sandbox-landlock-probe.sh` 用 Android NDK 原样构建该源码，不下载、不 patch。嵌入 Node 的 `android-app-uid-preflight.cjs` 会在官方 DSH spawn **之前**再次运行 full probe，并在同一个 APK UID 下证明“授权目录可写、同 UID 的兄弟目录被拒绝”。源码接线仍不等于真机 PASS。
+1. **Terminal / PTY**：现在已经有正式 Community provider 路线，而不是继续等 test hook。Android overlay 按同一 `id: subprocess` **原位替换**官方 local provider；`AndroidSubprocessRuntime extends LocalSubprocessRuntime`，因此 `resolveExecutable()`、普通 `spawn()`、普通进程树管理、collect/spill 与环境清除仍由官方实现拥有，只 override `spawnTerminal()`。Android 终端层使用 frozen `node-pty@1.2.0-beta.15`，只读 `/proc/<pid>/stat` 获取 PID/starttime、PPID、PGRP、session、tpgid 与 state，并用 PID+starttime 防 PID 复用；不读 `/proc/<pid>/mem`，不解析 task syscall。无法证明 stdin wait 时固定返回 `inputWaiting=false`：官方 E2B provider 也采用该语义，而官方 `terminal-bash` 仍可通过“受控 prompt + foreground PGID”或 `inferred_idle` 收敛。provider 同时执行官方 `MAX_TIMER_DELAY_MS` grace 上限，并沿用 `scrubbedParentEnv()` + explicit undefined tombstone 的环境语义。**APK app-UID preflight 也已经接线**：官方 DSH spawn 前必须真实分配 node-pty，证明 PTY root 的 /proc identity、session/PGRP/tpgid/tty、foreground-group signal-0 可见性、输出与 node-pty exit event。源码接线仍不是设备证据；发布硬门现在是 frozen node-pty build/load + app-UID preflight 真机 PASS + shipped `minimal` persistent-terminal 用户路径 PASS，官方 `terminalInspector` test hook 完全不使用。
+2. **Sandbox**：这里已经不再是“没有路线”。官方 `@deepseek-ai/dsh-sandbox` 提供正式 `ctx.sandbox` provider seam；Android overlay 按同一 `id: sandbox` 原位替换 provider row，保留官方 service id 与 composition 顺序，不修改官方 bundle。provider 使用官方 `writableRoots(policy)`，只调用 frozen `@deepseek-ai/node-addon-landlock-run@0.1.1` 的 CLI 协议，并保留 `exit 125 + landlock-run:` runner-failure 分类。它只有在 `--probe` 精确返回 `landlock: fully enforced` 时才声明 `enforcement=full`；partial 直接 fail-closed。frozen npm 包本身发布 `src/main.c`，`scripts/android-sandbox-landlock-probe.sh` 用 Android NDK 原样构建该源码，不下载、不 patch。嵌入 Node 的 `android-app-uid-preflight.cjs` 会在官方 DSH spawn **之前**再次运行 full probe，并在同一个 APK UID 下证明“授权目录可写、同 UID 的兄弟目录被拒绝”。源码接线仍不等于真机 PASS。
 3. **POSIX hard-link durable publish**：alpha.4 session persistence 和 attachment store 在非 win32 路径仍使用 `link()`。嵌入 Node 现在会在 app data 目录用真实 `fs.linkSync()` 校验 inode、link count 与内容一致性，再允许启动官方 DSH；但只有 APK app UID 的真实执行结果才能把 `appPrivateHardlinks` 升级为 PASS，Linux CI、`/data/local/tmp` 或 Termux 都不能代替。
 4. **sharp**：frozen lock 已精确包含 `sharp@0.35.4`、`@img/sharp-wasm32@0.35.4` 与 `@emnapi/runtime@1.11.3`，都有 registry provenance + SHA-512；sharp loader 在 Android native platform miss 后会尝试 WASM fallback。当前剩余门是 optional bytes 是否被实际 materialize，以及 Android carrier 上真实 PNG smoke 是否 PASS。
 5. **ripgrep / fs-search**：alpha.4 官方 `search-core.ts` 已按 Git blob `60ea042d4f31f0e9c856536b8b34e2687482eec7` 审计。`resolveRgPath()` 无参数、没有 `rgPath/ripgrepPath` config/env seam，Node 模式直接 `import('@vscode/ripgrep').rgPath`；唯一 sidecar 路径只在 `'pkg' in process` 时启用，而 Android carrier 不是 pkg runtime。与此同时 frozen lock 中不存在 `@vscode/ripgrep-android-*`。因此当前合法解锁条件只有两个：**上游真实 Android platform package**，或 **官方 tool-fs-search 显式 executable-path seam**。Community 不伪造 `@vscode` scope、不 spoof `process.pkg`、不依赖 Termux/system `rg`，也不复制/分叉官方 glob/grep 仅为了换 binary 路径。
 6. **ripgrep provenance**：wrapper 1.18.0 对应 Microsoft `ripgrep-prebuilt v15.0.1`；其配置固定 BurntSushi/ripgrep `15.0.0` + Microsoft patch。任何未来 Android binary 必须保持这一 provenance 或经新的上游版本评审，不能只拿 vanilla/latest `rg`。
 
-所以当前 G2 仍是 **BLOCKED**。变化在于 sandbox 与 hard-link 已经从“需要以后再测”推进成 **APK 启动前 fail-closed app-UID preflight**：未来 verified carrier 一旦接入，就必须先通过这两项才会启动官方 DSH。尚未闭合的是真实 NDK/真机 evidence、PTY provider、sharp 真机，以及官方 ripgrep path seam / Android platform package。
+所以当前 G2 仍是 **BLOCKED**。变化在于 sandbox、hard-link 与 PTY substrate 都已经推进成 **APK 启动前 fail-closed app-UID preflight**：未来 verified carrier 一旦接入，三者任一失败都不会启动官方 DSH。尚未闭合的是真实 Node/NDK/native-addon 真机 evidence、app-UID preflight 真机结果、shipped `minimal` persistent-terminal 用户路径、sharp 真机，以及官方 ripgrep path seam / Android platform package。
 
 ### G3 — Official DSH boot
 

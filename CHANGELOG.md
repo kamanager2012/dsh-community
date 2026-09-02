@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Android PTY 从“缺正式 provider”推进到 production-shaped provider seam：新增 `android-subprocess-provider.mjs` / `android-process-inspector.mjs` / `android-terminal-handle.mjs`。Android overlay 按同一 `id: subprocess` 原位替换 provider；`AndroidSubprocessRuntime` 继承官方 `LocalSubprocessRuntime`，普通 `resolveExecutable/spawn`、进程树治理与环境清除仍归官方，只 override `spawnTerminal()`。直接依赖精确钉 `@deepseek-ai/dsh-subprocess@0.1.2-alpha.4`、`dsh-subprocess-local@0.1.2-alpha.4`、`node-pty@1.2.0-beta.15`。
+- Android PTY inspector 明确拒绝照搬 Linux 的 `/proc/<pid>/mem` / syscall 探测，只读 `/proc/<pid>/stat` 的 PID/starttime、PPID、PGRP、session、tpgid/state，并用 PID+starttime 防复用；`inputWaiting=false` 采用官方 E2B 同类保守语义，官方 terminal-bash 仍保留 prompt+foreground 与 `inferred_idle` fallback。adb-shell probe 新增 PGID/group-SIGINT/recovery 校验，但固定输出 `NODE_PTY_PROC_CONTROL_OK_NOT_APP_UID_ACCEPTANCE`，不冒充 APK 证据。
+- Android provider composition 同步收紧：`subprocess` 与 `sandbox` 都改为同 id 原位 replacement，保留官方 service id 与 composition order，不再采用 disable+尾部 insert。PTY provider 进一步补齐官方 `MAX_TIMER_DELAY_MS` grace contract；APK app-UID preflight 也扩展到真实 node-pty allocation、/proc identity + session/PGRP/tpgid/tty、foreground-group signal-0、输出与 exit-event 收敛。Reality Gate 仍未升级，仍需 frozen node-pty Android build/load、真实 app-UID preflight 与 shipped `minimal` persistent-terminal 用户路径实证。
+
 - Android fs-search / ripgrep blocker 进一步从“可能做 wrapper adapter”收敛为上游 seam gate：官方 alpha.4 `tool-fs-search/src/search-core.ts` 固定审计到 Git blob `60ea042d4f31f0e9c856536b8b34e2687482eec7`；`resolveRgPath()` 无参数、无 `rgPath/ripgrepPath` config/env seam，Node 模式直接 import `@vscode/ripgrep`，sidecar 仅 `process.pkg` 生效。新增 `scripts/audit-android-ripgrep-seam.mjs`，后续官方升级可对精确源码自动重判。
 - 当前 ripgrep 裁决改为 `UPSTREAM_PATH_SEAM_OR_ANDROID_PACKAGE_REQUIRED`：只接受上游真实 Android `@vscode/ripgrep-*` 平台包或官方 `tool-fs-search` 显式 executable-path seam。明确禁止为了换 binary 路径复制/分叉官方 glob/grep，避免 Community 形成第二套搜索工具权威。
 

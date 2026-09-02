@@ -19,11 +19,11 @@
         "terminal"
       ],
       "severity": "HARD",
-      "evidence": "Official LocalSubprocessRuntime ordinary spawn does not need terminal inspection; spawnTerminal does. Web defaults to standard without PTY, but minimal is a shipped user-selectable preset and mounts persistent PTY. The exposed terminalInspector property is explicitly a test hook, so Android will not promote it as a production compatibility seam.",
+      "evidence": "Android replaces only the official subprocess provider row with AndroidSubprocessRuntime, a subclass of official LocalSubprocessRuntime. Ordinary resolve/spawn/tree/collect/spill behavior remains upstream-owned; only spawnTerminal() is Android-specific. The Android terminal layer uses exact node-pty@1.2.0-beta.15, /proc/<pid>/stat identity/PGID/session facts, conservative inputWaiting=false, PID-reuse-fenced TERM→KILL cleanup, official scrubbedParentEnv() semantics, and official MAX_TIMER_DELAY_MS grace validation. The embedded app-UID preflight now checks PTY allocation, proc/session/tty/foreground-group visibility, output, and exit notification before official DSH spawn. Frozen node-pty build/load and real APK execution remain unproven.",
       "status": "OPEN",
       "rowDisableRemovesInstallDependency": false,
       "failurePhase": "INSTALL_OR_LOAD",
-      "upstreamAndroidSupport": "UNOFFICIAL_SOURCE_BUILD_EVIDENCE_ONLY",
+      "upstreamAndroidSupport": "COMMUNITY_PROVIDER_WIRED_NODE_PTY_AND_APP_UID_PROC_PROBE_REQUIRED",
       "packagePath": [
         "@deepseek-ai/dsh",
         "@deepseek-ai/dsh-base",
@@ -33,7 +33,7 @@
         "node-pty@1.2.0-beta.15",
         "koffi@3.1.6"
       ],
-      "nextProbe": "First prove node-pty build/load with scripts/android-native-addon-probe.sh; then add a production Android SubprocessRuntime provider or wait for upstream Android PTY support."
+      "nextProbe": "Run scripts/android-native-addon-probe.sh verify, then capture android-app-uid-preflight.cjs PASS and a shipped minimal persistent-terminal session under the real APK app UID."
     },
     {
       "id": "attachment-local",

@@ -1,9 +1,11 @@
-# Android provider overlay over the official Web composition.
-# Keep every official row except the same-world sandbox provider.
-- id: sandbox
-  name: '@deepseek-ai/dsh-sandbox-local'
-  disabled: true
+# Android same-world provider overlay over the official Web composition.
+# Replace only provider rows whose official local implementations lack Android
+# support. Keep the shipped row ids/order so every official consumer still
+# resolves the same ctx.subprocess / ctx.sandbox services.
+- id: subprocess
+  name: ./android-subprocess-provider.mjs
+  disabled: false
 
-- insert:
-    - id: android-sandbox
-      name: ./android-sandbox-provider.mjs
+- id: sandbox
+  name: ./android-sandbox-provider.mjs
+  disabled: false
