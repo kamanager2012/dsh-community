@@ -227,5 +227,15 @@
   "appUidPreflight": "apps/android/nodejs-project/src/main/js/android-app-uid-preflight.cjs",
   "ripgrepSeamAudit": "scripts/audit-android-ripgrep-seam.mjs",
   "ptyProvider": "apps/android/nodejs-project/src/main/js/android-subprocess-provider.mjs",
-  "ptyProviderProbe": "apps/android/nodejs-project/src/main/js/android-pty-provider-device-probe.mjs"
+  "ptyProviderProbe": "apps/android/nodejs-project/src/main/js/android-pty-provider-device-probe.mjs",
+  "upstreamDriftAudit": "scripts/audit-android-upstream-drift.mjs",
+  "upstreamDriftBaseline": {
+    "subprocessOfficialAndroidInspector": false,
+    "sandboxOfficialAndroidChain": false,
+    "fsSearchExplicitPathSeam": false,
+    "fsSearchAndroidPlatformPackage": false,
+    "sessionUsesHardlinkPublication": true,
+    "attachmentUsesHardlinkPublication": true
+  },
+  "upgradeCarryForwardRule": "Do not carry Android Community adapters/blockers forward to a newer official DSH version when audit-android-upstream-drift reports REVIEW_REQUIRED. Re-adjudicate first and remove Community adaptation when upstream now owns the capability."
 }
