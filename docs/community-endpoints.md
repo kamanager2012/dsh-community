@@ -33,7 +33,7 @@
 | 2 | Windows 桌面 | `DSH Community Setup.exe` | Stable（已发布 Latest） |
 | 3 | macOS 桌面 | `dsh-community-*.dmg` | Stable（已发布 Latest） |
 | 4 | Linux 桌面 AppImage | `dsh-community-*.AppImage` | Beta（随 Release 附带；Linux CLI 用户仍以终端为主） |
-| 5 | Android Mobile | APK 原型（WebView + nodejs-mobile） | 活跃源码在 `apps/android`；`[UNVERIFIED]`，不进 Published Latest |
+| 5 | Android Mobile | APK Remote Client 原型 | 活跃源码在 `apps/android`；`[LABS]` / `[UNVERIFIED]`，不进 Published Latest |
 
 ### 1. WSL / Linux 终端
 
@@ -76,7 +76,7 @@ dsh-community-*.dmg
 
 ### 社区端 5：Android Mobile（活跃源码 / UNVERIFIED）
 
-APK 薄壳：WebView 加载官方 Web UI，内嵌 Node 跑官方 `@deepseek-ai/dsh`。既有第一方源码已恢复到本仓 [`apps/android`](../apps/android)，保持 `[UNVERIFIED]`，在 Android Reality Gate 通过前不写入 Published Latest 下载清单。
+目标改为轻量 **Remote Client**：Android 不内嵌 Node 或官方 `@deepseek-ai/dsh`，而是通过 Community Remote Host Adapter 连接可信 Host；Host 保留官方 Runtime、仓库/工具链、凭证、工具执行和 `~/.dsh` Session 真源。传输目标为 Noise IK E2EE，链路按 LAN 直连 → WebRTC P2P → Community-owned blind WebSocket Relay 降级。既有 embedded-runtime 代码暂保留为迁移证据，直到 Remote Android Acceptance 建立后再独立删除。见 [`remote-host-client.md`](remote-host-client.md)。
 
 ## 官方 Web 是伙伴入口，不是我们的产品
 
