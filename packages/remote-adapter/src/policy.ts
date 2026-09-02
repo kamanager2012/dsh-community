@@ -12,12 +12,25 @@ const requiredCapability: Readonly<Partial<Record<RemoteMethod, Capability>>> = 
   'prompt.submit': 'prompt',
   'approval.respond': 'approve',
   'question.respond': 'answer-question',
+  'stream.ack': 'observe',
 }
 
 export class DeviceRegistry {
   private readonly devices = new Map<string, DeviceRecord>()
 
+  constructor(readonly maxDevices = 128) {
+    if (!Number.isInteger(maxDevices) || maxDevices < 1) {
+      throw new Error('maxDevices must be a positive integer')
+    }
+  }
+
   trust(deviceId: string, capabilities: readonly Capability[]): void {
+    if (!this.devices.has(deviceId) && this.devices.size >= this.maxDevices) {
+      throw new RemoteProtocolError(
+        'STATE_CAPACITY_EXCEEDED',
+        'trusted-device capacity is exhausted',
+      )
+    }
     this.devices.set(deviceId, {
       capabilities: new Set(capabilities),
       revoked: false,

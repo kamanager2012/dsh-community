@@ -6,7 +6,10 @@ interface Entry<T> {
 }
 
 function canonical(value: unknown): string {
-  if (value === null || typeof value !== 'object') return JSON.stringify(value)
+  if (value === undefined) return 'undefined'
+  if (value === null || typeof value !== 'object') {
+    return JSON.stringify(value) ?? 'undefined'
+  }
   if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`
   const object = value as Record<string, unknown>
   return `{${Object.keys(object)
@@ -17,6 +20,16 @@ function canonical(value: unknown): string {
 
 export class IdempotencyStore {
   private readonly entries = new Map<string, Entry<unknown>>()
+
+  constructor(readonly capacity = 4096) {
+    if (!Number.isInteger(capacity) || capacity < 1) {
+      throw new Error('capacity must be a positive integer')
+    }
+  }
+
+  get size(): number {
+    return this.entries.size
+  }
 
   async run<T>(
     scope: string,
@@ -35,6 +48,13 @@ export class IdempotencyStore {
         )
       }
       return existing.value as T
+    }
+
+    if (this.entries.size >= this.capacity) {
+      throw new RemoteProtocolError(
+        'STATE_CAPACITY_EXCEEDED',
+        'idempotency capacity is exhausted; fail closed instead of forgetting keys',
+      )
     }
 
     const value = await operation()

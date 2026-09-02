@@ -9,6 +9,7 @@ export type RemoteErrorCode =
   | 'IDEMPOTENCY_REQUIRED'
   | 'IDEMPOTENCY_CONFLICT'
   | 'ALREADY_RESOLVED'
+  | 'STATE_CAPACITY_EXCEEDED'
   | 'INVALID_REQUEST'
 
 export class RemoteProtocolError extends Error {

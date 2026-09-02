@@ -3,6 +3,7 @@ import { IdempotencyStore } from './idempotency.js'
 import { DeviceRegistry } from './policy.js'
 import {
   REMOTE_PROTOCOL_VERSION,
+  parseRemoteRequest,
   type ApprovalRespondParams,
   type AuthenticatedPeer,
   type OfficialRemoteSeams,
@@ -11,26 +12,114 @@ import {
   type QuestionRespondParams,
   type RemoteRequest,
   type SessionAttachParams,
+  type StreamAckParams,
 } from './protocol.js'
 import { BoundedReplayBuffer } from './replay.js'
 
 export interface RemoteAdapterOptions {
   readonly replayCapacity?: number
+  readonly idempotencyCapacity?: number
+  readonly terminalStateCapacity?: number
+  readonly connectionStateCapacity?: number
+  readonly maxDevices?: number
+}
+
+function asObject(value: unknown): Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new RemoteProtocolError('INVALID_REQUEST', 'params must be an object')
+  }
+  return value as Record<string, unknown>
+}
+
+function requiredString(
+  object: Record<string, unknown>,
+  key: string,
+): string {
+  const value = object[key]
+  if (typeof value !== 'string' || value.length === 0) {
+    throw new RemoteProtocolError('INVALID_REQUEST', `${key} must be a non-empty string`)
+  }
+  return value
+}
+
+function parsePrompt(value: unknown): PromptSubmitParams {
+  const object = asObject(value)
+  return {
+    sessionId: requiredString(object, 'sessionId'),
+    prompt: requiredString(object, 'prompt'),
+  }
+}
+
+function parseApproval(value: unknown): ApprovalRespondParams {
+  const object = asObject(value)
+  const decision = object.decision
+  if (decision !== 'approved' && decision !== 'rejected') {
+    throw new RemoteProtocolError('INVALID_REQUEST', 'invalid approval decision')
+  }
+  return {
+    callId: requiredString(object, 'callId'),
+    decision,
+  }
+}
+
+function parseQuestion(value: unknown): QuestionRespondParams {
+  const object = asObject(value)
+  if (!Object.prototype.hasOwnProperty.call(object, 'answer')) {
+    throw new RemoteProtocolError('INVALID_REQUEST', 'answer is required')
+  }
+  return {
+    questionId: requiredString(object, 'questionId'),
+    answer: object.answer,
+  }
+}
+
+function parseAttach(value: unknown): SessionAttachParams {
+  const object = asObject(value)
+  const afterSeq = object.afterSeq
+  if (
+    afterSeq !== undefined
+    && (!Number.isSafeInteger(afterSeq) || (afterSeq as number) < 0)
+  ) {
+    throw new RemoteProtocolError('INVALID_REQUEST', 'afterSeq must be a non-negative integer')
+  }
+  return {
+    sessionId: requiredString(object, 'sessionId'),
+    afterSeq: afterSeq as number | undefined,
+  }
+}
+
+function parseAck(value: unknown): StreamAckParams {
+  const object = asObject(value)
+  const seq = object.seq
+  if (!Number.isSafeInteger(seq) || (seq as number) < 0) {
+    throw new RemoteProtocolError('INVALID_REQUEST', 'seq must be a non-negative integer')
+  }
+  return {
+    sessionId: requiredString(object, 'sessionId'),
+    seq: seq as number,
+  }
 }
 
 export class RemoteAdapterCore {
-  readonly devices = new DeviceRegistry()
-  private readonly idempotency = new IdempotencyStore()
+  readonly devices: DeviceRegistry
+  private readonly idempotency: IdempotencyStore
   private readonly replayBySession = new Map<string, BoundedReplayBuffer>()
   private readonly lastRequestSeq = new Map<string, number>()
   private readonly resolvedInteractions = new Set<string>()
+  private readonly lastAck = new Map<string, number>()
   private readonly replayCapacity: number
+  private readonly terminalStateCapacity: number
+  private readonly connectionStateCapacity: number
 
   constructor(
     private readonly seams: OfficialRemoteSeams,
     options: RemoteAdapterOptions = {},
   ) {
     this.replayCapacity = options.replayCapacity ?? 500
+    this.terminalStateCapacity = options.terminalStateCapacity ?? 4096
+    this.connectionStateCapacity = options.connectionStateCapacity ?? 1024
+    this.devices = new DeviceRegistry(options.maxDevices ?? 128)
+    this.idempotency = new IdempotencyStore(options.idempotencyCapacity ?? 4096)
   }
 
   onOfficialEvent(sessionId: string, event: OfficialSessionEvent): void {
@@ -42,7 +131,12 @@ export class RemoteAdapterCore {
     buffer.append(event)
   }
 
-  async handle(peer: AuthenticatedPeer, request: RemoteRequest): Promise<unknown> {
+  closeConnection(peer: AuthenticatedPeer): void {
+    this.lastRequestSeq.delete(`${peer.deviceId}:${peer.connectionEpoch}`)
+  }
+
+  async handle(peer: AuthenticatedPeer, input: unknown): Promise<unknown> {
+    const request = parseRemoteRequest(input)
     this.assertEnvelope(peer, request)
     this.devices.assertAuthorized(peer.deviceId, request.method)
 
@@ -52,27 +146,27 @@ export class RemoteAdapterCore {
       case 'session.list':
         return this.seams.listSessions()
       case 'session.attach':
-        return this.attach(request.params as SessionAttachParams)
+        return this.attach(parseAttach(request.params))
+      case 'stream.ack': {
+        const params = parseAck(request.params)
+        this.lastAck.set(`${peer.deviceId}:${params.sessionId}`, params.seq)
+        return { ok: true }
+      }
       case 'prompt.submit':
         return this.mutate(
           peer,
           request,
-          request.params as PromptSubmitParams,
+          parsePrompt(request.params),
           async (params) => this.seams.followup(params.sessionId, params.prompt),
         )
       case 'approval.respond':
         return this.mutate(
           peer,
           request,
-          request.params as ApprovalRespondParams,
+          parseApproval(request.params),
           async (params) => {
             const terminalKey = `approval:${params.callId}`
-            if (this.resolvedInteractions.has(terminalKey)) {
-              throw new RemoteProtocolError(
-                'ALREADY_RESOLVED',
-                'approval has already been resolved',
-              )
-            }
+            this.assertInteractionOpen(terminalKey)
             const value = await this.seams.respondApproval(
               params.callId,
               params.decision,
@@ -85,15 +179,10 @@ export class RemoteAdapterCore {
         return this.mutate(
           peer,
           request,
-          request.params as QuestionRespondParams,
+          parseQuestion(request.params),
           async (params) => {
             const terminalKey = `question:${params.questionId}`
-            if (this.resolvedInteractions.has(terminalKey)) {
-              throw new RemoteProtocolError(
-                'ALREADY_RESOLVED',
-                'question has already been resolved',
-              )
-            }
+            this.assertInteractionOpen(terminalKey)
             const value = await this.seams.respondQuestion(
               params.questionId,
               params.answer,
@@ -102,6 +191,21 @@ export class RemoteAdapterCore {
             return value
           },
         )
+    }
+  }
+
+  private assertInteractionOpen(terminalKey: string): void {
+    if (this.resolvedInteractions.has(terminalKey)) {
+      throw new RemoteProtocolError(
+        'ALREADY_RESOLVED',
+        'interaction has already been resolved',
+      )
+    }
+    if (this.resolvedInteractions.size >= this.terminalStateCapacity) {
+      throw new RemoteProtocolError(
+        'STATE_CAPACITY_EXCEEDED',
+        'terminal interaction capacity is exhausted',
+      )
     }
   }
 
@@ -147,13 +251,16 @@ export class RemoteAdapterCore {
         'request is not bound to the authenticated connection epoch',
       )
     }
-    if (!Number.isSafeInteger(request.requestSeq) || request.requestSeq < 1) {
-      throw new RemoteProtocolError('INVALID_REQUEST', 'invalid request sequence')
-    }
 
     const replayKey = `${peer.deviceId}:${peer.connectionEpoch}`
-    const last = this.lastRequestSeq.get(replayKey) ?? 0
-    if (request.requestSeq <= last) {
+    const last = this.lastRequestSeq.get(replayKey)
+    if (last === undefined && this.lastRequestSeq.size >= this.connectionStateCapacity) {
+      throw new RemoteProtocolError(
+        'STATE_CAPACITY_EXCEEDED',
+        'connection replay-state capacity is exhausted',
+      )
+    }
+    if (request.requestSeq <= (last ?? 0)) {
       throw new RemoteProtocolError(
         'REQUEST_REPLAY',
         'request sequence was already observed on this connection',

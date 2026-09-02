@@ -80,9 +80,9 @@ describe('R1 remote protocol adversarial matrix', () => {
         idempotencyKey: 'idem-1',
       }),
     )
-    const replayPeer = { ...peer, connectionEpoch: 2 }
+    const reconnect = { ...peer, connectionEpoch: 2 }
     const same = await adapter.handle(
-      replayPeer,
+      reconnect,
       request('prompt.submit', 1, { sessionId: 's1', prompt: 'hello' }, {
         connectionEpoch: 2,
         idempotencyKey: 'idem-1',
@@ -264,5 +264,45 @@ describe('R1 remote protocol adversarial matrix', () => {
     expect(calls.followup).toBe(1)
     expect((result as { events: { seq: number }[] }).events.map((event) => event.seq))
       .toEqual([51])
+  })
+
+  it('runtime-validates untrusted JSON before it can reach official seams', async () => {
+    const { seams, calls } = fakeSeams()
+    const adapter = new RemoteAdapterCore(seams)
+    adapter.devices.trust(peer.deviceId, ['prompt'])
+
+    await expectCode(
+      adapter.handle(peer, {
+        ...request('prompt.submit', 1, { sessionId: 's1' }, {
+          idempotencyKey: 'bad-shape',
+        }),
+      }),
+      'INVALID_REQUEST',
+    )
+    expect(calls.followup).toBe(0)
+  })
+
+  it('fails closed instead of evicting old idempotency keys when memory is full', async () => {
+    const { seams, calls } = fakeSeams()
+    const adapter = new RemoteAdapterCore(seams, { idempotencyCapacity: 1 })
+    adapter.devices.trust(peer.deviceId, ['prompt'])
+
+    await adapter.handle(
+      peer,
+      request('prompt.submit', 1, { sessionId: 's1', prompt: 'first' }, {
+        idempotencyKey: 'first',
+      }),
+    )
+    await expectCode(
+      adapter.handle(
+        peer,
+        request('prompt.submit', 2, { sessionId: 's1', prompt: 'second' }, {
+          idempotencyKey: 'second',
+        }),
+      ),
+      'STATE_CAPACITY_EXCEEDED',
+    )
+
+    expect(calls.followup).toBe(1)
   })
 })
