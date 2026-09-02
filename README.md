@@ -33,7 +33,7 @@
 | Windows 桌面 | **社区端 2：Desktop** | [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) Setup.exe，或 `pnpm desktop` |
 | macOS 桌面 | **社区端 3：Desktop** | [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) dmg，或 `pnpm desktop` |
 | Linux AppImage | **社区端 4：Desktop** | 随 Release 附带；CLI 用户仍以终端为主 |
-| Android | **社区端 5：Mobile（活跃源码，尚未发行）** | `apps/android`；`[UNVERIFIED]`，不进 Published Latest，直到 Android Reality Gate 通过 |
+| Android | **社区端 5：Remote Mobile（活跃源码，尚未发行）** | `apps/android`；目标为轻量 Remote Client，`[UNVERIFIED]`，不进 Published Latest，直到 Remote Android Acceptance 通过 |
 
 > 命名红线：不叫 dsh-TUI / DeepSeek Harness Desktop（那是别人的产品名），不在 npm 冒用 `@deepseek-ai` 或 `dsh-tui` 的包名。我们基于官方内核，不是第二套 Harness。
 
@@ -41,7 +41,7 @@
 
 开发基础是已发布的 `@deepseek-ai/dsh`。我们不 vendor 官方源码，也不用 `patch-package` 改官方 UI。扩展走外围发行层、契约层和插件验证层。
 
-中文 | [使用指南](docs/getting-started.md) · [发行端与实验端定义](docs/community-endpoints.md) · [Architecture](ARCHITECTURE.md) · [重构说明](docs/reconstruction.md) · [Upgrade](docs/upgrade.md) · [TUI adapter](docs/tui-adapter.md) · [contracts](contracts/README.md) · [Version Manager](docs/version-manager.md)
+中文 | [使用指南](docs/getting-started.md) · [发行端与实验端定义](docs/community-endpoints.md) · [Architecture](ARCHITECTURE.md) · [Remote Host-Client](docs/remote-host-client.md) · [重构说明](docs/reconstruction.md) · [Upgrade](docs/upgrade.md) · [TUI adapter](docs/tui-adapter.md) · [contracts](contracts/README.md) · [Version Manager](docs/version-manager.md)
 
 ## 现在能给谁用
 
@@ -140,7 +140,7 @@ packages/marketplace    插件发现 CLI + catalog.json
 packages/tui-adapter    我们的 TUI 薄 patch + KPI
 packages/shared-types   社区自己的类型，不是官方 event fork
 apps/desktop            官方 `dsh web` 壳 + 官方 session 列表 + 内嵌社区市场页
-apps/android            Android WebView + nodejs-mobile 官方 Runtime 薄壳（[UNVERIFIED]）
+apps/android            Android Remote Client（[LABS]/[UNVERIFIED]；旧 embedded-runtime 证据待迁移）
 apps/tui                官方 `dsh --profile` / `--resume` 启动器
 tests/upstream-contract vendor=0、pin、CLI
 ```
