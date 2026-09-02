@@ -124,10 +124,19 @@ Out of scope (report upstream instead):
   in `apps/android/native-compatibility.json`. A node-pty/Koffi build or load
   success cannot waive the independent terminal-inspector, sandbox, app-private
   hard-link, sharp, or ripgrep gates.
+- `scripts/audit-android-portable-deps.mjs` is a network-free provenance check over
+  the committed runtime lock. It distinguishes sharp's exact locked WASM fallback
+  from actual optional-byte materialization, and records that the frozen
+  `@vscode/ripgrep@1.18.0` wrapper has no Android platform package.
 - `scripts/android-native-addon-probe.sh` is a manual no-download/no-source-patch
   gate over the frozen alpha.4 runtime. It requires the exact G1 Node carrier
   build and uses adb only for explicit device smoke; it does not convert public
-  Termux results into APK evidence.
+  Termux results into APK evidence. Its sharp smoke pushes only the frozen sharp
+  WASM closure and requires a valid PNG result; a missing optional WASM package
+  is reported as a staging/materialization gap, not compatibility success.
+- The Android ripgrep boundary forbids publishing a fake `@vscode` package,
+  spoofing `process.pkg`, relying on a Termux/system `rg`, or silently
+  substituting an unpinned newer ripgrep binary.
 - Android publication is fail-closed through
   `scripts/verify-android-release-ready.mjs` (`node scripts/verify-android-release-ready.mjs`).
   It requires coherent PASS evidence for carrier identity, native closure,

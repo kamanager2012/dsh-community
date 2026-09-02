@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Android G2 portable dependency 裁决继续收敛：新增网络隔离的 `scripts/audit-android-portable-deps.mjs`，直接从 committed alpha.4 runtime lock 固定 `sharp@0.35.4 → @img/sharp-wasm32@0.35.4 → @emnapi/runtime@1.11.3` 的 exact registry/integrity provenance；同时确认 lock 元数据不等于 host-specific staging 已物化 optional WASM bytes。
+- `scripts/android-native-addon-probe.sh` 的真机模式新增 sharp WASM 2×2 PNG smoke。若 frozen staging 缺少 `@img/sharp-wasm32` 或依赖，明确报 materialization gap；只有 Android Node carrier 实际生成合法 PNG 才能把 `sharpFallback` 证据升级。
+- ripgrep blocker 从“缺 Android binary”进一步收紧为 wrapper/seam blocker：`@vscode/ripgrep@1.18.0` 会解析不存在的 `@vscode/ripgrep-android-*`，DSH sidecar 又仅用于 `process.pkg`。供应链身份固定为 Microsoft `ripgrep-prebuilt v15.0.1` → BurntSushi/ripgrep `15.0.0` + Microsoft patch；禁止伪造 `@vscode` 包、spoof `process.pkg`、依赖 Termux/system rg 或替换未钉最新版。
+
 - Android G2 从“native closure 总阻断”拆成可执行的 addon/语义双门禁：新增 `apps/android/native-compatibility.json` 与手工 `scripts/android-native-addon-probe.sh`。probe 只接受 frozen alpha.4 runtime、精确 Node 22.19.0 carrier source/build、Android NDK 与可选 adb；不下载、不修改上游源码，原样重建 `node-pty@1.2.0-beta.15` 和 `koffi@3.1.6`，真机执行 FFI + PTY smoke。
 - Koffi blocker 口径修正：3.1.6 已在 Android/Termux 已知构建问题修复之后，故从“无路”改为 `CROSS_BUILD_PROBE_REQUIRED`，但官方支持矩阵仍无 Android，不能升级 PASS。node-pty 精确绑定 upstream `v1.2.0-beta.15` commit `8f218f6c194be81d98b1eeea344b150e83445824`。
 - 新增不能被 addon PASS 覆盖的 Android 语义门：`subprocess-local` terminal inspector 无 Android branch、`sandbox-local` 无 Android platform chain、session/attachment 的 POSIX `link()` 必须在 APK 私有目录验证；sharp 0.35.4 WASM fallback 与 Android ripgrep 仍保持独立未验证状态。Release verifier 已要求这些 G2 子门全部 PASS。

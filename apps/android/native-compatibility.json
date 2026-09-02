@@ -38,22 +38,51 @@
       "id": "sharp",
       "package": "sharp",
       "version": "0.35.4",
-      "status": "WASM_FALLBACK_PROBE_REQUIRED",
+      "status": "LOCKED_WASM_FALLBACK_MATERIALIZATION_AND_DEVICE_PROBE_REQUIRED",
       "sourceMutationAllowed": false,
       "facts": [
-        "The frozen sharp optional prebuild set has no Android target.",
-        "An upstream Android/Termux report demonstrates a sharp WASM package fallback, but the exact matching 0.35.4 packaging path must be verified before adoption."
-      ]
+        "The frozen lock contains sharp@0.35.4 and exact @img/sharp-wasm32@0.35.4 with sha512 integrity.",
+        "The frozen lock also contains @emnapi/runtime@1.11.3 required by sharp-wasm32.",
+        "Lock presence does not prove host-specific npm ci materialized optional WASM bytes; the manual G2 device probe checks this explicitly.",
+        "Android carrier image processing remains NOT_RUN until a real sharp create→PNG buffer smoke passes."
+      ],
+      "fallback": {
+        "package": "@img/sharp-wasm32",
+        "version": "0.35.4",
+        "integrity": "sha512-zQnl4Kwp7Q6NHsENtU2T/00Zi+w3AQNwz3+UaTyVBy2FpXrzXzGjndpK61onhZjRtRpQXxCTeqw19bVyXOh7jA==",
+        "emnapiVersion": "1.11.3",
+        "loaderBehavior": "sharp 0.35.4 falls through to @img/sharp-wasm32/sharp.node when no native runtimePlatform case loads."
+      }
     },
     {
       "id": "ripgrep",
       "package": "@vscode/ripgrep",
       "version": "1.18.0",
-      "status": "ANDROID_BINARY_PACKAGING_REQUIRED",
+      "status": "WRAPPER_ADAPTER_OR_UPSTREAM_PACKAGE_REQUIRED",
       "sourceMutationAllowed": false,
       "facts": [
-        "The package resolves a platform-specific bundled rg binary and has no audited Android target.",
-        "A Termux system-rg workaround does not satisfy a self-contained APK."
+        "@vscode/ripgrep@1.18.0 constructs @vscode/ripgrep-${process.platform}-${arch}; Android therefore asks for an unpublished Android package.",
+        "Official DSH tool-fs-search only uses an executable sidecar when 'pkg' in process; the Android Node carrier is not a pkg single-file runtime.",
+        "The Microsoft binary line used by wrapper 1.18.0 is ripgrep-prebuilt v15.0.1, built from BurntSushi/ripgrep 15.0.0 plus the pinned Microsoft patch.",
+        "Building an Android rg binary alone is insufficient until the wrapper/upstream DSH exposes a legitimate Android resolution seam."
+      ],
+      "upstreamBinaryProvenance": {
+        "vscodeRipgrepVersion": "1.18.0",
+        "microsoftPrebuiltTag": "v15.0.1",
+        "microsoftTagObjectSha": "05570a5ba5dd6e40c8ebc0d345c5679f94208681",
+        "microsoftCommit": "67202aaafb17aecd9b5b7046d5b7baa92b05237a",
+        "microsoftConfigBlobSha": "18ac3f94300c881b82721d4f0af096ac84206af6",
+        "microsoftPatchBlobSha": "d7afb314f6171c129c33140de5feeb73f1a161d8",
+        "upstreamRipgrepTag": "15.0.0",
+        "upstreamTagObjectSha": "224a9ca894e2fcdc57fdd8bd9111d51558f83014",
+        "upstreamCommit": "3a612f88b805e14aef45bfa43e25a54abc6297fc",
+        "upstreamTagVerified": true
+      },
+      "forbiddenShortcuts": [
+        "fake @vscode/ripgrep-android-* package",
+        "process.pkg spoofing",
+        "Termux/system rg dependency",
+        "unversioned/latest ripgrep substitution"
       ]
     }
   ],
@@ -94,5 +123,6 @@
       ]
     }
   ],
-  "conclusion": "Native addon loadability is only one G2 sub-gate. Android Local remains blocked until addon builds, official terminal inspection semantics, sandbox confinement, and app-private hard-link durability are all proven."
+  "conclusion": "Native addon loadability is only one G2 sub-gate. Android Local remains blocked until addon builds, official terminal inspection semantics, sandbox confinement, and app-private hard-link durability are all proven.",
+  "portableDependencyAudit": "scripts/audit-android-portable-deps.mjs"
 }

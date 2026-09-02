@@ -107,6 +107,7 @@ G2 is now explicitly split. A successful native build is not a complete compatib
 Machine sources:
 
 - `apps/android/native-compatibility.json`
+- portable-dependency audit: `scripts/audit-android-portable-deps.mjs`
 - manual probe: `scripts/android-native-addon-probe.sh`
 
 #### G2-A — Build/load the unmodified frozen addons
@@ -124,7 +125,8 @@ The probe downloads nothing and does not patch upstream source:
 
 - `node-pty@1.2.0-beta.15` is rebuilt through the Node Android GYP/NDK environment from upstream commit `8f218f6c194be81d98b1eeea344b150e83445824`.
 - `koffi@3.1.6` is built from the frozen package's original CMake source using the Android NDK toolchain.
-- device mode runs a Koffi `getpid()` FFI smoke and a node-pty `/system/bin/sh` PTY smoke.
+- device mode runs a Koffi `getpid()` FFI smoke, a node-pty `/system/bin/sh` PTY smoke, and a frozen `sharp@0.35.4` → `@img/sharp-wasm32@0.35.4` 2×2 PNG smoke.
+- The sharp WASM package must already be materialized in the frozen staging tree; if host-specific `npm ci` omitted the optional package, the probe fails explicitly with a materialization gap rather than treating lock metadata as shipped bytes.
 
 The probe deliberately does not pre-fix `-lutil`, Bionic, N-API, or linker failures. If the unmodified build fails, that exact failure becomes evidence for the next reviewed compatibility patch.
 
@@ -135,8 +137,9 @@ Even a G2-A PASS leaves independent hard gates:
 1. **Terminal inspector:** alpha.4 `createProcessInspector()` accepts only `linux / darwin / win32`; the Android carrier reports `process.platform === "android"`.
 2. **Sandbox:** `dsh-sandbox-local` has no Android `PLATFORM_CHAINS` entry and intentionally fails closed for an unlisted platform. Any Android runner must be tested under the APK app UID and target kernel.
 3. **POSIX hard-link publication:** alpha.4 session persistence and attachment storage still use `link()` on non-win32 paths. Evidence must come from the app-private filesystem, not Termux or `/data/local/tmp`.
-4. **sharp:** frozen 0.35.4 has no Android prebuild. A WASM fallback has public Android/Termux evidence, but the exact 0.35.4 path is not yet project evidence.
-5. **ripgrep:** a Termux system `rg` is not a self-contained APK solution; an Android binary must be packaged or supplied upstream.
+4. **sharp:** the frozen lock already contains exact `sharp@0.35.4`, `@img/sharp-wasm32@0.35.4`, and `@emnapi/runtime@1.11.3` entries with registry provenance and SHA-512 integrity. The sharp loader falls through to the generic WASM package after an Android native-platform miss. Remaining gates are optional-package materialization and the real-device PNG smoke.
+5. **ripgrep:** `@vscode/ripgrep@1.18.0` resolves `@vscode/ripgrep-${process.platform}-${arch}`; no Android package exists, and DSH's executable sidecar path is gated on `'pkg' in process`. Building an Android `rg` alone does not solve the wrapper seam. Community will not fake the `@vscode` scope, spoof `process.pkg`, depend on Termux/system `rg`, or substitute an unpinned newer binary.
+6. **ripgrep provenance:** wrapper 1.18.0 maps to Microsoft `ripgrep-prebuilt v15.0.1`, whose config pins BurntSushi/ripgrep `15.0.0` plus the Microsoft patch. Any future Android binary must preserve that provenance or pass a new upstream-version review.
 
 G2 therefore remains **BLOCKED**, but its failure surface is now decomposed into directly testable gates.
 
