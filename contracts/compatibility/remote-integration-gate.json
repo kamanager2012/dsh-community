@@ -37,14 +37,14 @@
   "finalAcceptance": {
     "status": "PASS",
     "version": "0.1.2-alpha.4",
-    "runId": 33576016696,
-    "jobId": 100080034357,
-    "runHeadCommit": "6babf377b22426a1d29d0bbe27c82f62bb2a88dc",
+    "runId": 33577261413,
+    "jobId": 100083859312,
+    "runHeadCommit": "434570ca350ca65cdf2ada01b9fcfacae387c5ef",
     "testFiles": "79 passed, 1 skipped",
     "tests": "323 passed, 1 skipped",
     "runtimeDshEntries": 214,
     "marketplaceOffline": "9 plugins verified",
     "providerCalls": 0,
-    "disposition": "Initial consolidated acceptance passed and latest-tested is promoted. One promoted-tree replay remains before PR; release/tag remains blocked behind PR CI and release gates."
+    "disposition": "Promoted latest-tested final-tree replay passed. Temporary acceptance harness is removed. PR/CI may now open; release/tag remains blocked behind PR CI and release gates."
   }
 }
