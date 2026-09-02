@@ -64,10 +64,18 @@ class RuntimeService : Service() {
         }
 
         // TODO(android): start the verified Node 22.19+ Android substrate here.
+        // The carrier MUST receive verifiedRuntimeEnvironment() so the embedded
+        // Node preflight tests hard-link + Landlock semantics under this APK UID.
         // This branch must remain unreachable until the machine-readable
         // runtime-substrate gate and real-device Reality Gate are promoted.
         error("RUNTIME_SUBSTRATE_READY cannot be true before bootstrap is implemented")
     }
+
+    private fun verifiedRuntimeEnvironment(): Map<String, String> = mapOf(
+        "DSH_RUNTIME_PORT" to DshApp.RUNTIME_PORT.toString(),
+        "DSH_ANDROID_APP_DATA_DIR" to filesDir.absolutePath,
+        "DSH_ANDROID_CACHE_DIR" to cacheDir.absolutePath
+    )
 
     private fun buildNotification(text: String): Notification =
         NotificationCompat.Builder(this, CHANNEL_ID)

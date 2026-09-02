@@ -21,6 +21,10 @@ describe('active Android endpoint source contract', () => {
     expect(bootstrap).toContain("'--patch', ANDROID_PATCH")
     expect(bootstrap).toContain("path.join(__dirname, 'android.cordis.patch.yml')")
     expect(bootstrap).toContain('DSH_ANDROID_LANDLOCK_RUN')
+    expect(bootstrap).toContain("require('./android-app-uid-preflight.cjs')")
+    expect(bootstrap).toContain('APP_UID_PREFLIGHT_OK')
+    expect(bootstrap.indexOf('const appUidPreflight = runAndroidAppUidPreflight('))
+      .toBeLessThan(bootstrap.indexOf('const child = spawn('))
     expect(bootstrap).not.toMatch(/HOST:\s*['"]0\.0\.0\.0['"]/u)
   })
 
@@ -47,6 +51,14 @@ describe('active Android endpoint source contract', () => {
       'utf8',
     )
     expect(app).toContain('RUNTIME_SUBSTRATE_READY = false')
+
+    const service = readFileSync(
+      resolve(ROOT, 'apps/android/app/src/main/java/org/dsh/community/android/RuntimeService.kt'),
+      'utf8',
+    )
+    expect(service).toContain('"DSH_ANDROID_APP_DATA_DIR" to filesDir.absolutePath')
+    expect(service).toContain('"DSH_ANDROID_CACHE_DIR" to cacheDir.absolutePath')
+    expect(service).toContain('verifiedRuntimeEnvironment()')
 
     const doc = readFileSync(resolve(ROOT, 'docs/android-endpoint.md'), 'utf8')
     expect(doc).toContain('[UNVERIFIED]')
