@@ -70,9 +70,18 @@
       "note": "9 plugins: official dsh plugin add + dump-config compose on 0.1.1-rc.2. Restart/user-loop still UNVERIFIED."
     },
     "candidateAcceptance": {
-      "status": "PENDING",
+      "status": "PASS",
       "version": "0.1.2-alpha.4",
-      "note": "Candidate Source advanced after the exact npm registry gate passed. latest-tested remains 0.1.2-alpha.3 until alpha.4 consolidated acceptance passes; Published Latest remains v0.1.1-rc.2."
+      "run": "https://github.com/kamanager2012/dsh-community/actions/runs/33576016696",
+      "runId": 33576016696,
+      "jobId": 100080034357,
+      "runHeadCommit": "6babf377b22426a1d29d0bbe27c82f62bb2a88dc",
+      "covers": "Candidate/Published identity, frozen install, zero contract drift, exact alpha.4 Desktop runtime closure, npm audit, typecheck, full Vitest, authenticated official-Web lifecycle, marketplace offline",
+      "testFiles": "79 passed, 1 skipped",
+      "tests": "323 passed, 1 skipped",
+      "marketplaceOffline": "9 plugins verified",
+      "providerCalls": 0,
+      "note": "Initial alpha.4 consolidated acceptance passed. A promoted latest-tested final-tree replay is required before PR; Published Latest and published installer evidence remain v0.1.1-rc.2."
     },
     "previousCandidateAcceptance": {
       "status": "PASS",
