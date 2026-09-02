@@ -86,7 +86,9 @@ const result = {
   },
   ripgrep: {
     wrapperVersion: ripgrep.version,
-    status: 'WRAPPER_ADAPTER_OR_UPSTREAM_PACKAGE_REQUIRED',
+    status: 'UPSTREAM_PATH_SEAM_OR_ANDROID_PACKAGE_REQUIRED',
+    seamAudit: 'scripts/audit-android-ripgrep-seam.mjs',
+    officialSearchCoreGitBlob: '60ea042d4f31f0e9c856536b8b34e2687482eec7',
     androidPackagesPresent: presentAndroidRipgrepPackages,
     expectedRuntimePackageNames: androidRipgrepPackages,
     wrapperResolutionContract: '@vscode/ripgrep-${process.platform}-${arch}',
@@ -106,6 +108,7 @@ const result = {
       'publish a fake package under the @vscode scope',
       'spoof process.pkg to force the single-file sidecar path',
       'depend on a Termux/system rg binary',
+      'copy/fork official glob/grep implementation solely to replace binary resolution',
       'substitute an unpinned newer ripgrep binary',
     ],
   },

@@ -141,6 +141,7 @@ G2 现在拆成两层，不能再用一个“native build 成功”概括。
 
 - `apps/android/native-compatibility.json`
 - portable dependency audit：`scripts/audit-android-portable-deps.mjs`
+- ripgrep seam audit：`scripts/audit-android-ripgrep-seam.mjs`
 - native addon 手工 probe：`scripts/android-native-addon-probe.sh`
 - sandbox frozen-source NDK probe：`scripts/android-sandbox-landlock-probe.sh`
 - Android composition overlay：`apps/android/nodejs-project/src/main/js/android.cordis.patch.yml`
@@ -181,10 +182,10 @@ probe 不下载依赖，也不修改上游源码：
 2. **Sandbox**：这里已经不再是“没有路线”。官方 `@deepseek-ai/dsh-sandbox` 提供正式 `ctx.sandbox` provider seam；Android overlay 只禁用官方 `sandbox-local` row，并经官方 `dsh web --patch` 插入 Community `AndroidLandlockSandboxProvider`，不修改官方 bundle。provider 使用官方 `writableRoots(policy)`，只调用 frozen `@deepseek-ai/node-addon-landlock-run@0.1.1` 的 CLI 协议，并保留 `exit 125 + landlock-run:` runner-failure 分类。它只有在 `--probe` 精确返回 `landlock: fully enforced` 时才声明 `enforcement=full`；partial 直接 fail-closed。frozen npm 包本身发布 `src/main.c`，`scripts/android-sandbox-landlock-probe.sh` 用 Android NDK 原样构建该源码，不下载、不 patch。嵌入 Node 的 `android-app-uid-preflight.cjs` 会在官方 DSH spawn **之前**再次运行 full probe，并在同一个 APK UID 下证明“授权目录可写、同 UID 的兄弟目录被拒绝”。源码接线仍不等于真机 PASS。
 3. **POSIX hard-link durable publish**：alpha.4 session persistence 和 attachment store 在非 win32 路径仍使用 `link()`。嵌入 Node 现在会在 app data 目录用真实 `fs.linkSync()` 校验 inode、link count 与内容一致性，再允许启动官方 DSH；但只有 APK app UID 的真实执行结果才能把 `appPrivateHardlinks` 升级为 PASS，Linux CI、`/data/local/tmp` 或 Termux 都不能代替。
 4. **sharp**：frozen lock 已精确包含 `sharp@0.35.4`、`@img/sharp-wasm32@0.35.4` 与 `@emnapi/runtime@1.11.3`，都有 registry provenance + SHA-512；sharp loader 在 Android native platform miss 后会尝试 WASM fallback。当前剩余门是 optional bytes 是否被实际 materialize，以及 Android carrier 上真实 PNG smoke 是否 PASS。
-5. **ripgrep**：`@vscode/ripgrep@1.18.0` 会硬解析 `@vscode/ripgrep-${process.platform}-${arch}`，Android 对应 package 并不存在；DSH 的 sidecar 只在 `'pkg' in process` 时启用。仅交叉编一个 `rg` binary 还不够，必须有上游 Android package 或正式 rg-path seam。Community 不伪造 `@vscode` scope、不 spoof `process.pkg`、不依赖 Termux/system `rg`、不替换成未钉版本的新版。
+5. **ripgrep / fs-search**：alpha.4 官方 `search-core.ts` 已按 Git blob `60ea042d4f31f0e9c856536b8b34e2687482eec7` 审计。`resolveRgPath()` 无参数、没有 `rgPath/ripgrepPath` config/env seam，Node 模式直接 `import('@vscode/ripgrep').rgPath`；唯一 sidecar 路径只在 `'pkg' in process` 时启用，而 Android carrier 不是 pkg runtime。与此同时 frozen lock 中不存在 `@vscode/ripgrep-android-*`。因此当前合法解锁条件只有两个：**上游真实 Android platform package**，或 **官方 tool-fs-search 显式 executable-path seam**。Community 不伪造 `@vscode` scope、不 spoof `process.pkg`、不依赖 Termux/system `rg`，也不复制/分叉官方 glob/grep 仅为了换 binary 路径。
 6. **ripgrep provenance**：wrapper 1.18.0 对应 Microsoft `ripgrep-prebuilt v15.0.1`；其配置固定 BurntSushi/ripgrep `15.0.0` + Microsoft patch。任何未来 Android binary 必须保持这一 provenance 或经新的上游版本评审，不能只拿 vanilla/latest `rg`。
 
-所以当前 G2 仍是 **BLOCKED**。变化在于 sandbox 与 hard-link 已经从“需要以后再测”推进成 **APK 启动前 fail-closed app-UID preflight**：未来 verified carrier 一旦接入，就必须先通过这两项才会启动官方 DSH。尚未闭合的是真实 NDK/真机 evidence、PTY provider、sharp 真机和 ripgrep seam。
+所以当前 G2 仍是 **BLOCKED**。变化在于 sandbox 与 hard-link 已经从“需要以后再测”推进成 **APK 启动前 fail-closed app-UID preflight**：未来 verified carrier 一旦接入，就必须先通过这两项才会启动官方 DSH。尚未闭合的是真实 NDK/真机 evidence、PTY provider、sharp 真机，以及官方 ripgrep path seam / Android platform package。
 
 ### G3 — Official DSH boot
 

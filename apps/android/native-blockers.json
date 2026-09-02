@@ -94,16 +94,16 @@
         "glob/grep search"
       ],
       "severity": "FEATURE_BLOCKER",
-      "evidence": "Official DSH tool-fs-search imports @vscode/ripgrep. Wrapper 1.18.0 resolves @vscode/ripgrep-${process.platform}-${arch}, so Android requires an unpublished @vscode/ripgrep-android-* package. The official sidecar path only activates for pkg single-file runtimes.",
+      "evidence": "Official alpha.4 tool-fs-search owns glob/grep semantics and resolveRgPath(). The audited search-core.ts has resolveRgPath() with zero parameters, no rgPath/ripgrepPath config/environment seam, direct Node-mode import('@vscode/ripgrep').rgPath, and a sidecar path gated only by 'pkg' in process. @vscode/ripgrep@1.18.0 has no Android platform package in the frozen lock.",
       "status": "OPEN",
       "rowDisableRemovesInstallDependency": false,
       "failurePhase": "LOAD_OR_SEARCH_USE",
-      "upstreamAndroidSupport": "WRAPPER_ADAPTER_OR_UPSTREAM_PACKAGE_REQUIRED",
+      "upstreamAndroidSupport": "UPSTREAM_PATH_SEAM_OR_ANDROID_PACKAGE_REQUIRED",
       "packagePath": [
         "@deepseek-ai/dsh",
         "@deepseek-ai/dsh-tool-fs-search"
       ],
-      "nextProbe": "Wait for an upstream Android package or an explicit official rg-path seam; any Community adapter must preserve the pinned ripgrep 15.0.0 + Microsoft v15.0.1 patch provenance and undergo separate architecture review."
+      "nextProbe": "Run scripts/audit-android-ripgrep-seam.mjs against the exact official search-core.ts during each DSH upgrade. Reopen only if a real Android @vscode/ripgrep package appears or official tool-fs-search exposes an explicit executable-path seam; do not fork/copy official glob/grep solely to replace binary resolution."
     }
   ],
   "conclusion": "Node 22 is necessary but insufficient. The published top-level @deepseek-ai/dsh package eagerly carries the native closure, so profile-only row disabling cannot make the current official CLI package Android-safe.",
