@@ -104,8 +104,7 @@ export class RemoteAdapterCore {
   private readonly idempotency: IdempotencyStore
   private readonly replayBySession = new Map<string, BoundedReplayBuffer>()
   private readonly lastRequestSeq = new Map<string, number>()
-  private readonly resolvedInteractions = new Set<string>()
-  private readonly lastAck = new Map<string, number>()
+  private readonly claimedInteractions = new Set<string>()
   private readonly replayCapacity: number
   private readonly terminalStateCapacity: number
   private readonly connectionStateCapacity: number
@@ -148,8 +147,10 @@ export class RemoteAdapterCore {
         return this.attach(parseAttach(request.params))
       case 'stream.ack': {
         const params = parseAck(request.params)
-        this.lastAck.set(`${peer.deviceId}:${params.sessionId}`, params.seq)
-        return { ok: true }
+        await this.seams.assertSession(params.sessionId)
+        // R1 validates the ACK contract but intentionally retains no ACK map.
+        // Resume truth is the official Session sequence supplied on attach.
+        return { ok: true, seq: params.seq }
       }
       case 'prompt.submit':
         return this.mutate(
@@ -165,13 +166,11 @@ export class RemoteAdapterCore {
           parseApproval(request.params),
           async (params) => {
             const terminalKey = `approval:${params.callId}`
-            this.assertInteractionOpen(terminalKey)
-            const value = await this.seams.respondApproval(
+            this.claimInteraction(terminalKey)
+            return this.seams.respondApproval(
               params.callId,
               params.decision,
             )
-            this.resolvedInteractions.add(terminalKey)
-            return value
           },
         )
       case 'question.respond':
@@ -181,31 +180,34 @@ export class RemoteAdapterCore {
           parseQuestion(request.params),
           async (params) => {
             const terminalKey = `question:${params.questionId}`
-            this.assertInteractionOpen(terminalKey)
-            const value = await this.seams.respondQuestion(
+            this.claimInteraction(terminalKey)
+            return this.seams.respondQuestion(
               params.questionId,
               params.answer,
             )
-            this.resolvedInteractions.add(terminalKey)
-            return value
           },
         )
     }
   }
 
-  private assertInteractionOpen(terminalKey: string): void {
-    if (this.resolvedInteractions.has(terminalKey)) {
+  private claimInteraction(terminalKey: string): void {
+    if (this.claimedInteractions.has(terminalKey)) {
       throw new RemoteProtocolError(
         'ALREADY_RESOLVED',
-        'interaction has already been resolved',
+        'interaction has already been claimed or resolved',
       )
     }
-    if (this.resolvedInteractions.size >= this.terminalStateCapacity) {
+    if (this.claimedInteractions.size >= this.terminalStateCapacity) {
       throw new RemoteProtocolError(
         'STATE_CAPACITY_EXCEEDED',
         'terminal interaction capacity is exhausted',
       )
     }
+
+    // Reserve before touching the official seam. If the seam later rejects,
+    // the claim remains fail-closed because the side-effect state may be
+    // uncertain; callers must reconcile from official Session truth.
+    this.claimedInteractions.add(terminalKey)
   }
 
   private async attach(params: SessionAttachParams): Promise<unknown> {
