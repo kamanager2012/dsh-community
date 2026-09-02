@@ -10,6 +10,11 @@ describe('Android runtime substrate evidence', () => {
       readFileSync(resolve(ROOT, 'apps/android/runtime-substrate.json'), 'utf8'),
     ) as {
       status?: string
+      packageClosure?: {
+        status?: string
+        audit?: string
+        profileOnlyMitigation?: string
+      }
       candidate?: {
         id?: string
         status?: string
@@ -25,6 +30,9 @@ describe('Android runtime substrate evidence', () => {
     }
 
     expect(state.status).toBe('BLOCKED')
+    expect(state.packageClosure?.status).toBe('BLOCKED')
+    expect(state.packageClosure?.audit).toBe('scripts/audit-android-official-cli-closure.mjs')
+    expect(state.packageClosure?.profileOnlyMitigation).toBe('INEFFECTIVE')
     expect(state.candidate?.id).toBe('official-node-v22.19.0-android-crossbuild')
     expect(state.candidate?.status).toBe('PROBE_REQUIRED')
     expect(state.candidate?.upstreamPlatformSupport).toBe('UNSUPPORTED')

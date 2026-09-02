@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Android G0 安装闭包审计落地：新增 `scripts/audit-android-official-cli-closure.mjs`，直接读取 committed alpha.4 runtime lock，验证 `@deepseek-ai/dsh → dsh-base/sdk-minimal/tool-fs-search → subprocess/attachment/sandbox/fs-search → node-pty/koffi/sharp/ripgrep` 的真实依赖边。当前机器裁决为 `BLOCKED_BY_NATIVE_CLOSURE`，且 `profileOnlyMitigation=INEFFECTIVE`：disable Cordis row 不能删除 npm 安装依赖。
+- Android 路线因此进一步收敛：默认坚持顶层官方 `@deepseek-ai/dsh`，优先解决/交叉构建 native closure；只有官方上游包拓扑变化才重新裁决。绕开顶层 CLI、仅组装底层官方模块不会被偷偷采用，因为那会改变“官方发布 CLI 是 Runtime 真源”的产品边界。
+
 - Android carrier provenance 与发布门禁继续收紧：官方 Node `v22.19.0` 候选不再只校验版本宏，现精确绑定 GitHub verified annotated tag object `a9d4750074c7b5439c61daa28ea9afb5dc28e43e` 及其 commit `f8fe6858549f75a4b4e9633abf39dd2038dbf496`；手工 probe 同时校验 tag object、peeled commit、HEAD 与 tracked source clean state。
 - 新增 Android fail-closed 发布资格检查 `node scripts/verify-android-release-ready.mjs`：当前 `runtime substrate=BLOCKED`、native blockers=`OPEN`、Reality Gate=`NOT_RUN` 时必须非零退出。只有 carrier/native closure/DSH boot/APK 双架构 smoke、真机身份、carrier/APK SHA-256 与 App runtime gate 全部一致 PASS 才能进入发布；普通 CI 只验证“当前应被阻断”，不伪造真机证据。
 

@@ -43,6 +43,37 @@ Machine-readable state:
 
 ## Reality Gates
 
+### G0 — Published CLI installation closure
+
+Run:
+
+```bash
+node scripts/audit-android-official-cli-closure.mjs
+```
+
+The current expected report is:
+
+```text
+status = BLOCKED_BY_NATIVE_CLOSURE
+profileOnlyMitigation = INEFFECTIVE
+```
+
+This is a package-topology fact, not a profile configuration bug. Published
+`@deepseek-ai/dsh@0.1.2-alpha.4` eagerly depends on `dsh-base`,
+`sdk-minimal`, and `tool-fs-search`; `dsh-base` in turn depends on
+`subprocess-local`, `attachment-local`, `sandbox-local`, and
+`tool-fs-search`. Disabling Cordis rows changes runtime composition but does
+not remove `node-pty`, `koffi`, `sharp`, sandbox native backends, or
+packaged ripgrep from the npm installation closure.
+
+This leaves three explicit routes:
+
+1. **Preferred:** keep the published top-level official `@deepseek-ai/dsh` and port/cross-build its native closure for Android under Reality Gates.
+2. **Upstream:** if official DSH later makes the CLI/bundle/native packages Android-safe or optional, re-extract contracts and adjudicate again.
+3. **Not automatic:** assemble lower-level official packages without the published top-level CLI. The modules would still be official, but this changes the product's runtime-source boundary and requires a separate architecture review.
+
+Until G0 changes, “a slim Android profile fixes compatibility” is an invalid claim.
+
 ### G1 — Node carrier
 
 ```bash

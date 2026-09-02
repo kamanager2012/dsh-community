@@ -30,6 +30,12 @@ const app = readFileSync(
 const reasons = []
 
 if (substrate.status !== 'PASS') reasons.push(`runtime substrate status=${String(substrate.status)}`)
+if (substrate.packageClosure?.status !== 'PASS') {
+  reasons.push(`official CLI package closure status=${String(substrate.packageClosure?.status)}`)
+}
+if (substrate.packageClosure?.profileOnlyMitigation !== 'INEFFECTIVE') {
+  reasons.push('official CLI package-closure mitigation contract drifted')
+}
 if (substrate.officialDsh?.version !== EXPECTED_DSH) reasons.push('runtime substrate DSH identity mismatch')
 if (substrate.candidate?.status !== 'PASS') reasons.push(`carrier candidate status=${String(substrate.candidate?.status)}`)
 if (substrate.candidate?.sourceTag !== EXPECTED_NODE_TAG) reasons.push('Node source tag mismatch')

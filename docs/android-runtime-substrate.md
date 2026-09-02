@@ -51,6 +51,36 @@ Full DSH Web PASS
 
 ## Reality Gate
 
+### G0 — 官方 CLI 安装闭包
+
+先运行：
+
+```bash
+node scripts/audit-android-official-cli-closure.mjs
+```
+
+当前预期输出是：
+
+```text
+status = BLOCKED_BY_NATIVE_CLOSURE
+profileOnlyMitigation = INEFFECTIVE
+```
+
+原因不是某个 profile 配置写错，而是当前发布的顶层
+`@deepseek-ai/dsh@0.1.2-alpha.4` **在 npm 包依赖层就直接携带**
+`dsh-base`、`sdk-minimal`、`tool-fs-search` 等；其中 `dsh-base` 又依赖
+`subprocess-local`、`attachment-local`、`sandbox-local`、`tool-fs-search`。
+因此把 Cordis row 设成 `disabled` 只能改变运行期 composition，不能从安装闭包中删除
+`node-pty` / `koffi` / `sharp` / sandbox native backend / packaged ripgrep。
+
+这把路线收敛为三个选择：
+
+1. **优先路线：**继续使用顶层官方 `@deepseek-ai/dsh`，为其 native closure 做 Android 兼容/交叉构建并逐项过 Reality Gate。
+2. **上游路线：**如果官方未来把 CLI/bundle/native packages 拆成 Android-safe 可选依赖，重新抽取 contract 后再裁决。
+3. **不自动采用：**绕开顶层 `@deepseek-ai/dsh`、只拼底层官方模块。虽然模块仍来自官方，但这会改变“发布版官方 CLI 是 Runtime 真源”的产品边界，必须单独架构评审，不能偷偷当成优化。
+
+G0 未解决时，所谓“精简 Android profile 已解决兼容性”一律判无效。
+
 ### G1 — Node carrier
 
 手工执行：
