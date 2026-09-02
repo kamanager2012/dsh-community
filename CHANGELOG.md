@@ -20,6 +20,19 @@
 - Marketplace CLI 并入本仓 `packages/marketplace`（`pnpm marketplace`）。独立仓 `dsh-marketplace`、`dsh-community-plugins` 与 Community Labs `deepseek-harness-suite` 已归档。插件兼容性目录现为 `packages/marketplace/catalog.json`。
 - `DshMcpBridge` 从 `@dsh-community/dsh-bridge` 导出。Windows / macOS 发行任务在打包后同样跑 asar vendor=0 护栏。
 
+## 0.1.2-alpha.4 — Candidate Source (2026-09-02)
+
+This is a reviewed **Candidate Source**, not GitHub Published Latest. Published Latest remains `v0.1.1-rc.2`; `latest-tested` remains alpha.3 until the alpha.4 consolidated gate passes.
+
+- Exact npm registry existence was verified before the bump.
+- Workspace product/core identity, direct official dependencies, TUI official peers, pnpm lock, and the complete Desktop DSH runtime closure are exact `0.1.2-alpha.4`.
+- Official contracts were freshly extracted: Web config rows **146 → 145** and published package surface **145 → 144**, both removing the subagent-report surface; launcher/Web must-contain CLI grammar and readiness prefix remain stable.
+- Alpha.4 retains the one-time Web browser token bootstrap protocol already handled by the Community Host; no new credential surface is introduced.
+- Upstream profile documentation expands the documented product composition around `acp`, `sdk`, and `sdk-minimal`, while the CLI argument parser implementation remains unchanged.
+- Desktop runtime lock is **580 entries** with **214 DSH-family entries**, all exact alpha.4. The reviewed five-package lifecycle-script name set is unchanged.
+- pnpm release-age protection required 29 newly enumerated exact alpha.4 package exemptions; no broad `@deepseek-ai/*` exemption was introduced.
+- Candidate acceptance, plugin `testedDsh`, Published Latest, published installers, and User-Loop evidence remain independent gates.
+
 ## 0.1.2-alpha.3 — Candidate Source (2026-09-02)
 
 This is a reviewed **Candidate Source**, not GitHub Published Latest. Published Latest remains `v0.1.1-rc.2` until the independent release gate is completed.
