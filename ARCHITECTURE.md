@@ -26,6 +26,29 @@ Official DeepSeek Harness is the kernel. Community is based on that kernel: one 
 
 There is no second agent runtime in the middle.
 
+## Remote Host-Client target
+
+Android's target architecture is now a **remote-only client**, not an embedded Node/DSH runtime. The Host keeps the official Runtime, repository, toolchain, credentials, filesystem access, tool execution, and Session truth. Remote clients project only the interaction surface.
+
+```text
+Official DSH Runtime
+        |
+ verified public seams
+        |
+ Remote Host Adapter
+        |
+ Noise IK E2EE
+        |
+ LAN -> WebRTC P2P -> blind WebSocket relay
+        |
+ Web / Android / TUI / editor clients
+```
+
+The first Remote baseline is tracked in [docs/remote-host-client.md](docs/remote-host-client.md) and issue #67. It is currently **[LABS] / [UNVERIFIED]**: no transport, Noise, relay, or Android production claim is implied by this architecture decision.
+
+The adapter may use only verified/public seams such as `ctx.agents`, `session/event`, `Agent.followup`, `userQuestions`, and the official approval seam. It must not use stdout as a protocol, private DSH internals, a second Session store, a generic remote shell, or a second tool-execution path.
+
+
 ## What official currently signals
 
 Official `apps/` today is `cli` and `web`. Architecture says UI/editor integration should drive `ctx.agents` and render from `session/event`, and that there is no privileged core to patch.

@@ -35,7 +35,7 @@ is **not** a Community endpoint.
 | 2 | Windows Desktop | `DSH Community Setup.exe` | Stable (published Latest) |
 | 3 | macOS Desktop | `dsh-community-*.dmg` | Stable (published Latest) |
 | 4 | Linux Desktop AppImage | `dsh-community-*.AppImage` | Beta (Release artifact; CLI users still start at Terminal) |
-| 5 | Android Mobile | APK prototype (WebView + nodejs-mobile) | active source in `apps/android`; `[UNVERIFIED]`, not on Published Latest |
+| 5 | Android Mobile | APK Remote Client prototype | active source in `apps/android`; `[LABS]` / `[UNVERIFIED]`, not on Published Latest |
 
 ### 1. WSL / Linux Terminal
 

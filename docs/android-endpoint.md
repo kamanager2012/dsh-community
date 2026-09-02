@@ -1,22 +1,28 @@
 # Android 第五社区端点（移动端）
 
-> 状态：`[UNVERIFIED]`。2026-09-02 已从归档 Labs 恢复到本仓 `apps/android` 活跃主线；在 Android Reality Gate 通过前不承诺已发布能力。
+> 状态：`[LABS]` / `[UNVERIFIED]`。Android 仍是第五社区端点，但目标已从 embedded local runtime 转为轻量 Remote Client；在 Remote Android Acceptance 通过前不承诺已发布能力。
 
 [English](android-endpoint.en.md) · [Runtime Substrate](android-runtime-substrate.md) · [Reality Gate](reality-gate.md)
 
 ## 定位
 
-Android 是 DSH Community 的**第五个社区端点**（前四个为 WSL/Linux 终端、Windows Desktop、macOS Desktop、Linux AppImage）。Android 源码属于本仓主线，但当前尚未进入 Published Latest。目标形态仍是 APK：WebView 壳 + 兼容的本地 Node substrate 承载官方 `@deepseek-ai/dsh` runtime；当前 runtime substrate 明确为 `BLOCKED`，不复实现 Agent loop，也不把未接通的 Node runtime 冒充成已完成能力。
+Android 是 DSH Community 的**第五个社区端点**（前四个为 WSL/Linux 终端、Windows Desktop、macOS Desktop、Linux AppImage）。Android 源码属于本仓主线，但当前尚未进入 Published Latest。目标形态改为 APK Remote Client：官方 `@deepseek-ai/dsh` 只运行在可信 Host，Android 仅负责 Session / Prompt / 事件流 / 审批 / 问答交互，不携带 Node、Agent loop、Session store 或 tool executor。完整边界见 [Remote Host-Client Architecture](remote-host-client.md)。
 
-## 架构
+## 目标架构
 
 ```text
-APK
-├── WebView            ← 活跃源码；当前可显示 runtime gate 状态
-├── Node substrate     ← BLOCKED；必须先证明 Node 22.19+ Android 运行时
-├── Foreground Service ← gate 未通过时 fail-loud，不伪装 runtime 已启动
-└── 验证链             ← runtime-substrate.json + Reality Gate
+Official DSH Host
+    ↓ verified public seams
+Remote Host Adapter
+    ↓ Noise IK E2EE
+LAN → WebRTC P2P → blind WS Relay
+    ↓
+Android Remote Client
 ```
+
+Host 是唯一执行与状态中心；Android 是轻量交互终端。旧 Node/substrate/PTY/sandbox/ripgrep Reality Gate 仅作为 embedded-runtime **历史迁移证据**保留，Remote 路径接受后再独立归档/删除。
+
+## Legacy embedded-runtime evidence
 
 ## 已知风险(2026-08-17 事实)
 

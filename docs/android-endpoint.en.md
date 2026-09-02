@@ -1,25 +1,29 @@
 # Android Fifth Community Endpoint (Mobile)
 
-> Status: `[UNVERIFIED]`. On 2026-09-02 the existing Android source was restored
-> from archived Labs into the active `apps/android` tree. No published Android capability is claimed before its Reality Gate passes.
+> Status: `[LABS]` / `[UNVERIFIED]`. Android remains the fifth Community endpoint, but its target has changed from an embedded local runtime to a lightweight Remote Client. No published Android capability is claimed before Remote Android Acceptance passes.
 
 [中文](android-endpoint.md) · [Runtime Substrate](android-runtime-substrate.en.md) · [Reality Gate](reality-gate.en.md)
 
 ## Positioning
 
 Android is the **fifth Community endpoint** (after WSL/Linux Terminal, Windows Desktop,
-macOS Desktop, and Linux AppImage). Its source is active in this repository, but it is not yet part of Published Latest. The target
-shape remains an APK with a WebView shell plus a compatible local Node substrate hosting the official `@deepseek-ai/dsh` runtime. The runtime substrate is currently `BLOCKED`; no Agent loop is reimplemented and no unproven embedded runtime is presented as working.
+macOS Desktop, and Linux AppImage). Its source is active in this repository, but it is not yet part of Published Latest. The target is now an APK Remote Client: official `@deepseek-ai/dsh` runs only on a trusted Host, while Android handles Session / Prompt / event-stream / approval / question interaction. Android carries no Node runtime, Agent loop, Session store, or tool executor. See [Remote Host-Client Architecture](remote-host-client.md).
 
-## Architecture
+## Target architecture
 
 ```text
-APK
-├── WebView            ← active source; can render the runtime-gate state
-├── Node substrate     ← BLOCKED until a Node 22.19+ Android runtime is proven
-├── Foreground Service ← fails loud while the gate is closed
-└── verification chain ← runtime-substrate.json + Reality Gate
+Official DSH Host
+    ↓ verified public seams
+Remote Host Adapter
+    ↓ Noise IK E2EE
+LAN → WebRTC P2P → blind WS Relay
+    ↓
+Android Remote Client
 ```
+
+The Host is the sole execution and durable-state center. The old Node/substrate/PTY/sandbox/ripgrep Reality Gate is retained only as **legacy embedded-runtime migration evidence** until the Remote path is accepted.
+
+## Legacy embedded-runtime evidence
 
 ## Known risks (facts as of 2026-08-17)
 
