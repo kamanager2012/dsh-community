@@ -2,7 +2,7 @@ import { RemoteProtocolError } from './errors.js'
 
 interface Entry<T> {
   readonly fingerprint: string
-  readonly value: T
+  readonly promise: Promise<T>
 }
 
 function canonical(value: unknown): string {
@@ -31,7 +31,7 @@ export class IdempotencyStore {
     return this.entries.size
   }
 
-  async run<T>(
+  run<T>(
     scope: string,
     idempotencyKey: string,
     payload: unknown,
@@ -47,7 +47,7 @@ export class IdempotencyStore {
           'idempotency key was reused with a different payload',
         )
       }
-      return existing.value as T
+      return existing.promise as Promise<T>
     }
 
     if (this.entries.size >= this.capacity) {
@@ -57,8 +57,12 @@ export class IdempotencyStore {
       )
     }
 
-    const value = await operation()
-    this.entries.set(key, { fingerprint, value })
-    return value
+    // Reserve the key before invoking the official seam. This provides
+    // single-flight semantics for concurrent retries and keeps the settled
+    // outcome (including rejection) so an uncertain side effect is never
+    // replayed under the same key.
+    const promise = Promise.resolve().then(operation)
+    this.entries.set(key, { fingerprint, promise })
+    return promise
   }
 }
