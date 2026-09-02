@@ -32,7 +32,7 @@ This is a reviewed **Candidate Source**, not GitHub Published Latest. Published 
 - Desktop runtime lock is **580 entries** with **214 DSH-family entries**, all exact alpha.4. The reviewed five-package lifecycle-script name set is unchanged.
 - pnpm release-age protection required 29 newly enumerated exact alpha.4 package exemptions; no broad `@deepseek-ai/*` exemption was introduced.
 - Candidate acceptance, plugin `testedDsh`, Published Latest, published installers, and User-Loop evidence remain independent gates.
-- Consolidated acceptance run `33576016696` passed with **79 test files / 323 tests passed, 1 file / 1 test skipped**, 214 exact alpha.4 DSH runtime entries, npm audit 0 vulnerabilities, authenticated official-Web lifecycle, and 9-plugin offline marketplace verification. `latest-tested` advances on this evidence; Published Latest, plugin `testedDsh`, installers, and User-Loop evidence do not.
+- Promoted-tree consolidated acceptance replay run `33577261413` passed with **79 test files / 323 tests passed, 1 file / 1 test skipped**, 214 exact alpha.4 DSH runtime entries, npm audit 0 vulnerabilities, authenticated official-Web lifecycle, and 9-plugin offline marketplace verification. `latest-tested` remains alpha.4 on this final replay evidence; Published Latest, plugin `testedDsh`, installers, and User-Loop evidence do not move.
 
 ## 0.1.2-alpha.3 — Candidate Source (2026-09-02)
 
