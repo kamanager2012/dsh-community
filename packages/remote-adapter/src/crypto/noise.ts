@@ -1,3 +1,7 @@
+/**
+ * Noise Protocol wrapper over reviewed upstream noise-handshake (v4.2.0, Apache-2.0).
+ * Implements Noise_IK_25519_ChaChaPoly_BLAKE2b with 32-bit transport nonce exhaustion protection.
+ */
 // @ts-ignore - noise-handshake
 import NoiseModule from 'noise-handshake'
 // @ts-ignore - noise-handshake/cipher.js
@@ -7,13 +11,19 @@ import { computeFingerprint, type HostKeyPair } from './host-identity.js'
 
 export type NoiseSessionState = 'NEW' | 'HANDSHAKING' | 'AUTHENTICATED' | 'CLOSED'
 
+/**
+ * 32-bit nonce ceiling: noise-handshake uses DataView.setUint32(4, counter, true).
+ * We enforce a fail-closed ceiling at 2^32 - 2 to prevent any 32-bit integer overflow.
+ */
+export const MAX_TRANSPORT_MESSAGES = 4_294_967_294
+
 interface NoiseInstance {
   s: { publicKey: Buffer; secretKey: Buffer }
   rs: Buffer
   re: Buffer
   rx: Buffer
   tx: Buffer
-  digest: Buffer
+  hash: Buffer | null
   complete: boolean
   initialise(prologue: Buffer, remoteStatic?: Buffer): void
   send(payload?: Buffer): Buffer
@@ -48,6 +58,9 @@ export class NoiseInitiatorSession {
   private sendCipher: CipherInstance | undefined = undefined
   private recvCipher: CipherInstance | undefined = undefined
   private readonly remoteHostPublicKey: Uint8Array
+  private sendCounter = 0
+  private recvCounter = 0
+  private messageCeiling = MAX_TRANSPORT_MESSAGES
 
   constructor(
     localStaticKeyPair: { publicKey: Uint8Array; secretKey: Uint8Array },
@@ -71,12 +84,25 @@ export class NoiseInitiatorSession {
     )
   }
 
+  setMaxMessagesForTest(limit: number): void {
+    this.messageCeiling = limit
+  }
+
   getState(): NoiseSessionState {
     return this.state
   }
 
   getHandshakeHash(): Uint8Array {
-    return new Uint8Array(this.noise.digest)
+    if (this.state !== 'AUTHENTICATED') {
+      throw new RemoteCryptoError(
+        'HANDSHAKE_STATE_INVALID',
+        'handshake hash is only available once handshake is complete',
+      )
+    }
+    if (!this.noise.hash) {
+      throw new RemoteCryptoError('HANDSHAKE_FAILED', 'upstream handshake hash was not retained')
+    }
+    return new Uint8Array(this.noise.hash)
   }
 
   writeMessage1(): Uint8Array {
@@ -90,7 +116,7 @@ export class NoiseInitiatorSession {
       const msg1 = this.noise.send()
       this.state = 'HANDSHAKING'
       return new Uint8Array(msg1)
-    } catch (err) {
+    } catch {
       this.state = 'CLOSED'
       throw new RemoteCryptoError('HANDSHAKE_FAILED', 'failed to write handshake message 1')
     }
@@ -111,7 +137,7 @@ export class NoiseInitiatorSession {
       this.sendCipher = new Cipher(this.noise.tx)
       this.recvCipher = new Cipher(this.noise.rx)
       this.state = 'AUTHENTICATED'
-    } catch (err) {
+    } catch {
       this.state = 'CLOSED'
       throw new RemoteCryptoError(
         'HANDSHAKE_FAILED',
@@ -121,27 +147,43 @@ export class NoiseInitiatorSession {
   }
 
   encrypt(plaintext: Uint8Array): Uint8Array {
+    if (this.sendCounter >= this.messageCeiling) {
+      this.close()
+      throw new RemoteCryptoError(
+        'NONCE_EXHAUSTED',
+        'transport message ceiling reached, connection must reconnect',
+      )
+    }
     if (this.state !== 'AUTHENTICATED' || !this.sendCipher) {
       throw new RemoteCryptoError(
         'HANDSHAKE_STATE_INVALID',
         `cannot encrypt in state ${this.state}`,
       )
     }
+    this.sendCounter += 1
     const ct = this.sendCipher.encrypt(Buffer.from(plaintext))
     return new Uint8Array(ct)
   }
 
   decrypt(ciphertext: Uint8Array): Uint8Array {
+    if (this.recvCounter >= this.messageCeiling) {
+      this.close()
+      throw new RemoteCryptoError(
+        'NONCE_EXHAUSTED',
+        'transport message ceiling reached, connection must reconnect',
+      )
+    }
     if (this.state !== 'AUTHENTICATED' || !this.recvCipher) {
       throw new RemoteCryptoError(
         'HANDSHAKE_STATE_INVALID',
         `cannot decrypt in state ${this.state}`,
       )
     }
+    this.recvCounter += 1
     try {
       const pt = this.recvCipher.decrypt(Buffer.from(ciphertext))
       return new Uint8Array(pt)
-    } catch (err) {
+    } catch {
       throw new RemoteCryptoError(
         'CIPHERTEXT_INVALID',
         'could not verify or decrypt ciphertext',
@@ -163,6 +205,9 @@ export class NoiseResponderSession {
   private recvCipher: CipherInstance | undefined = undefined
   private remoteStaticKey: Uint8Array | undefined = undefined
   private remoteDeviceId: string | undefined = undefined
+  private sendCounter = 0
+  private recvCounter = 0
+  private messageCeiling = MAX_TRANSPORT_MESSAGES
 
   constructor(
     hostKeyPair: HostKeyPair,
@@ -175,12 +220,25 @@ export class NoiseResponderSession {
     this.noise.initialise(Buffer.from(prologue))
   }
 
+  setMaxMessagesForTest(limit: number): void {
+    this.messageCeiling = limit
+  }
+
   getState(): NoiseSessionState {
     return this.state
   }
 
   getHandshakeHash(): Uint8Array {
-    return new Uint8Array(this.noise.digest)
+    if (this.state !== 'AUTHENTICATED') {
+      throw new RemoteCryptoError(
+        'HANDSHAKE_STATE_INVALID',
+        'handshake hash is only available once handshake is complete',
+      )
+    }
+    if (!this.noise.hash) {
+      throw new RemoteCryptoError('HANDSHAKE_FAILED', 'upstream handshake hash was not retained')
+    }
+    return new Uint8Array(this.noise.hash)
   }
 
   getRemotePeer(): { staticPublicKey: Uint8Array; deviceId: string } {
@@ -216,7 +274,7 @@ export class NoiseResponderSession {
         staticPublicKey: this.remoteStaticKey,
         deviceId: this.remoteDeviceId,
       }
-    } catch (err) {
+    } catch {
       this.state = 'CLOSED'
       throw new RemoteCryptoError(
         'HANDSHAKE_FAILED',
@@ -241,7 +299,7 @@ export class NoiseResponderSession {
       this.sendCipher = new Cipher(this.noise.tx)
       this.state = 'AUTHENTICATED'
       return new Uint8Array(msg2)
-    } catch (err) {
+    } catch {
       this.state = 'CLOSED'
       throw new RemoteCryptoError(
         'HANDSHAKE_FAILED',
@@ -251,27 +309,43 @@ export class NoiseResponderSession {
   }
 
   encrypt(plaintext: Uint8Array): Uint8Array {
+    if (this.sendCounter >= this.messageCeiling) {
+      this.close()
+      throw new RemoteCryptoError(
+        'NONCE_EXHAUSTED',
+        'transport message ceiling reached, connection must reconnect',
+      )
+    }
     if (this.state !== 'AUTHENTICATED' || !this.sendCipher) {
       throw new RemoteCryptoError(
         'HANDSHAKE_STATE_INVALID',
         `cannot encrypt in state ${this.state}`,
       )
     }
+    this.sendCounter += 1
     const ct = this.sendCipher.encrypt(Buffer.from(plaintext))
     return new Uint8Array(ct)
   }
 
   decrypt(ciphertext: Uint8Array): Uint8Array {
+    if (this.recvCounter >= this.messageCeiling) {
+      this.close()
+      throw new RemoteCryptoError(
+        'NONCE_EXHAUSTED',
+        'transport message ceiling reached, connection must reconnect',
+      )
+    }
     if (this.state !== 'AUTHENTICATED' || !this.recvCipher) {
       throw new RemoteCryptoError(
         'HANDSHAKE_STATE_INVALID',
         `cannot decrypt in state ${this.state}`,
       )
     }
+    this.recvCounter += 1
     try {
       const pt = this.recvCipher.decrypt(Buffer.from(ciphertext))
       return new Uint8Array(pt)
-    } catch (err) {
+    } catch {
       throw new RemoteCryptoError(
         'CIPHERTEXT_INVALID',
         'could not verify or decrypt ciphertext',

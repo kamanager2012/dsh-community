@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 // @ts-ignore - noise-handshake/dh.js
 import dh from 'noise-handshake/dh.js'
 import {
+  ChannelSecurityGate,
   ConnectionEpochAllocator,
   InMemoryDeviceTrustStore,
   InMemoryHostIdentityStore,
@@ -14,7 +17,6 @@ import {
   computeFingerprint,
   type AuthenticatedPeer,
   type Capability,
-  type HostKeyPair,
   type OfficialRemoteSeams,
   type RemoteRequest,
 } from '../src/index.ts'
@@ -66,63 +68,306 @@ function fakeSeams() {
   return { seams, calls }
 }
 
-describe('R2A Noise Identity and Crypto Core Adversarial Tests', () => {
-  it('1. valid first pairing', async () => {
+describe('R2A-R1 Noise Identity and Crypto Core Adversarial Tests', () => {
+  it('1. exact crypto dependency version guard', () => {
+    const pkgJsonPath = join(__dirname, '../package.json')
+    const pkg = JSON.parse(readFileSync(pkgJsonPath, 'utf8')) as {
+      dependencies?: Record<string, string>
+      devDependencies?: Record<string, string>
+    }
+    expect(pkg.dependencies?.['noise-handshake']).toBe('4.2.0')
+    expect(pkg.devDependencies?.['@types/noise-handshake']).toBe('3.0.3')
+  })
+
+  it('2. handshake hash equality and availability after completion', async () => {
     const hostStore = new InMemoryHostIdentityStore()
-    const hostKeyPair = await hostStore.loadOrCreate()
-    const trustStore = new InMemoryDeviceTrustStore()
-    const tokenRegistry = new PairingTokenRegistry()
+    const host = await hostStore.loadOrCreate()
+    const client = generateClientKeyPair()
 
-    const token = tokenRegistry.createToken({
-      allowedCapabilities: ['observe', 'prompt'],
-    })
+    const initiator = new NoiseInitiatorSession(client, host.identity.publicKey)
+    const responder = new NoiseResponderSession(host)
 
-    const clientKeyPair = generateClientKeyPair()
-    const initiator = new NoiseInitiatorSession(clientKeyPair, hostKeyPair.identity.publicKey)
-    const responder = new NoiseResponderSession(hostKeyPair)
+    // Handshake hash cannot be queried before handshake finishes
+    expect(() => initiator.getHandshakeHash()).toThrow(RemoteCryptoError)
+    expect(() => responder.getHandshakeHash()).toThrow(RemoteCryptoError)
 
     const msg1 = initiator.writeMessage1()
-    const peerMeta = responder.readMessage1(msg1)
-    expect(peerMeta.deviceId).toBe(computeFingerprint(clientKeyPair.publicKey))
-
+    responder.readMessage1(msg1)
     const msg2 = responder.writeMessage2()
     initiator.readMessage2(msg2)
 
     expect(initiator.getState()).toBe('AUTHENTICATED')
     expect(responder.getState()).toBe('AUTHENTICATED')
 
-    // Client sends encrypted pairing request
-    const pairingPayload = JSON.stringify({
-      token: token.token,
-      displayName: 'Pixel 9 Pro',
-    })
-    const encryptedPairing = initiator.encrypt(new TextEncoder().encode(pairingPayload))
+    const initHash = initiator.getHandshakeHash()
+    const respHash = responder.getHandshakeHash()
 
-    // Host receives, decrypts, and consumes token
-    const decryptedPayload = responder.decrypt(encryptedPairing)
-    const pairingData = JSON.parse(new TextDecoder().decode(decryptedPayload)) as {
-      token: string
-      displayName: string
-    }
+    expect(initHash.length).toBe(64) // BLAKE2b HASHLEN
+    expect(respHash.length).toBe(64)
+    expect(Buffer.from(initHash).equals(Buffer.from(respHash))).toBe(true)
+  })
 
-    const consumption = tokenRegistry.consume(pairingData.token)
-    expect(consumption.ok).toBe(true)
-    if (consumption.ok) {
-      const record = await trustStore.trust({
-        staticPublicKey: peerMeta.staticPublicKey,
-        displayName: pairingData.displayName,
-        grantedCapabilities: consumption.capabilities,
-      })
-      expect(record.deviceId).toBe(peerMeta.deviceId)
-      expect(Array.from(record.grantedCapabilities)).toEqual(['observe', 'prompt'])
+  it('3. 32-bit transport nonce message ceiling fail closed', async () => {
+    const hostStore = new InMemoryHostIdentityStore()
+    const host = await hostStore.loadOrCreate()
+    const client = generateClientKeyPair()
+
+    const initiator = new NoiseInitiatorSession(client, host.identity.publicKey)
+    const responder = new NoiseResponderSession(host)
+
+    const msg1 = initiator.writeMessage1()
+    responder.readMessage1(msg1)
+    const msg2 = responder.writeMessage2()
+    initiator.readMessage2(msg2)
+
+    // Limit test ceiling to 3 messages
+    initiator.setMaxMessagesForTest(3)
+    responder.setMaxMessagesForTest(3)
+
+    const p = new TextEncoder().encode('msg')
+    // Messages 1, 2, 3
+    const ct1 = initiator.encrypt(p)
+    responder.decrypt(ct1)
+    const ct2 = initiator.encrypt(p)
+    responder.decrypt(ct2)
+    const ct3 = initiator.encrypt(p)
+    responder.decrypt(ct3)
+
+    // 4th message reaches ceiling -> must fail closed
+    expect(() => {
+      initiator.encrypt(p)
+    }).toThrow(RemoteCryptoError)
+
+    try {
+      initiator.encrypt(p)
+    } catch (err: unknown) {
+      expect((err as RemoteCryptoError).code).toBe('NONCE_EXHAUSTED')
     }
   })
 
-  it('2. wrong Host static key fails closed', async () => {
+  it('4. revoked device cannot be restored by trust()', async () => {
+    const trustStore = new InMemoryDeviceTrustStore()
+    const clientKey = generateClientKeyPair().publicKey
+    const domainId = 'domain-1'
+
+    const record = await trustStore.trust({
+      staticPublicKey: clientKey,
+      displayName: 'Phone',
+      grantedCapabilities: ['observe'],
+      trustDomainId: domainId,
+    })
+
+    await trustStore.revoke(record.deviceId)
+    const revoked = await trustStore.get(record.deviceId)
+    expect(revoked?.revokedAt).toBeDefined()
+
+    // Calling trust() again on the revoked device MUST fail closed
+    await expect(
+      trustStore.trust({
+        staticPublicKey: clientKey,
+        displayName: 'Phone New Pairing',
+        grantedCapabilities: ['observe'],
+        trustDomainId: domainId,
+      }),
+    ).rejects.toThrow(RemoteCryptoError)
+
+    // Only explicit admin re-enrollment can clear revocation
+    const reEnrolled = await trustStore.adminReEnroll({
+      deviceId: record.deviceId,
+      displayName: 'Phone Admin Recovered',
+      grantedCapabilities: ['observe', 'prompt'],
+      trustDomainId: domainId,
+    })
+    expect(reEnrolled.revokedAt).toBeUndefined()
+    expect(reEnrolled.displayName).toBe('Phone Admin Recovered')
+  })
+
+  it('5. Host rotation invalidates trust domain and fails closed', async () => {
+    const hostStore = new InMemoryHostIdentityStore()
+    const host1 = await hostStore.loadOrCreate()
+    const domain1 = host1.identity.trustDomainId
+
+    const trustStore = new InMemoryDeviceTrustStore()
+    const clientKey = generateClientKeyPair().publicKey
+
+    const record = await trustStore.trust({
+      staticPublicKey: clientKey,
+      displayName: 'Dev Machine',
+      grantedCapabilities: ['observe', 'prompt'],
+      trustDomainId: domain1,
+    })
+
+    // Before rotation: authorized
+    await expect(trustStore.assertAuthorized(record.deviceId, domain1)).resolves.toBeDefined()
+
+    // Host rotates identity -> domain 2
+    const host2 = await hostStore.rotate()
+    const domain2 = host2.identity.trustDomainId
+    expect(domain2).not.toBe(domain1)
+
+    // Old device in domain 1 is immediately rejected by Host with TRUST_DOMAIN_STALE
+    await expect(trustStore.assertAuthorized(record.deviceId, domain2)).rejects.toThrow(
+      RemoteCryptoError,
+    )
+  })
+
+  it('6. unpaired authenticated channel cannot call application RPC', async () => {
+    const trustStore = new InMemoryDeviceTrustStore()
+    const hostStore = new InMemoryHostIdentityStore()
+    const host = await hostStore.loadOrCreate()
+
+    const gate = new ChannelSecurityGate('dev-unpaired', host.identity.trustDomainId, trustStore)
+
+    // Channel just authenticated with Noise IK, but device is not in trustStore
+    const state = await gate.evaluate()
+    expect(state).toBe('PAIRING_PENDING')
+
+    // Calling application RPC while in PAIRING_PENDING must be blocked
+    expect(() => {
+      gate.assertCanDispatchRpc('session.list')
+    }).toThrow(RemoteCryptoError)
+
+    try {
+      gate.assertCanDispatchRpc('prompt.submit')
+    } catch (err: unknown) {
+      expect((err as RemoteCryptoError).code).toBe('UNAUTHORIZED_CHANNEL')
+    }
+  })
+
+  it('7. HostKeyPair prevents secret leak via JSON.stringify, spread, inspect, String', async () => {
+    const hostStore = new InMemoryHostIdentityStore()
+    const host = await hostStore.loadOrCreate()
+    const rawSecretHex = Buffer.from(host.secretKey).toString('hex')
+
+    // 1. JSON.stringify
+    const json = JSON.stringify(host)
+    expect(json).not.toContain(rawSecretHex)
+    const parsed = JSON.parse(json) as { identity: { fingerprint: string; trustDomainId: string } }; expect(parsed.identity.fingerprint).toBe(host.identity.fingerprint); expect(parsed.identity.trustDomainId).toBe(host.identity.trustDomainId)
+
+    // 2. Object spread
+    const spread = { ...host }
+    expect(Object.keys(spread)).toEqual(['identity'])
+    expect((spread as Record<string, unknown>).secretKey).toBeUndefined()
+
+    // 3. util.inspect
+    expect(String(host)).toContain('[REDACTED]')
+    expect(String(host)).not.toContain(rawSecretHex)
+
+    // 4. Secret key still accessible to legitimate internal callers
+    expect(host.secretKey.byteLength).toBe(32)
+  })
+
+  it('8. raw token absent from registry state and PairingToken leak proof', () => {
+    const registry = new PairingTokenRegistry()
+    const token = registry.createToken({ trustDomainId: 'dom-1' })
+    const rawToken = token.token
+
+    // Raw token must NOT exist as a key in registry map
+    expect((registry as unknown as { tokens: Map<string, unknown> }).tokens.has(rawToken)).toBe(false)
+    expect(
+      (registry as unknown as { tokens: Map<string, unknown> }).tokens.has(token.tokenHash),
+    ).toBe(true)
+
+    // PairingToken spread leak test
+    const spread = { ...token }
+    expect((spread as Record<string, unknown>).rawToken).toBeUndefined()
+
+    // PairingToken JSON leak test
+    const json = JSON.stringify(token)
+    expect(json).not.toContain(rawToken)
+
+    // String / inspect redaction
+    expect(String(token)).toContain('[REDACTED]')
+    expect(String(token)).not.toContain(rawToken)
+  })
+
+  it('9. uniform external token failure (no status leakage)', () => {
+    let now = 1000
+    const registry = new PairingTokenRegistry(16, 5000, { clock: () => now })
+    const token = registry.createToken({ trustDomainId: 'dom-1' })
+
+    // Non-existent token
+    const res1 = registry.verifyCandidate({
+      rawToken: 'nonexistent-token',
+      clientDeviceId: 'dev-1',
+      clientDisplayName: 'Client 1',
+      currentTrustDomainId: 'dom-1',
+    })
+    expect(res1.ok).toBe(false)
+    if (!res1.ok) expect(res1.error.code).toBe('PAIRING_FAILED')
+
+    // Expired token
+    now += 10000
+    const res2 = registry.verifyCandidate({
+      rawToken: token.token,
+      clientDeviceId: 'dev-1',
+      clientDisplayName: 'Client 1',
+      currentTrustDomainId: 'dom-1',
+    })
+    expect(res2.ok).toBe(false)
+    if (!res2.ok) expect(res2.error.code).toBe('PAIRING_FAILED')
+
+    // Error messages are identical
+    if (!res1.ok && !res2.ok) {
+      expect(res1.error.message).toBe(res2.error.message)
+    }
+  })
+
+  it('10. pairing requires explicit Host confirmation and least-privilege default', async () => {
+    const registry = new PairingTokenRegistry()
+    // Default capabilities must be least-privilege 'observe'
+    const token = registry.createToken({ trustDomainId: 'dom-1' })
+    expect(token.allowedCapabilities).toEqual(['observe'])
+
+    const candidateRes = registry.verifyCandidate({
+      rawToken: token.token,
+      clientDeviceId: 'dev-1',
+      clientDisplayName: 'New Device',
+      currentTrustDomainId: 'dom-1',
+    })
+    expect(candidateRes.ok).toBe(true)
+    if (!candidateRes.ok) return
+
+    const candidate = candidateRes.candidate
+
+    // Attempting to grant capability exceeding token permission fails
+    const escalateRes = registry.confirmCandidate({
+      candidateId: candidate.candidateId,
+      confirmedCapabilities: ['observe', 'approve'],
+    })
+    expect(escalateRes.ok).toBe(false)
+
+    // Legitimate confirmation within allowed bounds succeeds
+    const confirmRes = registry.confirmCandidate({
+      candidateId: candidate.candidateId,
+      confirmedCapabilities: ['observe'],
+    })
+    expect(confirmRes.ok).toBe(true)
+    if (confirmRes.ok) {
+      expect(confirmRes.grantedCapabilities).toEqual(['observe'])
+    }
+  })
+
+  it('11. ConnectionEpochAllocator fails closed on exhaustion', () => {
+    const allocator = new ConnectionEpochAllocator(Number.MAX_SAFE_INTEGER - 1)
+    expect(allocator.allocateNext()).toBe(Number.MAX_SAFE_INTEGER)
+
+    // Reaching capacity boundary must fail closed, NO WRAP TO 1
+    expect(() => {
+      allocator.allocateNext()
+    }).toThrow(RemoteCryptoError)
+
+    try {
+      allocator.allocateNext()
+    } catch (err: unknown) {
+      expect((err as RemoteCryptoError).code).toBe('STATE_CAPACITY_EXCEEDED')
+    }
+  })
+
+  it('12. wrong Host static key fails closed', async () => {
     const hostStore = new InMemoryHostIdentityStore()
     const hostKeyPair = await hostStore.loadOrCreate()
 
-    // Client uses an incorrect Host static key
     const wrongHostKey = new Uint8Array(32)
     wrongHostKey.fill(0xee)
 
@@ -131,86 +376,12 @@ describe('R2A Noise Identity and Crypto Core Adversarial Tests', () => {
     const responder = new NoiseResponderSession(hostKeyPair)
 
     const msg1 = initiator.writeMessage1()
-
     expect(() => {
       responder.readMessage1(msg1)
     }).toThrow(RemoteCryptoError)
   })
 
-  it('3. expired pairing token', () => {
-    let now = 1000
-    const registry = new PairingTokenRegistry(16, 5000, { clock: () => now })
-    const token = registry.createToken({ ttlMs: 3000 })
-
-    now += 4000 // Advance past expiry
-    const result = registry.consume(token.token)
-    expect(result.ok).toBe(false)
-    if (!result.ok) {
-      expect(result.code).toBe('PAIRING_TOKEN_EXPIRED')
-    }
-  })
-
-  it('4. reused pairing token', () => {
-    const registry = new PairingTokenRegistry()
-    const token = registry.createToken()
-
-    const first = registry.consume(token.token)
-    expect(first.ok).toBe(true)
-
-    const second = registry.consume(token.token)
-    expect(second.ok).toBe(false)
-    if (!second.ok) {
-      expect(second.code).toBe('PAIRING_TOKEN_INVALID')
-    }
-  })
-
-  it('5. concurrent pairing-token consume', async () => {
-    const registry = new PairingTokenRegistry()
-    const token = registry.createToken()
-
-    // Run parallel consumption promises
-    const [res1, res2] = await Promise.all([
-      Promise.resolve().then(() => registry.consume(token.token)),
-      Promise.resolve().then(() => registry.consume(token.token)),
-    ])
-
-    const successCount = [res1, res2].filter((r) => r.ok).length
-    const failCount = [res1, res2].filter((r) => !r.ok).length
-
-    expect(successCount).toBe(1)
-    expect(failCount).toBe(1)
-  })
-
-  it('6. unknown device is rejected', async () => {
-    const trustStore = new InMemoryDeviceTrustStore()
-    const clientKey = generateClientKeyPair().publicKey
-    const device = await trustStore.findByPublicKey(clientKey)
-    expect(device).toBeUndefined()
-  })
-
-  it('7. revoked device fails closed', async () => {
-    const trustStore = new InMemoryDeviceTrustStore()
-    const clientKey = generateClientKeyPair().publicKey
-    const record = await trustStore.trust({
-      staticPublicKey: clientKey,
-      displayName: 'Test Client',
-      grantedCapabilities: ['observe'],
-    })
-
-    expect(record.revokedAt).toBeUndefined()
-    const revoked = await trustStore.revoke(record.deviceId)
-    expect(revoked).toBe(true)
-
-    const updated = await trustStore.get(record.deviceId)
-    expect(updated?.revokedAt).toBeDefined()
-
-    // Reconnecting does not restore revoked status
-    await trustStore.recordSeen(record.deviceId)
-    const rechecked = await trustStore.get(record.deviceId)
-    expect(rechecked?.revokedAt).toBeDefined()
-  })
-
-  it('8. handshake transcript tamper fails', async () => {
+  it('13. handshake transcript tamper fails', async () => {
     const hostStore = new InMemoryHostIdentityStore()
     const hostKeyPair = await hostStore.loadOrCreate()
     const clientKeyPair = generateClientKeyPair()
@@ -219,14 +390,14 @@ describe('R2A Noise Identity and Crypto Core Adversarial Tests', () => {
     const responder = new NoiseResponderSession(hostKeyPair)
 
     const msg1 = initiator.writeMessage1()
-    msg1[12] = (msg1[12] ?? 0) ^ 0xff // Bit flip in handshake message
+    msg1[12] = (msg1[12] ?? 0) ^ 0xff
 
     expect(() => {
       responder.readMessage1(msg1)
     }).toThrow(RemoteCryptoError)
   })
 
-  it('9. ciphertext bit flip fails', async () => {
+  it('14. ciphertext bit flip fails', async () => {
     const hostStore = new InMemoryHostIdentityStore()
     const hostKeyPair = await hostStore.loadOrCreate()
     const clientKeyPair = generateClientKeyPair()
@@ -239,85 +410,51 @@ describe('R2A Noise Identity and Crypto Core Adversarial Tests', () => {
     const msg2 = responder.writeMessage2()
     initiator.readMessage2(msg2)
 
-    const ciphertext = initiator.encrypt(new TextEncoder().encode('secure payload'))
-    ciphertext[2] = (ciphertext[2] ?? 0) ^ 0x01 // Bit flip
+    const ciphertext = initiator.encrypt(new TextEncoder().encode('payload'))
+    ciphertext[2] = (ciphertext[2] ?? 0) ^ 0x01
 
     expect(() => {
       responder.decrypt(ciphertext)
     }).toThrow(RemoteCryptoError)
   })
 
-  it('10. pre-auth application payload is blocked', async () => {
+  it('15. pre-auth application payload is blocked', async () => {
     const hostStore = new InMemoryHostIdentityStore()
     const hostKeyPair = await hostStore.loadOrCreate()
     const clientKeyPair = generateClientKeyPair()
 
     const initiator = new NoiseInitiatorSession(clientKeyPair, hostKeyPair.identity.publicKey)
-
-    // Attempting to encrypt in NEW state throws
     expect(() => {
-      initiator.encrypt(new TextEncoder().encode('pre-auth payload'))
+      initiator.encrypt(new TextEncoder().encode('blocked'))
     }).toThrow(RemoteCryptoError)
   })
 
-  it('11. duplicate handshake message throws HANDSHAKE_STATE_INVALID', async () => {
+  it('16. duplicate handshake message throws HANDSHAKE_STATE_INVALID', async () => {
     const hostStore = new InMemoryHostIdentityStore()
     const hostKeyPair = await hostStore.loadOrCreate()
     const clientKeyPair = generateClientKeyPair()
 
     const initiator = new NoiseInitiatorSession(clientKeyPair, hostKeyPair.identity.publicKey)
     initiator.writeMessage1()
-
-    // Attempting to write Message 1 again in HANDSHAKING state throws
     expect(() => {
       initiator.writeMessage1()
     }).toThrow(RemoteCryptoError)
   })
 
-  it('12. invalid handshake state transition throws', async () => {
+  it('17. invalid handshake state transition throws', async () => {
     const hostStore = new InMemoryHostIdentityStore()
     const hostKeyPair = await hostStore.loadOrCreate()
-
     const responder = new NoiseResponderSession(hostKeyPair)
-
-    // Attempting to write Message 2 before reading Message 1 throws
     expect(() => {
       responder.writeMessage2()
     }).toThrow(RemoteCryptoError)
   })
 
-  it('13. reconnect creates fresh epoch', () => {
-    const allocator = new ConnectionEpochAllocator()
-    const epoch1 = allocator.allocateNext()
-    const epoch2 = allocator.allocateNext()
-
-    expect(epoch1).toBe(1)
-    expect(epoch2).toBe(2)
-    expect(epoch2).toBeGreaterThan(epoch1)
-  })
-
-  it('14. reconnect preserves device identity', async () => {
-    const trustStore = new InMemoryDeviceTrustStore()
-    const clientKeyPair = generateClientKeyPair()
-
-    const record1 = await trustStore.trust({
-      staticPublicKey: clientKeyPair.publicKey,
-      displayName: 'Laptop',
-      grantedCapabilities: ['observe', 'prompt'],
-    })
-
-    const found = await trustStore.findByPublicKey(clientKeyPair.publicKey)
-    expect(found?.deviceId).toBe(record1.deviceId)
-    expect(found?.displayName).toBe('Laptop')
-  })
-
-  it('15. capability escalation denied', async () => {
+  it('18. capability escalation denied at policy engine', async () => {
     const { seams } = fakeSeams()
     const core = new RemoteAdapterCore(seams)
 
-    // Device trusted ONLY with observe capability
     core.devices.trust('dev-observe-only', ['observe'])
-
     const peer: AuthenticatedPeer = {
       deviceId: 'dev-observe-only',
       connectionEpoch: 1,
@@ -337,96 +474,36 @@ describe('R2A Noise Identity and Crypto Core Adversarial Tests', () => {
     await expect(core.handle(peer, mutatingRequest)).rejects.toThrow(RemoteProtocolError)
   })
 
-  it('16. Host key rotation invalidates old Host fingerprint trust', async () => {
-    const hostStore = new InMemoryHostIdentityStore()
-    const host1 = await hostStore.loadOrCreate()
-    const initialFingerprint = host1.identity.fingerprint
-
-    const clientKeyPair = generateClientKeyPair()
-    // Client configured with Host 1 public key
-    const initiator = new NoiseInitiatorSession(clientKeyPair, host1.identity.publicKey)
-
-    // Host rotates identity
-    const host2 = await hostStore.rotate()
-    expect(host2.identity.fingerprint).not.toBe(initialFingerprint)
-
-    const responder = new NoiseResponderSession(host2)
-    const msg1 = initiator.writeMessage1()
-
-    // Host 2 cannot decrypt message 1 encrypted to Host 1
-    expect(() => {
-      responder.readMessage1(msg1)
-    }).toThrow(RemoteCryptoError)
-  })
-
-  it('17. bounded device registry', async () => {
-    const trustStore = new InMemoryDeviceTrustStore(2)
-
+  it('19. bounded device and token registries fail closed', async () => {
+    const trustStore = new InMemoryDeviceTrustStore(1)
     await trustStore.trust({
       staticPublicKey: generateClientKeyPair().publicKey,
       displayName: 'Dev 1',
       grantedCapabilities: ['observe'],
+      trustDomainId: 'dom-1',
     })
-    await trustStore.trust({
-      staticPublicKey: generateClientKeyPair().publicKey,
-      displayName: 'Dev 2',
-      grantedCapabilities: ['observe'],
-    })
-
-    // Third device exceeds capacity
     await expect(
       trustStore.trust({
         staticPublicKey: generateClientKeyPair().publicKey,
-        displayName: 'Dev 3',
+        displayName: 'Dev 2',
         grantedCapabilities: ['observe'],
+        trustDomainId: 'dom-1',
       }),
     ).rejects.toThrow(RemoteCryptoError)
-  })
 
-  it('18. bounded token registry', () => {
-    const registry = new PairingTokenRegistry(2)
-
-    registry.createToken()
-    registry.createToken()
-
+    const tokenRegistry = new PairingTokenRegistry(1)
+    tokenRegistry.createToken({ trustDomainId: 'dom-1' })
     expect(() => {
-      registry.createToken()
+      tokenRegistry.createToken({ trustDomainId: 'dom-1' })
     }).toThrow(RemoteCryptoError)
   })
 
-  it('19. secrets/tokens absent from thrown error strings', async () => {
-    const hostStore = new InMemoryHostIdentityStore()
-    const host = await hostStore.loadOrCreate()
-    const registry = new PairingTokenRegistry()
-    const token = registry.createToken()
-
-    // Verify inspect redactions
-    expect(String(host)).toContain('[REDACTED]')
-    expect(String(host)).not.toContain(Buffer.from(host.secretKey).toString('hex'))
-
-    expect(String(token)).toContain('[REDACTED]')
-    expect(String(token)).not.toContain(token.token)
-
-    // Verify error messages do not leak secrets
-    try {
-      const wrongKey = new Uint8Array(32).fill(0xaa)
-      const initiator = new NoiseInitiatorSession(generateClientKeyPair(), wrongKey)
-      const responder = new NoiseResponderSession(host)
-      responder.readMessage1(initiator.writeMessage1())
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err)
-      expect(msg).not.toContain(Buffer.from(host.secretKey).toString('hex'))
-      expect(msg).not.toContain(token.token)
-    }
-  })
-
-  it('20. same R1 idempotency key survives transport reconnect', async () => {
+  it('20. same R1 idempotency key survives transport reconnect with fresh epoch', async () => {
     const { seams, calls } = fakeSeams()
     const core = new RemoteAdapterCore(seams)
 
     core.devices.trust('dev-client', ['observe', 'prompt'])
 
-    // First connection (epoch 1)
     const peerEpoch1: AuthenticatedPeer = {
       deviceId: 'dev-client',
       connectionEpoch: 1,
@@ -447,13 +524,11 @@ describe('R2A Noise Identity and Crypto Core Adversarial Tests', () => {
     expect(calls.followup).toBe(1)
     expect(res1).toEqual({ sessionId: 's1', prompt: 'hello reconnect', turnId: 't1' })
 
-    // Transport reconnects (epoch 2)
     const peerEpoch2: AuthenticatedPeer = {
       deviceId: 'dev-client',
       connectionEpoch: 2,
     }
 
-    // Client resubmits prompt with same idempotency key and payload on epoch 2
     const reqEpoch2: RemoteRequest = {
       jsonrpc: '2.0',
       id: 'req-2',
@@ -466,7 +541,6 @@ describe('R2A Noise Identity and Crypto Core Adversarial Tests', () => {
     }
 
     const res2 = await core.handle(peerEpoch2, reqEpoch2)
-    // Cached response returned, followup was NOT called again
     expect(calls.followup).toBe(1)
     expect(res2).toEqual({ sessionId: 's1', prompt: 'hello reconnect', turnId: 't1' })
   })

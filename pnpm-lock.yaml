@@ -66,11 +66,11 @@ importers:
   packages/remote-adapter:
     dependencies:
       noise-handshake:
-        specifier: ^4.2.0
+        specifier: 4.2.0
         version: 4.2.0(bare-events@2.9.2)
     devDependencies:
       '@types/noise-handshake':
-        specifier: ^3.0.3
+        specifier: 3.0.3
         version: 3.0.3
 
   packages/shared-types: {}

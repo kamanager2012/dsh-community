@@ -6,6 +6,7 @@ export interface DeviceRecord {
   readonly deviceId: string
   readonly staticPublicKey: Uint8Array
   readonly fingerprint: string
+  readonly trustDomainId: string
   displayName: string
   grantedCapabilities: ReadonlySet<Capability>
   readonly pairedAt: number
@@ -21,9 +22,18 @@ export interface DeviceTrustStore {
     staticPublicKey: Uint8Array
     displayName: string
     grantedCapabilities: readonly Capability[]
+    trustDomainId: string
   }): Promise<DeviceRecord>
   revoke(deviceId: string): Promise<boolean>
+  adminReEnroll(params: {
+    deviceId: string
+    displayName?: string
+    grantedCapabilities: readonly Capability[]
+    trustDomainId: string
+  }): Promise<DeviceRecord>
+  remove(deviceId: string): Promise<boolean>
   recordSeen(deviceId: string, timestamp?: number): Promise<void>
+  assertAuthorized(deviceId: string, currentTrustDomainId: string): Promise<DeviceRecord>
   list(): Promise<readonly DeviceRecord[]>
   size(): Promise<number>
 }
@@ -55,17 +65,29 @@ export class InMemoryDeviceTrustStore implements DeviceTrustStore {
     staticPublicKey: Uint8Array
     displayName: string
     grantedCapabilities: readonly Capability[]
+    trustDomainId: string
   }): Promise<DeviceRecord> {
     const fingerprint = computeFingerprint(params.staticPublicKey)
     const existing = this.devices.get(fingerprint)
     const now = this.clock()
 
     if (existing) {
+      if (existing.revokedAt !== undefined) {
+        throw new RemoteCryptoError(
+          'DEVICE_REVOKED',
+          'device is revoked; standard pairing cannot restore a revoked device',
+        )
+      }
+      if (existing.trustDomainId !== params.trustDomainId) {
+        throw new RemoteCryptoError(
+          'TRUST_DOMAIN_STALE',
+          'device belongs to a stale trust domain and must be newly paired',
+        )
+      }
       existing.displayName = params.displayName
       existing.grantedCapabilities = new Set(params.grantedCapabilities)
       existing.lastSeenAt = now
       existing.keyVersion += 1
-      existing.revokedAt = undefined
       return existing
     }
 
@@ -80,6 +102,7 @@ export class InMemoryDeviceTrustStore implements DeviceTrustStore {
       deviceId: fingerprint,
       staticPublicKey: new Uint8Array(params.staticPublicKey),
       fingerprint,
+      trustDomainId: params.trustDomainId,
       displayName: params.displayName,
       grantedCapabilities: new Set(params.grantedCapabilities),
       pairedAt: now,
@@ -98,11 +121,53 @@ export class InMemoryDeviceTrustStore implements DeviceTrustStore {
     return true
   }
 
+  async adminReEnroll(params: {
+    deviceId: string
+    displayName?: string
+    grantedCapabilities: readonly Capability[]
+    trustDomainId: string
+  }): Promise<DeviceRecord> {
+    const record = this.devices.get(params.deviceId)
+    if (!record) {
+      throw new RemoteCryptoError('DEVICE_NOT_TRUSTED', 'device does not exist for re-enrollment')
+    }
+    const now = this.clock()
+    const updatedRecord: DeviceRecord = {
+      ...record,
+      trustDomainId: params.trustDomainId,
+      displayName: params.displayName ?? record.displayName,
+      grantedCapabilities: new Set(params.grantedCapabilities),
+      revokedAt: undefined,
+      lastSeenAt: now,
+      keyVersion: record.keyVersion + 1,
+    }
+    this.devices.set(params.deviceId, updatedRecord)
+    return updatedRecord
+  }
+
+  async remove(deviceId: string): Promise<boolean> {
+    return this.devices.delete(deviceId)
+  }
+
   async recordSeen(deviceId: string, timestamp?: number): Promise<void> {
     const record = this.devices.get(deviceId)
     if (record) {
       record.lastSeenAt = timestamp ?? this.clock()
     }
+  }
+
+  async assertAuthorized(deviceId: string, currentTrustDomainId: string): Promise<DeviceRecord> {
+    const record = this.devices.get(deviceId)
+    if (!record) {
+      throw new RemoteCryptoError('DEVICE_NOT_TRUSTED', 'device is not trusted')
+    }
+    if (record.revokedAt !== undefined) {
+      throw new RemoteCryptoError('DEVICE_REVOKED', 'device authorization is revoked')
+    }
+    if (record.trustDomainId !== currentTrustDomainId) {
+      throw new RemoteCryptoError('TRUST_DOMAIN_STALE', 'device trust domain is stale after host rotation')
+    }
+    return record
   }
 
   async list(): Promise<readonly DeviceRecord[]> {
