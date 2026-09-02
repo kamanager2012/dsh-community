@@ -11,6 +11,9 @@ describe('active Android endpoint source contract', () => {
     ) as { dependencies?: Record<string, string> }
     expect(pkg.dependencies?.['@deepseek-ai/dsh']).toBe('0.1.2-alpha.4')
     expect(pkg.dependencies?.['@deepseek-ai/dsh-sandbox']).toBe('0.1.2-alpha.4')
+    expect(pkg.dependencies?.['@deepseek-ai/dsh-subprocess']).toBe('0.1.2-alpha.4')
+    expect(pkg.dependencies?.['@deepseek-ai/dsh-subprocess-local']).toBe('0.1.2-alpha.4')
+    expect(pkg.dependencies?.['node-pty']).toBeUndefined()
 
     const bootstrap = readFileSync(
       resolve(ROOT, 'apps/android/nodejs-project/src/main/js/main.js'),

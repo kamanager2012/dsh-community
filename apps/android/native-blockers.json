@@ -19,11 +19,11 @@
         "terminal"
       ],
       "severity": "HARD",
-      "evidence": "Official LocalSubprocessRuntime ordinary spawn does not need terminal inspection; spawnTerminal does. Web defaults to standard without PTY, but minimal is a shipped user-selectable preset and mounts persistent PTY. The exposed terminalInspector property is explicitly a test hook, so Android will not promote it as a production compatibility seam.",
+      "evidence": "Android now has a first-party SubprocessRuntime provider wired through the official patch layer. It subclasses official LocalSubprocessRuntime and overrides only spawnTerminal(), preserving official ordinary spawn/resolve/tree ownership. The Android PTY backend adds /proc starttime identity fencing, foreground PGID signalling and session cleanup; inputWaiting stays conservative false when Android cannot prove a wait. node-pty is resolved from the frozen official subprocess-local dependency closure, not promoted to a Community direct dependency. Real Android node-pty build/load and persistent-terminal smoke remain unproven.",
       "status": "OPEN",
       "rowDisableRemovesInstallDependency": false,
       "failurePhase": "INSTALL_OR_LOAD",
-      "upstreamAndroidSupport": "UNOFFICIAL_SOURCE_BUILD_EVIDENCE_ONLY",
+      "upstreamAndroidSupport": "COMMUNITY_PROVIDER_WIRED_NODE_PTY_AND_REAL_DEVICE_PROBE_REQUIRED",
       "packagePath": [
         "@deepseek-ai/dsh",
         "@deepseek-ai/dsh-base",
@@ -33,7 +33,7 @@
         "node-pty@1.2.0-beta.15",
         "koffi@3.1.6"
       ],
-      "nextProbe": "First prove node-pty build/load with scripts/android-native-addon-probe.sh; then add a production Android SubprocessRuntime provider or wait for upstream Android PTY support."
+      "nextProbe": "Run scripts/android-native-addon-probe.sh against the exact Node 22.19 Android carrier, then run the real Android Web/minimal persistent-terminal Reality Gate before changing status."
     },
     {
       "id": "attachment-local",

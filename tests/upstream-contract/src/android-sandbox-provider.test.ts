@@ -83,14 +83,16 @@ describe('Android sandbox provider', () => {
     expect(provider).not.toMatch(/codex/iu)
   })
 
-  it('replaces only the official sandbox provider through the official patch layer', () => {
+  it('keeps sandbox replacement inside the exact Android execution-provider overlay', () => {
     const patch = readFileSync(PATCH, 'utf8')
     expect(patch).toContain("- id: sandbox")
     expect(patch).toContain("name: '@deepseek-ai/dsh-sandbox-local'")
     expect(patch).toContain('disabled: true')
     expect(patch).toContain('- id: android-sandbox')
     expect(patch).toContain('name: ./android-sandbox-provider.mjs')
-    expect(patch).not.toMatch(/subprocess|agent-loop|session-store|codex/iu)
+    const ids = [...patch.matchAll(/^[ \t]*-[ \t]+id:[ \t]+([a-z0-9-]+)[ \t]*$/gmu)]
+      .map(match => match[1])
+    expect(ids).toEqual(['subprocess', 'sandbox', 'android-subprocess', 'android-sandbox'])
   })
 
   it('keeps the frozen-source Android Landlock probe syntax-valid, network-free, and patch-free', () => {

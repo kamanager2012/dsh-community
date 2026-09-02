@@ -15,6 +15,7 @@ describe('Android runtime substrate evidence', () => {
       sandboxProbe?: string
       androidCompositionPatch?: string
       appUidPreflight?: string
+      ptyProvider?: string
       packageClosure?: {
         status?: string
         audit?: string
@@ -40,6 +41,7 @@ describe('Android runtime substrate evidence', () => {
     expect(state.sandboxProbe).toBe('scripts/android-sandbox-landlock-probe.sh')
     expect(state.androidCompositionPatch).toBe('apps/android/nodejs-project/src/main/js/android.cordis.patch.yml')
     expect(state.appUidPreflight).toBe('apps/android/nodejs-project/src/main/js/android-app-uid-preflight.cjs')
+    expect(state.ptyProvider).toBe('apps/android/nodejs-project/src/main/js/android-subprocess-provider.mjs')
     expect(state.packageClosure?.status).toBe('BLOCKED')
     expect(state.packageClosure?.audit).toBe('scripts/audit-android-official-cli-closure.mjs')
     expect(state.packageClosure?.profileOnlyMitigation).toBe('INEFFECTIVE')
