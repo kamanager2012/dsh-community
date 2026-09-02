@@ -17,6 +17,7 @@ describe('Android G2 native compatibility', () => {
       androidCompositionPatch?: string
       appUidPreflight?: string
       ripgrepSeamAudit?: string
+      ptyProviderProbe?: string
       providerSeams?: {
         subprocess?: {
           status?: string
@@ -30,6 +31,9 @@ describe('Android G2 native compatibility', () => {
           inputWaitingSemantics?: string
           shippedPresetExposure?: string[]
           realDeviceEvidence?: string
+          preliminaryDeviceProbe?: string
+          adbShellEvidence?: string
+          appUidMinimalPresetEvidence?: string
         }
         fsSearch?: {
           status?: string
@@ -74,6 +78,7 @@ describe('Android G2 native compatibility', () => {
     expect(state.androidCompositionPatch).toBe('apps/android/nodejs-project/src/main/js/android.cordis.patch.yml')
     expect(state.appUidPreflight).toBe('apps/android/nodejs-project/src/main/js/android-app-uid-preflight.cjs')
     expect(state.ripgrepSeamAudit).toBe('scripts/audit-android-ripgrep-seam.mjs')
+    expect(state.ptyProviderProbe).toBe('apps/android/nodejs-project/src/main/js/android-pty-provider-device-probe.mjs')
     expect(state.providerSeams?.subprocess).toMatchObject({
       status: 'COMMUNITY_PROVIDER_WIRED_NODE_PTY_AND_REAL_DEVICE_PROBE_REQUIRED',
       providerModule: 'apps/android/nodejs-project/src/main/js/android-subprocess-provider.mjs',
@@ -85,6 +90,9 @@ describe('Android G2 native compatibility', () => {
       inputWaitingSemantics: 'CONSERVATIVE_FALSE_WHEN_NOT_PROVABLE',
       shippedPresetExposure: ['standard', 'minimal', 'ptc', 'cordis'],
       realDeviceEvidence: 'NOT_RUN',
+      preliminaryDeviceProbe: 'apps/android/nodejs-project/src/main/js/android-pty-provider-device-probe.mjs',
+      adbShellEvidence: 'NOT_RUN',
+      appUidMinimalPresetEvidence: 'NOT_RUN',
     })
     expect(state.providerSeams?.fsSearch).toMatchObject({
       status: 'NO_EXPLICIT_RG_PATH_SEAM_ALPHA4',
@@ -173,6 +181,7 @@ describe('Android G2 native compatibility', () => {
     expect(probe).toContain('android.toolchain.cmake')
     expect(probe).toContain('KOFFI_DEVICE_OK')
     expect(probe).toContain('NODE_PTY_DEVICE_OK')
+    expect(probe).toContain('android-pty-provider-device-probe.mjs')
     expect(probe).toContain('SHARP_WASM_DEVICE_OK')
     expect(probe).toContain('sharp WASM materialization gap')
     expect(probe).toContain('Node Android carrier has not been built')
