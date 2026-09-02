@@ -266,6 +266,99 @@ describe('R1 remote protocol adversarial matrix', () => {
       .toEqual([51])
   })
 
+  it('single-flights concurrent retries with the same idempotency key', async () => {
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const { seams, calls } = fakeSeams()
+    const baseFollowup = seams.followup
+    seams.followup = async (sessionId, prompt) => {
+      await gate
+      return baseFollowup(sessionId, prompt)
+    }
+
+    const adapter = new RemoteAdapterCore(seams)
+    adapter.devices.trust(peer.deviceId, ['prompt'])
+
+    const first = adapter.handle(
+      peer,
+      request('prompt.submit', 1, { sessionId: 's1', prompt: 'same' }, {
+        idempotencyKey: 'concurrent-1',
+      }),
+    )
+    const reconnect = { ...peer, connectionEpoch: 2 }
+    const second = adapter.handle(
+      reconnect,
+      request('prompt.submit', 1, { sessionId: 's1', prompt: 'same' }, {
+        connectionEpoch: 2,
+        idempotencyKey: 'concurrent-1',
+      }),
+    )
+
+    await Promise.resolve()
+    expect(calls.followup).toBe(0)
+    release()
+
+    const [a, b] = await Promise.all([first, second])
+    expect(a).toEqual(b)
+    expect(calls.followup).toBe(1)
+  })
+
+  it('claims an approval before the official seam so concurrent conflicting decisions cannot pass', async () => {
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const { seams, calls } = fakeSeams()
+    const baseApproval = seams.respondApproval
+    seams.respondApproval = async (callId, decision) => {
+      await gate
+      return baseApproval(callId, decision)
+    }
+
+    const adapter = new RemoteAdapterCore(seams)
+    adapter.devices.trust(peer.deviceId, ['approve'])
+
+    const first = adapter.handle(
+      peer,
+      request('approval.respond', 1, { callId: 'c-race', decision: 'approved' }, {
+        idempotencyKey: 'approval-race-1',
+      }),
+    )
+
+    await expectCode(
+      adapter.handle(
+        peer,
+        request('approval.respond', 2, { callId: 'c-race', decision: 'rejected' }, {
+          idempotencyKey: 'approval-race-2',
+        }),
+      ),
+      'ALREADY_RESOLVED',
+    )
+
+    expect(calls.approval).toBe(0)
+    release()
+    await first
+    expect(calls.approval).toBe(1)
+  })
+
+  it('does not retain unbounded stream ACK state and validates the referenced session', async () => {
+    const { seams } = fakeSeams()
+    const adapter = new RemoteAdapterCore(seams)
+    adapter.devices.trust(peer.deviceId, ['observe'])
+
+    await expect(adapter.handle(
+      peer,
+      request('stream.ack', 1, { sessionId: 's1', seq: 50 }),
+    )).resolves.toEqual({ ok: true, seq: 50 })
+
+    await expect(adapter.handle(
+      peer,
+      request('stream.ack', 2, { sessionId: 'missing', seq: 51 }),
+    )).rejects.toThrow('missing session')
+  })
+
   it('runtime-validates untrusted JSON before it can reach official seams', async () => {
     const { seams, calls } = fakeSeams()
     const adapter = new RemoteAdapterCore(seams)
