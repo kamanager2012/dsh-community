@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Android evidence chain 增加标准化 record creator：`scripts/create-android-evidence-record.mjs` 只从真实 probe transcript + 本地 artifact bytes 生成 record，SHA-256 由脚本自行计算；设备身份只接受预哈希值，不接受原始 serial；必须显式提供 capture time 与 Community full SHA，且输出使用 create-only，禁止静默覆盖既有证据。
+- creator 当前识别 carrier / native-addon / app-UID preflight 的真实成功 marker，并为未来 PTY app-UID、DSH boot、arm64/x86_64 APK smoke 固定 record 形状；当前 ripgrep 官方 seam 未解锁，因此 creator 明确拒绝生成 ripgrep PASS record。
+
 - Android Reality Gate 增加“证据背书”硬约束：新增 `scripts/validate-android-evidence-backing.mjs` 与 `apps/android/evidence/records/`。今后 `reality-gate.json` 中任何 PASS 都必须存在对应的、绑定 `0.1.2-alpha.4` / Community full SHA / offset-aware capturedAt / artifact SHA-256 / hashed device identity 的记录；app-UID-only sandbox/hard-link/PTY 不接受 adb-shell 记录。
 - `verify-android-release-ready.mjs` 现先执行 evidence-backing validator。记录本身不会自动提升 gate，也不能绕过 architecture blocker：例如当前 ripgrep 缺官方 Android package/path seam 时，即使放入一份“ripgrep PASS”记录也必须拒绝。
 

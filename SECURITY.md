@@ -197,6 +197,13 @@ Out of scope (report upstream instead):
   artifacts, and hashed device identity rather than raw serials. App-UID-only
   claims (sandbox/hard-link/PTY) reject adb-shell records. A ripgrep record cannot
   override the current unresolved official package/path-seam blocker.
+- PASS records should be created with `scripts/create-android-evidence-record.mjs`,
+  which hashes transcript/artifact bytes locally, accepts only a pre-hashed device
+  identifier (never a raw serial), requires explicit capture time and Community
+  full SHA, and uses create-only output semantics. The creator validates gate-
+  specific success markers before emitting a record; it does not edit
+  `reality-gate.json` and cannot create ripgrep PASS evidence while the
+  architecture blocker remains open.
 - Android publication is fail-closed through
   `scripts/verify-android-release-ready.mjs` (`node scripts/verify-android-release-ready.mjs`),
   which invokes the evidence-backing validator before evaluating release state.

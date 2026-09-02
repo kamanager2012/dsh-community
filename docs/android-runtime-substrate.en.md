@@ -57,6 +57,8 @@ Records do **not** promote a gate by themselves. They only make an already-adjud
 
 `node scripts/verify-android-release-ready.mjs` invokes the validator before release-state evaluation, so the rule also applies outside CI.
 
+After a real gate run, use `scripts/create-android-evidence-record.mjs` to create the record from the raw transcript and artifact bytes rather than hand-entering hashes. The creator accepts only a SHA-256 device identifier, refuses overwrite, and never edits `reality-gate.json`.
+
 ## Reality Gates
 
 ### G0 — Published CLI installation closure

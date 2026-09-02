@@ -73,6 +73,8 @@ node scripts/validate-android-evidence-backing.mjs
 
 `node scripts/verify-android-release-ready.mjs` 已内置这一验证，因此手工绕过 CI 运行发布检查也不能跳过 evidence backing。
 
+真实 gate 跑完后，优先用 `scripts/create-android-evidence-record.mjs` 从原始 transcript 和 artifact bytes 生成 record；不要手工填写 hash。creator 不接受原始设备 serial，只接受其 SHA-256，并且不会覆盖已有 record，也不会修改 `reality-gate.json`。
+
 ## Reality Gate
 
 ### G0 — 官方 CLI 安装闭包

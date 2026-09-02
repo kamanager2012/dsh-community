@@ -35,3 +35,30 @@ A record does **not** promote a gate by itself. It only permits a matching PASS
 claim to exist. Architecture blockers in `native-compatibility.json` still win;
 for example, a fabricated ripgrep record cannot bypass the current missing
 official Android package/path seam.
+
+## Record creation
+
+Use `scripts/create-android-evidence-record.mjs` instead of hand-writing PASS
+records. The creator hashes the transcript and artifacts itself, refuses raw
+device serials, requires a full Community Git SHA and offset-aware capture time,
+and writes with create-only semantics so an existing record cannot be silently
+overwritten.
+
+Example carrier capture after a real successful probe:
+
+```bash
+node scripts/create-android-evidence-record.mjs \
+  --kind carrier \
+  --transcript /path/to/carrier.log \
+  --artifact node-carrier=/path/to/node \
+  --out apps/android/evidence/records/carrier.json \
+  --community-commit <40-hex-sha> \
+  --captured-at 2026-09-02T22:45:00+08:00 \
+  --device-id-hash <sha256-of-device-id> \
+  --api-level 35 \
+  --abi arm64-v8a
+```
+
+The creator recognizes only explicit success markers from the corresponding
+manual/embedded gates. It cannot create ripgrep PASS evidence while the official
+Android package/path seam is unresolved.

@@ -16,6 +16,7 @@ describe('Android runtime substrate evidence', () => {
       androidCompositionPatch?: string
       appUidPreflight?: string
       evidenceBackingValidator?: string
+      evidenceRecordCreator?: string
       evidenceRecords?: string
       ptyProvider?: string
       ptyProviderProbe?: string
@@ -45,6 +46,7 @@ describe('Android runtime substrate evidence', () => {
     expect(state.androidCompositionPatch).toBe('apps/android/nodejs-project/src/main/js/android.cordis.patch.yml')
     expect(state.appUidPreflight).toBe('apps/android/nodejs-project/src/main/js/android-app-uid-preflight.cjs')
     expect(state.evidenceBackingValidator).toBe('scripts/validate-android-evidence-backing.mjs')
+    expect(state.evidenceRecordCreator).toBe('scripts/create-android-evidence-record.mjs')
     expect(state.evidenceRecords).toBe('apps/android/evidence/records')
     expect(state.ptyProvider).toBe('apps/android/nodejs-project/src/main/js/android-subprocess-provider.mjs')
     expect(state.ptyProviderProbe).toBe('apps/android/nodejs-project/src/main/js/android-pty-provider-device-probe.mjs')
