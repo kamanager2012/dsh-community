@@ -18,7 +18,19 @@ describe('Android G2 native compatibility', () => {
       appUidPreflight?: string
       ripgrepSeamAudit?: string
       providerSeams?: {
-        subprocess?: { status?: string; terminalInspectorHook?: string; shippedPresetExposure?: string[] }
+        subprocess?: {
+          status?: string
+          providerModule?: string
+          processInspectorModule?: string
+          terminalHandleModule?: string
+          ordinarySpawnInheritedFromOfficial?: boolean
+          terminalInspectorHook?: string
+          nodePtyResolution?: string
+          directNodePtyDependency?: boolean
+          inputWaitingSemantics?: string
+          shippedPresetExposure?: string[]
+          realDeviceEvidence?: string
+        }
         fsSearch?: {
           status?: string
           searchCoreGitBlob?: string
@@ -63,9 +75,16 @@ describe('Android G2 native compatibility', () => {
     expect(state.appUidPreflight).toBe('apps/android/nodejs-project/src/main/js/android-app-uid-preflight.cjs')
     expect(state.ripgrepSeamAudit).toBe('scripts/audit-android-ripgrep-seam.mjs')
     expect(state.providerSeams?.subprocess).toMatchObject({
-      status: 'PUBLIC_PROVIDER_SEAM_AVAILABLE_PTY_ANDROID_PROVIDER_STILL_REQUIRED',
+      status: 'COMMUNITY_PROVIDER_WIRED_NODE_PTY_AND_REAL_DEVICE_PROBE_REQUIRED',
+      providerModule: 'apps/android/nodejs-project/src/main/js/android-subprocess-provider.mjs',
+      processInspectorModule: 'apps/android/nodejs-project/src/main/js/android-process-inspector.mjs',
+      terminalHandleModule: 'apps/android/nodejs-project/src/main/js/android-terminal-handle.mjs',
+      ordinarySpawnInheritedFromOfficial: true,
       terminalInspectorHook: 'TEST_ONLY_NOT_ACCEPTED_FOR_PRODUCTION',
+      directNodePtyDependency: false,
+      inputWaitingSemantics: 'CONSERVATIVE_FALSE_WHEN_NOT_PROVABLE',
       shippedPresetExposure: ['standard', 'minimal', 'ptc', 'cordis'],
+      realDeviceEvidence: 'NOT_RUN',
     })
     expect(state.providerSeams?.fsSearch).toMatchObject({
       status: 'NO_EXPLICIT_RG_PATH_SEAM_ALPHA4',
@@ -123,7 +142,7 @@ describe('Android G2 native compatibility', () => {
 
     const blockers = new Map((state.semanticBlockers ?? []).map(item => [item.id, item]))
     expect(blockers.get('subprocess-terminal-inspector')).toMatchObject({
-      status: 'PUBLIC_PROVIDER_OR_UPSTREAM_ANDROID_PTY_REQUIRED',
+      status: 'COMMUNITY_PROVIDER_WIRED_NODE_PTY_AND_REAL_DEVICE_PROBE_REQUIRED',
       severity: 'HARD',
     })
     expect(blockers.get('sandbox-platform-chain')).toMatchObject({

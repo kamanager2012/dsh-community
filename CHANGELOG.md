@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Android PTY G2 从“等待正式 SubprocessRuntime provider”推进到 first-party provider：新增 `android-subprocess-provider.mjs` / `android-process-inspector.mjs` / `android-terminal-handle.mjs`，通过官方 `dsh web --patch` 只替换 `ctx.subprocess` provider。Android provider 继承发布版 `LocalSubprocessRuntime`，普通 `resolveExecutable/spawn` 与非 PTY 进程治理继续走官方代码，仅覆写 `spawnTerminal()`。
+- Android PTY backend 增加 `/proc/<pid>/stat` starttime PID-reuse fence、foreground PGID signalling、POSIX session member 跟踪、TERM→KILL quiescence；Android 无法证明 stdin syscall wait 时保守返回 `inputWaiting=false`，不伪造 readiness。官方 `terminalInspector` test hook 继续禁用。
+- `node-pty@1.2.0-beta.15` 不提升为 Community 直依赖，而是从 frozen `@deepseek-ai/dsh-subprocess-local` 依赖闭包解析。当前状态仍是 `COMMUNITY_PROVIDER_WIRED_NODE_PTY_AND_REAL_DEVICE_PROBE_REQUIRED`：只有 exact Node 22.19 Android carrier 上 build/load + 真机 `minimal` persistent-terminal 启动/写入/foreground signal/session cleanup 全过，才允许升级证据。
+
 - Android fs-search / ripgrep blocker 进一步从“可能做 wrapper adapter”收敛为上游 seam gate：官方 alpha.4 `tool-fs-search/src/search-core.ts` 固定审计到 Git blob `60ea042d4f31f0e9c856536b8b34e2687482eec7`；`resolveRgPath()` 无参数、无 `rgPath/ripgrepPath` config/env seam，Node 模式直接 import `@vscode/ripgrep`，sidecar 仅 `process.pkg` 生效。新增 `scripts/audit-android-ripgrep-seam.mjs`，后续官方升级可对精确源码自动重判。
 - 当前 ripgrep 裁决改为 `UPSTREAM_PATH_SEAM_OR_ANDROID_PACKAGE_REQUIRED`：只接受上游真实 Android `@vscode/ripgrep-*` 平台包或官方 `tool-fs-search` 显式 executable-path seam。明确禁止为了换 binary 路径复制/分叉官方 glob/grep，避免 Community 形成第二套搜索工具权威。
 

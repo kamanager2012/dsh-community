@@ -95,19 +95,22 @@
     {
       "id": "subprocess-terminal-inspector",
       "package": "@deepseek-ai/dsh-subprocess-local",
-      "status": "PUBLIC_PROVIDER_OR_UPSTREAM_ANDROID_PTY_REQUIRED",
+      "status": "COMMUNITY_PROVIDER_WIRED_NODE_PTY_AND_REAL_DEVICE_PROBE_REQUIRED",
       "severity": "HARD",
       "facts": [
-        "Ordinary LocalSubprocessRuntime.spawn() does not call createProcessInspector(); only spawnTerminal() resolves the terminal inspector.",
-        "The shipped Web default preset is standard and does not mount PTY, but the shipped minimal preset remains user-selectable and mounts the persistent PTY stack.",
-        "AgentPresets has no preset allowlist; disabling the shipped root would remove standard/ptc/cordis together with minimal.",
-        "LocalSubprocessRuntime.terminalInspector exists only as an explicitly documented test hook and is not accepted as a production Android seam."
+        "Android composition now disables only the official subprocess-local row and inserts a first-party AndroidSubprocessRuntime through the official patch layer.",
+        "AndroidSubprocessRuntime subclasses the published LocalSubprocessRuntime, so resolveExecutable(), ordinary spawn(), process-tree ownership, and non-PTY lifecycle remain official code.",
+        "Only spawnTerminal() is replaced. The Android handle owns PTY bytes, foreground process-group signalling, PID-starttime reuse fences, POSIX-session membership, and TERM→KILL quiescence.",
+        "node-pty is not a Community direct dependency; the provider resolves it from the frozen official subprocess-local dependency closure.",
+        "Android /proc may not expose syscall/memory details needed to prove stdin wait. The provider therefore returns false when it cannot prove waiting, matching the public seam's conservative semantics and the official E2B provider precedent.",
+        "The provider wiring is not evidence. node-pty Android cross-build/load plus real-device minimal/persistent-terminal behavior remain NOT_RUN."
       ],
       "releaseBlocking": true,
       "scope": [
         "minimal preset",
         "persistent terminal"
-      ]
+      ],
+      "provider": "apps/android/nodejs-project/src/main/js/android-subprocess-provider.mjs"
     },
     {
       "id": "sandbox-platform-chain",
@@ -142,7 +145,7 @@
       "preflight": "apps/android/nodejs-project/src/main/js/android-app-uid-preflight.cjs"
     }
   ],
-  "conclusion": "Android Local remains blocked. Sandbox and app-private hard-link checks are wired into the embedded app-UID bootstrap but require real APK evidence; PTY still needs a production Android subprocess provider; fs-search remains blocked until upstream exposes an Android ripgrep package or an explicit executable-path seam.",
+  "conclusion": "Android Local remains blocked. Sandbox and app-private hard-link checks are wired into app-UID preflight; PTY now has a production-shaped provider that reuses official ordinary subprocess semantics but still needs node-pty Android build/load and real-device terminal evidence; fs-search remains blocked on an upstream ripgrep path seam or Android package.",
   "portableDependencyAudit": "scripts/audit-android-portable-deps.mjs",
   "sandboxProbe": "scripts/android-sandbox-landlock-probe.sh",
   "androidCompositionPatch": "apps/android/nodejs-project/src/main/js/android.cordis.patch.yml",
@@ -150,9 +153,15 @@
     "subprocess": {
       "servicePackage": "@deepseek-ai/dsh-subprocess",
       "localProvider": "@deepseek-ai/dsh-subprocess-local",
-      "status": "PUBLIC_PROVIDER_SEAM_AVAILABLE_PTY_ANDROID_PROVIDER_STILL_REQUIRED",
-      "ordinarySpawnUsesTerminalInspector": false,
+      "status": "COMMUNITY_PROVIDER_WIRED_NODE_PTY_AND_REAL_DEVICE_PROBE_REQUIRED",
+      "providerModule": "apps/android/nodejs-project/src/main/js/android-subprocess-provider.mjs",
+      "processInspectorModule": "apps/android/nodejs-project/src/main/js/android-process-inspector.mjs",
+      "terminalHandleModule": "apps/android/nodejs-project/src/main/js/android-terminal-handle.mjs",
+      "ordinarySpawnInheritedFromOfficial": true,
       "terminalInspectorHook": "TEST_ONLY_NOT_ACCEPTED_FOR_PRODUCTION",
+      "nodePtyResolution": "resolved from frozen @deepseek-ai/dsh-subprocess-local dependency closure",
+      "directNodePtyDependency": false,
+      "inputWaitingSemantics": "CONSERVATIVE_FALSE_WHEN_NOT_PROVABLE",
       "defaultWebPreset": "standard",
       "shippedPresetExposure": [
         "standard",
@@ -160,7 +169,8 @@
         "ptc",
         "cordis"
       ],
-      "reason": "Default standard Web does not mount PTY, but shipped minimal remains user-selectable and requires persistent terminal support; AgentPresets exposes no preset allowlist."
+      "realDeviceEvidence": "NOT_RUN",
+      "reason": "Android replaces only spawnTerminal() while inheriting official LocalSubprocessRuntime resolveExecutable/spawn semantics. The provider adds /proc identity fencing, foreground group signalling, session cleanup, and conservative input-wait evidence. It remains blocked until node-pty cross-build/load and real-device minimal/persistent-terminal smoke pass."
     },
     "sandbox": {
       "servicePackage": "@deepseek-ai/dsh-sandbox",
@@ -210,5 +220,6 @@
     }
   },
   "appUidPreflight": "apps/android/nodejs-project/src/main/js/android-app-uid-preflight.cjs",
-  "ripgrepSeamAudit": "scripts/audit-android-ripgrep-seam.mjs"
+  "ripgrepSeamAudit": "scripts/audit-android-ripgrep-seam.mjs",
+  "ptyProvider": "apps/android/nodejs-project/src/main/js/android-subprocess-provider.mjs"
 }

@@ -123,10 +123,16 @@ Out of scope (report upstream instead):
 - Native addon compatibility and Android runtime semantics are tracked separately
   in `apps/android/native-compatibility.json`. A node-pty/Koffi build or load
   success cannot waive the independent terminal, sandbox, app-private hard-link,
-  sharp, or ripgrep gates. Ordinary subprocess spawn does not require the
-  terminal inspector, but the shipped `minimal` preset remains selectable and
-  requires persistent PTY. The official local provider's `terminalInspector`
-  test hook is intentionally not promoted into a production Android contract.
+  sharp, or ripgrep gates. Android now provides terminal support through a
+  first-party `AndroidSubprocessRuntime` that subclasses the official
+  `LocalSubprocessRuntime` and replaces only `spawnTerminal()`; ordinary
+  subprocess execution remains official code. The provider never uses the
+  official local `terminalInspector` test hook. Its Android `/proc` inspector
+  fences every process identity with starttime before signalling, tracks POSIX
+  session members for teardown, and treats stdin-wait as unproven/false when the
+  app sandbox does not expose enough kernel state. This conservative fallback
+  cannot promote PTY evidence; exact-carrier node-pty and real-device minimal
+  preset behavior remain release-blocking.
 - `scripts/audit-android-portable-deps.mjs` is a network-free provenance check over
   the committed runtime lock. It distinguishes sharp's exact locked WASM fallback
   from actual optional-byte materialization, records that the frozen
