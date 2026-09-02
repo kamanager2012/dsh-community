@@ -24,18 +24,18 @@ describe('current endpoint narrative', () => {
     'docs/current-release.md',
   ] as const
 
-  it('does not use the retired five-endpoint public slogan in current narrative files', () => {
+  it('does not regress to the four-endpoint product-count slogan', () => {
     for (const rel of currentNarrativeFiles) {
-      expect(read(rel), rel).not.toContain('One Harness. Five Community Endpoints')
+      expect(read(rel), rel).not.toContain('One Harness. Four shipped community endpoints')
     }
   })
 
-  it('keeps the four-shipped plus Android-experimental boundary explicit', () => {
-    expect(read('README.en.md')).toMatch(/four currently shipped community endpoints/i)
-    expect(read('ARCHITECTURE.md')).toMatch(/four currently shipped community endpoints/i)
-    expect(read('AGENTS.md')).toMatch(/four shipped community endpoints/i)
-    expect(read('docs/story.md')).toMatch(/Four Shipped Community Endpoints/i)
-    expect(read('ECOSYSTEM.md')).toMatch(/four currently shipped Community endpoints/i)
+  it('keeps five Community endpoints explicit while Android remains unpublished and unverified', () => {
+    expect(read('README.en.md')).toMatch(/five Community endpoints/i)
+    expect(read('ARCHITECTURE.md')).toMatch(/five Community endpoints/i)
+    expect(read('AGENTS.md')).toMatch(/five Community endpoints/i)
+    expect(read('docs/story.md')).toMatch(/Five Community Endpoints/i)
+    expect(read('ECOSYSTEM.md')).toMatch(/five Community endpoints/i)
 
     for (const rel of [
       'README.en.md',
@@ -51,7 +51,7 @@ describe('current endpoint narrative', () => {
   it('keeps Chinese onboarding from counting Android as a fifth shipped endpoint', () => {
     const gettingStarted = read('docs/getting-started.md')
     expect(gettingStarted).not.toContain('五个社区端定义')
-    expect(gettingStarted).toMatch(/四个已发行端/)
+    expect(gettingStarted).toMatch(/四个(?:当前)?已发行/)
     expect(gettingStarted).toMatch(/Android.*UNVERIFIED/u)
   })
 

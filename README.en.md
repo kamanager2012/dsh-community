@@ -8,18 +8,19 @@ does not reimplement the Agent Runtime; it maintains four surrounding concerns:
 distribution, a third-party plugin compatibility registry, and release/plugin
 security evidence**.
 
-There are **four currently shipped community endpoints**: WSL/Linux Terminal,
-Windows Desktop, macOS Desktop, and Linux AppImage. Android remains an
-**[UNVERIFIED] experimental prototype** in archived Labs and is not part of
-Latest. Shipped endpoints share the official Runtime, official plugin chain,
-and the same `~/.dsh` Session source of truth by default.
+There are **five Community endpoints**: WSL/Linux Terminal, Windows Desktop,
+macOS Desktop, Linux AppImage, and Android. The first four currently have
+Published Latest artifacts. The existing Android source has been restored to the
+active `apps/android` tree; it remains **[UNVERIFIED]** and is not yet part of
+Published Latest. Shipped endpoints share the official Runtime, official plugin
+chain, and the same `~/.dsh` Session source of truth by default.
 
 A conversation you start in official Web is the same conversation you resume in
 `dsh-community` and then open again in Desktop.
 
-> **One Harness. Four shipped community endpoints.** Runtime, Session, and
-> plugin execution remain owned by the official kernel; the community layer
-> owns distribution, UX, compatibility, and verification only.
+> **One Harness. Five community endpoints. Four shipped today; Android active / UNVERIFIED.**
+> Runtime, Session, and plugin execution remain owned by the official kernel; the
+> community layer owns distribution, UX, compatibility, and verification only.
 
 The in-repo Compatibility Registry is not an awesome list: third-party entries
 carry an actual `testedDsh` line, package integrity evidence, and structured
@@ -88,7 +89,7 @@ in `docs/current-release.json`.
 Earlier independent numbers `v0.1.2`–`v0.1.6` are historical only.
 The Linux AppImage is shipped endpoint 4; the primary Linux CLI path remains WSL/Linux
 Terminal. Official Web is an upstream companion, not a Community endpoint. Android stays
-`[UNVERIFIED]`, is not shipped in Latest, and its prototype lives in the archived Labs repo.
+`[UNVERIFIED]`, is not shipped in Latest, and its first-party source lives in this repository under `apps/android`.
 
 ## From source
 

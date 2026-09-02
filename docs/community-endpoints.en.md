@@ -12,12 +12,12 @@ current shipped reality. Do not mix **OS targets**, **UI surfaces**, **shipped e
 | OS targets the code can build | 4 | Linux, Windows, macOS, Android |
 | Community UI surfaces | 3 | Terminal / TUI, Desktop, Mobile shell |
 | Community endpoints shipped to users | **4** | WSL/Linux Terminal, Windows Desktop, macOS Desktop, Linux AppImage |
-| Experimental endpoint (not on Latest) | **1** | Android `[UNVERIFIED]`; archived Labs only |
+| Active but unpublished endpoint | **1** | Android `[UNVERIFIED]`; source lives in `apps/android`, not yet on Published Latest |
 
 Official Web is an official DeepSeek surface. It shares `~/.dsh` with Community, but it
 is **not** a Community endpoint.
 
-## Four shipped Community endpoints + one experimental endpoint
+## Five Community endpoints: four published + Android active / UNVERIFIED
 
 ```text
                     Official DeepSeek Harness Runtime
@@ -35,7 +35,7 @@ is **not** a Community endpoint.
 | 2 | Windows Desktop | `DSH Community Setup.exe` | Stable (published Latest) |
 | 3 | macOS Desktop | `dsh-community-*.dmg` | Stable (published Latest) |
 | 4 | Linux Desktop AppImage | `dsh-community-*.AppImage` | Beta (Release artifact; CLI users still start at Terminal) |
-| — | Android Mobile (experimental) | APK prototype (WebView + nodejs-mobile) | `[UNVERIFIED]`; archived Labs, not on Latest |
+| 5 | Android Mobile | APK prototype (WebView + nodejs-mobile) | active source in `apps/android`; `[UNVERIFIED]`, not on Published Latest |
 
 ### 1. WSL / Linux Terminal
 
@@ -76,18 +76,18 @@ For Linux users who want a graphical desktop without a Windows/macOS installer. 
 community endpoint 4, not an accidental build leftover. WSL / headless-server users still
 start at the Terminal.
 
-### Experimental endpoint: Android Mobile
+### Endpoint 5: Android Mobile (active source / UNVERIFIED)
 
 A thin APK: WebView hosts official Web UI; embedded Node runs published
-`@deepseek-ai/dsh`. Historical source lives in archived
-[`deepseek-harness-suite/apps/android`](https://github.com/kamanager2012/deepseek-harness-suite).
+`@deepseek-ai/dsh`. The existing first-party source is restored under
+[`apps/android`](../apps/android).
 It stays `[UNVERIFIED]` and off the `dsh-community` Latest download list.
 
 ## Official Web is an upstream companion
 
 Correct claim:
 
-> One official Runtime. Four shipped Community endpoints. Android is an `[UNVERIFIED]` experimental endpoint. Same `~/.dsh` as official Web.
+> One official Runtime. Five Community endpoints. Four are currently published; Android is active-source `[UNVERIFIED]`. Same `~/.dsh` as official Web.
 
 Incorrect claim:
 
@@ -99,14 +99,14 @@ That wording makes people think Community ships the official Web surface.
 
 Prefer:
 
-> **One Harness. Four shipped community endpoints.**
+> **One Harness. Five community endpoints. Four shipped today; Android active / UNVERIFIED.**
 
 Chinese:
 
-> **一套 Harness，四个已发行社区端：WSL/Linux 终端、Windows 桌面、macOS 桌面、Linux AppImage；Android 为未验证实验端。**
+> **一套 Harness，五个社区端：WSL/Linux 终端、Windows Desktop、macOS Desktop、Linux AppImage、Android；前四个已发行，Android 活跃源码仍待 Reality Gate。**
 
 Always add:
 
 > Shares the official `~/.dsh` session store with official Web. Official Web is not a Community endpoint.
 
-Do not count the Android Labs prototype as a shipped endpoint, and do not describe official Web as a Community-shipped surface.
+Android is a Community endpoint, but while `[UNVERIFIED]` it must not be counted among currently published endpoints. Official Web must not be described as a Community-shipped surface.

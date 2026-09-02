@@ -1,0 +1,10 @@
+{
+  "name": "dsh-android-node-project",
+  "version": "0.1.2-alpha.4",
+  "private": true,
+  "description": "Embedded nodejs-mobile project hosting the official DeepSeek Harness runtime",
+  "main": "src/main/js/main.js",
+  "dependencies": {
+    "@deepseek-ai/dsh": "0.1.2-alpha.4"
+  }
+}
