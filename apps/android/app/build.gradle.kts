@@ -1,7 +1,6 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
-    id("com.github.nodejs-mobile")
 }
 
 android {
@@ -24,8 +23,8 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
-            // signing happens in CI via android.injected.signing.* (see
-            // .github/workflows/android-build.yml); no keystore in the repo
+            // No Android publish/signing workflow is active yet. This source
+            // remains UNVERIFIED until the runtime-substrate and APK gates pass.
         }
     }
 
@@ -43,10 +42,10 @@ android {
     }
 }
 
-nodejs {
-    nodejsVersion = "22.19.0" // match official runtime engines: ^22.19.0 || >=24.0.0
-    nodeModulesDir = file("nodejs-project")
-}
+// Embedded Node is deliberately NOT wired here yet. The historical Labs
+// plugin declaration was not a verified Gradle integration, and stock
+// nodejs-mobile currently does not satisfy official DSH Node 22.19+ engines.
+// See ../runtime-substrate.json and docs/android-endpoint.*.
 
 dependencies {
     implementation("androidx.core:core-ktx:1.15.0")

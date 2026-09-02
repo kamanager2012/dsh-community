@@ -94,10 +94,15 @@ Out of scope (report upstream instead):
 
 ## Android security boundary
 
-- Android source is active but remains `[UNVERIFIED]`. Its embedded official
-  Web bootstrap is explicitly bound to `127.0.0.1` and uses `--no-open`.
-  No APK or real-device security claim is made until the Android Reality Gate
-  passes.
+- Android source is active but remains `[UNVERIFIED]`; its machine-readable
+  runtime substrate is currently `BLOCKED`. Official DSH alpha.4 needs Node
+  22.19+, while the latest stock nodejs-mobile Android release observed for this
+  gate is Node 18.20.4. The historical unverified Gradle plugin declaration is
+  therefore not treated as a runtime integration.
+- The target embedded Web bootstrap is explicitly loopback-only
+  (`127.0.0.1`, `--no-open`), but it is not claimed as wired into a runnable
+  APK yet. No APK or real-device security claim is made until the Android
+  Reality Gate passes.
 
 ## Session and credential data
 

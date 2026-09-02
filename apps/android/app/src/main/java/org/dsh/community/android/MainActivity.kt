@@ -14,9 +14,10 @@ import androidx.appcompat.app.AppCompatActivity
 /**
  * Thin WebView shell over the official runtime's local web UI.
  *
- * The embedded runtime (nodejs-mobile, see RuntimeService) serves the official
+ * Target architecture: an embedded compatible Node runtime serves the official
  * DeepSeek Harness web UI on http://127.0.0.1:[DshApp.RUNTIME_PORT].
- * This shell deliberately does NOT reimplement any harness logic.
+ * The runtime substrate is currently gated off; this shell deliberately does
+ * NOT reimplement any harness logic.
  */
 class MainActivity : AppCompatActivity() {
 
@@ -28,8 +29,12 @@ class MainActivity : AppCompatActivity() {
         webView = findViewById(R.id.webview)
 
         configureWebView()
-        startRuntime()
-        webView.loadUrl("http://127.0.0.1:${DshApp.RUNTIME_PORT}/")
+        if (DshApp.RUNTIME_SUBSTRATE_READY) {
+            startRuntime()
+            webView.loadUrl("http://127.0.0.1:${DshApp.RUNTIME_PORT}/")
+        } else {
+            showRuntimeBlocked()
+        }
     }
 
     private fun configureWebView() {
@@ -76,6 +81,20 @@ class MainActivity : AppCompatActivity() {
 
     private fun startRuntime() {
         RuntimeService.start(this)
+    }
+
+    private fun showRuntimeBlocked() {
+        webView.loadDataWithBaseURL(
+            null,
+            "<html><body style='font-family:sans-serif;padding:2em'>" +
+                "<h2>Android runtime not verified</h2>" +
+                "<p>This first-party endpoint is active source, but the embedded " +
+                "Node 22.19+ runtime substrate has not passed its Reality Gate yet.</p>" +
+                "</body></html>",
+            "text/html",
+            "utf-8",
+            null
+        )
     }
 
     override fun onDestroy() {

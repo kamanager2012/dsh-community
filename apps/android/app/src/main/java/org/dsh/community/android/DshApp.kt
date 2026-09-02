@@ -6,13 +6,18 @@ import android.util.Log
 class DshApp : Application() {
     companion object {
         const val TAG = "DshAndroid"
-        /** local HTTP port served by the embedded official runtime */
+        /** local HTTP port reserved for the future embedded official runtime */
         const val RUNTIME_PORT = 17890
+
+        /**
+         * Fail-loud gate. Flip only after a compatible Node 22.19+ Android
+         * substrate is integrated and the Android Reality Gate passes.
+         */
+        const val RUNTIME_SUBSTRATE_READY = false
     }
 
     override fun onCreate() {
         super.onCreate()
-        // nodejs-mobile starts in RuntimeService (kept alive while app is used)
-        Log.i(TAG, "DshApp onCreate")
+        Log.i(TAG, "DshApp onCreate (runtimeSubstrateReady=$RUNTIME_SUBSTRATE_READY)")
     }
 }
