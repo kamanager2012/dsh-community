@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "asOf": "2026-09-02",
+  "status": "NOT_RUN",
+  "officialDsh": "0.1.2-alpha.4",
+  "gates": {
+    "carrier": "NOT_RUN",
+    "nativeClosure": "BLOCKED",
+    "dshBoot": "NOT_RUN",
+    "apk": "NOT_RUN"
+  },
+  "nodeCarrier": {
+    "version": "22.19.0",
+    "sourceTag": "v22.19.0",
+    "tagObjectSha": "a9d4750074c7b5439c61daa28ea9afb5dc28e43e",
+    "sourceCommit": "f8fe6858549f75a4b4e9633abf39dd2038dbf496",
+    "sha256": null,
+    "deviceVerified": false
+  },
+  "device": null,
+  "dshBootVerified": false,
+  "apk": {
+    "sha256": null,
+    "arm64RealDeviceSmoke": false,
+    "x86_64EmulatorSmoke": false
+  },
+  "notes": "No Android real-device Reality Gate has been completed. This file must stay NOT_RUN until evidence is produced by the manual gates."
+}

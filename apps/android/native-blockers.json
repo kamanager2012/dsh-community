@@ -19,7 +19,8 @@
         "terminal"
       ],
       "severity": "HARD",
-      "evidence": "Official package imports node-pty for terminal sessions and declares node-pty+koffi dependencies."
+      "evidence": "Official package imports node-pty for terminal sessions and declares node-pty+koffi dependencies.",
+      "status": "OPEN"
     },
     {
       "id": "attachment-local",
@@ -32,7 +33,8 @@
         "image attachments"
       ],
       "severity": "HARD",
-      "evidence": "Official package declares sharp as a runtime dependency."
+      "evidence": "Official package declares sharp as a runtime dependency.",
+      "status": "OPEN"
     },
     {
       "id": "sandbox-local",
@@ -47,7 +49,8 @@
         "local shell confinement"
       ],
       "severity": "HARD",
-      "evidence": "Official Linux Landlock binaries are published for linux-x64/linux-arm64, not Android; Windows backend uses koffi."
+      "evidence": "Official Linux Landlock binaries are published for linux-x64/linux-arm64, not Android; Windows backend uses koffi.",
+      "status": "OPEN"
     },
     {
       "id": "fs-search",
@@ -60,8 +63,10 @@
         "glob/grep search"
       ],
       "severity": "FEATURE_BLOCKER",
-      "evidence": "Official fs-search package is backed by packaged ripgrep binary."
+      "evidence": "Official fs-search package is backed by packaged ripgrep binary.",
+      "status": "OPEN"
     }
   ],
-  "conclusion": "A Node 22 carrier is necessary but not sufficient. Full DSH Web and sdk-minimal both still contain native host dependencies that need Android-compatible official composition or native builds."
+  "conclusion": "A Node 22 carrier is necessary but not sufficient. Full DSH Web and sdk-minimal both still contain native host dependencies that need Android-compatible official composition or native builds.",
+  "releaseTarget": "fullWebProfile"
 }
