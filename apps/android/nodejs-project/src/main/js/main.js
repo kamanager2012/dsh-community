@@ -19,13 +19,25 @@ if (!Number.isInteger(RUNTIME_PORT) || RUNTIME_PORT < 1 || RUNTIME_PORT > 65535)
   throw new Error('DSH_RUNTIME_PORT must be an integer from 1 to 65535');
 }
 const DSH_BIN = path.join(__dirname, '..', '..', 'node_modules', '.bin', 'dsh');
+const ANDROID_PATCH = path.join(__dirname, 'android.cordis.patch.yml');
+const LANDLOCK_RUN = process.env.DSH_ANDROID_LANDLOCK_RUN
+  || path.join(__dirname, 'bin', 'landlock-run');
 
 const child = spawn(
   DSH_BIN,
-  ['web', '--host', '127.0.0.1', '--port', String(RUNTIME_PORT), '--no-open'],
+  [
+    'web',
+    '--patch', ANDROID_PATCH,
+    '--host', '127.0.0.1',
+    '--port', String(RUNTIME_PORT),
+    '--no-open',
+  ],
   {
     stdio: ['ignore', 'pipe', 'pipe'],
-    env: process.env,
+    env: {
+      ...process.env,
+      DSH_ANDROID_LANDLOCK_RUN: LANDLOCK_RUN,
+    },
   },
 );
 

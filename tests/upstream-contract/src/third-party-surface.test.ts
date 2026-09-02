@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
-import { dirname, join, relative } from 'node:path'
+import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
@@ -94,6 +94,19 @@ function classifyName(name: string): DepCategory {
 
 function isForbidden(name: string): boolean {
   return FORBIDDEN_PACKAGE_PATTERNS.some((pattern) => pattern.test(name))
+}
+
+/**
+ * A patch may mount a repository-owned relative module beside official/workspace
+ * packages. It is accepted only when resolution stays inside this checkout and
+ * the target already exists; missing modules and path escapes fail closed.
+ */
+function isOwnedRelativePatchModule(file: string, name: string): boolean {
+  if (!name.startsWith('./') && !name.startsWith('../')) return false
+  const target = resolve(dirname(file), name)
+  const fromRoot = relative(root, target)
+  if (fromRoot === '' || fromRoot === '..' || fromRoot.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`)) return false
+  return existsSync(target)
 }
 
 function walk(dir: string, into: string[]): void {
@@ -247,7 +260,7 @@ describe('third-party harness products are reference-only, never shipped', () =>
     ).toEqual([])
   })
 
-  it('patch composition rows mount official or own-workspace packages only', () => {
+  it('patch composition rows mount official, workspace, or repository-owned relative modules only', () => {
     const files = scanSurfaceFiles().filter((file) => file.endsWith('.yml') || file.endsWith('.yaml'))
     const hits: { file: string; name: string }[] = []
     for (const file of files) {
@@ -258,7 +271,10 @@ describe('third-party harness products are reference-only, never shipped', () =>
       }
     }
     expect(hits.length, 'patch name-row scan found nothing; extraction rotted').toBeGreaterThan(0)
-    const violations = hits.filter(({ name }) => classifyName(name) !== 'official' && classifyName(name) !== 'workspace')
+    const violations = hits.filter(({ file, name }) => {
+      if (classifyName(name) === 'official' || classifyName(name) === 'workspace') return false
+      return !isOwnedRelativePatchModule(join(root, file), name)
+    })
     expect(violations, JSON.stringify(violations)).toEqual([])
   })
 

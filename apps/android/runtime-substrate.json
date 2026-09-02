@@ -37,7 +37,7 @@
     "sourceCommit": "f8fe6858549f75a4b4e9633abf39dd2038dbf496",
     "tagSignatureVerifiedByGitHub": true
   },
-  "nextGate": "Run G1 on the exact Node 22.19.0 Android carrier, then execute the no-patch G2 native-addon probe against the frozen alpha.4 runtime. Treat addon loadability, terminal inspection, sandbox, app-private hard links, sharp fallback, and ripgrep packaging as separate gates.",
+  "nextGate": "Run G1 Node carrier, G2 node-pty/Koffi/sharp probes, and the frozen-source Landlock NDK probe. Sandbox cannot advance until full enforcement is repeated under the APK app UID; persistent PTY remains blocked until a production Android subprocess provider exists.",
   "nativeClosure": "apps/android/native-blockers.json",
   "releaseReadinessVerifier": "scripts/verify-android-release-ready.mjs",
   "realityEvidence": "apps/android/evidence/reality-gate.json",
@@ -49,5 +49,7 @@
     "reason": "Published @deepseek-ai/dsh@0.1.2-alpha.4 eagerly includes dsh-base/sdk-minimal/tool-fs-search and their native dependency closure before profile selection."
   },
   "nativeCompatibility": "apps/android/native-compatibility.json",
-  "nativeAddonProbe": "scripts/android-native-addon-probe.sh"
+  "nativeAddonProbe": "scripts/android-native-addon-probe.sh",
+  "sandboxProbe": "scripts/android-sandbox-landlock-probe.sh",
+  "androidCompositionPatch": "apps/android/nodejs-project/src/main/js/android.cordis.patch.yml"
 }

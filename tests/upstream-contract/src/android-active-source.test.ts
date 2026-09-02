@@ -10,6 +10,7 @@ describe('active Android endpoint source contract', () => {
       readFileSync(resolve(ROOT, 'apps/android/nodejs-project/package.json'), 'utf8'),
     ) as { dependencies?: Record<string, string> }
     expect(pkg.dependencies?.['@deepseek-ai/dsh']).toBe('0.1.2-alpha.4')
+    expect(pkg.dependencies?.['@deepseek-ai/dsh-sandbox']).toBe('0.1.2-alpha.4')
 
     const bootstrap = readFileSync(
       resolve(ROOT, 'apps/android/nodejs-project/src/main/js/main.js'),
@@ -17,6 +18,9 @@ describe('active Android endpoint source contract', () => {
     )
     expect(bootstrap).toContain("'--host', '127.0.0.1'")
     expect(bootstrap).toContain("'--no-open'")
+    expect(bootstrap).toContain("'--patch', ANDROID_PATCH")
+    expect(bootstrap).toContain("path.join(__dirname, 'android.cordis.patch.yml')")
+    expect(bootstrap).toContain('DSH_ANDROID_LANDLOCK_RUN')
     expect(bootstrap).not.toMatch(/HOST:\s*['"]0\.0\.0\.0['"]/u)
   })
 

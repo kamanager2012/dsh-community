@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Android sandbox G2 从“官方 local provider 无 Android platform chain”推进到正式 provider seam：新增 `android-sandbox-provider.mjs` + `android.cordis.patch.yml`，由官方 `dsh web --patch` 只替换 `ctx.sandbox` row，不改官方 bundle、不接管 Agent/Session/tool authority。provider 使用官方 `writableRoots(policy)`，保留 `exit 125 + landlock-run:` runner-failure 语义，并且只有 `landlock: fully enforced` 才声明 full，partial 直接 fail-closed。
+- frozen runtime 已确认 `@deepseek-ai/node-addon-landlock-run@0.1.1` npm payload 自带 `src/main.c`。新增 `scripts/android-sandbox-landlock-probe.sh`，直接用 Android NDK 原样编译该官方源码；可选 adb-shell smoke 验证 full probe、workspace write 与越界写拒绝，但输出明确标记 `NOT_APP_UID_ACCEPTANCE`，不能代替 APK app UID Reality Gate。
+- PTY blocker 重新裁决：普通 `LocalSubprocessRuntime.spawn()` 不依赖 terminal inspector，Web 默认 `standard` 也不挂 PTY；但 shipped `minimal` 仍对用户可选且使用 persistent PTY，而 AgentPresets 没有 preset allowlist。官方 `terminalInspector` 属性明确是 test hook，因此不采用该捷径；完整 Android endpoint 仍需正式 Android SubprocessRuntime provider 或上游 PTY 支持。
+
 - Android G2 portable dependency 裁决继续收敛：新增网络隔离的 `scripts/audit-android-portable-deps.mjs`，直接从 committed alpha.4 runtime lock 固定 `sharp@0.35.4 → @img/sharp-wasm32@0.35.4 → @emnapi/runtime@1.11.3` 的 exact registry/integrity provenance；同时确认 lock 元数据不等于 host-specific staging 已物化 optional WASM bytes。
 - `scripts/android-native-addon-probe.sh` 的真机模式新增 sharp WASM 2×2 PNG smoke。若 frozen staging 缺少 `@img/sharp-wasm32` 或依赖，明确报 materialization gap；只有 Android Node carrier 实际生成合法 PNG 才能把 `sharpFallback` 证据升级。
 - ripgrep blocker 从“缺 Android binary”进一步收紧为 wrapper/seam blocker：`@vscode/ripgrep@1.18.0` 会解析不存在的 `@vscode/ripgrep-android-*`，DSH sidecar 又仅用于 `process.pkg`。供应链身份固定为 Microsoft `ripgrep-prebuilt v15.0.1` → BurntSushi/ripgrep `15.0.0` + Microsoft patch；禁止伪造 `@vscode` 包、spoof `process.pkg`、依赖 Termux/system rg 或替换未钉最新版。

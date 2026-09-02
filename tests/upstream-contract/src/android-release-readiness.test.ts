@@ -24,7 +24,7 @@ describe('Android release readiness is fail-closed', () => {
     expect(result.stderr).toContain('Android compatibility component node-pty status=CROSS_BUILD_PROBE_REQUIRED')
     expect(result.stderr).toContain('Android compatibility component sharp status=LOCKED_WASM_FALLBACK_MATERIALIZATION_AND_DEVICE_PROBE_REQUIRED')
     expect(result.stderr).toContain('Android compatibility component ripgrep status=WRAPPER_ADAPTER_OR_UPSTREAM_PACKAGE_REQUIRED')
-    expect(result.stderr).toContain('Android semantic blocker sandbox-platform-chain status=ANDROID_RUNNER_OR_UPSTREAM_REQUIRED')
+    expect(result.stderr).toContain('Android semantic blocker sandbox-platform-chain status=COMMUNITY_PROVIDER_WIRED_NDK_AND_APP_UID_PROBE_REQUIRED')
     expect(result.stderr).toContain('Android native evidence addonBuildAndLoad=NOT_RUN')
     expect(result.stderr).toContain('Reality Gate status=NOT_RUN')
     expect(result.stderr).toContain('arm64 real-device APK smoke missing')

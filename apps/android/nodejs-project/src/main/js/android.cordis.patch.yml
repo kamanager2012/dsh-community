@@ -1,0 +1,9 @@
+# Android provider overlay over the official Web composition.
+# Keep every official row except the same-world sandbox provider.
+- id: sandbox
+  name: '@deepseek-ai/dsh-sandbox-local'
+  disabled: true
+
+- insert:
+    - id: android-sandbox
+      name: ./android-sandbox-provider.mjs
