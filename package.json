@@ -13,9 +13,9 @@
     "node": ">=22.15.0"
   },
   "scripts": {
-    "build": "pnpm --filter @dsh-community/shared-types --filter @dsh-community/dsh-bridge --filter @dsh-community/tui-surface --filter @dsh-community/desktop build",
+    "build": "pnpm --filter @dsh-community/shared-types --filter @dsh-community/dsh-bridge --filter @dsh-community/remote-adapter --filter @dsh-community/tui-surface --filter @dsh-community/desktop build",
     "build:tui": "pnpm --filter @dsh-community/shared-types --filter @dsh-community/dsh-bridge --filter @dsh-community/tui-surface --filter @dsh-community/tui build",
-    "typecheck": "pnpm --filter @dsh-community/shared-types build && pnpm --filter @dsh-community/dsh-bridge build && pnpm --filter @dsh-community/tui-adapter --filter @dsh-community/tui-surface --filter @dsh-community/desktop --filter @dsh-community/upstream-contract --filter @dsh-community/marketplace typecheck",
+    "typecheck": "pnpm --filter @dsh-community/shared-types build && pnpm --filter @dsh-community/dsh-bridge build && pnpm --filter @dsh-community/tui-adapter --filter @dsh-community/remote-adapter --filter @dsh-community/tui-surface --filter @dsh-community/desktop --filter @dsh-community/upstream-contract --filter @dsh-community/marketplace typecheck",
     "test": "vitest run",
     "test:watch": "vitest",
     "start": "pnpm build:tui && pnpm --filter @dsh-community/tui start",

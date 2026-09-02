@@ -1,0 +1,17 @@
+{
+  "name": "@dsh-community/remote-adapter",
+  "version": "0.1.2-alpha.4",
+  "private": true,
+  "type": "module",
+  "description": "[LABS] Transport-free Remote Host Adapter core over verified official DSH seams.",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}
