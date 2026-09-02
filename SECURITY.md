@@ -156,9 +156,21 @@ Out of scope (report upstream instead):
   Termux results into APK evidence. Its sharp smoke pushes only the frozen sharp
   WASM closure and requires a valid PNG result; a missing optional WASM package
   is reported as a staging/materialization gap, not compatibility success.
-- The Android ripgrep boundary forbids publishing a fake `@vscode` package,
-  spoofing `process.pkg`, relying on a Termux/system `rg`, or silently
-  substituting an unpinned newer ripgrep binary.
+- The Android ripgrep boundary is source-audited rather than inferred from
+  package names alone. Alpha.4 `tool-fs-search/src/search-core.ts` is pinned at
+  Git blob `60ea042d4f31f0e9c856536b8b34e2687482eec7`: `resolveRgPath()`
+  accepts no input, exposes no explicit `rgPath/ripgrepPath` config or
+  environment seam, imports `@vscode/ripgrep` in Node mode, and only uses an
+  executable sidecar when `'pkg' in process`. The frozen runtime lock contains
+  no Android `@vscode/ripgrep-*` package.
+- `scripts/audit-android-ripgrep-seam.mjs` is the re-adjudication gate for each
+  official DSH upgrade. It verifies the supplied official source blob identity
+  when requested, detects an explicit future path seam conservatively, and
+  never converts seam presence into compatibility PASS without review.
+  Publishing a fake `@vscode` package, spoofing `process.pkg`, relying on a
+  Termux/system `rg`, silently substituting a newer ripgrep, or forking the
+  official glob/grep implementation solely to replace binary resolution are
+  all forbidden.
 - Android publication is fail-closed through
   `scripts/verify-android-release-ready.mjs` (`node scripts/verify-android-release-ready.mjs`).
   It requires coherent PASS evidence for carrier identity, native closure,

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Android fs-search / ripgrep blocker 进一步从“可能做 wrapper adapter”收敛为上游 seam gate：官方 alpha.4 `tool-fs-search/src/search-core.ts` 固定审计到 Git blob `60ea042d4f31f0e9c856536b8b34e2687482eec7`；`resolveRgPath()` 无参数、无 `rgPath/ripgrepPath` config/env seam，Node 模式直接 import `@vscode/ripgrep`，sidecar 仅 `process.pkg` 生效。新增 `scripts/audit-android-ripgrep-seam.mjs`，后续官方升级可对精确源码自动重判。
+- 当前 ripgrep 裁决改为 `UPSTREAM_PATH_SEAM_OR_ANDROID_PACKAGE_REQUIRED`：只接受上游真实 Android `@vscode/ripgrep-*` 平台包或官方 `tool-fs-search` 显式 executable-path seam。明确禁止为了换 binary 路径复制/分叉官方 glob/grep，避免 Community 形成第二套搜索工具权威。
+
 - Android APK app-UID Reality Gate 前移到正式 bootstrap：新增 `android-app-uid-preflight.cjs`，官方 DSH spawn 前先在 Android app data 目录执行真实 Node `fs.linkSync()`（校验 inode / link count / 内容），再用 frozen `landlock-run` 在同一 APK UID 下执行 exact full probe、授权目录写入和同 UID 兄弟目录拒绝。任一失败直接拒绝启动官方 DSH；源码存在不会自动改写 `reality-gate.json`。
 - `RuntimeService` 预先固定未来 verified carrier 的环境契约：`DSH_ANDROID_APP_DATA_DIR = filesDir`、`DSH_ANDROID_CACHE_DIR = cacheDir`、`DSH_RUNTIME_PORT`。因此 app-private hard-link 与 sandbox 证据不能被 Termux、`/data/local/tmp` 或 adb-shell UID 冒充。
 

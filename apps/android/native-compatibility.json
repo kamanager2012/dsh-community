@@ -58,13 +58,15 @@
       "id": "ripgrep",
       "package": "@vscode/ripgrep",
       "version": "1.18.0",
-      "status": "WRAPPER_ADAPTER_OR_UPSTREAM_PACKAGE_REQUIRED",
+      "status": "UPSTREAM_PATH_SEAM_OR_ANDROID_PACKAGE_REQUIRED",
       "sourceMutationAllowed": false,
       "facts": [
         "@vscode/ripgrep@1.18.0 constructs @vscode/ripgrep-${process.platform}-${arch}; Android therefore asks for an unpublished Android package.",
-        "Official DSH tool-fs-search only uses an executable sidecar when 'pkg' in process; the Android Node carrier is not a pkg single-file runtime.",
-        "The Microsoft binary line used by wrapper 1.18.0 is ripgrep-prebuilt v15.0.1, built from BurntSushi/ripgrep 15.0.0 plus the pinned Microsoft patch.",
-        "Building an Android rg binary alone is insufficient until the wrapper/upstream DSH exposes a legitimate Android resolution seam."
+        "Official alpha.4 tool-fs-search resolveRgPath() accepts no parameter and has no rgPath/ripgrepPath config or environment seam; Node mode directly imports @vscode/ripgrep.",
+        "The only official executable sidecar path is gated by 'pkg' in process; the Android Node carrier is not a pkg single-file runtime.",
+        "Official alpha.4 search-core.ts was audited at Git blob 60ea042d4f31f0e9c856536b8b34e2687482eec7.",
+        "Community will not copy/fork the official glob/grep implementation solely to replace binary resolution; doing so would create a second tool authority.",
+        "A future unlock requires either a real upstream Android @vscode/ripgrep platform package or an explicit official tool-fs-search executable-path seam."
       ],
       "upstreamBinaryProvenance": {
         "vscodeRipgrepVersion": "1.18.0",
@@ -82,8 +84,11 @@
         "fake @vscode/ripgrep-android-* package",
         "process.pkg spoofing",
         "Termux/system rg dependency",
+        "copy/fork official glob/grep implementation solely to replace binary resolution",
         "unversioned/latest ripgrep substitution"
-      ]
+      ],
+      "seamAudit": "scripts/audit-android-ripgrep-seam.mjs",
+      "officialSearchCoreGitBlob": "60ea042d4f31f0e9c856536b8b34e2687482eec7"
     }
   ],
   "semanticBlockers": [
@@ -137,7 +142,7 @@
       "preflight": "apps/android/nodejs-project/src/main/js/android-app-uid-preflight.cjs"
     }
   ],
-  "conclusion": "Android Local remains blocked. Sandbox and app-private hard-link checks are now wired into the embedded app-UID bootstrap, but require real APK execution evidence; PTY still needs a production Android subprocess provider because minimal remains exposed.",
+  "conclusion": "Android Local remains blocked. Sandbox and app-private hard-link checks are wired into the embedded app-UID bootstrap but require real APK evidence; PTY still needs a production Android subprocess provider; fs-search remains blocked until upstream exposes an Android ripgrep package or an explicit executable-path seam.",
   "portableDependencyAudit": "scripts/audit-android-portable-deps.mjs",
   "sandboxProbe": "scripts/android-sandbox-landlock-probe.sh",
   "androidCompositionPatch": "apps/android/nodejs-project/src/main/js/android.cordis.patch.yml",
@@ -170,6 +175,22 @@
       "sourceMutationAllowed": false,
       "appUidPreflight": "apps/android/nodejs-project/src/main/js/android-app-uid-preflight.cjs",
       "appUidEvidence": "NOT_RUN"
+    },
+    "fsSearch": {
+      "servicePackage": "@deepseek-ai/dsh-tool-fs-search",
+      "status": "NO_EXPLICIT_RG_PATH_SEAM_ALPHA4",
+      "sourceAuditCommit": "4e84901e6471b79ec0338099867ebb4606d12bb5",
+      "searchCoreGitBlob": "60ea042d4f31f0e9c856536b8b34e2687482eec7",
+      "resolverSignature": "resolveRgPath()",
+      "nodeResolution": "import('@vscode/ripgrep').rgPath",
+      "pkgSidecarGate": true,
+      "explicitPathConfig": false,
+      "explicitPathEnvironment": false,
+      "communityAdapterDecision": "REJECTED_TO_PRESERVE_OFFICIAL_TOOL_AUTHORITY",
+      "allowedUnlockConditions": [
+        "upstream Android @vscode/ripgrep platform package",
+        "explicit official tool-fs-search executable-path seam"
+      ]
     }
   },
   "officialSourceAudit": {
@@ -184,8 +205,10 @@
       "subprocessLocalPackage": "70663bb503cec9e6019dfaeb7f2fa888cca79775",
       "webBundlePatch": "2c9bd259903d4ac7af6321c6c51f58ba0049edc6",
       "standardPreset": "63b179884004deb79b4f6392e41ebf2ddc80ee7b",
-      "minimalPreset": "0e1f2b0f5d6c979895f19a6a3d1f0ca33e66da08"
+      "minimalPreset": "0e1f2b0f5d6c979895f19a6a3d1f0ca33e66da08",
+      "fsSearchCore": "60ea042d4f31f0e9c856536b8b34e2687482eec7"
     }
   },
-  "appUidPreflight": "apps/android/nodejs-project/src/main/js/android-app-uid-preflight.cjs"
+  "appUidPreflight": "apps/android/nodejs-project/src/main/js/android-app-uid-preflight.cjs",
+  "ripgrepSeamAudit": "scripts/audit-android-ripgrep-seam.mjs"
 }
