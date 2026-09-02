@@ -19,7 +19,7 @@
         "terminal"
       ],
       "severity": "HARD",
-      "evidence": "Official subprocess-local eagerly imports node-pty and its Windows inspector module imports koffi. The frozen Koffi 3.1.6 is post-statx-fix and has Android/Termux source-build evidence, but official support still excludes Android. node-pty v1.2.0-beta.15 has no Android support declaration; the Community NDK path must prove the unmodified package can build/load.",
+      "evidence": "Official LocalSubprocessRuntime ordinary spawn does not need terminal inspection; spawnTerminal does. Web defaults to standard without PTY, but minimal is a shipped user-selectable preset and mounts persistent PTY. The exposed terminalInspector property is explicitly a test hook, so Android will not promote it as a production compatibility seam.",
       "status": "OPEN",
       "rowDisableRemovesInstallDependency": false,
       "failurePhase": "INSTALL_OR_LOAD",
@@ -33,7 +33,7 @@
         "node-pty@1.2.0-beta.15",
         "koffi@3.1.6"
       ],
-      "nextProbe": "scripts/android-native-addon-probe.sh"
+      "nextProbe": "First prove node-pty build/load with scripts/android-native-addon-probe.sh; then add a production Android SubprocessRuntime provider or wait for upstream Android PTY support."
     },
     {
       "id": "attachment-local",
@@ -71,17 +71,17 @@
         "local shell confinement"
       ],
       "severity": "HARD",
-      "evidence": "Official sandbox-local PLATFORM_CHAINS defines linux, darwin, and win32 only; an unlisted platform fails closed when confinement is requested. The package also imports Landlock and Windows ACL backends.",
+      "evidence": "The built-in sandbox-local platform chain has no Android entry, but official @deepseek-ai/dsh-sandbox exposes a public provider seam. Android now wires a first-party Community provider through the official dsh --patch layer. It maps official writableRoots(policy) to the frozen @deepseek-ai/node-addon-landlock-run@0.1.1 CLI, requires a fully-enforced probe, and preserves exit-125/signature runner-failure classification. NDK build and APK app-UID enforcement remain unproven.",
       "status": "OPEN",
       "rowDisableRemovesInstallDependency": false,
       "failurePhase": "LOAD_OR_CONFINE",
-      "upstreamAndroidSupport": "NO_ANDROID_PLATFORM_CHAIN",
+      "upstreamAndroidSupport": "COMMUNITY_PROVIDER_WIRED_NDK_AND_APP_UID_PROBE_REQUIRED",
       "packagePath": [
         "@deepseek-ai/dsh",
         "@deepseek-ai/dsh-base",
         "@deepseek-ai/dsh-sandbox-local"
       ],
-      "nextProbe": "Provide an Android-safe runner through the official sandbox seam or wait for upstream Android support; then test under the APK app UID."
+      "nextProbe": "scripts/android-sandbox-landlock-probe.sh"
     },
     {
       "id": "fs-search",

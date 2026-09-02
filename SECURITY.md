@@ -122,12 +122,26 @@ Out of scope (report upstream instead):
   profile-only disabling is explicitly classified as ineffective.
 - Native addon compatibility and Android runtime semantics are tracked separately
   in `apps/android/native-compatibility.json`. A node-pty/Koffi build or load
-  success cannot waive the independent terminal-inspector, sandbox, app-private
-  hard-link, sharp, or ripgrep gates.
+  success cannot waive the independent terminal, sandbox, app-private hard-link,
+  sharp, or ripgrep gates. Ordinary subprocess spawn does not require the
+  terminal inspector, but the shipped `minimal` preset remains selectable and
+  requires persistent PTY. The official local provider's `terminalInspector`
+  test hook is intentionally not promoted into a production Android contract.
 - `scripts/audit-android-portable-deps.mjs` is a network-free provenance check over
   the committed runtime lock. It distinguishes sharp's exact locked WASM fallback
-  from actual optional-byte materialization, and records that the frozen
-  `@vscode/ripgrep@1.18.0` wrapper has no Android platform package.
+  from actual optional-byte materialization, records that the frozen
+  `@vscode/ripgrep@1.18.0` wrapper has no Android platform package, and pins
+  `@deepseek-ai/node-addon-landlock-run@0.1.1` plus its npm integrity as the
+  Android sandbox launcher's source package.
+- Android sandboxing uses the official `ctx.sandbox` provider seam, not an
+  internal hook. The invocation overlay disables only the official
+  `dsh-sandbox-local` row and inserts the first-party Android provider. That
+  provider uses official `writableRoots(policy)`, preserves the launcher's
+  exit-125/signature failure rule, and reports full enforcement only after the
+  launcher returns the exact `landlock: fully enforced` functional probe.
+  Partial Landlock enforcement is refused. The NDK probe compiles the unmodified
+  `src/main.c` shipped in the frozen npm package; adb-shell execution is never
+  accepted as a substitute for APK app-UID confinement evidence.
 - `scripts/android-native-addon-probe.sh` is a manual no-download/no-source-patch
   gate over the frozen alpha.4 runtime. It requires the exact G1 Node carrier
   build and uses adb only for explicit device smoke; it does not convert public

@@ -5,6 +5,7 @@
   "description": "Embedded nodejs-mobile project hosting the official DeepSeek Harness runtime",
   "main": "src/main/js/main.js",
   "dependencies": {
-    "@deepseek-ai/dsh": "0.1.2-alpha.4"
+    "@deepseek-ai/dsh": "0.1.2-alpha.4",
+    "@deepseek-ai/dsh-sandbox": "0.1.2-alpha.4"
   }
 }

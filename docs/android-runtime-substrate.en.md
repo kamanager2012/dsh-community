@@ -108,7 +108,9 @@ Machine sources:
 
 - `apps/android/native-compatibility.json`
 - portable-dependency audit: `scripts/audit-android-portable-deps.mjs`
-- manual probe: `scripts/android-native-addon-probe.sh`
+- native-addon manual probe: `scripts/android-native-addon-probe.sh`
+- frozen-source sandbox NDK probe: `scripts/android-sandbox-landlock-probe.sh`
+- Android composition overlay: `apps/android/nodejs-project/src/main/js/android.cordis.patch.yml`
 
 #### G2-A — Build/load the unmodified frozen addons
 
@@ -134,14 +136,14 @@ The probe deliberately does not pre-fix `-lutil`, Bionic, N-API, or linker failu
 
 Even a G2-A PASS leaves independent hard gates:
 
-1. **Terminal inspector:** alpha.4 `createProcessInspector()` accepts only `linux / darwin / win32`; the Android carrier reports `process.platform === "android"`.
-2. **Sandbox:** `dsh-sandbox-local` has no Android `PLATFORM_CHAINS` entry and intentionally fails closed for an unlisted platform. Any Android runner must be tested under the APK app UID and target kernel.
+1. **Terminal / PTY:** ordinary `LocalSubprocessRuntime.spawn()` does not resolve a terminal inspector; only `spawnTerminal()` enters `createProcessInspector()`. The Web default `standard` preset has no PTY stack, but the shipped `minimal` preset remains user-selectable and mounts persistent PTY. `AgentPresets` has no preset allowlist, so Android cannot honestly remove only minimal from the shipped roster. The local provider's `terminalInspector` property is explicitly a test hook and is not accepted as a production compatibility seam. Full endpoint release therefore still needs a production Android `SubprocessRuntime` provider or upstream Android PTY support.
+2. **Sandbox:** this now has a production-shaped route. The public `@deepseek-ai/dsh-sandbox` service is the official provider seam. The Android `--patch` overlay disables only the official `sandbox-local` row and inserts the Community `AndroidLandlockSandboxProvider`; the official bundle is untouched. The provider derives grants from official `writableRoots(policy)`, speaks only the frozen `@deepseek-ai/node-addon-landlock-run@0.1.1` CLI, preserves exit-125 plus `landlock-run:` failure classification, and advertises `full` only after an exact `landlock: fully enforced` probe. The frozen npm package itself publishes `src/main.c`; `scripts/android-sandbox-landlock-probe.sh` cross-builds that source with the NDK without downloading or patching it. An adb-shell full probe remains preliminary; acceptance requires the same confinement behavior under the APK app UID.
 3. **POSIX hard-link publication:** alpha.4 session persistence and attachment storage still use `link()` on non-win32 paths. Evidence must come from the app-private filesystem, not Termux or `/data/local/tmp`.
 4. **sharp:** the frozen lock already contains exact `sharp@0.35.4`, `@img/sharp-wasm32@0.35.4`, and `@emnapi/runtime@1.11.3` entries with registry provenance and SHA-512 integrity. The sharp loader falls through to the generic WASM package after an Android native-platform miss. Remaining gates are optional-package materialization and the real-device PNG smoke.
 5. **ripgrep:** `@vscode/ripgrep@1.18.0` resolves `@vscode/ripgrep-${process.platform}-${arch}`; no Android package exists, and DSH's executable sidecar path is gated on `'pkg' in process`. Building an Android `rg` alone does not solve the wrapper seam. Community will not fake the `@vscode` scope, spoof `process.pkg`, depend on Termux/system `rg`, or substitute an unpinned newer binary.
 6. **ripgrep provenance:** wrapper 1.18.0 maps to Microsoft `ripgrep-prebuilt v15.0.1`, whose config pins BurntSushi/ripgrep `15.0.0` plus the Microsoft patch. Any future Android binary must preserve that provenance or pass a new upstream-version review.
 
-G2 therefore remains **BLOCKED**, but its failure surface is now decomposed into directly testable gates.
+G2 therefore remains **BLOCKED**. Sandbox is no longer architecturally unknown: it is reduced to the official provider seam, the frozen official launcher source, and a first-party Android provider. The remaining acceptance work is NDK output, app-UID confinement, PTY provider support, hard-link durability, sharp device execution, and a legitimate ripgrep seam.
 
 ### G3 — Official DSH boot
 

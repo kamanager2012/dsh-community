@@ -36,6 +36,7 @@ const sharp = requireVersion(packages, 'sharp', '0.35.4')
 const sharpWasm = requireVersion(packages, '@img/sharp-wasm32', '0.35.4')
 const emnapi = requireVersion(packages, '@emnapi/runtime', '1.11.3')
 const ripgrep = requireVersion(packages, '@vscode/ripgrep', '1.18.0')
+const landlock = requireVersion(packages, '@deepseek-ai/node-addon-landlock-run', '0.1.1')
 
 if (sharpWasm.dependencies?.['@emnapi/runtime'] === undefined) {
   throw new Error('android-portable-deps: sharp-wasm32 lost @emnapi/runtime dependency')
@@ -72,6 +73,16 @@ const result = {
       integrity: emnapi.integrity,
     },
     note: 'The lock proves exact fallback provenance, not that a host-specific npm ci materialized optional WASM bytes.',
+  },
+  sandbox: {
+    status: 'OFFICIAL_LANDLOCK_SOURCE_NDK_AND_APP_UID_PROBE_REQUIRED',
+    package: {
+      name: '@deepseek-ai/node-addon-landlock-run',
+      version: landlock.version,
+      integrity: landlock.integrity,
+    },
+    sourcePathInPackage: 'src/main.c',
+    note: 'The frozen npm package publishes the official launcher C source; Android uses that exact payload for the no-patch NDK probe.',
   },
   ripgrep: {
     wrapperVersion: ripgrep.version,

@@ -141,7 +141,9 @@ G2 现在拆成两层，不能再用一个“native build 成功”概括。
 
 - `apps/android/native-compatibility.json`
 - portable dependency audit：`scripts/audit-android-portable-deps.mjs`
-- 手工 probe：`scripts/android-native-addon-probe.sh`
+- native addon 手工 probe：`scripts/android-native-addon-probe.sh`
+- sandbox frozen-source NDK probe：`scripts/android-sandbox-landlock-probe.sh`
+- Android composition overlay：`apps/android/nodejs-project/src/main/js/android.cordis.patch.yml`
 
 #### G2-A：原始 frozen addon build/load
 
@@ -174,14 +176,14 @@ probe 不下载依赖，也不修改上游源码：
 
 即使 G2-A PASS，以下仍是独立硬门：
 
-1. **Terminal inspector**：alpha.4 `createProcessInspector()` 只接受 `linux / darwin / win32`。Node Android carrier 的 `process.platform` 是 `android`，所以 terminal inspection 需要上游 Android 分支或经正式架构评审的官方 seam adapter。
-2. **Sandbox**：`dsh-sandbox-local` 的 `PLATFORM_CHAINS` 同样没有 Android，未识别平台按设计 fail closed。需要 Android runner/上游支持，并且必须在 APK app UID 下测内核与权限能力。
+1. **Terminal / PTY**：alpha.4 的普通 `LocalSubprocessRuntime.spawn()` 不调用 terminal inspector，只有 `spawnTerminal()` 才会进入 `createProcessInspector()`。Web 默认 `standard` preset 不挂 PTY，但 shipped `minimal` preset 仍然对用户可选并挂 persistent PTY；`AgentPresets` 没有 preset allowlist，不能只把 minimal 从 shipped root 隐掉。因此 PTY 仍是当前完整 Android endpoint 的发布硬门。官方 local provider 暴露的 `terminalInspector` 明确标注为 test hook，不作为生产兼容 seam；需要正式 Android `SubprocessRuntime` provider 或上游 Android PTY 支持。
+2. **Sandbox**：这里已经不再是“没有路线”。官方 `@deepseek-ai/dsh-sandbox` 提供正式 `ctx.sandbox` provider seam；Android overlay 只禁用官方 `sandbox-local` row，并经官方 `dsh web --patch` 插入 Community `AndroidLandlockSandboxProvider`，不修改官方 bundle。provider 使用官方 `writableRoots(policy)`，只调用 frozen `@deepseek-ai/node-addon-landlock-run@0.1.1` 的 CLI 协议，并保留 `exit 125 + landlock-run:` runner-failure 分类。它只有在 `--probe` 精确返回 `landlock: fully enforced` 时才声明 `enforcement=full`；partial 直接 fail-closed。frozen npm 包本身发布 `src/main.c`，`scripts/android-sandbox-landlock-probe.sh` 用 Android NDK 原样构建该源码，不下载、不 patch。adb-shell 的 full probe 仅是预备证据，最终仍必须在 APK app UID 下重复完整 confinement smoke。
 3. **POSIX hard-link durable publish**：alpha.4 session persistence 和 attachment store 在非 win32 路径仍使用 `link()`。必须在 APK 私有文件目录验证；`/data/local/tmp`、Termux home 或其他 shell UID 结果不能代替。
 4. **sharp**：frozen lock 已精确包含 `sharp@0.35.4`、`@img/sharp-wasm32@0.35.4` 与 `@emnapi/runtime@1.11.3`，都有 registry provenance + SHA-512；sharp loader 在 Android native platform miss 后会尝试 WASM fallback。当前剩余门是 optional bytes 是否被实际 materialize，以及 Android carrier 上真实 PNG smoke 是否 PASS。
 5. **ripgrep**：`@vscode/ripgrep@1.18.0` 会硬解析 `@vscode/ripgrep-${process.platform}-${arch}`，Android 对应 package 并不存在；DSH 的 sidecar 只在 `'pkg' in process` 时启用。仅交叉编一个 `rg` binary 还不够，必须有上游 Android package 或正式 rg-path seam。Community 不伪造 `@vscode` scope、不 spoof `process.pkg`、不依赖 Termux/system `rg`、不替换成未钉版本的新版。
 6. **ripgrep provenance**：wrapper 1.18.0 对应 Microsoft `ripgrep-prebuilt v15.0.1`；其配置固定 BurntSushi/ripgrep `15.0.0` + Microsoft patch。任何未来 Android binary 必须保持这一 provenance 或经新的上游版本评审，不能只拿 vanilla/latest `rg`。
 
-所以当前 G2 仍是 **BLOCKED**，只是 blocker 已经从“泛泛 native 不支持”缩成可逐项验证的工程门。
+所以当前 G2 仍是 **BLOCKED**。变化在于 sandbox 已经从“架构未知”收敛成 **官方 seam + frozen 官方 launcher 源码 + Community Android provider** 的可执行路线；真正未闭合的是 NDK 产物、app-UID confinement、PTY provider、hard-link、sharp 真机和 ripgrep seam。
 
 ### G3 — Official DSH boot
 

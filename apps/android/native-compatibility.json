@@ -90,23 +90,33 @@
     {
       "id": "subprocess-terminal-inspector",
       "package": "@deepseek-ai/dsh-subprocess-local",
-      "status": "UPSTREAM_OR_ADAPTER_REQUIRED",
+      "status": "PUBLIC_PROVIDER_OR_UPSTREAM_ANDROID_PTY_REQUIRED",
       "severity": "HARD",
       "facts": [
-        "createProcessInspector() accepts linux, darwin, and win32 only.",
-        "process.platform is android on the candidate carrier, so terminal inspection fails before official terminal semantics can be declared compatible."
+        "Ordinary LocalSubprocessRuntime.spawn() does not call createProcessInspector(); only spawnTerminal() resolves the terminal inspector.",
+        "The shipped Web default preset is standard and does not mount PTY, but the shipped minimal preset remains user-selectable and mounts the persistent PTY stack.",
+        "AgentPresets has no preset allowlist; disabling the shipped root would remove standard/ptc/cordis together with minimal.",
+        "LocalSubprocessRuntime.terminalInspector exists only as an explicitly documented test hook and is not accepted as a production Android seam."
+      ],
+      "releaseBlocking": true,
+      "scope": [
+        "minimal preset",
+        "persistent terminal"
       ]
     },
     {
       "id": "sandbox-platform-chain",
       "package": "@deepseek-ai/dsh-sandbox-local",
-      "status": "ANDROID_RUNNER_OR_UPSTREAM_REQUIRED",
+      "status": "COMMUNITY_PROVIDER_WIRED_NDK_AND_APP_UID_PROBE_REQUIRED",
       "severity": "HARD",
       "facts": [
-        "PLATFORM_CHAINS defines linux, darwin, and win32 only.",
-        "An unlisted platform fails closed when confinement is requested.",
-        "Kernel support and app-UID restrictions must be tested on the target Android device; a Termux shell result is not sufficient."
-      ]
+        "The official ctx.sandbox abstract provider seam is public and stable in @deepseek-ai/dsh-sandbox.",
+        "Android composition disables only the official sandbox-local row and inserts a Community provider through the official --patch layer; no official bundle is modified.",
+        "The Community provider uses official writableRoots(policy), preserves exit-125 plus landlock-run signature classification, and advertises full only after an exact fully-enforced launcher probe.",
+        "The frozen runtime lock contains @deepseek-ai/node-addon-landlock-run@0.1.1, whose npm payload publishes src/main.c; the Android NDK probe builds that source unmodified.",
+        "adb-shell Landlock success is preliminary only; release requires the same enforcement under the APK app UID."
+      ],
+      "releaseBlocking": true
     },
     {
       "id": "posix-hardlink-publication",
@@ -123,6 +133,52 @@
       ]
     }
   ],
-  "conclusion": "Native addon loadability is only one G2 sub-gate. Android Local remains blocked until addon builds, official terminal inspection semantics, sandbox confinement, and app-private hard-link durability are all proven.",
-  "portableDependencyAudit": "scripts/audit-android-portable-deps.mjs"
+  "conclusion": "Android Local remains blocked. Sandbox now has a production-shaped official-seam path, but it still needs frozen-source NDK build plus app-UID enforcement evidence; PTY still needs a production Android subprocess provider because minimal remains exposed.",
+  "portableDependencyAudit": "scripts/audit-android-portable-deps.mjs",
+  "sandboxProbe": "scripts/android-sandbox-landlock-probe.sh",
+  "androidCompositionPatch": "apps/android/nodejs-project/src/main/js/android.cordis.patch.yml",
+  "providerSeams": {
+    "subprocess": {
+      "servicePackage": "@deepseek-ai/dsh-subprocess",
+      "localProvider": "@deepseek-ai/dsh-subprocess-local",
+      "status": "PUBLIC_PROVIDER_SEAM_AVAILABLE_PTY_ANDROID_PROVIDER_STILL_REQUIRED",
+      "ordinarySpawnUsesTerminalInspector": false,
+      "terminalInspectorHook": "TEST_ONLY_NOT_ACCEPTED_FOR_PRODUCTION",
+      "defaultWebPreset": "standard",
+      "shippedPresetExposure": [
+        "standard",
+        "minimal",
+        "ptc",
+        "cordis"
+      ],
+      "reason": "Default standard Web does not mount PTY, but shipped minimal remains user-selectable and requires persistent terminal support; AgentPresets exposes no preset allowlist."
+    },
+    "sandbox": {
+      "servicePackage": "@deepseek-ai/dsh-sandbox",
+      "officialLocalProvider": "@deepseek-ai/dsh-sandbox-local",
+      "status": "COMMUNITY_PROVIDER_WIRED_NDK_AND_APP_UID_PROBE_REQUIRED",
+      "providerModule": "apps/android/nodejs-project/src/main/js/android-sandbox-provider.mjs",
+      "policyHelper": "apps/android/nodejs-project/src/main/js/android-sandbox-policy.mjs",
+      "officialLauncherPackage": "@deepseek-ai/node-addon-landlock-run",
+      "officialLauncherVersion": "0.1.1",
+      "officialLauncherIntegrity": "sha512-aHGhlQJEutfobKM/4K59SERbT7RmQdD2oMKzD8Bne/Ps7TeT8AweCN+dpdfuxQhMNbFcJMymrgPnID0WYQ30Tw==",
+      "enforcementRequirement": "full",
+      "sourceMutationAllowed": false
+    }
+  },
+  "officialSourceAudit": {
+    "repository": "deepseek-ai/deepseek-harness",
+    "observedAt": "2026-09-02",
+    "commit": "4e84901e6471b79ec0338099867ebb4606d12bb5",
+    "releaseProvenance": false,
+    "note": "No alpha.4 Git tag was found. This commit/blob record documents the official source surfaces audited for Android seam behavior; npm package-lock integrity remains the release dependency provenance.",
+    "blobs": {
+      "landlockMainC": "af0cc2a988b219a699f35aeb911dbd66f1946fd9",
+      "sandboxLocalPackage": "6135d8194843c07f4d30eeedcae16696fb8f2971",
+      "subprocessLocalPackage": "70663bb503cec9e6019dfaeb7f2fa888cca79775",
+      "webBundlePatch": "2c9bd259903d4ac7af6321c6c51f58ba0049edc6",
+      "standardPreset": "63b179884004deb79b4f6392e41ebf2ddc80ee7b",
+      "minimalPreset": "0e1f2b0f5d6c979895f19a6a3d1f0ca33e66da08"
+    }
+  }
 }

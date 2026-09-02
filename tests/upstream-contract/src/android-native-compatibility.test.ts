@@ -13,6 +13,18 @@ describe('Android G2 native compatibility', () => {
       officialDsh?: string
       nativeProbe?: string
       portableDependencyAudit?: string
+      sandboxProbe?: string
+      androidCompositionPatch?: string
+      providerSeams?: {
+        subprocess?: { status?: string; terminalInspectorHook?: string; shippedPresetExposure?: string[] }
+        sandbox?: {
+          status?: string
+          providerModule?: string
+          officialLauncherVersion?: string
+          enforcementRequirement?: string
+          sourceMutationAllowed?: boolean
+        }
+      }
       components?: Array<{
         id?: string
         version?: string
@@ -35,6 +47,20 @@ describe('Android G2 native compatibility', () => {
     expect(state.officialDsh).toBe('0.1.2-alpha.4')
     expect(state.nativeProbe).toBe('scripts/android-native-addon-probe.sh')
     expect(state.portableDependencyAudit).toBe('scripts/audit-android-portable-deps.mjs')
+    expect(state.sandboxProbe).toBe('scripts/android-sandbox-landlock-probe.sh')
+    expect(state.androidCompositionPatch).toBe('apps/android/nodejs-project/src/main/js/android.cordis.patch.yml')
+    expect(state.providerSeams?.subprocess).toMatchObject({
+      status: 'PUBLIC_PROVIDER_SEAM_AVAILABLE_PTY_ANDROID_PROVIDER_STILL_REQUIRED',
+      terminalInspectorHook: 'TEST_ONLY_NOT_ACCEPTED_FOR_PRODUCTION',
+      shippedPresetExposure: ['standard', 'minimal', 'ptc', 'cordis'],
+    })
+    expect(state.providerSeams?.sandbox).toMatchObject({
+      status: 'COMMUNITY_PROVIDER_WIRED_NDK_AND_APP_UID_PROBE_REQUIRED',
+      providerModule: 'apps/android/nodejs-project/src/main/js/android-sandbox-provider.mjs',
+      officialLauncherVersion: '0.1.1',
+      enforcementRequirement: 'full',
+      sourceMutationAllowed: false,
+    })
 
     const components = new Map((state.components ?? []).map(item => [item.id, item]))
     expect(components.get('node-pty')).toMatchObject({
@@ -72,11 +98,11 @@ describe('Android G2 native compatibility', () => {
 
     const blockers = new Map((state.semanticBlockers ?? []).map(item => [item.id, item]))
     expect(blockers.get('subprocess-terminal-inspector')).toMatchObject({
-      status: 'UPSTREAM_OR_ADAPTER_REQUIRED',
+      status: 'PUBLIC_PROVIDER_OR_UPSTREAM_ANDROID_PTY_REQUIRED',
       severity: 'HARD',
     })
     expect(blockers.get('sandbox-platform-chain')).toMatchObject({
-      status: 'ANDROID_RUNNER_OR_UPSTREAM_REQUIRED',
+      status: 'COMMUNITY_PROVIDER_WIRED_NDK_AND_APP_UID_PROBE_REQUIRED',
       severity: 'HARD',
     })
     expect(blockers.get('posix-hardlink-publication')).toMatchObject({
@@ -126,6 +152,11 @@ describe('Android G2 native compatibility', () => {
         wasmPackage?: { name?: string; version?: string; optionalInLock?: boolean }
         emnapi?: { version?: string }
       }
+      sandbox?: {
+        status?: string
+        package?: { name?: string; version?: string; integrity?: string }
+        sourcePathInPackage?: string
+      }
       ripgrep?: {
         wrapperVersion?: string
         status?: string
@@ -152,6 +183,15 @@ describe('Android G2 native compatibility', () => {
         optionalInLock: true,
       },
       emnapi: { version: '1.11.3' },
+    })
+    expect(audit.sandbox).toMatchObject({
+      status: 'OFFICIAL_LANDLOCK_SOURCE_NDK_AND_APP_UID_PROBE_REQUIRED',
+      package: {
+        name: '@deepseek-ai/node-addon-landlock-run',
+        version: '0.1.1',
+        integrity: 'sha512-aHGhlQJEutfobKM/4K59SERbT7RmQdD2oMKzD8Bne/Ps7TeT8AweCN+dpdfuxQhMNbFcJMymrgPnID0WYQ30Tw==',
+      },
+      sourcePathInPackage: 'src/main.c',
     })
     expect(audit.ripgrep).toMatchObject({
       wrapperVersion: '1.18.0',
