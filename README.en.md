@@ -89,7 +89,7 @@ in `docs/current-release.json`.
 Earlier independent numbers `v0.1.2`–`v0.1.6` are historical only.
 The Linux AppImage is shipped endpoint 4; the primary Linux CLI path remains WSL/Linux
 Terminal. Official Web is an upstream companion, not a Community endpoint. Android stays
-`[UNVERIFIED]`, is not shipped in Latest, and its first-party source lives in this repository under `apps/android`.
+`[UNVERIFIED]`, is not shipped in Latest, and its first-party source lives in this repository under `apps/android`. Its target is now a lightweight Remote Client; the Host retains the official DSH runtime, repository/toolchain, credentials, and durable Session truth. See `docs/remote-host-client.md`.
 
 ## From source
 
