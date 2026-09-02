@@ -3,14 +3,14 @@
   "asOf": "2026-09-02",
   "officialKernel": {
     "package": "@deepseek-ai/dsh",
-    "version": "0.1.2-alpha.3"
+    "version": "0.1.2-alpha.4"
   },
   "communityProduct": {
-    "version": "0.1.2-alpha.3",
+    "version": "0.1.2-alpha.4",
     "githubLatestTag": "v0.1.1-rc.2",
     "download": "https://github.com/kamanager2012/dsh-community/releases/latest"
   },
-  "dualBadge": "DeepSeek Harness Community v0.1.2-alpha.3 [Official Core: @deepseek-ai/dsh@0.1.2-alpha.3]",
+  "dualBadge": "DeepSeek Harness Community v0.1.2-alpha.4 [Official Core: @deepseek-ai/dsh@0.1.2-alpha.4]",
   "endpoints": [
     {
       "id": "linux-terminal",
@@ -71,6 +71,21 @@
     },
     "candidateAcceptance": {
       "status": "PASS",
+      "version": "0.1.2-alpha.4",
+      "run": "https://github.com/kamanager2012/dsh-community/actions/runs/33577261413",
+      "runId": 33577261413,
+      "jobId": 100083859312,
+      "runHeadCommit": "434570ca350ca65cdf2ada01b9fcfacae387c5ef",
+      "covers": "Promoted latest-tested final-tree replay: Candidate/Published identity, frozen install, zero contract drift, exact alpha.4 Desktop runtime closure, npm audit, typecheck, full Vitest, authenticated official-Web lifecycle, marketplace offline",
+      "testFiles": "79 passed, 1 skipped",
+      "tests": "323 passed, 1 skipped",
+      "runtimeDshEntries": 214,
+      "marketplaceOffline": "9 plugins verified",
+      "providerCalls": 0,
+      "note": "Promoted alpha.4 latest-tested final-tree replay passed. Temporary acceptance workflow/trigger were removed afterward; Published Latest and published installer evidence remain v0.1.1-rc.2."
+    },
+    "previousCandidateAcceptance": {
+      "status": "PASS",
       "version": "0.1.2-alpha.3",
       "run": "https://github.com/kamanager2012/dsh-community/actions/runs/33569520030",
       "runId": 33569520030,
@@ -80,7 +95,7 @@
       "note": "Final promoted latest-tested tree passed consolidated acceptance. The temporary read-only workflow harness is removed before PR; Published Latest and published installer evidence remain v0.1.1-rc.2."
     }
   },
-  "candidateTag": "v0.1.2-alpha.3",
+  "candidateTag": "v0.1.2-alpha.4",
   "publishedAssets": {
     "linuxAppImage": "dsh-community-0.1.1-rc.2.AppImage",
     "macosDmg": "dsh-community-0.1.1-rc.2.dmg",

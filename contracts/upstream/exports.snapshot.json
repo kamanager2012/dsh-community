@@ -1,7 +1,7 @@
 {
-  "pin": "0.1.2-alpha.3",
+  "pin": "0.1.2-alpha.4",
   "packageName": "@deepseek-ai/dsh",
-  "version": "0.1.2-alpha.3",
+  "version": "0.1.2-alpha.4",
   "bin": {
     "dsh": "lib/bin.js"
   },

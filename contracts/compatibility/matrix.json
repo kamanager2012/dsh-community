@@ -1,6 +1,12 @@
 {
   "policy": "Recommend latest tested, not latest published.",
   "runtimes": {
+    "0.1.2-alpha.4": {
+      "desktop": "tested",
+      "tui": "tested",
+      "contracts": "snapshotted",
+      "notes": "Promoted latest-tested final-tree replay PASS on run 33577261413: exact Candidate/Published identity, frozen pnpm install, zero contract re-extract drift, exact alpha.4 Desktop runtime closure (214 DSH entries), npm audit 0 vulnerabilities, typecheck, 323 tests passed (1 skipped), authenticated official-Web lifecycle, and marketplace offline verification. Published Latest remains rc.2."
+    },
     "0.1.2-alpha.3": {
       "desktop": "tested",
       "tui": "tested",

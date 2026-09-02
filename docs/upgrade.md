@@ -20,11 +20,10 @@ Official Harness is in developer preview and **will break**. This repo is design
 
 ## Consolidated local acceptance
 
-After the exact reconstructed alpha.3 baseline is an ancestor of the integration branch and
-all hardening conflicts are resolved, run exactly one consolidated local gate:
+After the exact alpha.4 upgrade baseline is an ancestor of the integration branch and all candidate-specific contract updates are resolved, run exactly one consolidated local gate:
 
 ```sh
-node scripts/accept-alpha3-integration.mjs
+node scripts/accept-alpha4-integration.mjs
 ```
 
 The runner requires a clean non-main branch and verifies that the accepted
@@ -42,12 +41,10 @@ post-integration suite completing green in this single run.
 
 ## Remote integration gate
 
-Do not open the alpha.3 pull request until the accepted reconstructed baseline is
-integrated with the hardening commits and the
-consolidated local acceptance suite has passed on the final tree.
+Do not open the alpha.4 pull request until the accepted alpha.4 baseline is integrated with the current compatibility/security hardening and the consolidated local acceptance suite has passed on the final tree.
 
 A push to a non-main integration branch is the no-Actions staging path under the
-current workflow triggers. Opening a pull request is not: the alpha.3 diff fans
+current workflow triggers. Opening a pull request is not: the alpha.4 diff fans
 out into CI, dependency audit, Linux/macOS package smoke, Windows package smoke,
 runtime-lock verification, runtime-SBOM smoke, and artifact-action smoke.
 Machine-readable state: `contracts/compatibility/remote-integration-gate.json`.
@@ -71,13 +68,14 @@ An upstream prerelease discovered **after** an upgrade baseline has been frozen
 does not silently replace that baseline. The current cycle is pinned in
 `contracts/compatibility/upstream-candidate-watch.json`.
 
-For this cycle, `0.1.2-alpha.3` is frozen. Upstream `0.1.2-alpha.4` was
-published later and is recorded as `NEXT_UPGRADE_CYCLE`: its Web readiness
-implementation and CLI argument parser are unchanged from alpha.3, but the
-release interval contains substantive composition changes. Do not mix alpha.4
-pins, lockfiles, snapshots, or evidence into the alpha.3 acceptance commit.
-Advancing the target requires a new explicit upgrade cycle and fresh contract
-extraction.
+For this cycle, `0.1.2-alpha.4` is frozen after an exact npm registry gate.
+The previously accepted `0.1.2-alpha.3` main commit remains historical evidence
+and `latest-tested` until alpha.4 acceptance passes. Alpha.4 keeps the Web
+readiness implementation and CLI argument parser unchanged from alpha.3, while
+the release interval contains substantive profile/tool composition changes and
+removes `tool-subagent-report` from the extracted config/package surface.
+Advancing beyond alpha.4 requires another explicit upgrade cycle, registry gate,
+fresh locks, fresh snapshots, and a new consolidated acceptance.
 
 ## What a failure means
 

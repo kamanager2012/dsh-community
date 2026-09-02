@@ -1,14 +1,14 @@
 {
-  "schemaVersion": 2,
-  "purpose": "Prevent accidental GitHub Actions spend before the alpha.3 integration tree is final.",
+  "schemaVersion": 3,
+  "purpose": "Prevent accidental GitHub Actions spend before the alpha.4 integration tree is final.",
   "safeRemoteOperation": {
     "operation": "push-to-non-main-branch",
     "actionsExpected": 0,
-    "rationale": "Current push-triggered workflows are scoped to main/master or tags; the upgrade branch has no push-triggered workflow."
+    "rationale": "Current push-triggered workflows are scoped to main/master or tags; the upgrade branch has no ordinary push-triggered workflow."
   },
   "blockedUntilFinalAcceptance": {
     "operation": "open-pull-request",
-    "reason": "The current alpha.3 integration diff would fan out into multiple pull_request workflows.",
+    "reason": "The alpha.4 integration diff fans out into multiple pull_request workflows; open the PR only after consolidated acceptance passes.",
     "workflows": [
       "ci",
       "dependency-audit",
@@ -27,21 +27,24 @@
     "release"
   ],
   "acceptedBaseline": {
-    "commit": "7a6c14815fcf159c104e564fa768fbe32e6c196f",
-    "branch": "staging/dsh-0.1.2-alpha.3-local",
-    "origin": "remote-reconstruction",
-    "note": "Exact alpha.3 Candidate Source manifests, pnpm lock, Desktop npm runtime lock, lifecycle policy, and four upstream contract snapshots. Temporary lock-generation workflow/trigger removed; runtime lock contains zero alpha.4 DSH packages."
+    "commit": "a8e61282858dbd7a9f0d521fe85c3c119a2a0f1d",
+    "branch": "upgrade/dsh-0.1.2-alpha.4",
+    "origin": "remote-generated-baseline",
+    "registryGateRunId": 33574740829,
+    "lockContractGeneratorRunId": 33575142240,
+    "note": "Exact alpha.4 Candidate Source manifests, pnpm lock, Desktop npm runtime lock, complete DSH-family overrides, reviewed lifecycle policy, and four upstream contract snapshots. Temporary registry/generator workflows and triggers were removed before this baseline was squashed."
   },
   "finalAcceptance": {
     "status": "PASS",
-    "version": "0.1.2-alpha.3",
-    "runId": 33569520030,
-    "jobId": 100060198716,
-    "runHeadCommit": "48f0c33bf1d47f9481bcdc6805e2cc22d170cfb5",
-    "testFiles": "78 passed, 1 skipped",
-    "tests": "322 passed, 1 skipped",
+    "version": "0.1.2-alpha.4",
+    "runId": 33577261413,
+    "jobId": 100083859312,
+    "runHeadCommit": "434570ca350ca65cdf2ada01b9fcfacae387c5ef",
+    "testFiles": "79 passed, 1 skipped",
+    "tests": "323 passed, 1 skipped",
+    "runtimeDshEntries": 214,
     "marketplaceOffline": "9 plugins verified",
     "providerCalls": 0,
-    "disposition": "Final promoted latest-tested tree passed. PR fan-out may be opened after the temporary acceptance workflow and trigger are removed; release/tag remains blocked behind PR CI and release gates."
+    "disposition": "Promoted latest-tested final-tree replay passed. Temporary acceptance harness is removed. PR/CI may now open; release/tag remains blocked behind PR CI and release gates."
   }
 }

@@ -1,6 +1,6 @@
 {
-  "pin": "0.1.2-alpha.3",
-  "count": 145,
+  "pin": "0.1.2-alpha.4",
+  "count": 144,
   "names": [
     "@deepseek-ai/cordis-plugin-hmr",
     "@deepseek-ai/cordis-plugin-timer",
@@ -130,7 +130,6 @@
     "@deepseek-ai/dsh-tool-subagent",
     "@deepseek-ai/dsh-tool-subagent-control",
     "@deepseek-ai/dsh-tool-subagent-control/list-agents",
-    "@deepseek-ai/dsh-tool-subagent-report",
     "@deepseek-ai/dsh-tool-subagent/model-selection-settings",
     "@deepseek-ai/dsh-tool-todo",
     "@deepseek-ai/dsh-tool-web",
