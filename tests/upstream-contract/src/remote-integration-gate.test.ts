@@ -23,7 +23,15 @@ describe('remote integration gate', () => {
         registryGateRunId: number
         lockContractGeneratorRunId: number
       }
-      finalAcceptance: { status: string; version: string; providerCalls: number }
+      finalAcceptance: {
+        status: string
+        version: string
+        runId: number
+        jobId: number
+        runHeadCommit: string
+        runtimeDshEntries: number
+        providerCalls: number
+      }
     }
 
     expect(gate.schemaVersion).toBe(3)
@@ -35,8 +43,13 @@ describe('remote integration gate', () => {
     expect(gate.acceptedBaseline.origin).toBe('remote-generated-baseline')
     expect(gate.acceptedBaseline.registryGateRunId).toBe(33574740829)
     expect(gate.acceptedBaseline.lockContractGeneratorRunId).toBe(33575142240)
-    expect(gate.finalAcceptance.status).toBe('PENDING')
+    expect(gate.finalAcceptance.status).toBe('PASS')
     expect(gate.finalAcceptance.version).toBe('0.1.2-alpha.4')
+    expect(gate.finalAcceptance.runId).toBe(33576016696)
+    expect(gate.finalAcceptance.jobId).toBe(100080034357)
+    expect(gate.finalAcceptance.runHeadCommit)
+      .toBe('6babf377b22426a1d29d0bbe27c82f62bb2a88dc')
+    expect(gate.finalAcceptance.runtimeDshEntries).toBe(214)
     expect(gate.finalAcceptance.providerCalls).toBe(0)
 
     const workflowFiles = new Map([
