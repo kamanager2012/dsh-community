@@ -29,6 +29,9 @@ describe('Android release readiness is fail-closed', () => {
     expect(result.stderr).toContain('Android semantic blocker posix-hardlink-publication status=APP_UID_PREFLIGHT_WIRED_REAL_DEVICE_REQUIRED')
     expect(result.stderr).toContain('Android native evidence addonBuildAndLoad=NOT_RUN')
     expect(result.stderr).toContain('Reality Gate status=NOT_RUN')
+    expect(result.stderr).toContain('APK-embedded Node carrier was not verified under the app UID')
+    expect(result.stderr).toContain('APK Node JNI bridge evidence missing')
+    expect(result.stderr).toContain('APK libnode SHA-256 evidence missing')
     expect(result.stderr).toContain('arm64 real-device APK smoke missing')
     expect(result.stderr).toContain('Android app runtime gate is not promoted')
   })
@@ -48,7 +51,15 @@ describe('Android release readiness is fail-closed', () => {
     ) as {
       status?: string
       gates?: Record<string, string>
-      nodeCarrier?: { deviceVerified?: boolean; sha256?: string | null }
+      nodeCarrier?: {
+        shellProbe?: { adbVerified?: boolean; sha256?: string | null }
+        apkEmbedded?: {
+          form?: string
+          appUidVerified?: boolean
+          jniBridgeVerified?: boolean
+          sha256?: string | null
+        }
+      }
       dshBootVerified?: boolean
       nativeEvidence?: Record<string, string>
       device?: unknown
@@ -61,8 +72,17 @@ describe('Android release readiness is fail-closed', () => {
       dshBoot: 'NOT_RUN',
       apk: 'NOT_RUN',
     })
-    expect(evidence.nodeCarrier?.deviceVerified).toBe(false)
-    expect(evidence.nodeCarrier?.sha256).toBeNull()
+    expect(evidence.nodeCarrier?.shellProbe).toEqual({
+      sha256: null,
+      adbVerified: false,
+    })
+    expect(evidence.nodeCarrier?.apkEmbedded).toEqual({
+      form: 'SHARED_LIBNODE',
+      buildMode: 'OFFICIAL_NODE_SHARED',
+      sha256: null,
+      appUidVerified: false,
+      jniBridgeVerified: false,
+    })
     expect(evidence.nativeEvidence).toEqual({
       addonBuildAndLoad: 'NOT_RUN',
       terminalInspector: 'BLOCKED',

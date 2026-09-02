@@ -58,35 +58,79 @@ describe('Android evidence backing', () => {
     }
   })
 
-  it('rejects a manually promoted carrier claim without a carrier record', () => {
+  it('rejects a manually promoted APK carrier claim without carrier-apk backing', () => {
     const f = fixture()
     try {
       const state = JSON.parse(readFileSync(f.state, 'utf8'))
       state.gates.carrier = 'PASS'
-      state.nodeCarrier.deviceVerified = true
-      state.nodeCarrier.sha256 = ONE64
+      state.nodeCarrier.apkEmbedded.appUidVerified = true
+      state.nodeCarrier.apkEmbedded.jniBridgeVerified = true
+      state.nodeCarrier.apkEmbedded.sha256 = ONE64
       writeFileSync(f.state, JSON.stringify(state, null, 2))
 
       const result = run(f.state, f.records)
       expect(result.status).not.toBe(0)
-      expect(result.stderr).toContain('carrier: PASS claim has no backing record')
+      expect(result.stderr).toContain('carrier-apk: PASS claim has no backing record')
     } finally {
       rmSync(f.root, { recursive: true, force: true })
     }
   })
 
-  it('accepts a promoted carrier claim only when exact Node identity, device hash and artifact hash agree', () => {
+  it('accepts a promoted APK carrier claim only with exact app-UID shared-lib backing', () => {
     const f = fixture()
     try {
       const state = JSON.parse(readFileSync(f.state, 'utf8'))
       state.gates.carrier = 'PASS'
-      state.nodeCarrier.deviceVerified = true
-      state.nodeCarrier.sha256 = ONE64
+      state.nodeCarrier.apkEmbedded.appUidVerified = true
+      state.nodeCarrier.apkEmbedded.jniBridgeVerified = true
+      state.nodeCarrier.apkEmbedded.sha256 = ONE64
       writeFileSync(f.state, JSON.stringify(state, null, 2))
 
       const record = {
-        ...baseRecord('carrier'),
+        ...baseRecord('carrier-apk'),
+        executionContext: 'APK_APP_UID',
+        releaseEvidence: true,
+        carrierForm: 'SHARED_LIBNODE',
+        buildMode: 'OFFICIAL_NODE_SHARED',
+        device: { idHash: ZERO64, apiLevel: 35, abi: 'arm64-v8a' },
+        nodeCarrier: {
+          version: '22.19.0',
+          sourceTag: 'v22.19.0',
+          tagObjectSha: 'a9d4750074c7b5439c61daa28ea9afb5dc28e43e',
+          sourceCommit: 'f8fe6858549f75a4b4e9633abf39dd2038dbf496',
+        },
+        checks: { sharedBuild: 'PASS', jniLoad: 'PASS', platform: 'PASS' },
+        artifacts: [
+          { name: 'libnode', sha256: ONE64 },
+          { name: 'transcript', sha256: ZERO64 },
+        ],
+      }
+      writeFileSync(join(f.records, 'carrier-apk.json'), JSON.stringify(record, null, 2))
+
+      const result = run(f.state, f.records)
+      expect(result.status).toBe(0)
+      expect(result.stderr).toBe('')
+      expect(result.stdout).toContain('claims=1 records=1')
+    } finally {
+      rmSync(f.root, { recursive: true, force: true })
+    }
+  })
+
+  it('does not let adb-shell carrier evidence satisfy the APK carrier gate', () => {
+    const f = fixture()
+    try {
+      const state = JSON.parse(readFileSync(f.state, 'utf8'))
+      state.gates.carrier = 'PASS'
+      state.nodeCarrier.shellProbe.adbVerified = true
+      state.nodeCarrier.shellProbe.sha256 = ONE64
+      state.nodeCarrier.apkEmbedded.appUidVerified = false
+      state.nodeCarrier.apkEmbedded.jniBridgeVerified = false
+      writeFileSync(f.state, JSON.stringify(state, null, 2))
+
+      const shellRecord = {
+        ...baseRecord('carrier-shell'),
         executionContext: 'ADB_REAL_DEVICE',
+        releaseEvidence: false,
         device: { idHash: ZERO64, apiLevel: 35, abi: 'arm64-v8a' },
         nodeCarrier: {
           version: '22.19.0',
@@ -95,16 +139,15 @@ describe('Android evidence backing', () => {
           sourceCommit: 'f8fe6858549f75a4b4e9633abf39dd2038dbf496',
         },
         artifacts: [
-          { name: 'node-carrier', sha256: ONE64 },
+          { name: 'node-shell', sha256: ONE64 },
           { name: 'transcript', sha256: ZERO64 },
         ],
       }
-      writeFileSync(join(f.records, 'carrier.json'), JSON.stringify(record, null, 2))
+      writeFileSync(join(f.records, 'carrier-shell.json'), JSON.stringify(shellRecord, null, 2))
 
       const result = run(f.state, f.records)
-      expect(result.status).toBe(0)
-      expect(result.stderr).toBe('')
-      expect(result.stdout).toContain('claims=1 records=1')
+      expect(result.status).not.toBe(0)
+      expect(result.stderr).toContain('carrier-apk: PASS claim has no backing record')
     } finally {
       rmSync(f.root, { recursive: true, force: true })
     }

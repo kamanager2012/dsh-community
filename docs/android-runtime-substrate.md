@@ -11,9 +11,11 @@
 - official `@deepseek-ai/dsh@0.1.2-alpha.4`：Node `^22.19.0 || >=24.0.0`
 - stock nodejs-mobile 最新 Android release（2026-09-02 核验）：Node `18.20.4`
 
-新的首选候选是：
+新的首选候选必须分成两个物理形态：
 
-> **从官方 Node.js `v22.19.0` 源码使用其自带 Android NDK 交叉编译入口构建 Android carrier。**
+> **ADB-shell executable probe：**从官方 Node.js `v22.19.0` 源码使用 Android NDK 构建 `out/Release/node`，只证明 exact Node 能在 Android execution world 运行。
+>
+> **APK embedded carrier：**使用同一官方源码与 NDK 环境调用 Node 官方 `--shared` embedding 模式构建 `libnode.so`，再通过 APK native-code/JNI surface 在应用 UID 下加载。只有这一层有资格背书 `gates.carrier`。
 
 该候选已经钉死到 Git 身份，而不是只看版本字符串：
 
@@ -47,6 +49,7 @@ Full DSH Web PASS
 机器清单见：
 
 - `apps/android/runtime-substrate.json`
+- `apps/android/carrier-packaging.json`
 - `apps/android/native-blockers.json`
 
 ## Evidence backing
@@ -67,6 +70,8 @@ node scripts/validate-android-evidence-backing.mjs
 - artifact SHA-256
 - 设备只保存 serial/device id 的 SHA-256，不保存原始序列号
 - Android API level / ABI
+- `carrier-shell` 只允许 `ADB_REAL_DEVICE`，且 `releaseEvidence=false`
+- `carrier-apk` 必须是 `APK_APP_UID` + `SHARED_LIBNODE` + JNI load；只有它能背书 carrier PASS
 - 对 sandbox / hard-link / PTY 这类 APK UID 语义，`executionContext` 必须是 `APK_APP_UID`
 
 证据 record **不会自动提升状态**；它只是让某个 PASS 具备可审计背书。架构 blocker 优先级更高：当前 ripgrep seam 未解决时，任何 ripgrep record 都不能把 `ripgrepPackaging` 变成合法 PASS。
@@ -107,15 +112,45 @@ profileOnlyMitigation = INEFFECTIVE
 
 G0 未解决时，所谓“精简 Android profile 已解决兼容性”一律判无效。
 
-### G1 — Node carrier
+### G1 — Node carrier：shell 与 APK 严格分层
 
-手工执行：
+#### G1-Shell — preliminary executable probe
 
 ```bash
 NODE_SOURCE_DIR=/abs/node-v22.19.0 \
 ANDROID_NDK_HOME=/abs/android-ndk \
 bash scripts/android-node22-probe.sh verify
 ```
+
+该 gate 只证明 `out/Release/node` 在 adb real-device execution world 上满足 exact Node identity / version / `process.platform=android`。它只能生成 `carrier-shell` 记录，**永远不能单独把 `gates.carrier` 升成 PASS**。
+
+Android 10+ 对 target API 29+ 明确禁止从可写 app home 直接 `execve()`；因此不能把这个 shell binary 复制到 `filesDir` / `cacheDir` 后作为正式 APK runtime。正式 native code 必须进入 APK native-code surface。
+
+#### G1-APK-Build — official shared embedding candidate
+
+```bash
+NODE_SOURCE_DIR=/abs/node-v22.19.0 \
+ANDROID_NDK_HOME=/abs/android-ndk \
+bash scripts/android-node22-apk-carrier-probe.sh build
+```
+
+该脚本不下载、不 patch Node 源码；它复用 Android NDK/GYP target 环境，直接调用 Node 官方：
+
+```text
+./configure --dest-os=android ... --shared
+```
+
+要求输出 `out/Release/lib.target/libnode.so` 且为 ELF `DYN`。这一步仍只是 build evidence。
+
+#### G1-APK-AppUID — release carrier gate
+
+最终必须把上述 `libnode.so` 作为 APK native library 嵌入，通过 JNI/embedder 在 APK app UID 下启动，并捕获：
+
+```text
+ANDROID_APK_NODE_CARRIER_OK node=22.19.0 platform=android
+```
+
+只有 `carrier-apk` record（`SHARED_LIBNODE`、`APK_APP_UID`、`libnode` SHA-256、JNI load PASS）才能背书 `gates.carrier=PASS`。当前这一证据仍是 **NOT_RUN**。
 
 必须同时证明：
 

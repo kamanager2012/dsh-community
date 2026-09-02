@@ -84,9 +84,18 @@ if (evidence.nodeCarrier?.version !== EXPECTED_NODE) reasons.push('Reality Gate 
 if (evidence.nodeCarrier?.sourceTag !== EXPECTED_NODE_TAG) reasons.push('Reality Gate Node tag mismatch')
 if (evidence.nodeCarrier?.tagObjectSha !== EXPECTED_NODE_TAG_OBJECT) reasons.push('Reality Gate Node tag object mismatch')
 if (evidence.nodeCarrier?.sourceCommit !== EXPECTED_NODE_COMMIT) reasons.push('Reality Gate Node source commit mismatch')
-if (evidence.nodeCarrier?.deviceVerified !== true) reasons.push('Node carrier was not verified on a real Android device')
-if (typeof evidence.nodeCarrier?.sha256 !== 'string' || !/^[a-f0-9]{64}$/u.test(evidence.nodeCarrier.sha256)) {
-  reasons.push('Node carrier SHA-256 evidence missing')
+if (evidence.nodeCarrier?.apkEmbedded?.form !== 'SHARED_LIBNODE') {
+  reasons.push('APK carrier form must be SHARED_LIBNODE')
+}
+if (evidence.nodeCarrier?.apkEmbedded?.appUidVerified !== true) {
+  reasons.push('APK-embedded Node carrier was not verified under the app UID')
+}
+if (evidence.nodeCarrier?.apkEmbedded?.jniBridgeVerified !== true) {
+  reasons.push('APK Node JNI bridge evidence missing')
+}
+if (typeof evidence.nodeCarrier?.apkEmbedded?.sha256 !== 'string'
+  || !/^[a-f0-9]{64}$/u.test(evidence.nodeCarrier.apkEmbedded.sha256)) {
+  reasons.push('APK libnode SHA-256 evidence missing')
 }
 const nativeEvidence = evidence.nativeEvidence ?? {}
 for (const key of [

@@ -101,15 +101,28 @@ Out of scope (report upstream instead):
   therefore not treated as a runtime integration.
 - The target embedded Web bootstrap is explicitly loopback-only
   (`127.0.0.1`, `--no-open`), but it is not claimed as wired into a runnable
-  APK yet. The current carrier candidate is a self-validated cross-build of
-  official Node `v22.19.0`; Node upstream itself classifies Android as an
-  unsupported platform with no CI coverage, so this candidate cannot advance
-  without our real-device gate.
-- The Node 22.19.0 carrier candidate is pinned to the GitHub-verified annotated
+  APK yet. Carrier evidence is physically split: `android-node22-probe.sh`
+  builds/runs `out/Release/node` only as preliminary adb-shell evidence, while
+  the APK release carrier must use the separate official Node `--shared`
+  embedding form (`libnode.so`) and be loaded under the APK app UID through
+  the native/JNI surface. Node upstream itself classifies Android as unsupported
+  with no CI coverage, and its shared embedding mode is not supported as a
+  regular-application distribution mode, so neither candidate advances without
+  the corresponding Reality Gate.
+- Both Node 22.19.0 carrier forms are pinned to the GitHub-verified annotated
   tag object `a9d4750074c7b5439c61daa28ea9afb5dc28e43e`, which peels to
-  commit `f8fe6858549f75a4b4e9633abf39dd2038dbf496`. The manual probe rejects a
+  commit `f8fe6858549f75a4b4e9633abf39dd2038dbf496`. Both probes reject a
   different tag object, commit, HEAD, or tracked source modifications before
-  cross-building.
+  cross-building. The APK build probe downloads nothing and applies no source
+  patch; it reproduces the official Android NDK target environment and invokes
+  Node's own `configure --shared` surface.
+- Android's writable-code boundary is fail-closed. The project must not extract
+  the Node executable into writable `filesDir`/`cacheDir` and execute it as
+  the production carrier. `apps/android/carrier-packaging.json` records this
+  boundary explicitly. APK carrier code must live in the APK native-code
+  surface; `carrier-shell` records are marked non-release, and only a
+  `carrier-apk` record with `SHARED_LIBNODE`, APK-app-UID execution,
+  `libnode.so` SHA-256, and JNI-load proof can back `gates.carrier=PASS`.
 - A successful Node carrier is not sufficient for DSH: the current native
   closure still includes `node-pty`/`koffi`, `sharp`, platform sandbox
   binaries, and packaged ripgrep. Their machine-readable status lives in

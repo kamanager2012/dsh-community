@@ -124,20 +124,48 @@ function requireRecord(kind) {
   return record
 }
 
-function validateCarrier() {
-  const record = requireRecord('carrier')
+function validateCarrierShell(record = requireRecord('carrier-shell')) {
   if (record === undefined) return
   validateDevice(record, errors)
   if (record.executionContext !== 'ADB_REAL_DEVICE') {
-    errors.push('carrier: executionContext must be ADB_REAL_DEVICE')
+    errors.push('carrier-shell: executionContext must be ADB_REAL_DEVICE')
+  }
+  if (record.releaseEvidence !== false) {
+    errors.push('carrier-shell: releaseEvidence must be false')
   }
   for (const [key, expected] of Object.entries(EXPECTED_NODE)) {
-    if (record.nodeCarrier?.[key] !== expected) errors.push(`carrier: nodeCarrier.${key} mismatch`)
+    if (record.nodeCarrier?.[key] !== expected) errors.push(`carrier-shell: nodeCarrier.${key} mismatch`)
   }
-  const carrierArtifact = artifact(record, 'node-carrier')
-  if (carrierArtifact === undefined) errors.push('carrier: node-carrier artifact is required')
-  if (carrierArtifact?.sha256 !== state.nodeCarrier?.sha256) {
-    errors.push('carrier: artifact SHA-256 must equal reality-gate nodeCarrier.sha256')
+  const carrierArtifact = artifact(record, 'node-shell')
+  if (carrierArtifact === undefined) errors.push('carrier-shell: node-shell artifact is required')
+  if (state.nodeCarrier?.shellProbe?.adbVerified === true
+    && carrierArtifact?.sha256 !== state.nodeCarrier?.shellProbe?.sha256) {
+    errors.push('carrier-shell: artifact SHA-256 must equal reality-gate nodeCarrier.shellProbe.sha256')
+  }
+}
+
+function validateCarrierApk() {
+  const record = requireRecord('carrier-apk')
+  if (record === undefined) return
+  validateDevice(record, errors)
+  if (record.executionContext !== 'APK_APP_UID') {
+    errors.push('carrier-apk: executionContext must be APK_APP_UID')
+  }
+  if (record.releaseEvidence !== true) errors.push('carrier-apk: releaseEvidence must be true')
+  if (record.buildMode !== 'OFFICIAL_NODE_SHARED') {
+    errors.push('carrier-apk: buildMode must be OFFICIAL_NODE_SHARED')
+  }
+  for (const [key, expected] of Object.entries(EXPECTED_NODE)) {
+    if (record.nodeCarrier?.[key] !== expected) errors.push(`carrier-apk: nodeCarrier.${key} mismatch`)
+  }
+  if (record.carrierForm !== 'SHARED_LIBNODE') errors.push('carrier-apk: carrierForm must be SHARED_LIBNODE')
+  if (record.checks?.sharedBuild !== 'PASS') errors.push('carrier-apk: checks.sharedBuild must be PASS')
+  if (record.checks?.jniLoad !== 'PASS') errors.push('carrier-apk: checks.jniLoad must be PASS')
+  if (record.checks?.platform !== 'PASS') errors.push('carrier-apk: checks.platform must be PASS')
+  const carrierArtifact = artifact(record, 'libnode')
+  if (carrierArtifact === undefined) errors.push('carrier-apk: libnode artifact is required')
+  if (carrierArtifact?.sha256 !== state.nodeCarrier?.apkEmbedded?.sha256) {
+    errors.push('carrier-apk: artifact SHA-256 must equal reality-gate nodeCarrier.apkEmbedded.sha256')
   }
 }
 
@@ -223,8 +251,23 @@ function validateApk(kind, expectedAbi) {
 
 if (state.officialDsh !== EXPECTED_DSH) errors.push('reality-gate officialDsh mismatch')
 
-const carrierClaim = state.gates?.carrier === 'PASS' || state.nodeCarrier?.deviceVerified === true
-if (carrierClaim) validateCarrier()
+const shellCarrierClaim = state.nodeCarrier?.shellProbe?.adbVerified === true
+const shellRecord = records.get('carrier-shell')
+if (shellCarrierClaim && shellRecord === undefined) {
+  errors.push('carrier-shell: adbVerified has no backing record')
+}
+if (shellRecord !== undefined) validateCarrierShell(shellRecord)
+
+const carrierClaim = state.gates?.carrier === 'PASS' || state.nodeCarrier?.apkEmbedded?.appUidVerified === true
+if (state.gates?.carrier === 'PASS') {
+  if (state.nodeCarrier?.apkEmbedded?.appUidVerified !== true) {
+    errors.push('carrier: PASS requires nodeCarrier.apkEmbedded.appUidVerified=true')
+  }
+  if (state.nodeCarrier?.apkEmbedded?.jniBridgeVerified !== true) {
+    errors.push('carrier: PASS requires nodeCarrier.apkEmbedded.jniBridgeVerified=true')
+  }
+}
+if (carrierClaim || records.has('carrier-apk')) validateCarrierApk()
 
 const native = state.nativeEvidence ?? {}
 if (native.addonBuildAndLoad === 'PASS' || native.sharpFallback === 'PASS') validateNativeAddon()

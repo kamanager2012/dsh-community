@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 #
-# DeepSeek Harness Android (Termux) Runtime Verification
+# DeepSeek Harness Android (Termux) Preliminary Compatibility Diagnostic
 # ---------------------------------------------------------------------------
-# Goal: prove the official DeepSeek Harness Runtime can run on Android
-# before any investment in the native APK shell.
+# Goal: collect a useful shell-world compatibility signal for the official
+# DeepSeek Harness Runtime on Android/Termux.
+#
+# This is NOT an APK carrier or release Reality Gate. Termux uses a different
+# execution/filesystem/package world from the APK app UID. A PASS here cannot
+# promote carrier/native/sandbox/hard-link/PTY/APK release evidence.
 #
 # Usage (inside Termux):
 #   pkg install -y git
@@ -11,7 +15,7 @@
 #   cd dsh-community && bash scripts/termux-verify.sh
 #
 # The script is intentionally idempotent and writes a machine-readable report
-# to $HOME/.dsh/termux-verify.log so results can be quoted in the Reality Gate.
+# to $HOME/.dsh/termux-verify.log for preliminary diagnostic comparison only.
 # ---------------------------------------------------------------------------
 
 set -euo pipefail
@@ -29,7 +33,8 @@ say()   { printf '%s\n' "$*" | tee -a "$REPORT"; }
 pass()  { say "[PASS] $*"; }
 fail()  { say "[FAIL] $*"; }
 
-say "== DSH Android Runtime Verification: $(date -u +%Y-%m-%dT%H:%M:%SZ) =="
+say "== DSH Android Termux PRELIMINARY Diagnostic: $(date -u +%Y-%m-%dT%H:%M:%SZ) =="
+say "evidence-scope: TERMUX_PRELIMINARY_NOT_APK_RELEASE"
 
 # 1. Environment sanity ----------------------------------------------------
 if [ ! -d /data/data/com.termux/files/home ]; then
@@ -112,5 +117,6 @@ say "note: interactive approval and tool execution require the SDK JSON-RPC path
 say "      run a manual session with a real key before claiming [REAL]."
 
 say ""
-say "== Result: Android (Termux) runtime verification $( [ "$OK" -eq 1 ] && echo PASSED || echo FAILED ) =="
+say "== Result: Android (Termux) preliminary diagnostic $( [ "$OK" -eq 1 ] && echo PASSED || echo FAILED ) =="
+say "release-evidence: false"
 say "full log: $REPORT"

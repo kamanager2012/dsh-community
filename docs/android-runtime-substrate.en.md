@@ -9,9 +9,11 @@ Stock `nodejs-mobile` is no longer treated as a viable alpha.4 substrate:
 - official `@deepseek-ai/dsh@0.1.2-alpha.4`: Node `^22.19.0 || >=24.0.0`
 - latest stock nodejs-mobile Android release observed on 2026-09-02: Node `18.20.4`
 
-The primary candidate is now:
+The carrier candidate is now split by physical execution form:
 
-> **Cross-build official Node.js `v22.19.0` source for Android using Node's own Android NDK configure path.**
+> **ADB-shell executable probe:** cross-build official Node.js `v22.19.0` as `out/Release/node` to prove the exact runtime can execute in an Android shell world.
+>
+> **APK embedded carrier:** use the same official source/NDK environment with Node's official `--shared` embedding mode to build `libnode.so`, then load it through the APK native-code/JNI surface under the app UID. Only this form may back `gates.carrier`.
 
 The candidate is pinned to Git object identity, not just a version string:
 
@@ -39,6 +41,7 @@ The shipped official `sdk-minimal` profile is not a ready bypass either: it stil
 Machine-readable state:
 
 - `apps/android/runtime-substrate.json`
+- `apps/android/carrier-packaging.json`
 - `apps/android/native-blockers.json`
 
 ## Evidence backing
@@ -51,7 +54,7 @@ Run:
 node scripts/validate-android-evidence-backing.mjs
 ```
 
-Every promoted PASS needs a matching record under `apps/android/evidence/records/` bound to the exact official DSH version, a full Community Git SHA, offset-aware capture time, artifact SHA-256, hashed device identity (never the raw serial), Android API level, and ABI. Sandbox, hard-link, and PTY claims additionally require `executionContext: APK_APP_UID`; adb-shell evidence cannot back them.
+Every promoted PASS needs a matching record under `apps/android/evidence/records/` bound to the exact official DSH version, a full Community Git SHA, offset-aware capture time, artifact SHA-256, hashed device identity (never the raw serial), Android API level, and ABI. `carrier-shell` is preliminary ADB evidence only and has `releaseEvidence=false`; `carrier-apk` must be `APK_APP_UID` + `SHARED_LIBNODE` + JNI load and is the only record allowed to back carrier PASS. Sandbox, hard-link, and PTY claims likewise require `executionContext: APK_APP_UID`.
 
 Records do **not** promote a gate by themselves. They only make an already-adjudicated PASS auditable, and they cannot override architecture blockers. In particular, a ripgrep record is rejected while the official Android package/path seam remains unresolved.
 
@@ -92,7 +95,9 @@ This leaves three explicit routes:
 
 Until G0 changes, “a slim Android profile fixes compatibility” is an invalid claim.
 
-### G1 — Node carrier
+### G1 — Node carrier: shell and APK are different gates
+
+#### G1-Shell — preliminary executable probe
 
 ```bash
 NODE_SOURCE_DIR=/abs/node-v22.19.0 \
@@ -100,7 +105,29 @@ ANDROID_NDK_HOME=/abs/android-ndk \
 bash scripts/android-node22-probe.sh verify
 ```
 
-The gate must prove the exact verified Node tag object and commit, a successful official Android cross-build, execution on a real Android device, `process.versions.node === "22.19.0"`, and `process.platform === "android"`.
+This proves the exact `out/Release/node` executable can run under a real-device adb shell with Node 22.19.0 and `process.platform === "android"`. It may create only `carrier-shell` evidence and can never by itself promote `gates.carrier`.
+
+For apps targeting Android 10/API 29+, executable code must not be launched from writable app-home storage. The shell executable therefore must not be copied into `filesDir`/`cacheDir` and treated as the production APK carrier.
+
+#### G1-APK-Build — official shared embedding form
+
+```bash
+NODE_SOURCE_DIR=/abs/node-v22.19.0 \
+ANDROID_NDK_HOME=/abs/android-ndk \
+bash scripts/android-node22-apk-carrier-probe.sh build
+```
+
+The probe downloads nothing and patches no Node source. It recreates the Android NDK/GYP target environment and invokes the official Node configure surface with `--shared`, requiring `out/Release/lib.target/libnode.so` to be an ELF shared object.
+
+#### G1-APK-AppUID — release carrier gate
+
+The shared carrier must then be embedded in the APK native-code surface and started through a JNI/embedder path under the APK app UID. Release evidence requires the marker:
+
+```text
+ANDROID_APK_NODE_CARRIER_OK node=22.19.0 platform=android
+```
+
+Only a `carrier-apk` record with `carrierForm=SHARED_LIBNODE`, app-UID execution, `libnode` SHA-256, and JNI-load PASS may back `gates.carrier=PASS`. This evidence is currently **NOT_RUN**.
 
 ### Release fail-closed
 

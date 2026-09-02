@@ -144,17 +144,36 @@ const record = {
 }
 
 switch (kind) {
-  case 'carrier': {
+  case 'carrier-shell': {
     requireMarkers(transcriptArtifact.text, [
       'android-node22-probe: SOURCE_OK',
       'android-node22-probe: BUILD_OK',
       'android-node22-probe: DEVICE_OK node=22.19.0 platform=android',
+      'android-node22-probe: EVIDENCE_SCOPE=ADB_SHELL_PRELIMINARY_NOT_APK',
     ], kind)
-    requireArtifact(artifacts, 'node-carrier')
+    requireArtifact(artifacts, 'node-shell')
     Object.assign(record, {
       executionContext: 'ADB_REAL_DEVICE',
+      releaseEvidence: false,
       nodeCarrier: EXPECTED_NODE,
       checks: { sourceIdentity: 'PASS', build: 'PASS', device: 'PASS' },
+    })
+    break
+  }
+  case 'carrier-apk': {
+    requireMarkers(transcriptArtifact.text, [
+      'android-node22-apk-carrier-probe: PREFLIGHT_OK node=22.19.0 commit=f8fe6858549f75a4b4e9633abf39dd2038dbf496',
+      'android-node22-apk-carrier-probe: APK_SHARED_BUILD_OK',
+      'ANDROID_APK_NODE_CARRIER_OK node=22.19.0 platform=android',
+    ], kind)
+    requireArtifact(artifacts, 'libnode')
+    Object.assign(record, {
+      executionContext: 'APK_APP_UID',
+      releaseEvidence: true,
+      carrierForm: 'SHARED_LIBNODE',
+      buildMode: 'OFFICIAL_NODE_SHARED',
+      nodeCarrier: EXPECTED_NODE,
+      checks: { sourceIdentity: 'PASS', sharedBuild: 'PASS', jniLoad: 'PASS', platform: 'PASS' },
     })
     break
   }

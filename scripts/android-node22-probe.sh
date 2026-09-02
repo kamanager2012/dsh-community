@@ -1,12 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Manual Reality Gate for the Android Node carrier candidate.
+# Manual preliminary ADB-shell Reality Gate for the Android Node executable.
+#
+# This is NOT the APK release carrier gate. It proves only that the exact
+# official Node v22.19.0 executable can run in an adb-shell execution world.
+# The APK release carrier is the separate official --shared libnode.so candidate
+# built by scripts/android-node22-apk-carrier-probe.sh and must be loaded under
+# the APK app UID through the native/JNI surface.
 #
 # This script never downloads source code or toolchains and is not part of
 # ordinary CI. It accepts a caller-supplied official Node v22.19.0 git checkout
 # plus Android NDK, cross-builds through Node's own Android configure path, and
-# can execute the carrier on a real Android device through adb.
+# executes the resulting shell probe on a real Android device through adb.
 #
 # Usage:
 #   NODE_SOURCE_DIR=/abs/node-v22.19.0 \
@@ -139,6 +145,7 @@ device_carrier() {
   "${adb[@]}" shell "$remote" -e     'if (process.platform !== "android") { throw new Error("platform=" + process.platform) }'
 
   printf 'android-node22-probe: DEVICE_OK node=%s platform=android\n' "$observed"
+  printf 'android-node22-probe: EVIDENCE_SCOPE=ADB_SHELL_PRELIMINARY_NOT_APK\n'
   "${adb[@]}" shell rm -f "$remote" >/dev/null 2>&1 || true
 }
 

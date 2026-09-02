@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "asOf": "2026-09-02",
+  "officialNode": {
+    "version": "22.19.0",
+    "sourceTag": "v22.19.0",
+    "tagObjectSha": "a9d4750074c7b5439c61daa28ea9afb5dc28e43e",
+    "sourceCommit": "f8fe6858549f75a4b4e9633abf39dd2038dbf496"
+  },
+  "shellProbe": {
+    "status": "PROBE_REQUIRED",
+    "script": "scripts/android-node22-probe.sh",
+    "artifact": "out/Release/node",
+    "executionContext": "ADB_SHELL_REAL_DEVICE",
+    "releaseEvidence": false,
+    "purpose": "Preliminary proof that the exact Node executable can run on Android. It cannot satisfy APK carrier readiness."
+  },
+  "apkEmbedded": {
+    "status": "SHARED_BUILD_AND_JNI_APP_UID_PROBE_REQUIRED",
+    "buildScript": "scripts/android-node22-apk-carrier-probe.sh",
+    "buildMode": "OFFICIAL_NODE_SHARED",
+    "configureFlag": "--shared",
+    "artifact": "out/Release/lib.target/libnode.so",
+    "packagingSurface": "APK_NATIVE_LIBRARY",
+    "runtimeLoadMode": "JNI_EMBEDDER",
+    "executionContext": "APK_APP_UID",
+    "releaseEvidence": true,
+    "sourceMutationAllowed": false
+  },
+  "wxBoundary": {
+    "minAndroidBehavior": "targetSdk>=29",
+    "executableFromWritableAppHome": "FORBIDDEN",
+    "decision": "Do not extract a Node executable to filesDir/cacheDir and execve it. APK carrier code must be embedded in the APK native-code surface."
+  },
+  "conclusion": "ADB-shell executable success is preliminary only. Android carrier PASS requires the APK-embedded shared carrier plus a real app-UID JNI load/boot record."
+}

@@ -39,34 +39,80 @@ function commonArgs(kind: string, transcript: string, out: string) {
 }
 
 describe('Android evidence record creator', () => {
-  it('creates a carrier record from success markers and computes hashes from files', () => {
+  it('creates preliminary carrier-shell evidence and marks it non-release', () => {
     const f = fixture()
     try {
-      const transcript = join(f.root, 'carrier.log')
+      const transcript = join(f.root, 'carrier-shell.log')
       const carrier = join(f.root, 'node')
-      const out = join(f.records, 'carrier.json')
+      const out = join(f.records, 'carrier-shell.json')
       writeFileSync(transcript, [
         'android-node22-probe: SOURCE_OK tag=v22.19.0',
         'android-node22-probe: BUILD_OK carrier=/tmp/node',
         'android-node22-probe: DEVICE_OK node=22.19.0 platform=android',
+        'android-node22-probe: EVIDENCE_SCOPE=ADB_SHELL_PRELIMINARY_NOT_APK',
       ].join('\n'))
-      writeFileSync(carrier, 'node-carrier-bytes')
+      writeFileSync(carrier, 'node-shell-bytes')
 
       const result = spawnSync(process.execPath, [
-        ...commonArgs('carrier', transcript, out),
-        '--artifact', `node-carrier=${carrier}`,
+        ...commonArgs('carrier-shell', transcript, out),
+        '--artifact', `node-shell=${carrier}`,
       ], { cwd: ROOT, encoding: 'utf8' })
 
       expect(result.status).toBe(0)
       const record = JSON.parse(readFileSync(out, 'utf8')) as {
+        kind?: string
+        executionContext?: string
+        releaseEvidence?: boolean
         device?: { idHash?: string }
         artifacts?: Array<{ name?: string; sha256?: string }>
         nodeCarrier?: { sourceCommit?: string }
       }
+      expect(record).toMatchObject({
+        kind: 'carrier-shell',
+        executionContext: 'ADB_REAL_DEVICE',
+        releaseEvidence: false,
+      })
       expect(record.device?.idHash).toBe(DEVICE_HASH)
       expect(record.nodeCarrier?.sourceCommit).toBe('f8fe6858549f75a4b4e9633abf39dd2038dbf496')
-      expect(record.artifacts).toContainEqual({ name: 'node-carrier', sha256: sha256(carrier) })
+      expect(record.artifacts).toContainEqual({ name: 'node-shell', sha256: sha256(carrier) })
       expect(record.artifacts).toContainEqual({ name: 'transcript', sha256: sha256(transcript) })
+    } finally {
+      rmSync(f.root, { recursive: true, force: true })
+    }
+  })
+
+  it('creates carrier-apk evidence only from shared-build plus APK app-UID JNI markers', () => {
+    const f = fixture()
+    try {
+      const transcript = join(f.root, 'carrier-apk.log')
+      const libnode = join(f.root, 'libnode.so')
+      const out = join(f.records, 'carrier-apk.json')
+      writeFileSync(transcript, [
+        'android-node22-apk-carrier-probe: PREFLIGHT_OK node=22.19.0 commit=f8fe6858549f75a4b4e9633abf39dd2038dbf496 abi=arm64-v8a api=26',
+        'android-node22-apk-carrier-probe: APK_SHARED_BUILD_OK node=22.19.0 abi=arm64-v8a artifact=/tmp/libnode.so',
+        'ANDROID_APK_NODE_CARRIER_OK node=22.19.0 platform=android',
+      ].join('\n'))
+      writeFileSync(libnode, 'libnode-shared-bytes')
+
+      const result = spawnSync(process.execPath, [
+        ...commonArgs('carrier-apk', transcript, out),
+        '--artifact', `libnode=${libnode}`,
+      ], { cwd: ROOT, encoding: 'utf8' })
+
+      expect(result.status).toBe(0)
+      expect(JSON.parse(readFileSync(out, 'utf8'))).toMatchObject({
+        kind: 'carrier-apk',
+        executionContext: 'APK_APP_UID',
+        releaseEvidence: true,
+        carrierForm: 'SHARED_LIBNODE',
+        buildMode: 'OFFICIAL_NODE_SHARED',
+        checks: {
+          sourceIdentity: 'PASS',
+          sharedBuild: 'PASS',
+          jniLoad: 'PASS',
+          platform: 'PASS',
+        },
+      })
     } finally {
       rmSync(f.root, { recursive: true, force: true })
     }
@@ -106,9 +152,9 @@ describe('Android evidence record creator', () => {
       writeFileSync(transcript, 'anything')
       const rawDevice = spawnSync(process.execPath, [
         creator,
-        '--kind', 'carrier',
+        '--kind', 'carrier-shell',
         '--transcript', transcript,
-        '--out', join(f.records, 'carrier.json'),
+        '--out', join(f.records, 'carrier-shell.json'),
         '--community-commit', COMMIT,
         '--captured-at', '2026-09-02T22:45:00+08:00',
         '--device-id-hash', 'SERIAL123',
@@ -130,30 +176,31 @@ describe('Android evidence record creator', () => {
     }
   })
 
-  it('creates a carrier record that satisfies the backing validator after the state is promoted', () => {
+  it('carrier-apk record satisfies backing only when the APK carrier state is promoted consistently', () => {
     const f = fixture()
     try {
-      const transcript = join(f.root, 'carrier.log')
-      const carrier = join(f.root, 'node')
-      const out = join(f.records, 'carrier.json')
+      const transcript = join(f.root, 'carrier-apk.log')
+      const libnode = join(f.root, 'libnode.so')
+      const out = join(f.records, 'carrier-apk.json')
       const statePath = join(f.root, 'reality-gate.json')
       writeFileSync(transcript, [
-        'android-node22-probe: SOURCE_OK',
-        'android-node22-probe: BUILD_OK',
-        'android-node22-probe: DEVICE_OK node=22.19.0 platform=android',
+        'android-node22-apk-carrier-probe: PREFLIGHT_OK node=22.19.0 commit=f8fe6858549f75a4b4e9633abf39dd2038dbf496 abi=arm64-v8a api=26',
+        'android-node22-apk-carrier-probe: APK_SHARED_BUILD_OK',
+        'ANDROID_APK_NODE_CARRIER_OK node=22.19.0 platform=android',
       ].join('\n'))
-      writeFileSync(carrier, 'verified-node-carrier')
+      writeFileSync(libnode, 'verified-libnode-carrier')
 
       const create = spawnSync(process.execPath, [
-        ...commonArgs('carrier', transcript, out),
-        '--artifact', `node-carrier=${carrier}`,
+        ...commonArgs('carrier-apk', transcript, out),
+        '--artifact', `libnode=${libnode}`,
       ], { cwd: ROOT, encoding: 'utf8' })
       expect(create.status).toBe(0)
 
       const state = JSON.parse(readFileSync(sourceState, 'utf8'))
       state.gates.carrier = 'PASS'
-      state.nodeCarrier.deviceVerified = true
-      state.nodeCarrier.sha256 = sha256(carrier)
+      state.nodeCarrier.apkEmbedded.appUidVerified = true
+      state.nodeCarrier.apkEmbedded.jniBridgeVerified = true
+      state.nodeCarrier.apkEmbedded.sha256 = sha256(libnode)
       writeFileSync(statePath, JSON.stringify(state, null, 2))
 
       const validate = spawnSync(process.execPath, [

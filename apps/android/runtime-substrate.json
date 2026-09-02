@@ -35,9 +35,21 @@
     "sourceTag": "v22.19.0",
     "tagObjectSha": "a9d4750074c7b5439c61daa28ea9afb5dc28e43e",
     "sourceCommit": "f8fe6858549f75a4b4e9633abf39dd2038dbf496",
-    "tagSignatureVerifiedByGitHub": true
+    "tagSignatureVerifiedByGitHub": true,
+    "shellProbe": {
+      "script": "scripts/android-node22-probe.sh",
+      "status": "PROBE_REQUIRED",
+      "releaseEvidence": false
+    },
+    "apkEmbedded": {
+      "buildScript": "scripts/android-node22-apk-carrier-probe.sh",
+      "status": "SHARED_BUILD_AND_JNI_APP_UID_PROBE_REQUIRED",
+      "buildMode": "OFFICIAL_NODE_SHARED",
+      "runtimeLoadMode": "JNI_EMBEDDER",
+      "releaseEvidence": true
+    }
   },
-  "nextGate": "Run the exact carrier/native/sandbox/app-UID/PTY Reality Gates and store version-bound evidence records before promoting any PASS claim. The release verifier now rejects unbacked PASS state. Ripgrep remains blocked on an upstream Android package or explicit executable-path seam.",
+  "nextGate": "Treat the existing Android Node executable as an adb-shell-only preliminary probe. Build the exact Node 22.19.0 --shared libnode.so candidate, integrate it through the APK native-code/JNI surface, and capture app-UID carrier evidence before gates.carrier may become PASS. Native/sandbox/PTY/ripgrep gates remain independent.",
   "nativeClosure": "apps/android/native-blockers.json",
   "releaseReadinessVerifier": "scripts/verify-android-release-ready.mjs",
   "realityEvidence": "apps/android/evidence/reality-gate.json",
@@ -57,5 +69,6 @@
   "ptyProviderProbe": "apps/android/nodejs-project/src/main/js/android-pty-provider-device-probe.mjs",
   "evidenceBackingValidator": "scripts/validate-android-evidence-backing.mjs",
   "evidenceRecords": "apps/android/evidence/records",
-  "evidenceRecordCreator": "scripts/create-android-evidence-record.mjs"
+  "evidenceRecordCreator": "scripts/create-android-evidence-record.mjs",
+  "carrierPackaging": "apps/android/carrier-packaging.json"
 }

@@ -16,7 +16,7 @@ shape remains an APK with a WebView shell plus a compatible local Node substrate
 ```text
 APK
 ├── WebView            ← active source; can render the runtime-gate state
-├── Node substrate     ← BLOCKED until a Node 22.19+ Android runtime is proven
+├── Node substrate     ← BLOCKED; shell probe and APK shared carrier are separate gates
 ├── Foreground Service ← fails loud while the gate is closed
 └── verification chain ← runtime-substrate.json + Reality Gate
 ```
@@ -26,7 +26,7 @@ APK
 | Item | Fact | Handling |
 | --- | --- | --- |
 | Node engine | official requires `^22.19.0 \|\| >=24.0.0`; as observed on 2026-09-02, the latest stock nodejs-mobile Android release is Node 18.20.4 | **Hard blocker**: stock nodejs-mobile cannot be treated as a compatible substrate; first prove a Node 22.19+ Android runtime |
-| Native `sharp` | used only by `attachment-local`, no Android prebuilt | disable attachment/image plugin on mobile, or NDK cross-compile + registry entry |
+| `sharp` | the frozen lock contains exact `@img/sharp-wasm32@0.35.4`, but optional-byte materialization and Android PNG smoke remain unproven | keep official capability ownership; validate through the G2 materialization + device probe |
 | Gradle integration | restored Labs source declared `com.github.nodejs-mobile`, but no verified current integration evidence exists | removed from the active Gradle configuration rather than claiming a working Node 22 integration |
 | Background keep-alive | OS kills background processes | Foreground Service + persistent notification (also serves as approval entry) |
 | Distribution channel | Play Store scrutiny of "runs arbitrary plugin code" | GitHub Releases direct APK + digest, not Play |
@@ -34,26 +34,33 @@ APK
 ## Reality Gate gates (Android specific)
 
 ```text
-reproducible compatible Node 22.19+ Android substrate
-  → Termux on-device verification (scripts/termux-verify.sh green)
-  → official @deepseek-ai/dsh@0.1.2-alpha.4 starts on that substrate
-  → embedded-runtime E2E
-  → APK contract tests
-  → arm64 real-device + x86_64 emulator smoke
-  → release evidence
+exact Node 22.19.0 source identity
+  → G1-Shell: adb-shell executable probe (preliminary / non-release)
+  → G1-APK-Build: official Node --shared → libnode.so
+  → G1-APK-AppUID: APK native/JNI load under the app UID
+  → G2 native / PTY / sandbox / hard-link / sharp / fs-search gates
+  → official @deepseek-ai/dsh@0.1.2-alpha.4 Web boot on loopback
+  → arm64 real-device + x86_64 emulator APK smoke
+  → evidence-backed release
 ```
 
-Stay `[UNVERIFIED]` until gates pass. Verification results must quote real
-output from `$HOME/.dsh/termux-verify.log` — "should work" is not evidence.
+Stay `[UNVERIFIED]` until all gates pass. adb-shell or Termux results are preliminary only and cannot substitute for APK app-UID/JNI carrier, sandbox, hard-link, or PTY evidence.
 
 ## Verification entry
 
 ```bash
-# inside Termux
-git clone https://github.com/kamanager2012/dsh-community.git
-cd dsh-community && bash scripts/termux-verify.sh
+# preliminary shell carrier
+NODE_SOURCE_DIR=/abs/node-v22.19.0 ANDROID_NDK_HOME=/abs/android-ndk \
+  bash scripts/android-node22-probe.sh verify
+
+# APK shared carrier build candidate
+NODE_SOURCE_DIR=/abs/node-v22.19.0 ANDROID_NDK_HOME=/abs/android-ndk \
+  bash scripts/android-node22-apk-carrier-probe.sh build
+
+# release remains fail-closed until APK app-UID/JNI + downstream records exist
+node scripts/verify-android-release-ready.mjs
 ```
 
 ## Machine state
 
-See [`apps/android/runtime-substrate.json`](../apps/android/runtime-substrate.json). Android must not be described as a runnable APK until `BLOCKED` is promoted by real evidence.
+See [`apps/android/runtime-substrate.json`](../apps/android/runtime-substrate.json) and [`apps/android/carrier-packaging.json`](../apps/android/carrier-packaging.json). Android must not be described as a runnable APK until the shared carrier, app-UID/JNI load, and every downstream Reality Gate are backed by real evidence.

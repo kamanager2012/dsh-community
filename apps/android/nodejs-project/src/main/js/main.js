@@ -7,8 +7,9 @@
  * the bundled node_modules, mirroring the desktop thin-shell pattern:
  * the official runtime owns the agent loop, this project only hosts it.
  *
- * Reality Gate note: no capability here is [REAL] until scripts/termux-verify.sh
- * passes on a real device with the pinned @deepseek-ai/dsh version.
+ * Reality Gate note: Termux/adb-shell execution is preliminary only. The APK
+ * release carrier must be the separate embedded shared-lib/JNI path under the
+ * app UID, with evidence backing for carrier/native/PTY/sandbox/fs-search/APK.
  */
 
 const { spawn } = require('child_process');

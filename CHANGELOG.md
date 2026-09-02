@@ -2,8 +2,12 @@
 
 ## Unreleased
 
+- Android G1 carrier 物理边界重构：现有 `android-node22-probe.sh` 明确降为 adb-shell preliminary probe（`carrier-shell` / `releaseEvidence=false`）；新增 `scripts/android-node22-apk-carrier-probe.sh`，在 exact Node `v22.19.0` + Android NDK 环境中调用官方 `configure --shared`，no-download / no-source-patch 构建 `libnode.so`。APK release carrier 单独定义为 `SHARED_LIBNODE + APK_NATIVE_LIBRARY + JNI_EMBEDDER + APK_APP_UID`。
+- Android release/evidence gate 同步改成 APK-only carrier：`gates.carrier` 不再接受 adb-shell executable PASS；只有 `carrier-apk` record（shared build + app-UID/JNI load marker + `libnode.so` SHA-256）可背书。新增 `apps/android/carrier-packaging.json` 固定 W^X 边界：禁止把 Node executable 落到 writable `filesDir/cacheDir` 后当正式 APK runtime 执行。
+- evidence creator/validator 把旧 `carrier` 拆成 `carrier-shell` 与 `carrier-apk`。前者只记录 preliminary Android executable 事实，后者才是发布 carrier 证据；当前两者仍未产生真实 PASS，`reality-gate.json` 保持 `NOT_RUN/BLOCKED`。
+
 - Android evidence chain 增加标准化 record creator：`scripts/create-android-evidence-record.mjs` 只从真实 probe transcript + 本地 artifact bytes 生成 record，SHA-256 由脚本自行计算；设备身份只接受预哈希值，不接受原始 serial；必须显式提供 capture time 与 Community full SHA，且输出使用 create-only，禁止静默覆盖既有证据。
-- creator 当前识别 carrier / native-addon / app-UID preflight 的真实成功 marker，并为未来 PTY app-UID、DSH boot、arm64/x86_64 APK smoke 固定 record 形状；当前 ripgrep 官方 seam 未解锁，因此 creator 明确拒绝生成 ripgrep PASS record。
+- creator 当前识别 carrier-shell / carrier-apk / native-addon / app-UID preflight 的真实成功 marker，并为未来 PTY app-UID、DSH boot、arm64/x86_64 APK smoke 固定 record 形状；carrier-shell 明确非发布证据，carrier-apk 必须同时包含 shared-build 与 APK app-UID/JNI marker；当前 ripgrep 官方 seam 未解锁，因此 creator 明确拒绝生成 ripgrep PASS record。
 
 - Android Reality Gate 增加“证据背书”硬约束：新增 `scripts/validate-android-evidence-backing.mjs` 与 `apps/android/evidence/records/`。今后 `reality-gate.json` 中任何 PASS 都必须存在对应的、绑定 `0.1.2-alpha.4` / Community full SHA / offset-aware capturedAt / artifact SHA-256 / hashed device identity 的记录；app-UID-only sandbox/hard-link/PTY 不接受 adb-shell 记录。
 - `verify-android-release-ready.mjs` 现先执行 evidence-backing validator。记录本身不会自动提升 gate，也不能绕过 architecture blocker：例如当前 ripgrep 缺官方 Android package/path seam 时，即使放入一份“ripgrep PASS”记录也必须拒绝。

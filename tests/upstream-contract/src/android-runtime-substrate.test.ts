@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { spawnSync } from 'node:child_process'
 import { describe, expect, it } from 'vitest'
 
 const ROOT = resolve(import.meta.dirname, '../../..')
@@ -10,6 +11,7 @@ describe('Android runtime substrate evidence', () => {
       readFileSync(resolve(ROOT, 'apps/android/runtime-substrate.json'), 'utf8'),
     ) as {
       status?: string
+      carrierPackaging?: string
       nativeCompatibility?: string
       nativeAddonProbe?: string
       sandboxProbe?: string
@@ -36,10 +38,19 @@ describe('Android runtime substrate evidence', () => {
         tagObjectSha?: string
         sourceCommit?: string
         tagSignatureVerifiedByGitHub?: boolean
+        shellProbe?: { script?: string; status?: string; releaseEvidence?: boolean }
+        apkEmbedded?: {
+          buildScript?: string
+          status?: string
+          buildMode?: string
+          runtimeLoadMode?: string
+          releaseEvidence?: boolean
+        }
       }
     }
 
     expect(state.status).toBe('BLOCKED')
+    expect(state.carrierPackaging).toBe('apps/android/carrier-packaging.json')
     expect(state.nativeCompatibility).toBe('apps/android/native-compatibility.json')
     expect(state.nativeAddonProbe).toBe('scripts/android-native-addon-probe.sh')
     expect(state.sandboxProbe).toBe('scripts/android-sandbox-landlock-probe.sh')
@@ -63,6 +74,18 @@ describe('Android runtime substrate evidence', () => {
     expect(state.candidate?.tagObjectSha).toBe('a9d4750074c7b5439c61daa28ea9afb5dc28e43e')
     expect(state.candidate?.sourceCommit).toBe('f8fe6858549f75a4b4e9633abf39dd2038dbf496')
     expect(state.candidate?.tagSignatureVerifiedByGitHub).toBe(true)
+    expect(state.candidate?.shellProbe).toEqual({
+      script: 'scripts/android-node22-probe.sh',
+      status: 'PROBE_REQUIRED',
+      releaseEvidence: false,
+    })
+    expect(state.candidate?.apkEmbedded).toEqual({
+      buildScript: 'scripts/android-node22-apk-carrier-probe.sh',
+      status: 'SHARED_BUILD_AND_JNI_APP_UID_PROBE_REQUIRED',
+      buildMode: 'OFFICIAL_NODE_SHARED',
+      runtimeLoadMode: 'JNI_EMBEDDER',
+      releaseEvidence: true,
+    })
   })
 
   it('tracks the second-layer native DSH closure explicitly', () => {
@@ -85,7 +108,7 @@ describe('Android runtime substrate evidence', () => {
     for (const blocker of blockers.blockers ?? []) expect(blocker.status).toBe('OPEN')
   })
 
-  it('pins the manual carrier probe to exact Node 22.19.0 and a real Android execution check', () => {
+  it('pins the adb-shell carrier probe to exact Node 22.19.0 as preliminary evidence only', () => {
     const probe = readFileSync(resolve(ROOT, 'scripts/android-node22-probe.sh'), 'utf8')
     expect(probe).toContain('NODE_VERSION="22.19.0"')
     expect(probe).toContain('NODE_TAG_OBJECT="a9d4750074c7b5439c61daa28ea9afb5dc28e43e"')
@@ -97,5 +120,53 @@ describe('Android runtime substrate evidence', () => {
     expect(probe).toContain('process.platform !== "android"')
     expect(probe).toContain('adb')
     expect(probe).not.toMatch(/curl\s|wget\s/u)
+  })
+
+  it('separates the APK shared carrier from the adb-shell executable probe', () => {
+    const contract = JSON.parse(
+      readFileSync(resolve(ROOT, 'apps/android/carrier-packaging.json'), 'utf8'),
+    ) as {
+      shellProbe?: { releaseEvidence?: boolean; artifact?: string }
+      apkEmbedded?: {
+        status?: string
+        buildScript?: string
+        buildMode?: string
+        artifact?: string
+        packagingSurface?: string
+        runtimeLoadMode?: string
+        executionContext?: string
+        releaseEvidence?: boolean
+      }
+      wxBoundary?: { executableFromWritableAppHome?: string }
+    }
+    const probePath = resolve(ROOT, 'scripts/android-node22-apk-carrier-probe.sh')
+    const syntax = spawnSync('bash', ['-n', probePath], { cwd: ROOT, encoding: 'utf8' })
+    expect(syntax.status).toBe(0)
+    expect(syntax.stderr).toBe('')
+    const probe = readFileSync(probePath, 'utf8')
+
+    expect(contract.shellProbe).toMatchObject({
+      artifact: 'out/Release/node',
+      releaseEvidence: false,
+    })
+    expect(contract.apkEmbedded).toMatchObject({
+      status: 'SHARED_BUILD_AND_JNI_APP_UID_PROBE_REQUIRED',
+      buildScript: 'scripts/android-node22-apk-carrier-probe.sh',
+      buildMode: 'OFFICIAL_NODE_SHARED',
+      artifact: 'out/Release/lib.target/libnode.so',
+      packagingSurface: 'APK_NATIVE_LIBRARY',
+      runtimeLoadMode: 'JNI_EMBEDDER',
+      executionContext: 'APK_APP_UID',
+      releaseEvidence: true,
+    })
+    expect(contract.wxBoundary?.executableFromWritableAppHome).toBe('FORBIDDEN')
+    expect(probe).toContain('NODE_SOURCE_COMMIT="f8fe6858549f75a4b4e9633abf39dd2038dbf496"')
+    expect(probe).toContain('--shared')
+    expect(probe).toContain('lib.target/libnode.so')
+    expect(probe).toContain('APK_SHARED_BUILD_OK')
+    expect(probe).toContain('NEXT_REQUIRED=APK_JNI_APP_UID_LOAD')
+    expect(probe).toContain('shared-carrier probe requires a fresh Node checkout/build tree')
+    expect(probe).not.toMatch(/\bcurl\b|\bwget\b/u)
+    expect(probe).not.toMatch(/^\s*(?:git\s+apply|patch\s|sed\s+-i)/mu)
   })
 })

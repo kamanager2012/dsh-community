@@ -14,8 +14,17 @@
     "sourceTag": "v22.19.0",
     "tagObjectSha": "a9d4750074c7b5439c61daa28ea9afb5dc28e43e",
     "sourceCommit": "f8fe6858549f75a4b4e9633abf39dd2038dbf496",
-    "sha256": null,
-    "deviceVerified": false
+    "shellProbe": {
+      "sha256": null,
+      "adbVerified": false
+    },
+    "apkEmbedded": {
+      "form": "SHARED_LIBNODE",
+      "buildMode": "OFFICIAL_NODE_SHARED",
+      "sha256": null,
+      "appUidVerified": false,
+      "jniBridgeVerified": false
+    }
   },
   "device": null,
   "dshBootVerified": false,
@@ -24,7 +33,7 @@
     "arm64RealDeviceSmoke": false,
     "x86_64EmulatorSmoke": false
   },
-  "notes": "No Android real-device Reality Gate has been completed. This file must stay NOT_RUN until evidence is produced by the manual gates.",
+  "notes": "No Android real-device Reality Gate has been completed. adb-shell executable success is preliminary only; gates.carrier requires APK-embedded shared Node + app-UID/JNI evidence.",
   "nativeEvidence": {
     "addonBuildAndLoad": "NOT_RUN",
     "terminalInspector": "BLOCKED",
