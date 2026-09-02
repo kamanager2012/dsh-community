@@ -1,18 +1,19 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "source": "github-actions",
   "delivery": "direct-commit",
-  "workflowRunId": 33540607690,
-  "workflowJobId": 99965617854,
-  "generatorCommit": "4458655c7225a308b770d881353ebdec90ff9fd2",
-  "lockSha256": "8488ccd6117fc3a5d19296d1a3fcf4d225bd6c82c887a016a69a0e03c3f2d2c7",
-  "generatedAt": "2026-09-01T17:57:10Z",
+  "workflowRunId": 33575142240,
+  "workflowJobId": 100077338019,
+  "generatorCommit": "7b9c8bfefc9685678ed96878641f27bb10a8b54e",
+  "lockSha256": "cb4ba8dc2923c546c76e7a73ad98e77321e9ac69833bf0a37b50201b7c67e81b",
+  "generatedAt": "2026-09-02T00:24:24Z",
   "runnerImage": "ubuntu-24.04",
   "nodeVersion": "v22.23.2",
   "npmVersion": "10.9.8",
   "command": "npm install --package-lock-only --ignore-scripts --no-audit --no-fund",
   "officialPackage": "@deepseek-ai/dsh",
-  "officialVersion": "0.1.2-alpha.3",
+  "officialVersion": "0.1.2-alpha.4",
   "lockfileVersion": 3,
-  "packageEntries": 597
+  "packageEntries": 580,
+  "dshFamilyEntries": 214
 }
