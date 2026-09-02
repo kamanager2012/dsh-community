@@ -216,7 +216,7 @@ describe('R2A-R5 Root Authority & Integrity Closure Adversarial Tests', () => {
     expect(listener2ReceivedDevId).not.toBe('tampered-device-id')
   })
 
-  it('5. P0-4: Post-rename parent-directory fsync failure triggers fail-closed store poisoning', async () => {
+  it('5. P0-4: Post-rename parent-directory fsync failure triggers fail-closed store poisoning and no ghost resurrection on restart', async () => {
     const testDir = join(tmpdir(), `dsh-dirfsync-test-${Date.now()}`)
     mkdirSync(testDir, { recursive: true })
     const filePath = join(testDir, 'devices.json')
@@ -231,30 +231,63 @@ describe('R2A-R5 Root Authority & Integrity Closure Adversarial Tests', () => {
         },
       })
 
-      const client = generateClientKeyPair()
-      const devId = computeFingerprint(client.publicKey)
+      const client1 = generateClientKeyPair()
+      const client2 = generateClientKeyPair()
+      const dev1Id = computeFingerprint(client1.publicKey)
+      const dev2Id = computeFingerprint(client2.publicKey)
 
+      // Step 1: Client 1 is committed and durably persisted
+      store.trustSync({
+        staticPublicKey: client1.publicKey,
+        displayName: 'Committed Dev 1',
+        grantedCapabilities: ['observe'],
+        trustDomainId: 'dom-1',
+      })
+      expect(store.getSync(dev1Id)).toBeDefined()
+
+      // Step 2: Client 2 pairing transaction fails at after-rename-before-dir-fsync
       failDirFsync = true
-
-      // Operation must not report clean success
       expect(() => {
         store.trustSync({
-          staticPublicKey: client.publicKey,
-          displayName: 'Test Dev',
-          grantedCapabilities: ['observe'],
+          staticPublicKey: client2.publicKey,
+          displayName: 'Uncommitted Dev 2',
+          grantedCapabilities: ['observe', 'prompt'],
           trustDomainId: 'dom-1',
         })
       }).toThrow('simulated directory fsync failure')
 
-      // Store is now poisoned: subsequent authorization is denied
+      // Step 3: Current store instance is poisoned: all operations fail closed
       expect(() => {
-        store.assertAuthorizedSync(devId, 'dom-1', 'session.list')
+        store.assertAuthorizedSync(dev2Id, 'dom-1', 'session.list')
       }).toThrow(RemoteCryptoError)
-
-      // Subsequent reads and mutations are denied
-      expect(() => store.getSync(devId)).toThrow(RemoteCryptoError)
-      expect(() => store.revokeSync(devId)).toThrow(RemoteCryptoError)
+      expect(() => store.getSync(dev2Id)).toThrow(RemoteCryptoError)
+      expect(() => store.revokeSync(dev2Id)).toThrow(RemoteCryptoError)
       await expect(store.list()).rejects.toThrow(RemoteCryptoError)
+
+      // Step 4: Restart new store on the same path -> restores last-known-good committed state
+      const restarted = new FileDeviceTrustStore(filePath)
+      expect(restarted.getSync(dev1Id)).toBeDefined()
+      // FAILED TRANSACTION DOES NOT RESURRECT
+      expect(restarted.getSync(dev2Id)).toBeUndefined()
+      expect(() => {
+        restarted.assertAuthorizedSync(dev2Id, 'dom-1', 'session.list')
+      }).toThrow(RemoteProtocolError)
+      expect(restarted.assertAuthorizedSync(dev1Id, 'dom-1', 'session.list')).toBeDefined()
+
+      // Step 5: Test explicit recoveryMode: 'fail-closed' when an uncommitted journal is detected
+      const journalPath = join(testDir, '.devices.json.journal')
+      writeFileSync(journalPath, JSON.stringify({ state: 'COMMITTING', hasPriorCommit: true }), {
+        mode: 0o600,
+      })
+      expect(
+        () => new FileDeviceTrustStore(filePath, { recoveryMode: 'fail-closed' }),
+      ).toThrow(RemoteCryptoError)
+
+      // Recover journal and verify clean boot
+      FileDeviceTrustStore.rollbackJournal(testDir, filePath, journalPath, join(testDir, '.devices.json.committed'))
+      const recoveredStore = new FileDeviceTrustStore(filePath)
+      expect(recoveredStore.getSync(dev1Id)).toBeDefined()
+      expect(recoveredStore.getSync(dev2Id)).toBeUndefined()
     } finally {
       if (existsSync(testDir)) {
         rmSync(testDir, { recursive: true, force: true })

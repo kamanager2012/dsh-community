@@ -1,6 +1,8 @@
 import {
+  chmodSync,
   closeSync,
   constants,
+  copyFileSync,
   existsSync,
   fstatSync,
   fsyncSync,
@@ -11,7 +13,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from 'node:fs'
-import { dirname, isAbsolute, join } from 'node:path'
+import { basename, dirname, isAbsolute, join } from 'node:path'
 import { randomBytes } from 'node:crypto'
 import type { Capability, RemoteMethod } from '../protocol.js'
 import {
@@ -51,7 +53,10 @@ export interface PersistentDeviceTrustSchema {
 export interface FileDeviceTrustStoreOptions {
   readonly maxDevices?: number
   readonly clock?: () => number
-  readonly faultInjector?: (stage: 'before-write' | 'before-rename' | 'after-rename-before-dir-fsync') => void
+  readonly recoveryMode?: 'auto-rollback' | 'fail-closed'
+  readonly faultInjector?: (
+    stage: 'before-write' | 'before-rename' | 'after-rename-before-dir-fsync'
+  ) => void
 }
 
 export class FileDeviceTrustStore extends InMemoryDeviceTrustStore {
@@ -82,7 +87,77 @@ export class FileDeviceTrustStore extends InMemoryDeviceTrustStore {
     }
   }
 
+  public static rollbackJournal(
+    dir: string,
+    targetPath: string,
+    journalPath: string,
+    backupPath: string,
+  ): boolean {
+    if (!existsSync(journalPath)) {
+      return false
+    }
+
+    let journalData: { hasPriorCommit?: boolean } = {}
+    try {
+      const raw = readFileSync(journalPath, 'utf8')
+      journalData = JSON.parse(raw)
+    } catch {
+      // Fallback
+    }
+
+    if (existsSync(backupPath)) {
+      renameSync(backupPath, targetPath)
+      if (process.platform !== 'win32') {
+        try {
+          const fd = openSync(targetPath, 'r')
+          fsyncSync(fd)
+          closeSync(fd)
+        } catch {}
+      }
+    } else if (journalData.hasPriorCommit === false) {
+      if (existsSync(targetPath)) {
+        try {
+          unlinkSync(targetPath)
+        } catch {}
+      }
+    }
+
+    try {
+      unlinkSync(journalPath)
+    } catch {}
+
+    if (process.platform !== 'win32') {
+      try {
+        const dirFd = openSync(dir, 'r')
+        fsyncSync(dirFd)
+        closeSync(dirFd)
+      } catch {}
+    }
+
+    return true
+  }
+
   private loadFromDisk(): void {
+    const dir = dirname(this.filePath)
+    const base = basename(this.filePath)
+    const journalPath = join(dir, `.${base}.journal`)
+    const backupPath = join(dir, `.${base}.committed`)
+
+    if (existsSync(journalPath)) {
+      if (this.storeOptions?.recoveryMode === 'fail-closed') {
+        this.isPoisoned = true
+        this.poisonReason =
+          'durable uncertainty detected: uncommitted transaction journal found on restart'
+        throw new RemoteCryptoError(
+          'HANDSHAKE_FAILED',
+          'device trust store has uncommitted transaction journal on restart; recovery required',
+        )
+      }
+
+      // Default: auto-rollback to last-known-good committed state
+      FileDeviceTrustStore.rollbackJournal(dir, this.filePath, journalPath, backupPath)
+    }
+
     if (!existsSync(this.filePath)) {
       return
     }
@@ -284,10 +359,10 @@ export class FileDeviceTrustStore extends InMemoryDeviceTrustStore {
   }
 
   /**
-   * P0-3 & P0-4: Durable commit transaction with fail-closed poisoning.
-   * Serializes stagedDevices to a temporary file, fsyncs, atomically renames,
-   * fsyncs parent directory. If directory fsync fails on POSIX, transitions to poisoned state.
-   * ONLY AFTER disk commit succeeds updates live memory.
+   * P0-3 & P0-4: Durable commit transaction with fail-closed poisoning and automatic rollback.
+   * Maintains last-known-good backup and transaction journal.
+   * If directory fsync fails, in-process instance is poisoned AND disk is rolled back to last-known-good.
+   * If process crashes before rollback completes, restart automatically recovers last-known-good state.
    */
   private commitDurableTransaction(stagedDevices: Map<string, StoredDeviceRecord>): void {
     this.assertNotPoisoned()
@@ -315,7 +390,49 @@ export class FileDeviceTrustStore extends InMemoryDeviceTrustStore {
 
     const raw = JSON.stringify(payload, null, 2)
     const dir = dirname(this.filePath)
+    const base = basename(this.filePath)
+    const journalPath = join(dir, `.${base}.journal`)
+    const backupPath = join(dir, `.${base}.committed`)
     const tmpPath = join(dir, `.tmp.${randomBytes(8).toString('hex')}`)
+
+    const hasPriorCommit = existsSync(this.filePath)
+    if (hasPriorCommit) {
+      try {
+        copyFileSync(this.filePath, backupPath)
+        chmodSync(backupPath, 0o600)
+        const backupFd = openSync(backupPath, 'r')
+        fsyncSync(backupFd)
+        closeSync(backupFd)
+      } catch (err) {
+        throw new RemoteCryptoError(
+          'HANDSHAKE_FAILED',
+          `failed to create committed backup before transaction: ${(err as Error).message}`,
+        )
+      }
+    }
+
+    try {
+      const journalPayload = JSON.stringify({
+        state: 'COMMITTING',
+        target: this.filePath,
+        backup: backupPath,
+        hasPriorCommit,
+      })
+      const journalFd = openSync(journalPath, 'wx', 0o600)
+      writeFileSync(journalFd, journalPayload, 'utf8')
+      fsyncSync(journalFd)
+      closeSync(journalFd)
+    } catch (err) {
+      if (existsSync(backupPath)) {
+        try {
+          unlinkSync(backupPath)
+        } catch {}
+      }
+      throw new RemoteCryptoError(
+        'HANDSHAKE_FAILED',
+        `failed to create transaction journal: ${(err as Error).message}`,
+      )
+    }
 
     let fd: number | undefined
     try {
@@ -335,8 +452,7 @@ export class FileDeviceTrustStore extends InMemoryDeviceTrustStore {
       try {
         this.storeOptions?.faultInjector?.('after-rename-before-dir-fsync')
 
-        // P0-4: POSIX parent directory fsync. If this fails, durability is indeterminate;
-        // Store enters a fail-closed poisoned state and throws.
+        // P0-4: POSIX parent directory fsync.
         if (process.platform !== 'win32') {
           let dirFd: number | undefined
           try {
@@ -360,9 +476,36 @@ export class FileDeviceTrustStore extends InMemoryDeviceTrustStore {
             }
           }
         }
+
+        // Durable transaction committed cleanly! Clean up journal and backup
+        if (existsSync(journalPath)) {
+          try {
+            unlinkSync(journalPath)
+          } catch {}
+        }
+        if (existsSync(backupPath)) {
+          try {
+            unlinkSync(backupPath)
+          } catch {}
+        }
+        if (process.platform !== 'win32') {
+          try {
+            const dirFd = openSync(dir, 'r')
+            fsyncSync(dirFd)
+            closeSync(dirFd)
+          } catch {}
+        }
       } catch (err) {
         this.isPoisoned = true
         this.poisonReason = `parent directory fsync or post-rename failure: ${(err as Error).message}`
+
+        // Roll back target on disk immediately to restore last-known-good state!
+        try {
+          FileDeviceTrustStore.rollbackJournal(dir, this.filePath, journalPath, backupPath)
+        } catch {
+          // If disk rollback fails here, loadFromDisk on restart will perform it
+        }
+
         throw new RemoteCryptoError(
           'HANDSHAKE_FAILED',
           `durable commit failed: parent directory fsync failed after rename: ${(err as Error).message}`,
@@ -381,6 +524,18 @@ export class FileDeviceTrustStore extends InMemoryDeviceTrustStore {
           unlinkSync(tmpPath)
         } catch {
           // Ignore
+        }
+      }
+      if (!this.isPoisoned) {
+        if (existsSync(journalPath)) {
+          try {
+            unlinkSync(journalPath)
+          } catch {}
+        }
+        if (existsSync(backupPath)) {
+          try {
+            unlinkSync(backupPath)
+          } catch {}
         }
       }
       throw err
