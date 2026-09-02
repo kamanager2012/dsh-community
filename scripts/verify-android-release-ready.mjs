@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)))
@@ -29,6 +30,16 @@ const app = readFileSync(
 )
 
 const reasons = []
+
+const evidenceBacking = spawnSync(
+  process.execPath,
+  [resolve(ROOT, 'scripts/validate-android-evidence-backing.mjs')],
+  { cwd: ROOT, encoding: 'utf8' },
+)
+if (evidenceBacking.status !== 0) {
+  const detail = (evidenceBacking.stderr || evidenceBacking.stdout || 'unknown evidence-backing failure').trim()
+  reasons.push('evidence backing validation failed: ' + detail.replace(/\s+/gu, ' '))
+}
 
 if (substrate.status !== 'PASS') reasons.push(`runtime substrate status=${String(substrate.status)}`)
 if (substrate.packageClosure?.status !== 'PASS') {

@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
-import { dirname, join, relative, resolve } from 'node:path'
+import { dirname, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
@@ -42,6 +42,17 @@ const METADATA_ONLY_CONFIG_PATHS = new Set([
   join('apps', 'android', 'native-blockers.json'),
   join('apps', 'android', 'native-compatibility.json'),
 ])
+
+const METADATA_ONLY_CONFIG_ROOTS = [
+  join('apps', 'android', 'evidence', 'records'),
+]
+
+function isMetadataOnlyConfig(path: string): boolean {
+  if (METADATA_ONLY_CONFIG_PATHS.has(path)) return true
+  return METADATA_ONLY_CONFIG_ROOTS.some((rootPath) =>
+    path === rootPath || path.startsWith(rootPath + sep),
+  )
+}
 
 /** Third-party packages that are harness products or harness surface implementations. */
 const FORBIDDEN_PACKAGE_PATTERNS = [
@@ -123,7 +134,7 @@ function scanSurfaceFiles(): string[] {
   walk(join(root, 'apps'), files)
   walk(join(root, 'packages'), files)
   walk(join(root, 'contracts'), files)
-  return files.filter((file) => !METADATA_ONLY_CONFIG_PATHS.has(relative(root, file))).sort()
+  return files.filter((file) => !isMetadataOnlyConfig(relative(root, file))).sort()
 }
 
 /** Every pnpm-workspace member manifest (packages/*, apps/*, tests/*) plus the root. */

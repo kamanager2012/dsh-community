@@ -15,6 +15,8 @@ describe('Android runtime substrate evidence', () => {
       sandboxProbe?: string
       androidCompositionPatch?: string
       appUidPreflight?: string
+      evidenceBackingValidator?: string
+      evidenceRecords?: string
       ptyProvider?: string
       ptyProviderProbe?: string
       packageClosure?: {
@@ -42,6 +44,8 @@ describe('Android runtime substrate evidence', () => {
     expect(state.sandboxProbe).toBe('scripts/android-sandbox-landlock-probe.sh')
     expect(state.androidCompositionPatch).toBe('apps/android/nodejs-project/src/main/js/android.cordis.patch.yml')
     expect(state.appUidPreflight).toBe('apps/android/nodejs-project/src/main/js/android-app-uid-preflight.cjs')
+    expect(state.evidenceBackingValidator).toBe('scripts/validate-android-evidence-backing.mjs')
+    expect(state.evidenceRecords).toBe('apps/android/evidence/records')
     expect(state.ptyProvider).toBe('apps/android/nodejs-project/src/main/js/android-subprocess-provider.mjs')
     expect(state.ptyProviderProbe).toBe('apps/android/nodejs-project/src/main/js/android-pty-provider-device-probe.mjs')
     expect(state.packageClosure?.status).toBe('BLOCKED')

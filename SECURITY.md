@@ -190,8 +190,16 @@ Out of scope (report upstream instead):
   Termux/system `rg`, silently substituting a newer ripgrep, or forking the
   official glob/grep implementation solely to replace binary resolution are
   all forbidden.
+- Android evidence is fail-closed as well as release state. Every promoted PASS in
+  `apps/android/evidence/reality-gate.json` must be backed by a version-bound
+  record under `apps/android/evidence/records/`. The validator requires
+  offset-aware capture time, exact DSH identity, full Community Git SHA, hashed
+  artifacts, and hashed device identity rather than raw serials. App-UID-only
+  claims (sandbox/hard-link/PTY) reject adb-shell records. A ripgrep record cannot
+  override the current unresolved official package/path-seam blocker.
 - Android publication is fail-closed through
-  `scripts/verify-android-release-ready.mjs` (`node scripts/verify-android-release-ready.mjs`).
+  `scripts/verify-android-release-ready.mjs` (`node scripts/verify-android-release-ready.mjs`),
+  which invokes the evidence-backing validator before evaluating release state.
   It requires coherent PASS evidence for carrier identity, native closure,
   real-device DSH boot, APK smokes, carrier/APK SHA-256, and the in-app runtime
   gate. The committed `apps/android/evidence/reality-gate.json` is currently

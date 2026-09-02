@@ -49,6 +49,30 @@ Full DSH Web PASS
 - `apps/android/runtime-substrate.json`
 - `apps/android/native-blockers.json`
 
+## Evidence backing
+
+`apps/android/evidence/reality-gate.json` 仍是发布状态真源，但 PASS 不再允许“只改 JSON”。
+
+运行：
+
+```bash
+node scripts/validate-android-evidence-backing.mjs
+```
+
+每个被提升的 PASS 必须在 `apps/android/evidence/records/` 中有对应记录。记录至少绑定：
+
+- exact official DSH `0.1.2-alpha.4`
+- full Community Git SHA
+- offset-aware RFC3339 capture time
+- artifact SHA-256
+- 设备只保存 serial/device id 的 SHA-256，不保存原始序列号
+- Android API level / ABI
+- 对 sandbox / hard-link / PTY 这类 APK UID 语义，`executionContext` 必须是 `APK_APP_UID`
+
+证据 record **不会自动提升状态**；它只是让某个 PASS 具备可审计背书。架构 blocker 优先级更高：当前 ripgrep seam 未解决时，任何 ripgrep record 都不能把 `ripgrepPackaging` 变成合法 PASS。
+
+`node scripts/verify-android-release-ready.mjs` 已内置这一验证，因此手工绕过 CI 运行发布检查也不能跳过 evidence backing。
+
 ## Reality Gate
 
 ### G0 — 官方 CLI 安装闭包

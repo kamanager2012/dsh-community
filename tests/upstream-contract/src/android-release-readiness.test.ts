@@ -39,6 +39,7 @@ describe('Android release readiness is fail-closed', () => {
     expect(source).toContain('f8fe6858549f75a4b4e9633abf39dd2038dbf496')
     expect(source).toContain("const EXPECTED_DSH = '0.1.2-alpha.4'")
     expect(source).toContain("const EXPECTED_NODE = '22.19.0'")
+    expect(source).toContain('scripts/validate-android-evidence-backing.mjs')
   })
 
   it('keeps empty Reality Gate evidence explicit rather than inferred', () => {

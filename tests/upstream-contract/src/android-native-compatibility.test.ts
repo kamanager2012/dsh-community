@@ -16,6 +16,9 @@ describe('Android G2 native compatibility', () => {
       sandboxProbe?: string
       androidCompositionPatch?: string
       appUidPreflight?: string
+      evidenceBackingValidator?: string
+      evidenceRecords?: string
+      evidencePromotionRule?: string
       ripgrepSeamAudit?: string
       ptyProviderProbe?: string
       providerSeams?: {
@@ -77,6 +80,9 @@ describe('Android G2 native compatibility', () => {
     expect(state.sandboxProbe).toBe('scripts/android-sandbox-landlock-probe.sh')
     expect(state.androidCompositionPatch).toBe('apps/android/nodejs-project/src/main/js/android.cordis.patch.yml')
     expect(state.appUidPreflight).toBe('apps/android/nodejs-project/src/main/js/android-app-uid-preflight.cjs')
+    expect(state.evidenceBackingValidator).toBe('scripts/validate-android-evidence-backing.mjs')
+    expect(state.evidenceRecords).toBe('apps/android/evidence/records')
+    expect(state.evidencePromotionRule).toContain('matching version-bound evidence record')
     expect(state.ripgrepSeamAudit).toBe('scripts/audit-android-ripgrep-seam.mjs')
     expect(state.ptyProviderProbe).toBe('apps/android/nodejs-project/src/main/js/android-pty-provider-device-probe.mjs')
     expect(state.providerSeams?.subprocess).toMatchObject({
