@@ -41,6 +41,22 @@ Machine-readable state:
 - `apps/android/runtime-substrate.json`
 - `apps/android/native-blockers.json`
 
+## Evidence backing
+
+`apps/android/evidence/reality-gate.json` remains the release-state source of truth, but a PASS can no longer exist as a bare JSON edit.
+
+Run:
+
+```bash
+node scripts/validate-android-evidence-backing.mjs
+```
+
+Every promoted PASS needs a matching record under `apps/android/evidence/records/` bound to the exact official DSH version, a full Community Git SHA, offset-aware capture time, artifact SHA-256, hashed device identity (never the raw serial), Android API level, and ABI. Sandbox, hard-link, and PTY claims additionally require `executionContext: APK_APP_UID`; adb-shell evidence cannot back them.
+
+Records do **not** promote a gate by themselves. They only make an already-adjudicated PASS auditable, and they cannot override architecture blockers. In particular, a ripgrep record is rejected while the official Android package/path seam remains unresolved.
+
+`node scripts/verify-android-release-ready.mjs` invokes the validator before release-state evaluation, so the rule also applies outside CI.
+
 ## Reality Gates
 
 ### G0 — Published CLI installation closure

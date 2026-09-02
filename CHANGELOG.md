@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Android Reality Gate 增加“证据背书”硬约束：新增 `scripts/validate-android-evidence-backing.mjs` 与 `apps/android/evidence/records/`。今后 `reality-gate.json` 中任何 PASS 都必须存在对应的、绑定 `0.1.2-alpha.4` / Community full SHA / offset-aware capturedAt / artifact SHA-256 / hashed device identity 的记录；app-UID-only sandbox/hard-link/PTY 不接受 adb-shell 记录。
+- `verify-android-release-ready.mjs` 现先执行 evidence-backing validator。记录本身不会自动提升 gate，也不能绕过 architecture blocker：例如当前 ripgrep 缺官方 Android package/path seam 时，即使放入一份“ripgrep PASS”记录也必须拒绝。
+
 - Android 上游兼容层新增通用 drift gate：`scripts/audit-android-upstream-drift.mjs --official-source-root <deepseek-harness>` 一次检查官方 PTY Android inspector、sandbox Android chain、fs-search executable-path seam / Android ripgrep package，以及 session/attachment hard-link 发布语义。当前 alpha.4 形状为 `NO_DRIFT`；任何信号变化均返回非零 `REVIEW_REQUIRED`，禁止在新官方版本上盲目沿用旧 Community adapter。
 - Android provider 的生命周期原则正式机器化：Community PTY / sandbox / app-UID preflight 都是“填官方空缺”的暂时适配层，不是永久 fork。未来官方一旦拥有对应 Android 能力，升级流程必须先重裁并优先删除 Community 适配，而不是形成双轨 runtime。
 
