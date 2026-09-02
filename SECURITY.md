@@ -174,10 +174,18 @@ Out of scope (report upstream instead):
   environment seam, imports `@vscode/ripgrep` in Node mode, and only uses an
   executable sidecar when `'pkg' in process`. The frozen runtime lock contains
   no Android `@vscode/ripgrep-*` package.
-- `scripts/audit-android-ripgrep-seam.mjs` is the re-adjudication gate for each
-  official DSH upgrade. It verifies the supplied official source blob identity
-  when requested, detects an explicit future path seam conservatively, and
-  never converts seam presence into compatibility PASS without review.
+- `scripts/audit-android-ripgrep-seam.mjs` is the focused fs-search
+  re-adjudication gate. It verifies supplied official source identity when
+  requested, detects a future executable-path seam conservatively, and never
+  converts seam presence into compatibility PASS without review.
+- `scripts/audit-android-upstream-drift.mjs` is the broader upgrade gate for
+  Android-owned adaptation. Against the reviewed official source checkout it
+  compares PTY Android support, sandbox Android support, fs-search seam/package
+  availability, and session/attachment hard-link publication against the
+  committed machine baseline. Any drift returns `REVIEW_REQUIRED` and blocks
+  blind carry-forward of Community providers or preflights. Upstream ownership
+  supersedes Community adaptation after review; old adapters are removed rather
+  than kept as a shadow runtime.
   Publishing a fake `@vscode` package, spoofing `process.pkg`, relying on a
   Termux/system `rg`, silently substituting a newer ripgrep, or forking the
   official glob/grep implementation solely to replace binary resolution are

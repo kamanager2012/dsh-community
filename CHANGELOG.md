@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Android 上游兼容层新增通用 drift gate：`scripts/audit-android-upstream-drift.mjs --official-source-root <deepseek-harness>` 一次检查官方 PTY Android inspector、sandbox Android chain、fs-search executable-path seam / Android ripgrep package，以及 session/attachment hard-link 发布语义。当前 alpha.4 形状为 `NO_DRIFT`；任何信号变化均返回非零 `REVIEW_REQUIRED`，禁止在新官方版本上盲目沿用旧 Community adapter。
+- Android provider 的生命周期原则正式机器化：Community PTY / sandbox / app-UID preflight 都是“填官方空缺”的暂时适配层，不是永久 fork。未来官方一旦拥有对应 Android 能力，升级流程必须先重裁并优先删除 Community 适配，而不是形成双轨 runtime。
+
 - Android PTY 真机门禁从 raw `node-pty` smoke 升级为 provider-level preliminary smoke：新增 `android-pty-provider-device-probe.mjs`，并接入 `scripts/android-native-addon-probe.sh device/verify`。在 raw addon 可加载之后继续复用真实 `AndroidProcessInspector` + `AndroidTerminalHandle`，验证 PTY 写入、foreground `SIGINT`、signal 后恢复写入及整个 POSIX session cleanup。
 - provider-level 成功标记固定为 `ANDROID_PTY_PROVIDER_ADB_SHELL_OK_NOT_APP_UID_ACCEPTANCE`；它只证明 adb-shell execution world 下 provider substrate 可工作，不能升级 `reality-gate.json`，也不能替代 APK app UID + 官方 Web `minimal` persistent-terminal Reality Gate。
 
