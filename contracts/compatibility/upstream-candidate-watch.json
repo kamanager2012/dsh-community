@@ -6,7 +6,8 @@
     "upstreamReleaseCommit": "14bab4422b12ab80cd79de59e086c12888fe00be",
     "upstreamMergeCommit": "dd6322d604e00eec1ba5e0c8541159906a21094a",
     "acceptedCommunityMain": "4e30f8198b50a3ce88ff66fb39e848f3f05ade58",
-    "disposition": "PREVIOUS_ACCEPTED_BASELINE"
+    "disposition": "PREVIOUS_ACCEPTED_BASELINE",
+    "releasedAt": "2026-08-31T15:53:17Z"
   },
   "frozenTarget": {
     "package": "@deepseek-ai/dsh",
