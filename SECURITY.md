@@ -94,6 +94,19 @@ Out of scope (report upstream instead):
 
 ## Android security boundary
 
+The Android target is now a lightweight Remote Client. Remote security is fail-closed and currently **[LABS] / [UNVERIFIED]**:
+
+- official DSH execution, credentials, tools, repository access, and durable Session truth stay on the trusted Host;
+- Remote application payloads must be protected end-to-end with the target Noise IK session across LAN, WebRTC, and relay transports;
+- the relay is blind forwarding infrastructure and must not terminate application plaintext;
+- pairing uses explicit Host identity plus a one-time bootstrap token; persistent device keys are revocable;
+- remote capabilities are least-privilege and do not include a generic shell, generic filesystem bridge, credential export, or independent tool executor;
+- mutating Prompt/approval/question operations require idempotency so reconnect/failover cannot duplicate an action.
+
+See [docs/remote-host-client.md](docs/remote-host-client.md). None of these Remote controls is promoted to production evidence merely because the architecture is documented.
+
+### Legacy embedded-runtime security evidence
+
 - Android source is active but remains `[UNVERIFIED]`; its machine-readable
   runtime substrate is currently `BLOCKED`. Official DSH alpha.4 needs Node
   22.19+, while the latest stock nodejs-mobile Android release observed for this
