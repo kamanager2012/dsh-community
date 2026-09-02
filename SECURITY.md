@@ -101,8 +101,15 @@ Out of scope (report upstream instead):
   therefore not treated as a runtime integration.
 - The target embedded Web bootstrap is explicitly loopback-only
   (`127.0.0.1`, `--no-open`), but it is not claimed as wired into a runnable
-  APK yet. No APK or real-device security claim is made until the Android
-  Reality Gate passes.
+  APK yet. The current carrier candidate is a self-validated cross-build of
+  official Node `v22.19.0`; Node upstream itself classifies Android as an
+  unsupported platform with no CI coverage, so this candidate cannot advance
+  without our real-device gate.
+- A successful Node carrier is not sufficient for DSH: the current native
+  closure still includes `node-pty`/`koffi`, `sharp`, platform sandbox
+  binaries, and packaged ripgrep. Their machine-readable status lives in
+  `apps/android/native-blockers.json`. No APK or real-device security claim
+  is made until those gates and the Android Reality Gate pass.
 
 ## Session and credential data
 
