@@ -133,6 +133,53 @@ node scripts/verify-android-release-ready.mjs
 
 不能通过“模块大概不会被用到”升级证据等级。
 
+### G2 — Native addon 与 Android 语义分离验证
+
+G2 现在拆成两层，不能再用一个“native build 成功”概括。
+
+机器真源：
+
+- `apps/android/native-compatibility.json`
+- 手工 probe：`scripts/android-native-addon-probe.sh`
+
+#### G2-A：原始 frozen addon build/load
+
+调用方先通过 G1，然后提供：
+
+- committed alpha.4 runtime lock 生成的 classic `node_modules` staging tree
+- 精确 Node `v22.19.0` source/build
+- Android NDK
+- 真机 adb（device/verify 模式）
+
+运行：
+
+```bash
+RUNTIME_DIR=/abs/runtime-stage \
+NODE_SOURCE_DIR=/abs/node-v22.19.0 \
+ANDROID_NDK_HOME=/abs/android-ndk \
+bash scripts/android-native-addon-probe.sh verify
+```
+
+probe 不下载依赖，也不修改上游源码：
+
+- `node-pty@1.2.0-beta.15`：沿 Node 官方 Android GYP/NDK 环境原样 source rebuild；当前精确 upstream tag commit 为 `8f218f6c194be81d98b1eeea344b150e83445824`。
+- `koffi@3.1.6`：使用 frozen npm 包内原始 CMake source + Android NDK toolchain 构建，不给 Koffi 源码打补丁。
+- 真机分别执行 Koffi `getpid()` FFI smoke 和 node-pty `/system/bin/sh` PTY smoke。
+
+这里故意不预先修 `-lutil`、Bionic、N-API/linker 等问题；如果 unmodified build 失败，真实错误就是下一轮兼容补丁的证据。
+
+#### G2-B：addon 能 load 仍不等于官方 DSH 可运行
+
+即使 G2-A PASS，以下仍是独立硬门：
+
+1. **Terminal inspector**：alpha.4 `createProcessInspector()` 只接受 `linux / darwin / win32`。Node Android carrier 的 `process.platform` 是 `android`，所以 terminal inspection 需要上游 Android 分支或经正式架构评审的官方 seam adapter。
+2. **Sandbox**：`dsh-sandbox-local` 的 `PLATFORM_CHAINS` 同样没有 Android，未识别平台按设计 fail closed。需要 Android runner/上游支持，并且必须在 APK app UID 下测内核与权限能力。
+3. **POSIX hard-link durable publish**：alpha.4 session persistence 和 attachment store 在非 win32 路径仍使用 `link()`。必须在 APK 私有文件目录验证；`/data/local/tmp`、Termux home 或其他 shell UID 结果不能代替。
+4. **sharp**：当前 frozen 0.35.4 没有 Android prebuild。WASM fallback 有公开 Android/Termux 实证，但 exact 0.35.4 路径尚未进入本项目证据。
+5. **ripgrep**：Termux 的 system `rg` 不是自包含 APK 方案；必须打包 Android binary 或等待上游 target。
+
+所以当前 G2 仍是 **BLOCKED**，只是 blocker 已经从“泛泛 native 不支持”缩成可逐项验证的工程门。
+
 ### G3 — Official DSH boot
 
 必须在 Android carrier 上实际启动：

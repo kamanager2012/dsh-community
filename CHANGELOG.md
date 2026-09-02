@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Android G2 从“native closure 总阻断”拆成可执行的 addon/语义双门禁：新增 `apps/android/native-compatibility.json` 与手工 `scripts/android-native-addon-probe.sh`。probe 只接受 frozen alpha.4 runtime、精确 Node 22.19.0 carrier source/build、Android NDK 与可选 adb；不下载、不修改上游源码，原样重建 `node-pty@1.2.0-beta.15` 和 `koffi@3.1.6`，真机执行 FFI + PTY smoke。
+- Koffi blocker 口径修正：3.1.6 已在 Android/Termux 已知构建问题修复之后，故从“无路”改为 `CROSS_BUILD_PROBE_REQUIRED`，但官方支持矩阵仍无 Android，不能升级 PASS。node-pty 精确绑定 upstream `v1.2.0-beta.15` commit `8f218f6c194be81d98b1eeea344b150e83445824`。
+- 新增不能被 addon PASS 覆盖的 Android 语义门：`subprocess-local` terminal inspector 无 Android branch、`sandbox-local` 无 Android platform chain、session/attachment 的 POSIX `link()` 必须在 APK 私有目录验证；sharp 0.35.4 WASM fallback 与 Android ripgrep 仍保持独立未验证状态。Release verifier 已要求这些 G2 子门全部 PASS。
+
 - Android G0 安装闭包审计落地：新增 `scripts/audit-android-official-cli-closure.mjs`，直接读取 committed alpha.4 runtime lock，验证 `@deepseek-ai/dsh → dsh-base/sdk-minimal/tool-fs-search → subprocess/attachment/sandbox/fs-search → node-pty/koffi/sharp/ripgrep` 的真实依赖边。当前机器裁决为 `BLOCKED_BY_NATIVE_CLOSURE`，且 `profileOnlyMitigation=INEFFECTIVE`：disable Cordis row 不能删除 npm 安装依赖。
 - Android 路线因此进一步收敛：默认坚持顶层官方 `@deepseek-ai/dsh`，优先解决/交叉构建 native closure；只有官方上游包拓扑变化才重新裁决。绕开顶层 CLI、仅组装底层官方模块不会被偷偷采用，因为那会改变“官方发布 CLI 是 Runtime 真源”的产品边界。
 

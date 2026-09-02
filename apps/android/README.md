@@ -8,7 +8,8 @@ This is the restored first-party Android endpoint source for DSH Community.
 - **Current blocker:** official DSH alpha.4 requires Node `^22.19.0 || >=24.0.0`; the latest stock nodejs-mobile Android release observed on 2026-09-02 is Node 18.20.4. The restored Labs Gradle plugin declaration was removed instead of being presented as a working Node 22 integration.
 - **Package-closure blocker:** the published top-level `@deepseek-ai/dsh` package eagerly pulls the current native closure; profile-only row disabling does not remove those install dependencies. Run `node scripts/audit-android-official-cli-closure.mjs`.
 - **Reality gate:** compatible Node 22.19+ Android substrate → `scripts/termux-verify.sh` → embedded-runtime E2E → APK smoke on arm64/x86_64 → release evidence.
-- **Machine state:** see [runtime-substrate.json](runtime-substrate.json), [native-blockers.json](native-blockers.json), and [evidence/reality-gate.json](evidence/reality-gate.json).
+- **Machine state:** see [runtime-substrate.json](runtime-substrate.json), [native-blockers.json](native-blockers.json), [native-compatibility.json](native-compatibility.json), and [evidence/reality-gate.json](evidence/reality-gate.json).
+- **G2 native probe:** `scripts/android-native-addon-probe.sh` rebuilds the frozen node-pty/Koffi sources without downloading or patching them, then optionally runs real-device FFI/PTTY smoke. Addon PASS alone does not clear terminal-inspector, sandbox, app-private hard-link, sharp, or ripgrep gates.
 - **Release gate:** `node scripts/verify-android-release-ready.mjs` is intentionally fail-closed while any carrier/native/device/APK evidence is incomplete.
 - **Substrate decision:** [中文](../../docs/android-runtime-substrate.md) / [English](../../docs/android-runtime-substrate.en.md).
 - **Boundary:** DeepSeek DSH only. No Codex runtime and no third-party Remote implementation are included.

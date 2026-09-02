@@ -21,6 +21,7 @@ function fail(reasons) {
 
 const substrate = readJson('apps/android/runtime-substrate.json')
 const native = readJson('apps/android/native-blockers.json')
+const compatibility = readJson('apps/android/native-compatibility.json')
 const evidence = readJson('apps/android/evidence/reality-gate.json')
 const app = readFileSync(
   resolve(ROOT, 'apps/android/app/src/main/java/org/dsh/community/android/DshApp.kt'),
@@ -51,6 +52,17 @@ for (const blocker of native.blockers ?? []) {
   if (blocker.status !== 'RESOLVED') reasons.push(`native blocker ${String(blocker.id)} status=${String(blocker.status)}`)
 }
 
+for (const component of compatibility.components ?? []) {
+  if (component.status !== 'PASS') {
+    reasons.push(`Android compatibility component ${String(component.id)} status=${String(component.status)}`)
+  }
+}
+for (const blocker of compatibility.semanticBlockers ?? []) {
+  if (blocker.status !== 'PASS') {
+    reasons.push(`Android semantic blocker ${String(blocker.id)} status=${String(blocker.status)}`)
+  }
+}
+
 if (evidence.status !== 'PASS') reasons.push(`Reality Gate status=${String(evidence.status)}`)
 for (const gate of ['carrier', 'nativeClosure', 'dshBoot', 'apk']) {
   if (evidence.gates?.[gate] !== 'PASS') reasons.push(`Reality Gate ${gate}=${String(evidence.gates?.[gate])}`)
@@ -64,6 +76,17 @@ if (evidence.nodeCarrier?.sourceCommit !== EXPECTED_NODE_COMMIT) reasons.push('R
 if (evidence.nodeCarrier?.deviceVerified !== true) reasons.push('Node carrier was not verified on a real Android device')
 if (typeof evidence.nodeCarrier?.sha256 !== 'string' || !/^[a-f0-9]{64}$/u.test(evidence.nodeCarrier.sha256)) {
   reasons.push('Node carrier SHA-256 evidence missing')
+}
+const nativeEvidence = evidence.nativeEvidence ?? {}
+for (const key of [
+  'addonBuildAndLoad',
+  'terminalInspector',
+  'sandbox',
+  'appPrivateHardlinks',
+  'sharpFallback',
+  'ripgrepPackaging',
+]) {
+  if (nativeEvidence[key] !== 'PASS') reasons.push(`Android native evidence ${key}=${String(nativeEvidence[key])}`)
 }
 if (evidence.dshBootVerified !== true) reasons.push('official DSH Android boot evidence missing')
 if (evidence.device === null || typeof evidence.device !== 'object') reasons.push('real-device identity/evidence missing')
