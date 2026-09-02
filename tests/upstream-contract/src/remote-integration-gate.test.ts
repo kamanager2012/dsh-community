@@ -45,10 +45,10 @@ describe('remote integration gate', () => {
     expect(gate.acceptedBaseline.lockContractGeneratorRunId).toBe(33575142240)
     expect(gate.finalAcceptance.status).toBe('PASS')
     expect(gate.finalAcceptance.version).toBe('0.1.2-alpha.4')
-    expect(gate.finalAcceptance.runId).toBe(33576016696)
-    expect(gate.finalAcceptance.jobId).toBe(100080034357)
+    expect(gate.finalAcceptance.runId).toBe(33577261413)
+    expect(gate.finalAcceptance.jobId).toBe(100083859312)
     expect(gate.finalAcceptance.runHeadCommit)
-      .toBe('6babf377b22426a1d29d0bbe27c82f62bb2a88dc')
+      .toBe('434570ca350ca65cdf2ada01b9fcfacae387c5ef')
     expect(gate.finalAcceptance.runtimeDshEntries).toBe(214)
     expect(gate.finalAcceptance.providerCalls).toBe(0)
 
