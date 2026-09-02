@@ -1,0 +1,24 @@
+name: alpha4-registry-gate-temp
+
+on:
+  push:
+    branches:
+      - 'upgrade/dsh-0.1.2-alpha.4'
+    paths:
+      - '.alpha4-registry-gate-trigger'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+      - name: Verify exact alpha.4 root package exists
+        run: |
+          set -euo pipefail
+          test "$(npm view @deepseek-ai/dsh@0.1.2-alpha.4 version)" = "0.1.2-alpha.4"
