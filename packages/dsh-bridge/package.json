@@ -1,6 +1,6 @@
 {
   "name": "@dsh-community/dsh-bridge",
-  "version": "0.1.2-alpha.3",
+  "version": "0.1.2-alpha.4",
   "private": true,
   "type": "module",
   "exports": {
@@ -18,7 +18,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@deepseek-ai/dsh": "0.1.2-alpha.3",
+    "@deepseek-ai/dsh": "0.1.2-alpha.4",
     "@dsh-community/shared-types": "workspace:*"
   }
 }
