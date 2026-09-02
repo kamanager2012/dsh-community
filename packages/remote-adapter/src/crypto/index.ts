@@ -1,6 +1,7 @@
 export * from './errors.js'
 export * from './host-identity.js'
 export * from './device-trust.js'
+export * from './file-device-trust.js'
 export * from './pairing-token.js'
 export * from './pairing-coordinator.js'
 export * from './channel-gate.js'

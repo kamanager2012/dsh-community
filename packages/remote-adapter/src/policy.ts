@@ -14,37 +14,31 @@ export { requiredCapability }
  */
 export class DeviceRegistry {
   readonly trustStore: DeviceTrustStore
-  currentTrustDomainId: string
 
   constructor(
     trustStoreOrMaxDevices?: DeviceTrustStore | number,
-    currentTrustDomainId = 'default-trust-domain',
   ) {
     if (typeof trustStoreOrMaxDevices === 'number' || trustStoreOrMaxDevices === undefined) {
       this.trustStore = new InMemoryDeviceTrustStore(trustStoreOrMaxDevices ?? 128)
     } else {
       this.trustStore = trustStoreOrMaxDevices
     }
-    this.currentTrustDomainId = currentTrustDomainId
   }
 
+  /**
+   * P0-3: Device trust enrollment strictly requires authentic 32-byte static public key.
+   * Device identity is computed exclusively via computeFingerprint(staticPublicKey).
+   */
   trust(
-    deviceId: string,
+    staticPublicKey: Uint8Array,
     capabilities: readonly Capability[],
-    options?: { staticPublicKey?: Uint8Array; displayName?: string; trustDomainId?: string },
+    options: { displayName?: string; trustDomainId: string },
   ): DeviceRecord {
-    const domainId = options?.trustDomainId ?? this.currentTrustDomainId
-    const staticPublicKey =
-      options?.staticPublicKey ??
-      Buffer.from(deviceId.padEnd(32, '0').slice(0, 32), 'utf8')
-    const displayName = options?.displayName ?? 'Device'
-
     return this.trustStore.trustSync({
       staticPublicKey,
-      displayName,
+      displayName: options.displayName ?? 'Device',
       grantedCapabilities: capabilities,
-      trustDomainId: domainId,
-      deviceId,
+      trustDomainId: options.trustDomainId,
     })
   }
 
@@ -52,7 +46,7 @@ export class DeviceRegistry {
     this.trustStore.revokeSync(deviceId)
   }
 
-  assertAuthorized(deviceId: string, method: RemoteMethod): DeviceRecord {
-    return this.trustStore.assertAuthorizedSync(deviceId, this.currentTrustDomainId, method)
+  assertAuthorized(deviceId: string, method: RemoteMethod, currentTrustDomainId: string): DeviceRecord {
+    return this.trustStore.assertAuthorizedSync(deviceId, currentTrustDomainId, method)
   }
 }

@@ -64,7 +64,7 @@ export class PairingCoordinator {
   }
 
   async confirmPairing(params: PairingConfirmationParams): Promise<PairingResult> {
-    const candidate = this.tokenRegistry.getCandidate(params.candidateId)
+    const candidate = this.tokenRegistry.getInternalCandidate(params.candidateId)
     if (!candidate) {
       throw new RemoteCryptoError('PAIRING_FAILED', 'pairing candidate not found or already consumed')
     }

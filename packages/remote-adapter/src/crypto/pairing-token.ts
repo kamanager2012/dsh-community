@@ -5,9 +5,9 @@ import { RemoteCryptoError } from './errors.js'
 import { computeFingerprint } from './host-identity.js'
 
 export const DEFAULT_PAIRING_TTL_MS = 5 * 60 * 1000 // 5 minutes
-export const MAX_PAIRING_TTL_MS = 5 * 60 * 1000 // 5 minutes ceiling
+export const MAX_PAIRING_TTL_MS = 5 * 60 * 1000 // 5 minutes ceiling (300,000 ms)
 
-export interface PairingCandidate {
+export interface StoredPairingCandidate {
   readonly candidateId: string
   readonly remoteStaticPublicKey: Uint8Array
   readonly deviceId: string
@@ -17,6 +17,34 @@ export interface PairingCandidate {
   readonly trustDomainId: string
   readonly hostGeneration: number
   readonly expiresAt: number
+}
+
+export interface PairingCandidateView {
+  readonly candidateId: string
+  readonly remoteStaticPublicKey: Uint8Array
+  readonly deviceId: string
+  readonly displayName: string
+  readonly maxAllowedCapabilities: readonly Capability[]
+  readonly tokenHash: string
+  readonly trustDomainId: string
+  readonly hostGeneration: number
+  readonly expiresAt: number
+}
+
+export type PairingCandidate = PairingCandidateView
+
+function toCandidateView(stored: StoredPairingCandidate): PairingCandidateView {
+  return Object.freeze({
+    candidateId: stored.candidateId,
+    remoteStaticPublicKey: new Uint8Array(stored.remoteStaticPublicKey),
+    deviceId: stored.deviceId,
+    displayName: stored.displayName,
+    maxAllowedCapabilities: Object.freeze([...stored.maxAllowedCapabilities]),
+    tokenHash: stored.tokenHash,
+    trustDomainId: stored.trustDomainId,
+    hostGeneration: stored.hostGeneration,
+    expiresAt: stored.expiresAt,
+  })
 }
 
 interface StoredTokenRecord {
@@ -46,7 +74,7 @@ export class PairingToken {
   ) {
     this.tokenHash = tokenHash
     this.expiresAt = expiresAt
-    this.allowedCapabilities = allowedCapabilities
+    this.allowedCapabilities = Object.freeze([...allowedCapabilities])
     this.trustDomainId = trustDomainId
     this.hostGeneration = hostGeneration
     Object.defineProperty(this, 'rawToken', {
@@ -82,7 +110,7 @@ export class PairingToken {
 
 export class PairingTokenRegistry {
   private readonly tokens = new Map<string, StoredTokenRecord>()
-  private readonly candidates = new Map<string, PairingCandidate>()
+  private readonly candidates = new Map<string, StoredPairingCandidate>()
   private readonly clock: () => number
 
   constructor(
@@ -94,7 +122,23 @@ export class PairingTokenRegistry {
     if (!Number.isInteger(maxPending) || maxPending < 1) {
       throw new Error('maxPending must be a positive integer')
     }
-    if (!Number.isInteger(defaultTtlMs) || defaultTtlMs < 1 || defaultTtlMs > maxTtlMs) {
+    if (
+      !Number.isInteger(maxTtlMs) ||
+      !Number.isFinite(maxTtlMs) ||
+      maxTtlMs < 1 ||
+      maxTtlMs > MAX_PAIRING_TTL_MS
+    ) {
+      throw new RemoteCryptoError(
+        'STATE_CAPACITY_EXCEEDED',
+        `maxTtlMs must be an integer between 1 and ${MAX_PAIRING_TTL_MS}`,
+      )
+    }
+    if (
+      !Number.isInteger(defaultTtlMs) ||
+      !Number.isFinite(defaultTtlMs) ||
+      defaultTtlMs < 1 ||
+      defaultTtlMs > maxTtlMs
+    ) {
       throw new Error(`defaultTtlMs must be a positive integer <= ${maxTtlMs}`)
     }
     this.clock = options?.clock ?? Date.now
@@ -184,7 +228,7 @@ export class PairingTokenRegistry {
     currentTrustDomainId: string
     currentHostGeneration: number
     requestedCapabilities?: readonly Capability[] | undefined
-  }): PairingCandidate {
+  }): PairingCandidateView {
     const now = this.clock()
     const tokenHash = this.hashToken(params.rawToken)
     const record = this.tokens.get(tokenHash)
@@ -209,12 +253,13 @@ export class PairingTokenRegistry {
     const derivedDeviceId = computeFingerprint(params.remoteStaticPublicKey)
     const candidateId = `cand-${randomBytes(16).toString('hex')}`
 
-    const candidate: PairingCandidate = {
+    // Internal stored record (defensively copied)
+    const storedCandidate: StoredPairingCandidate = {
       candidateId,
       remoteStaticPublicKey: new Uint8Array(params.remoteStaticPublicKey),
       deviceId: derivedDeviceId,
       displayName: params.displayName,
-      maxAllowedCapabilities: record.allowedCapabilities,
+      maxAllowedCapabilities: [...record.allowedCapabilities],
       tokenHash,
       trustDomainId: record.trustDomainId,
       hostGeneration: record.hostGeneration,
@@ -222,12 +267,17 @@ export class PairingTokenRegistry {
     }
 
     record.inReviewCandidateId = candidateId
-    this.candidates.set(candidateId, candidate)
+    this.candidates.set(candidateId, storedCandidate)
 
-    return candidate
+    return toCandidateView(storedCandidate)
   }
 
-  getCandidate(candidateId: string): PairingCandidate | undefined {
+  getCandidate(candidateId: string): PairingCandidateView | undefined {
+    const stored = this.candidates.get(candidateId)
+    return stored ? toCandidateView(stored) : undefined
+  }
+
+  getInternalCandidate(candidateId: string): StoredPairingCandidate | undefined {
     return this.candidates.get(candidateId)
   }
 

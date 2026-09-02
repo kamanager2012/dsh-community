@@ -12,18 +12,54 @@ export const requiredCapability: Readonly<Partial<Record<RemoteMethod, Capabilit
   'stream.ack': 'observe',
 }
 
-export interface DeviceRecord {
+export interface StoredDeviceRecord {
   readonly deviceId: string
   readonly staticPublicKey: Uint8Array
   readonly fingerprint: string
   readonly trustDomainId: string
   displayName: string
-  grantedCapabilities: ReadonlySet<Capability>
+  grantedCapabilities: Set<Capability>
   readonly pairedAt: number
   lastSeenAt: number
   revokedAt?: number | undefined
   keyVersion: number
 }
+
+export interface DeviceRecord {
+  readonly deviceId: string
+  readonly staticPublicKey: Uint8Array
+  readonly fingerprint: string
+  readonly trustDomainId: string
+  readonly displayName: string
+  readonly grantedCapabilities: ReadonlySet<Capability>
+  readonly pairedAt: number
+  readonly lastSeenAt: number
+  readonly revokedAt?: number | undefined
+  readonly keyVersion: number
+}
+
+export function toDeviceRecordSnapshot(stored: StoredDeviceRecord): DeviceRecord {
+  return Object.freeze({
+    deviceId: stored.deviceId,
+    staticPublicKey: new Uint8Array(stored.staticPublicKey),
+    fingerprint: stored.fingerprint,
+    trustDomainId: stored.trustDomainId,
+    displayName: stored.displayName,
+    grantedCapabilities: new Set(stored.grantedCapabilities),
+    pairedAt: stored.pairedAt,
+    lastSeenAt: stored.lastSeenAt,
+    revokedAt: stored.revokedAt,
+    keyVersion: stored.keyVersion,
+  })
+}
+
+export interface DeviceRevocationEvent {
+  readonly deviceId: string
+  readonly revokedAt: number
+  readonly keyVersion: number
+}
+
+export type DeviceRevocationListener = (event: DeviceRevocationEvent) => void
 
 export interface DeviceTrustStore {
   get(deviceId: string): Promise<DeviceRecord | undefined>
@@ -46,6 +82,7 @@ export interface DeviceTrustStore {
   assertAuthorized(deviceId: string, currentTrustDomainId: string, method?: RemoteMethod): Promise<DeviceRecord>
   list(): Promise<readonly DeviceRecord[]>
   size(): Promise<number>
+  subscribeRevocations(listener: DeviceRevocationListener): () => void
 
   // Synchronous contract support to ensure single authoritative store across adapter core
   getSync(deviceId: string): DeviceRecord | undefined
@@ -55,14 +92,14 @@ export interface DeviceTrustStore {
     displayName: string
     grantedCapabilities: readonly Capability[]
     trustDomainId: string
-    deviceId?: string
   }): DeviceRecord
   revokeSync(deviceId: string): boolean
 }
 
 export class InMemoryDeviceTrustStore implements DeviceTrustStore {
-  private readonly devices = new Map<string, DeviceRecord>()
-  private readonly clock: () => number
+  protected readonly devices = new Map<string, StoredDeviceRecord>()
+  private readonly listeners = new Set<DeviceRevocationListener>()
+  protected readonly clock: () => number
 
   constructor(
     readonly maxDevices = 128,
@@ -74,8 +111,32 @@ export class InMemoryDeviceTrustStore implements DeviceTrustStore {
     this.clock = options?.clock ?? Date.now
   }
 
+  subscribeRevocations(listener: DeviceRevocationListener): () => void {
+    if (this.listeners.size >= 32) {
+      throw new RemoteCryptoError(
+        'STATE_CAPACITY_EXCEEDED',
+        'maximum revocation listeners exceeded',
+      )
+    }
+    this.listeners.add(listener)
+    return () => {
+      this.listeners.delete(listener)
+    }
+  }
+
+  protected notifyRevocation(event: DeviceRevocationEvent): void {
+    for (const listener of this.listeners) {
+      try {
+        listener(event)
+      } catch {
+        // Isolation: listener errors must never roll back security revocation
+      }
+    }
+  }
+
   getSync(deviceId: string): DeviceRecord | undefined {
-    return this.devices.get(deviceId)
+    const record = this.devices.get(deviceId)
+    return record ? toDeviceRecordSnapshot(record) : undefined
   }
 
   async get(deviceId: string): Promise<DeviceRecord | undefined> {
@@ -83,8 +144,11 @@ export class InMemoryDeviceTrustStore implements DeviceTrustStore {
   }
 
   async findByPublicKey(staticPublicKey: Uint8Array): Promise<DeviceRecord | undefined> {
+    if (staticPublicKey.byteLength !== 32) {
+      return undefined
+    }
     const fingerprint = computeFingerprint(staticPublicKey)
-    return this.devices.get(fingerprint)
+    return this.getSync(fingerprint)
   }
 
   trustSync(params: {
@@ -92,9 +156,13 @@ export class InMemoryDeviceTrustStore implements DeviceTrustStore {
     displayName: string
     grantedCapabilities: readonly Capability[]
     trustDomainId: string
-    deviceId?: string
   }): DeviceRecord {
-    const fingerprint = params.deviceId ?? computeFingerprint(params.staticPublicKey)
+    if (params.staticPublicKey.byteLength !== 32) {
+      throw new RemoteCryptoError('HANDSHAKE_FAILED', 'static public key must be 32 bytes')
+    }
+
+    // P0-3: Device identity derived strictly from static public key, no arbitrary override
+    const fingerprint = computeFingerprint(params.staticPublicKey)
     const existing = this.devices.get(fingerprint)
     const now = this.clock()
 
@@ -115,7 +183,7 @@ export class InMemoryDeviceTrustStore implements DeviceTrustStore {
       existing.grantedCapabilities = new Set(params.grantedCapabilities)
       existing.lastSeenAt = now
       existing.keyVersion += 1
-      return existing
+      return toDeviceRecordSnapshot(existing)
     }
 
     if (this.devices.size >= this.maxDevices) {
@@ -125,7 +193,7 @@ export class InMemoryDeviceTrustStore implements DeviceTrustStore {
       )
     }
 
-    const record: DeviceRecord = {
+    const stored: StoredDeviceRecord = {
       deviceId: fingerprint,
       staticPublicKey: new Uint8Array(params.staticPublicKey),
       fingerprint,
@@ -137,8 +205,8 @@ export class InMemoryDeviceTrustStore implements DeviceTrustStore {
       keyVersion: 1,
     }
 
-    this.devices.set(fingerprint, record)
-    return record
+    this.devices.set(fingerprint, stored)
+    return toDeviceRecordSnapshot(stored)
   }
 
   async trust(params: {
@@ -153,7 +221,17 @@ export class InMemoryDeviceTrustStore implements DeviceTrustStore {
   revokeSync(deviceId: string): boolean {
     const record = this.devices.get(deviceId)
     if (!record) return false
-    record.revokedAt = this.clock()
+    if (record.revokedAt !== undefined) {
+      // Already revoked: duplicate revoke is a no-op and does not re-emit signal
+      return false
+    }
+    const now = this.clock()
+    record.revokedAt = now
+    this.notifyRevocation({
+      deviceId,
+      revokedAt: now,
+      keyVersion: record.keyVersion,
+    })
     return true
   }
 
@@ -172,17 +250,12 @@ export class InMemoryDeviceTrustStore implements DeviceTrustStore {
       throw new RemoteCryptoError('DEVICE_NOT_TRUSTED', 'device does not exist for re-enrollment')
     }
     const now = this.clock()
-    const updatedRecord: DeviceRecord = {
-      ...record,
-      trustDomainId: params.trustDomainId,
-      displayName: params.displayName ?? record.displayName,
-      grantedCapabilities: new Set(params.grantedCapabilities),
-      revokedAt: undefined,
-      lastSeenAt: now,
-      keyVersion: record.keyVersion + 1,
-    }
-    this.devices.set(params.deviceId, updatedRecord)
-    return updatedRecord
+    record.displayName = params.displayName ?? record.displayName
+    record.grantedCapabilities = new Set(params.grantedCapabilities)
+    record.revokedAt = undefined
+    record.lastSeenAt = now
+    record.keyVersion += 1
+    return toDeviceRecordSnapshot(record)
   }
 
   async remove(deviceId: string): Promise<boolean> {
@@ -216,7 +289,7 @@ export class InMemoryDeviceTrustStore implements DeviceTrustStore {
         )
       }
     }
-    return record
+    return toDeviceRecordSnapshot(record)
   }
 
   async assertAuthorized(deviceId: string, currentTrustDomainId: string, method?: RemoteMethod): Promise<DeviceRecord> {
@@ -224,7 +297,7 @@ export class InMemoryDeviceTrustStore implements DeviceTrustStore {
   }
 
   async list(): Promise<readonly DeviceRecord[]> {
-    return Array.from(this.devices.values())
+    return Array.from(this.devices.values()).map(toDeviceRecordSnapshot)
   }
 
   async size(): Promise<number> {
