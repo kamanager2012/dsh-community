@@ -41,6 +41,9 @@ EXPECTED_NODE_TAG_OBJECT="a9d4750074c7b5439c61daa28ea9afb5dc28e43e"
 EXPECTED_NODE_COMMIT="f8fe6858549f75a4b4e9633abf39dd2038dbf496"
 EXPECTED_NODE_PTY="1.2.0-beta.15"
 EXPECTED_KOFFI="3.1.6"
+EXPECTED_SHARP="0.35.4"
+EXPECTED_SHARP_WASM="0.35.4"
+EXPECTED_EMNAPI="1.11.3"
 
 ANDROID_API="${ANDROID_API:-26}"
 ANDROID_ARCH="${ANDROID_ARCH:-arm64}"
@@ -289,6 +292,36 @@ build_koffi() {
   checksum "$WORK_ROOT/artifacts/koffi.node"
 }
 
+prepare_sharp_smoke_tree() {
+  local runtime="$WORK_ROOT/runtime"
+  [[ -d "$runtime/node_modules" ]] || fail "built runtime work tree is missing for sharp device smoke"
+
+  local packages=(
+    "sharp"
+    "@img/sharp-wasm32"
+    "@emnapi/runtime"
+    "@img/colour"
+    "detect-libc"
+    "semver"
+    "tslib"
+  )
+
+  rm -rf "$WORK_ROOT/sharp-smoke"
+  for package in "${packages[@]}"; do
+    local src="$runtime/node_modules/$package"
+    [[ -d "$src" ]] || fail "sharp WASM materialization gap: missing $package in frozen runtime staging"
+    local dest="$WORK_ROOT/sharp-smoke/node_modules/$package"
+    mkdir -p "$(dirname "$dest")"
+    cp -a "$src" "$dest"
+  done
+
+  [[ "$(json_value "$WORK_ROOT/sharp-smoke/node_modules/sharp/package.json" version)" == "$EXPECTED_SHARP" ]]     || fail "sharp version mismatch in device smoke tree"
+  [[ "$(json_value "$WORK_ROOT/sharp-smoke/node_modules/@img/sharp-wasm32/package.json" version)" == "$EXPECTED_SHARP_WASM" ]]     || fail "sharp-wasm32 version mismatch in device smoke tree"
+  [[ "$(json_value "$WORK_ROOT/sharp-smoke/node_modules/@emnapi/runtime/package.json" version)" == "$EXPECTED_EMNAPI" ]]     || fail "emnapi version mismatch in device smoke tree"
+
+  printf 'android-native-addon-probe: SHARP_WASM_MATERIALIZED version=%s\n' "$EXPECTED_SHARP_WASM"
+}
+
 checksum() {
   local file="$1"
   if command -v sha256sum >/dev/null 2>&1; then
@@ -318,6 +351,7 @@ device_probe() {
   [[ -n "$node_bin" && -f "$node_bin" ]] || fail "NODE_BIN (or NODE_SOURCE_DIR/out/Release/node) is required for device mode"
   [[ -d "$WORK_ROOT/runtime/node_modules/node-pty" ]]     || fail "built node-pty package is missing under ANDROID_NATIVE_WORK_ROOT"
   [[ -f "$WORK_ROOT/artifacts/koffi.node" ]]     || fail "built Koffi addon is missing under ANDROID_NATIVE_WORK_ROOT"
+  prepare_sharp_smoke_tree
 
   require_one_device
   local adb=(adb)
@@ -329,6 +363,7 @@ device_probe() {
   "${adb[@]}" push "$node_bin" "$remote/node" >/dev/null
   "${adb[@]}" push "$WORK_ROOT/runtime/node_modules/node-pty" "$remote/node-pty" >/dev/null
   "${adb[@]}" push "$WORK_ROOT/artifacts/koffi.node" "$remote/koffi.node" >/dev/null
+  "${adb[@]}" push "$WORK_ROOT/sharp-smoke/node_modules" "$remote/node_modules" >/dev/null
   "${adb[@]}" shell chmod 0755 "$remote/node"
 
   local observed
@@ -345,6 +380,28 @@ device_probe() {
     if (!Number.isInteger(pid) || pid <= 0) throw new Error("invalid getpid result");
     process.stdout.write("KOFFI_DEVICE_OK pid=" + pid + "\n");
   ' "$remote/koffi.node"
+
+  "${adb[@]}" shell "$remote/node" -e '
+    (async () => {
+      const sharp = require(process.argv[1]);
+      const png = await sharp({
+        create: {
+          width: 2,
+          height: 2,
+          channels: 4,
+          background: { r: 255, g: 0, b: 0, alpha: 1 },
+        },
+      }).png().toBuffer();
+      const signature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+      if (png.length <= signature.length || !png.subarray(0, signature.length).equals(signature)) {
+        throw new Error("sharp PNG smoke produced invalid output");
+      }
+      process.stdout.write("SHARP_WASM_DEVICE_OK bytes=" + png.length + "\n");
+    })().catch((error) => {
+      console.error(error);
+      process.exitCode = 1;
+    });
+  ' "$remote/node_modules/sharp"
 
   "${adb[@]}" shell "$remote/node" -e '
     const pty = require(process.argv[1]);

@@ -12,18 +12,29 @@ describe('Android G2 native compatibility', () => {
     ) as {
       officialDsh?: string
       nativeProbe?: string
+      portableDependencyAudit?: string
       components?: Array<{
         id?: string
         version?: string
         status?: string
         upstreamCommit?: string
         sourceMutationAllowed?: boolean
+        fallback?: { package?: string; version?: string; emnapiVersion?: string }
+        upstreamBinaryProvenance?: {
+          microsoftPrebuiltTag?: string
+          microsoftCommit?: string
+          microsoftPatchBlobSha?: string
+          upstreamRipgrepTag?: string
+          upstreamCommit?: string
+          upstreamTagVerified?: boolean
+        }
       }>
       semanticBlockers?: Array<{ id?: string; status?: string; severity?: string }>
     }
 
     expect(state.officialDsh).toBe('0.1.2-alpha.4')
     expect(state.nativeProbe).toBe('scripts/android-native-addon-probe.sh')
+    expect(state.portableDependencyAudit).toBe('scripts/audit-android-portable-deps.mjs')
 
     const components = new Map((state.components ?? []).map(item => [item.id, item]))
     expect(components.get('node-pty')).toMatchObject({
@@ -37,8 +48,27 @@ describe('Android G2 native compatibility', () => {
       status: 'CROSS_BUILD_PROBE_REQUIRED',
       sourceMutationAllowed: false,
     })
-    expect(components.get('sharp')?.status).toBe('WASM_FALLBACK_PROBE_REQUIRED')
-    expect(components.get('ripgrep')?.status).toBe('ANDROID_BINARY_PACKAGING_REQUIRED')
+    expect(components.get('sharp')).toMatchObject({
+      version: '0.35.4',
+      status: 'LOCKED_WASM_FALLBACK_MATERIALIZATION_AND_DEVICE_PROBE_REQUIRED',
+      fallback: {
+        package: '@img/sharp-wasm32',
+        version: '0.35.4',
+        emnapiVersion: '1.11.3',
+      },
+    })
+    expect(components.get('ripgrep')).toMatchObject({
+      version: '1.18.0',
+      status: 'WRAPPER_ADAPTER_OR_UPSTREAM_PACKAGE_REQUIRED',
+      upstreamBinaryProvenance: {
+        microsoftPrebuiltTag: 'v15.0.1',
+        microsoftCommit: '67202aaafb17aecd9b5b7046d5b7baa92b05237a',
+        microsoftPatchBlobSha: 'd7afb314f6171c129c33140de5feeb73f1a161d8',
+        upstreamRipgrepTag: '15.0.0',
+        upstreamCommit: '3a612f88b805e14aef45bfa43e25a54abc6297fc',
+        upstreamTagVerified: true,
+      },
+    })
 
     const blockers = new Map((state.semanticBlockers ?? []).map(item => [item.id, item]))
     expect(blockers.get('subprocess-terminal-inspector')).toMatchObject({
@@ -66,14 +96,78 @@ describe('Android G2 native compatibility', () => {
     expect(probe).toContain('EXPECTED_DSH="0.1.2-alpha.4"')
     expect(probe).toContain('EXPECTED_NODE_PTY="1.2.0-beta.15"')
     expect(probe).toContain('EXPECTED_KOFFI="3.1.6"')
+    expect(probe).toContain('EXPECTED_SHARP_WASM="0.35.4"')
+    expect(probe).toContain('EXPECTED_EMNAPI="1.11.3"')
     expect(probe).toContain('EXPECTED_NODE_COMMIT="f8fe6858549f75a4b4e9633abf39dd2038dbf496"')
     expect(probe).toContain('npm rebuild node-pty --build-from-source')
     expect(probe).toContain('android.toolchain.cmake')
     expect(probe).toContain('KOFFI_DEVICE_OK')
     expect(probe).toContain('NODE_PTY_DEVICE_OK')
+    expect(probe).toContain('SHARP_WASM_DEVICE_OK')
+    expect(probe).toContain('sharp WASM materialization gap')
     expect(probe).toContain('Node Android carrier has not been built')
 
     expect(probe).not.toMatch(/\bcurl\b|\bwget\b/u)
     expect(probe).not.toMatch(/^\s*(?:git\s+apply|patch\s|sed\s+-i)/mu)
   })
+
+  it('audits portable dependency provenance from the frozen runtime lock without network access', () => {
+    const auditPath = resolve(ROOT, 'scripts/audit-android-portable-deps.mjs')
+    const result = spawnSync(process.execPath, [auditPath], { cwd: ROOT, encoding: 'utf8' })
+
+    expect(result.status).toBe(0)
+    expect(result.stderr).toBe('')
+
+    const audit = JSON.parse(result.stdout) as {
+      sourceLock?: string
+      sharp?: {
+        version?: string
+        status?: string
+        wasmPackage?: { name?: string; version?: string; optionalInLock?: boolean }
+        emnapi?: { version?: string }
+      }
+      ripgrep?: {
+        wrapperVersion?: string
+        status?: string
+        androidPackagesPresent?: string[]
+        wrapperResolutionContract?: string
+        upstreamBinaryProvenance?: {
+          microsoftPrebuiltTag?: string
+          microsoftPatchBlobSha?: string
+          upstreamRipgrepTag?: string
+          upstreamCommit?: string
+          upstreamTagVerified?: boolean
+        }
+        forbiddenShortcuts?: string[]
+      }
+    }
+
+    expect(audit.sourceLock).toBe('apps/desktop/runtime-lock/package-lock.json')
+    expect(audit.sharp).toMatchObject({
+      version: '0.35.4',
+      status: 'LOCKED_WASM_FALLBACK_MATERIALIZATION_AND_DEVICE_PROBE_REQUIRED',
+      wasmPackage: {
+        name: '@img/sharp-wasm32',
+        version: '0.35.4',
+        optionalInLock: true,
+      },
+      emnapi: { version: '1.11.3' },
+    })
+    expect(audit.ripgrep).toMatchObject({
+      wrapperVersion: '1.18.0',
+      status: 'WRAPPER_ADAPTER_OR_UPSTREAM_PACKAGE_REQUIRED',
+      androidPackagesPresent: [],
+      wrapperResolutionContract: '@vscode/ripgrep-${process.platform}-${arch}',
+      upstreamBinaryProvenance: {
+        microsoftPrebuiltTag: 'v15.0.1',
+        microsoftPatchBlobSha: 'd7afb314f6171c129c33140de5feeb73f1a161d8',
+        upstreamRipgrepTag: '15.0.0',
+        upstreamCommit: '3a612f88b805e14aef45bfa43e25a54abc6297fc',
+        upstreamTagVerified: true,
+      },
+    })
+    expect(audit.ripgrep?.forbiddenShortcuts).toContain('publish a fake package under the @vscode scope')
+    expect(audit.ripgrep?.forbiddenShortcuts).toContain('spoof process.pkg to force the single-file sidecar path')
+  })
+
 })

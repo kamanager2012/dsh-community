@@ -46,17 +46,17 @@
         "image attachments"
       ],
       "severity": "HARD",
-      "evidence": "Official package declares sharp as a runtime dependency. sharp 0.35.x publishes platform optional binaries for desktop/server targets but no Android target.",
+      "evidence": "Official attachment-local depends on sharp. The frozen runtime lock already records sharp@0.35.4 plus exact @img/sharp-wasm32@0.35.4 and @emnapi/runtime@1.11.3; sharp's loader has a generic WASM fallback after platform-native resolution. Remaining gaps are optional-byte materialization and a real Android carrier image smoke.",
       "status": "OPEN",
       "rowDisableRemovesInstallDependency": false,
       "failurePhase": "LOAD_OR_IMAGE_USE",
-      "upstreamAndroidSupport": "WASM_FALLBACK_REPORTED_NOT_VERIFIED_FOR_FROZEN_0_35_4",
+      "upstreamAndroidSupport": "LOCKED_GENERIC_WASM_FALLBACK_DEVICE_PROBE_REQUIRED",
       "packagePath": [
         "@deepseek-ai/dsh",
         "@deepseek-ai/dsh-base",
         "@deepseek-ai/dsh-attachment-local"
       ],
-      "nextProbe": "Verify an exact sharp 0.35.4-compatible WASM fallback in the frozen Android runtime before changing status."
+      "nextProbe": "scripts/android-native-addon-probe.sh device"
     },
     {
       "id": "sandbox-local",
@@ -94,16 +94,16 @@
         "glob/grep search"
       ],
       "severity": "FEATURE_BLOCKER",
-      "evidence": "Official DSH tool-fs-search depends on @vscode/ripgrep; the ripgrep package resolves packaged binaries by process.platform/process.arch and exposes no Android target in the audited surface.",
+      "evidence": "Official DSH tool-fs-search imports @vscode/ripgrep. Wrapper 1.18.0 resolves @vscode/ripgrep-${process.platform}-${arch}, so Android requires an unpublished @vscode/ripgrep-android-* package. The official sidecar path only activates for pkg single-file runtimes.",
       "status": "OPEN",
       "rowDisableRemovesInstallDependency": false,
       "failurePhase": "LOAD_OR_SEARCH_USE",
-      "upstreamAndroidSupport": "NO_ANDROID_BINARY_TARGET_EVIDENCE",
+      "upstreamAndroidSupport": "WRAPPER_ADAPTER_OR_UPSTREAM_PACKAGE_REQUIRED",
       "packagePath": [
         "@deepseek-ai/dsh",
         "@deepseek-ai/dsh-tool-fs-search"
       ],
-      "nextProbe": "Package and verify an Android rg binary without relying on Termux system packages, or wait for upstream support."
+      "nextProbe": "Wait for an upstream Android package or an explicit official rg-path seam; any Community adapter must preserve the pinned ripgrep 15.0.0 + Microsoft v15.0.1 patch provenance and undergo separate architecture review."
     }
   ],
   "conclusion": "Node 22 is necessary but insufficient. The published top-level @deepseek-ai/dsh package eagerly carries the native closure, so profile-only row disabling cannot make the current official CLI package Android-safe.",

@@ -140,6 +140,7 @@ G2 现在拆成两层，不能再用一个“native build 成功”概括。
 机器真源：
 
 - `apps/android/native-compatibility.json`
+- portable dependency audit：`scripts/audit-android-portable-deps.mjs`
 - 手工 probe：`scripts/android-native-addon-probe.sh`
 
 #### G2-A：原始 frozen addon build/load
@@ -164,7 +165,8 @@ probe 不下载依赖，也不修改上游源码：
 
 - `node-pty@1.2.0-beta.15`：沿 Node 官方 Android GYP/NDK 环境原样 source rebuild；当前精确 upstream tag commit 为 `8f218f6c194be81d98b1eeea344b150e83445824`。
 - `koffi@3.1.6`：使用 frozen npm 包内原始 CMake source + Android NDK toolchain 构建，不给 Koffi 源码打补丁。
-- 真机分别执行 Koffi `getpid()` FFI smoke 和 node-pty `/system/bin/sh` PTY smoke。
+- 真机分别执行 Koffi `getpid()` FFI smoke、node-pty `/system/bin/sh` PTY smoke，以及 frozen `sharp@0.35.4` → `@img/sharp-wasm32@0.35.4` 的 2×2 PNG 生成 smoke。
+- sharp 的 WASM 包必须来自 frozen runtime staging；若 host-specific `npm ci` 没有实际物化该 optional package，probe 会明确报 `sharp WASM materialization gap`，不会把“lock 中存在”冒充“APK 已带 bytes”。
 
 这里故意不预先修 `-lutil`、Bionic、N-API/linker 等问题；如果 unmodified build 失败，真实错误就是下一轮兼容补丁的证据。
 
@@ -175,8 +177,9 @@ probe 不下载依赖，也不修改上游源码：
 1. **Terminal inspector**：alpha.4 `createProcessInspector()` 只接受 `linux / darwin / win32`。Node Android carrier 的 `process.platform` 是 `android`，所以 terminal inspection 需要上游 Android 分支或经正式架构评审的官方 seam adapter。
 2. **Sandbox**：`dsh-sandbox-local` 的 `PLATFORM_CHAINS` 同样没有 Android，未识别平台按设计 fail closed。需要 Android runner/上游支持，并且必须在 APK app UID 下测内核与权限能力。
 3. **POSIX hard-link durable publish**：alpha.4 session persistence 和 attachment store 在非 win32 路径仍使用 `link()`。必须在 APK 私有文件目录验证；`/data/local/tmp`、Termux home 或其他 shell UID 结果不能代替。
-4. **sharp**：当前 frozen 0.35.4 没有 Android prebuild。WASM fallback 有公开 Android/Termux 实证，但 exact 0.35.4 路径尚未进入本项目证据。
-5. **ripgrep**：Termux 的 system `rg` 不是自包含 APK 方案；必须打包 Android binary 或等待上游 target。
+4. **sharp**：frozen lock 已精确包含 `sharp@0.35.4`、`@img/sharp-wasm32@0.35.4` 与 `@emnapi/runtime@1.11.3`，都有 registry provenance + SHA-512；sharp loader 在 Android native platform miss 后会尝试 WASM fallback。当前剩余门是 optional bytes 是否被实际 materialize，以及 Android carrier 上真实 PNG smoke 是否 PASS。
+5. **ripgrep**：`@vscode/ripgrep@1.18.0` 会硬解析 `@vscode/ripgrep-${process.platform}-${arch}`，Android 对应 package 并不存在；DSH 的 sidecar 只在 `'pkg' in process` 时启用。仅交叉编一个 `rg` binary 还不够，必须有上游 Android package 或正式 rg-path seam。Community 不伪造 `@vscode` scope、不 spoof `process.pkg`、不依赖 Termux/system `rg`、不替换成未钉版本的新版。
+6. **ripgrep provenance**：wrapper 1.18.0 对应 Microsoft `ripgrep-prebuilt v15.0.1`；其配置固定 BurntSushi/ripgrep `15.0.0` + Microsoft patch。任何未来 Android binary 必须保持这一 provenance 或经新的上游版本评审，不能只拿 vanilla/latest `rg`。
 
 所以当前 G2 仍是 **BLOCKED**，只是 blocker 已经从“泛泛 native 不支持”缩成可逐项验证的工程门。
 
