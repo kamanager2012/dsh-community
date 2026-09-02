@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 const roots: string[] = []
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '../../..')
 const validator = join(repoRoot, 'scripts', 'validate-release-tag.mjs')
-const candidateVersion = '0.1.2-alpha.3'
+const candidateVersion = '0.1.2-alpha.4'
 const candidateTag = 'v' + candidateVersion
 const publishedVersion = '0.1.1-rc.2'
 const publishedTag = 'v' + publishedVersion
