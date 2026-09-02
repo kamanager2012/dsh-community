@@ -63,6 +63,8 @@ importers:
 
   packages/marketplace: {}
 
+  packages/remote-adapter: {}
+
   packages/shared-types: {}
 
   packages/tui:
