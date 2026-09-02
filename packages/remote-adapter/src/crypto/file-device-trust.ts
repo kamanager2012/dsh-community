@@ -1,6 +1,8 @@
 import {
   closeSync,
+  constants,
   existsSync,
+  fstatSync,
   fsyncSync,
   lstatSync,
   openSync,
@@ -49,12 +51,14 @@ export interface PersistentDeviceTrustSchema {
 export interface FileDeviceTrustStoreOptions {
   readonly maxDevices?: number
   readonly clock?: () => number
-  readonly faultInjector?: (stage: 'before-write' | 'before-rename') => void
+  readonly faultInjector?: (stage: 'before-write' | 'before-rename' | 'after-rename-before-dir-fsync') => void
 }
 
 export class FileDeviceTrustStore extends InMemoryDeviceTrustStore {
   readonly filePath: string
   private readonly storeOptions: FileDeviceTrustStoreOptions | undefined
+  private isPoisoned = false
+  private poisonReason: string | undefined = undefined
 
   constructor(filePath: string, options?: FileDeviceTrustStoreOptions) {
     if (!isAbsolute(filePath)) {
@@ -69,50 +73,93 @@ export class FileDeviceTrustStore extends InMemoryDeviceTrustStore {
     this.loadFromDisk()
   }
 
+  private assertNotPoisoned(): void {
+    if (this.isPoisoned) {
+      throw new RemoteCryptoError(
+        'HANDSHAKE_FAILED',
+        `device trust store is in a fail-closed poisoned state: ${this.poisonReason}`,
+      )
+    }
+  }
+
   private loadFromDisk(): void {
     if (!existsSync(this.filePath)) {
       return
     }
 
-    const stats = lstatSync(this.filePath)
-    if (stats.isSymbolicLink()) {
+    // Defense-in-depth symlink check
+    const lstats = lstatSync(this.filePath)
+    if (lstats.isSymbolicLink()) {
       throw new RemoteCryptoError(
         'HANDSHAKE_FAILED',
         'symlinks are not permitted for device trust store file',
       )
     }
-    if (!stats.isFile()) {
-      throw new RemoteCryptoError(
-        'HANDSHAKE_FAILED',
-        'device trust store target must be a regular file',
-      )
+
+    // P1: TOCTOU protection using O_NOFOLLOW where supported, reading from verified fd
+    let openFlags = constants.O_RDONLY
+    if (typeof constants.O_NOFOLLOW === 'number') {
+      openFlags |= constants.O_NOFOLLOW
     }
 
-    // POSIX ownership and security permissions check where supported
-    if (process.platform !== 'win32') {
-      if (typeof process.getuid === 'function' && stats.uid !== process.getuid()) {
+    let fd: number | undefined
+    try {
+      fd = openSync(this.filePath, openFlags)
+    } catch (err) {
+      const code = (err as { code?: string })?.code
+      if (code === 'ELOOP' || code === 'SYMLINK_LOOP') {
         throw new RemoteCryptoError(
           'HANDSHAKE_FAILED',
-          `device trust store file owner (uid ${stats.uid}) does not match current user (uid ${process.getuid()})`,
+          'symlinks are not permitted for device trust store file',
         )
       }
-      if ((stats.mode & 0o077) !== 0) {
-        throw new RemoteCryptoError(
-          'HANDSHAKE_FAILED',
-          `insecure file permissions (${(stats.mode & 0o777).toString(8)}); expected 0600 (no group or other access)`,
-        )
-      }
+      throw err
     }
 
     let parsed: unknown
     try {
-      const raw = readFileSync(this.filePath, 'utf8')
+      const stats = fstatSync(fd)
+      if (!stats.isFile()) {
+        throw new RemoteCryptoError(
+          'HANDSHAKE_FAILED',
+          'device trust store target must be a regular file',
+        )
+      }
+
+      // P1: POSIX ownership and strict 0600 permissions check
+      if (process.platform !== 'win32') {
+        if (typeof process.getuid === 'function' && stats.uid !== process.getuid()) {
+          throw new RemoteCryptoError(
+            'HANDSHAKE_FAILED',
+            `device trust store file owner (uid ${stats.uid}) does not match current user (uid ${process.getuid()})`,
+          )
+        }
+        if ((stats.mode & 0o777) !== 0o600) {
+          throw new RemoteCryptoError(
+            'HANDSHAKE_FAILED',
+            `insecure file permissions (${(stats.mode & 0o777).toString(8)}); expected strict 0600`,
+          )
+        }
+      }
+
+      const raw = readFileSync(fd, 'utf8')
       parsed = JSON.parse(raw)
     } catch (err) {
+      if (err instanceof RemoteCryptoError) {
+        throw err
+      }
       throw new RemoteCryptoError(
         'HANDSHAKE_FAILED',
         `failed to parse persistent device trust store: ${(err as Error).message}`,
       )
+    } finally {
+      if (fd !== undefined) {
+        try {
+          closeSync(fd)
+        } catch {
+          // Ignore
+        }
+      }
     }
 
     if (
@@ -157,6 +204,14 @@ export class FileDeviceTrustStore extends InMemoryDeviceTrustStore {
         throw new RemoteCryptoError(
           'HANDSHAKE_FAILED',
           'corrupted persistent device record in store',
+        )
+      }
+
+      // P1: Strict 64 hex characters validation for staticPublicKeyHex
+      if (!/^[0-9a-fA-F]{64}$/.test(dev.staticPublicKeyHex)) {
+        throw new RemoteCryptoError(
+          'HANDSHAKE_FAILED',
+          `invalid staticPublicKeyHex format (expected exactly 64 hex characters): ${dev.staticPublicKeyHex}`,
         )
       }
 
@@ -229,11 +284,14 @@ export class FileDeviceTrustStore extends InMemoryDeviceTrustStore {
   }
 
   /**
-   * P0-3: Durable commit transaction.
+   * P0-3 & P0-4: Durable commit transaction with fail-closed poisoning.
    * Serializes stagedDevices to a temporary file, fsyncs, atomically renames,
-   * fsyncs parent directory, and ONLY AFTER disk commit succeeds updates live memory.
+   * fsyncs parent directory. If directory fsync fails on POSIX, transitions to poisoned state.
+   * ONLY AFTER disk commit succeeds updates live memory.
    */
   private commitDurableTransaction(stagedDevices: Map<string, StoredDeviceRecord>): void {
+    this.assertNotPoisoned()
+
     const records: SerializedDeviceRecord[] = []
     for (const stored of stagedDevices.values()) {
       records.push({
@@ -274,13 +332,41 @@ export class FileDeviceTrustStore extends InMemoryDeviceTrustStore {
 
       renameSync(tmpPath, this.filePath)
 
-      // Sync parent directory to persist directory entry if supported
       try {
-        const dirFd = openSync(dir, 'r')
-        fsyncSync(dirFd)
-        closeSync(dirFd)
-      } catch {
-        // Platform fallback (e.g. Windows directory opening)
+        this.storeOptions?.faultInjector?.('after-rename-before-dir-fsync')
+
+        // P0-4: POSIX parent directory fsync. If this fails, durability is indeterminate;
+        // Store enters a fail-closed poisoned state and throws.
+        if (process.platform !== 'win32') {
+          let dirFd: number | undefined
+          try {
+            dirFd = openSync(dir, 'r')
+            fsyncSync(dirFd)
+            closeSync(dirFd)
+            dirFd = undefined
+          } catch (err) {
+            if (dirFd !== undefined) {
+              try {
+                closeSync(dirFd)
+              } catch {
+                // Ignore
+              }
+            }
+            const code = (err as { code?: string })?.code
+            if (code === 'EISDIR' || code === 'ENOSYS' || code === 'EPERM') {
+              // Documented platform/filesystem limitation
+            } else {
+              throw err
+            }
+          }
+        }
+      } catch (err) {
+        this.isPoisoned = true
+        this.poisonReason = `parent directory fsync or post-rename failure: ${(err as Error).message}`
+        throw new RemoteCryptoError(
+          'HANDSHAKE_FAILED',
+          `durable commit failed: parent directory fsync failed after rename: ${(err as Error).message}`,
+        )
       }
     } catch (err) {
       if (fd !== undefined) {
@@ -326,12 +412,23 @@ export class FileDeviceTrustStore extends InMemoryDeviceTrustStore {
     return cloned
   }
 
+  override getSync(deviceId: string): DeviceRecord | undefined {
+    this.assertNotPoisoned()
+    return super.getSync(deviceId)
+  }
+
+  override assertAuthorizedSync(deviceId: string, currentTrustDomainId: string, method?: RemoteMethod): DeviceRecord {
+    this.assertNotPoisoned()
+    return super.assertAuthorizedSync(deviceId, currentTrustDomainId, method)
+  }
+
   override trustSync(params: {
     staticPublicKey: Uint8Array
     displayName: string
     grantedCapabilities: readonly Capability[]
     trustDomainId: string
   }): DeviceRecord {
+    this.assertNotPoisoned()
     if (params.staticPublicKey.byteLength !== 32) {
       throw new RemoteCryptoError('HANDSHAKE_FAILED', 'static public key must be 32 bytes')
     }
@@ -389,6 +486,7 @@ export class FileDeviceTrustStore extends InMemoryDeviceTrustStore {
   }
 
   override revokeSync(deviceId: string): boolean {
+    this.assertNotPoisoned()
     const existing = this.devices.get(deviceId)
     if (!existing) return false
     if (existing.revokedAt !== undefined) {
@@ -420,6 +518,7 @@ export class FileDeviceTrustStore extends InMemoryDeviceTrustStore {
     grantedCapabilities: readonly Capability[]
     trustDomainId: string
   }): Promise<DeviceRecord> {
+    this.assertNotPoisoned()
     const existing = this.devices.get(params.deviceId)
     if (!existing) {
       throw new RemoteCryptoError('DEVICE_NOT_TRUSTED', 'device does not exist for re-enrollment')
@@ -443,6 +542,7 @@ export class FileDeviceTrustStore extends InMemoryDeviceTrustStore {
   }
 
   override async remove(deviceId: string): Promise<boolean> {
+    this.assertNotPoisoned()
     if (!this.devices.has(deviceId)) {
       return false
     }
@@ -459,6 +559,7 @@ export class FileDeviceTrustStore extends InMemoryDeviceTrustStore {
    * Persists updated lastSeenAt timestamp to disk and updates live memory on success.
    */
   override recordSeenSync(deviceId: string, timestamp?: number): void {
+    this.assertNotPoisoned()
     const existing = this.devices.get(deviceId)
     if (!existing) return
 
@@ -472,5 +573,15 @@ export class FileDeviceTrustStore extends InMemoryDeviceTrustStore {
 
   override async recordSeen(deviceId: string, timestamp?: number): Promise<void> {
     this.recordSeenSync(deviceId, timestamp)
+  }
+
+  override async list(): Promise<readonly DeviceRecord[]> {
+    this.assertNotPoisoned()
+    return super.list()
+  }
+
+  override async size(): Promise<number> {
+    this.assertNotPoisoned()
+    return super.size()
   }
 }

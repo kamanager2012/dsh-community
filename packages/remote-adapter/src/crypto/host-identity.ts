@@ -11,18 +11,29 @@ export interface HostIdentity {
   readonly createdAt: number
 }
 
+export function toHostIdentitySnapshot(identity: HostIdentity): HostIdentity {
+  return Object.freeze({
+    publicKey: new Uint8Array(identity.publicKey),
+    fingerprint: identity.fingerprint,
+    trustDomainId: identity.trustDomainId,
+    generation: identity.generation,
+    createdAt: identity.createdAt,
+  })
+}
+
 export class HostKeyPair {
   readonly identity: HostIdentity
   readonly secretKey!: Uint8Array
 
   constructor(identity: HostIdentity, secretKey: Uint8Array) {
-    this.identity = identity
+    this.identity = toHostIdentitySnapshot(identity)
     Object.defineProperty(this, 'secretKey', {
-      value: secretKey,
+      value: new Uint8Array(secretKey),
       enumerable: false,
       writable: false,
       configurable: false,
     })
+    Object.freeze(this)
   }
 
   toJSON(): { identity: HostIdentity } {
@@ -36,6 +47,10 @@ export class HostKeyPair {
   toString(): string {
     return this[inspect.custom]()
   }
+}
+
+export function toHostKeyPairSnapshot(keyPair: HostKeyPair): HostKeyPair {
+  return new HostKeyPair(keyPair.identity, keyPair.secretKey)
 }
 
 export function computeFingerprint(publicKey: Uint8Array): string {
@@ -67,7 +82,7 @@ const dhHelper: DhModule =
   (dh as unknown as { default?: DhModule }).default ?? (dh as unknown as DhModule)
 
 export class InMemoryHostIdentityStore implements HostIdentityStore {
-  private currentKeyPair: HostKeyPair | undefined = undefined
+  private masterKeyPair: HostKeyPair | undefined = undefined
   private currentGeneration = 1
   private readonly clock: () => number
 
@@ -76,15 +91,15 @@ export class InMemoryHostIdentityStore implements HostIdentityStore {
   }
 
   async loadOrCreate(): Promise<HostKeyPair> {
-    if (this.currentKeyPair) {
-      return this.currentKeyPair
+    if (this.masterKeyPair) {
+      return toHostKeyPairSnapshot(this.masterKeyPair)
     }
     const raw = dhHelper.generateKeyPair()
     const publicKey = new Uint8Array(raw.publicKey)
     const secretKey = new Uint8Array(raw.secretKey)
     const fingerprint = computeFingerprint(publicKey)
     const trustDomainId = computeTrustDomainId(publicKey, this.currentGeneration)
-    this.currentKeyPair = new HostKeyPair(
+    this.masterKeyPair = new HostKeyPair(
       {
         publicKey,
         fingerprint,
@@ -94,12 +109,14 @@ export class InMemoryHostIdentityStore implements HostIdentityStore {
       },
       secretKey,
     )
-    return this.currentKeyPair
+    return toHostKeyPairSnapshot(this.masterKeyPair)
   }
 
   async getPublicIdentity(): Promise<HostIdentity> {
-    const keyPair = await this.loadOrCreate()
-    return keyPair.identity
+    if (!this.masterKeyPair) {
+      await this.loadOrCreate()
+    }
+    return toHostIdentitySnapshot(this.masterKeyPair!.identity)
   }
 
   async rotate(): Promise<HostKeyPair> {
@@ -109,7 +126,7 @@ export class InMemoryHostIdentityStore implements HostIdentityStore {
     const secretKey = new Uint8Array(raw.secretKey)
     const fingerprint = computeFingerprint(publicKey)
     const trustDomainId = computeTrustDomainId(publicKey, this.currentGeneration)
-    this.currentKeyPair = new HostKeyPair(
+    this.masterKeyPair = new HostKeyPair(
       {
         publicKey,
         fingerprint,
@@ -119,10 +136,10 @@ export class InMemoryHostIdentityStore implements HostIdentityStore {
       },
       secretKey,
     )
-    return this.currentKeyPair
+    return toHostKeyPairSnapshot(this.masterKeyPair)
   }
 
   async destroy(): Promise<void> {
-    this.currentKeyPair = undefined
+    this.masterKeyPair = undefined
   }
 }

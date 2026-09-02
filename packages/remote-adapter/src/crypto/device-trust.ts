@@ -3,14 +3,18 @@ import { RemoteCryptoError } from './errors.js'
 import { computeFingerprint } from './host-identity.js'
 import { RemoteProtocolError } from '../errors.js'
 
-export const requiredCapability: Readonly<Partial<Record<RemoteMethod, Capability>>> = {
+const AUTHORITATIVE_REQUIRED_CAPABILITIES: Readonly<Partial<Record<RemoteMethod, Capability>>> = Object.freeze({
   'session.list': 'observe',
   'session.attach': 'observe',
   'prompt.submit': 'prompt',
   'approval.respond': 'approve',
   'question.respond': 'answer-question',
   'stream.ack': 'observe',
-}
+})
+
+export const requiredCapability: Readonly<Partial<Record<RemoteMethod, Capability>>> = Object.freeze({
+  ...AUTHORITATIVE_REQUIRED_CAPABILITIES,
+})
 
 export interface StoredDeviceRecord {
   readonly deviceId: string
@@ -128,7 +132,13 @@ export class InMemoryDeviceTrustStore implements DeviceTrustStore {
   protected notifyRevocation(event: DeviceRevocationEvent): void {
     for (const listener of this.listeners) {
       try {
-        listener(event)
+        listener(
+          Object.freeze({
+            deviceId: event.deviceId,
+            revokedAt: event.revokedAt,
+            keyVersion: event.keyVersion,
+          }),
+        )
       } catch {
         // Isolation: listener errors must never roll back security revocation
       }
@@ -286,7 +296,7 @@ export class InMemoryDeviceTrustStore implements DeviceTrustStore {
       throw new RemoteProtocolError('TRUST_DOMAIN_STALE', 'device trust domain is stale after host rotation')
     }
     if (method) {
-      const required = requiredCapability[method]
+      const required = AUTHORITATIVE_REQUIRED_CAPABILITIES[method]
       if (required && !record.grantedCapabilities.has(required)) {
         throw new RemoteProtocolError(
           'CAPABILITY_DENIED',

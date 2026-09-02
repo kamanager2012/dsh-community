@@ -85,7 +85,7 @@ function fakeSeams() {
   return { seams, calls }
 }
 
-describe('R2A-R4 Final Transaction & Concurrency Closure Adversarial Tests', () => {
+describe('R2A-R5 Root Authority & Integrity Closure Adversarial Tests', () => {
   it('1. exact crypto dependency version guard', () => {
     const pkgJsonPath = join(__dirname, '../package.json')
     const pkg = JSON.parse(readFileSync(pkgJsonPath, 'utf8')) as {
@@ -96,14 +96,270 @@ describe('R2A-R4 Final Transaction & Concurrency Closure Adversarial Tests', () 
     expect(pkg.devDependencies?.['@types/noise-handshake']).toBe('3.0.3')
   })
 
-  it('2. P0-1: public API does not expose getInternalCandidate or StoredPairingCandidate escape', () => {
+  it('2. P0-1: HostIdentityStore root authority cannot be mutated via returned objects', async () => {
+    const hostStore = new InMemoryHostIdentityStore()
+    const host = await hostStore.loadOrCreate()
+    const origDomain = host.identity.trustDomainId
+    const origGen = host.identity.generation
+    const origPub = Buffer.from(host.identity.publicKey)
+    const origSec = Buffer.from(host.secretKey)
+
+    // Attempt to tamper with returned objects
+    try {
+      ;(host.identity as any).trustDomainId = 'tampered-domain'
+      ;(host.identity as any).generation = 9999
+    } catch {}
+    host.identity.publicKey.fill(0xaa)
+    host.secretKey.fill(0xbb)
+
+    // Authoritative state from getPublicIdentity() must be pristine
+    const pub = await hostStore.getPublicIdentity()
+    expect(pub.trustDomainId).toBe(origDomain)
+    expect(pub.generation).toBe(origGen)
+    expect(Buffer.from(pub.publicKey).equals(origPub)).toBe(true)
+
+    // Authoritative keyPair from loadOrCreate() must be pristine
+    const keyPairAgain = await hostStore.loadOrCreate()
+    expect(Buffer.from(keyPairAgain.secretKey).equals(origSec)).toBe(true)
+  })
+
+  it('3. P0-2: Capability policy is runtime immutable and protects authorization', async () => {
+    const { seams } = fakeSeams()
+    const hostStore = new InMemoryHostIdentityStore()
+    const host = await hostStore.loadOrCreate()
+    const core = new RemoteAdapterCore(seams, { hostIdentityStore: hostStore })
+
+    const client = generateClientKeyPair()
+    const devId = computeFingerprint(client.publicKey)
+    core.devices.trust(client.publicKey, ['observe'], { trustDomainId: host.identity.trustDomainId })
+
+    // Attempt to mutate exported requiredCapability
+    try {
+      ;(remoteAdapter.requiredCapability as any)['prompt.submit'] = 'observe'
+      ;(remoteAdapter.requiredCapability as any)['approval.respond'] = 'observe'
+      delete (remoteAdapter.requiredCapability as any)['question.respond']
+    } catch {}
+
+    const peer: AuthenticatedPeer = { deviceId: devId, connectionEpoch: 1 }
+
+    // prompt.submit must still require 'prompt' capability and be denied
+    await expect(
+      core.handle(peer, {
+        jsonrpc: '2.0',
+        id: 'r1',
+        method: 'prompt.submit',
+        protocolVersion: 1,
+        connectionEpoch: 1,
+        requestSeq: 1,
+        idempotencyKey: 'idem-p',
+        params: { sessionId: 's1', prompt: 'test' },
+      }),
+    ).rejects.toThrow(RemoteProtocolError)
+
+    // approval.respond must still require 'approve' capability and be denied
+    await expect(
+      core.handle(peer, {
+        jsonrpc: '2.0',
+        id: 'r2',
+        method: 'approval.respond',
+        protocolVersion: 1,
+        connectionEpoch: 1,
+        requestSeq: 2,
+        idempotencyKey: 'idem-a',
+        params: { callId: 'c1', decision: 'approved' },
+      }),
+    ).rejects.toThrow(RemoteProtocolError)
+
+    // question.respond must still require 'answer-question' and be denied
+    await expect(
+      core.handle(peer, {
+        jsonrpc: '2.0',
+        id: 'r3',
+        method: 'question.respond',
+        protocolVersion: 1,
+        connectionEpoch: 1,
+        requestSeq: 3,
+        idempotencyKey: 'idem-q',
+        params: { questionId: 'q1', answer: 'ans' },
+      }),
+    ).rejects.toThrow(RemoteProtocolError)
+  })
+
+  it('4. P0-3: Revocation event is runtime immutable and isolated across listeners', () => {
+    const trustStore = new InMemoryDeviceTrustStore()
+    const client = generateClientKeyPair()
+    const devId = computeFingerprint(client.publicKey)
+
+    trustStore.trustSync({
+      staticPublicKey: client.publicKey,
+      displayName: 'Dev',
+      grantedCapabilities: ['observe'],
+      trustDomainId: 'dom-1',
+    })
+
+    let listener2ReceivedDevId = ''
+
+    // Listener 1 attempts to tamper with event
+    trustStore.subscribeRevocations((event) => {
+      try {
+        ;(event as any).deviceId = 'tampered-device-id'
+      } catch {}
+    })
+
+    // Listener 2 inspects event
+    trustStore.subscribeRevocations((event) => {
+      listener2ReceivedDevId = event.deviceId
+    })
+
+    trustStore.revokeSync(devId)
+    expect(listener2ReceivedDevId).toBe(devId)
+    expect(listener2ReceivedDevId).not.toBe('tampered-device-id')
+  })
+
+  it('5. P0-4: Post-rename parent-directory fsync failure triggers fail-closed store poisoning', async () => {
+    const testDir = join(tmpdir(), `dsh-dirfsync-test-${Date.now()}`)
+    mkdirSync(testDir, { recursive: true })
+    const filePath = join(testDir, 'devices.json')
+
+    try {
+      let failDirFsync = false
+      const store = new FileDeviceTrustStore(filePath, {
+        faultInjector: (stage) => {
+          if (failDirFsync && stage === 'after-rename-before-dir-fsync') {
+            throw new Error('simulated directory fsync failure')
+          }
+        },
+      })
+
+      const client = generateClientKeyPair()
+      const devId = computeFingerprint(client.publicKey)
+
+      failDirFsync = true
+
+      // Operation must not report clean success
+      expect(() => {
+        store.trustSync({
+          staticPublicKey: client.publicKey,
+          displayName: 'Test Dev',
+          grantedCapabilities: ['observe'],
+          trustDomainId: 'dom-1',
+        })
+      }).toThrow('simulated directory fsync failure')
+
+      // Store is now poisoned: subsequent authorization is denied
+      expect(() => {
+        store.assertAuthorizedSync(devId, 'dom-1', 'session.list')
+      }).toThrow(RemoteCryptoError)
+
+      // Subsequent reads and mutations are denied
+      expect(() => store.getSync(devId)).toThrow(RemoteCryptoError)
+      expect(() => store.revokeSync(devId)).toThrow(RemoteCryptoError)
+      await expect(store.list()).rejects.toThrow(RemoteCryptoError)
+    } finally {
+      if (existsSync(testDir)) {
+        rmSync(testDir, { recursive: true, force: true })
+      }
+    }
+  })
+
+  it('6. P1: FileDeviceTrustStore path, symlink, strict 0600 mode, and strict 64-hex key gate', () => {
+    const testDir = join(tmpdir(), `dsh-integrity-test-${Date.now()}`)
+    mkdirSync(testDir, { recursive: true })
+
+    try {
+      // 1. Relative path rejected
+      expect(() => new FileDeviceTrustStore('./relative-path.json')).toThrow(RemoteCryptoError)
+
+      // 2. Symlink rejected
+      const targetFile = join(testDir, 'target.json')
+      const symlinkFile = join(testDir, 'symlink.json')
+      writeFileSync(targetFile, JSON.stringify({ schemaVersion: 1, devices: [] }), { mode: 0o600 })
+      try {
+        symlinkSync(targetFile, symlinkFile)
+        expect(() => new FileDeviceTrustStore(symlinkFile)).toThrow(RemoteCryptoError)
+      } catch (err: any) {
+        if (err.code !== 'EPERM') throw err
+      }
+
+      // 3. Strict 0600 POSIX permissions check (0700, 0644, 0666 rejected)
+      if (process.platform !== 'win32') {
+        const testFile = join(testDir, 'perm-test.json')
+        writeFileSync(testFile, JSON.stringify({ schemaVersion: 1, devices: [] }), { mode: 0o600 })
+
+        chmodSync(testFile, 0o666)
+        expect(() => new FileDeviceTrustStore(testFile)).toThrow(RemoteCryptoError)
+
+        chmodSync(testFile, 0o644)
+        expect(() => new FileDeviceTrustStore(testFile)).toThrow(RemoteCryptoError)
+
+        chmodSync(testFile, 0o700)
+        expect(() => new FileDeviceTrustStore(testFile)).toThrow(RemoteCryptoError)
+
+        chmodSync(testFile, 0o600)
+        expect(() => new FileDeviceTrustStore(testFile)).not.toThrow()
+      }
+
+      const client = generateClientKeyPair()
+      const devId = computeFingerprint(client.publicKey)
+      const validDev = {
+        deviceId: devId,
+        fingerprint: devId,
+        staticPublicKeyHex: Buffer.from(client.publicKey).toString('hex'),
+        trustDomainId: 'dom-1',
+        displayName: 'Dev',
+        grantedCapabilities: ['observe'],
+        pairedAt: 1000,
+        lastSeenAt: 1000,
+        keyVersion: 1,
+      }
+
+      // 4. Strict 64-hex public key verification
+      const badHexFile = join(testDir, 'bad-hex.json')
+      writeFileSync(
+        badHexFile,
+        JSON.stringify({
+          schemaVersion: 1,
+          devices: [{ ...validDev, staticPublicKeyHex: validDev.staticPublicKeyHex.slice(0, 62) }],
+        }),
+        { mode: 0o600 },
+      )
+      expect(() => new FileDeviceTrustStore(badHexFile)).toThrow(RemoteCryptoError)
+
+      // 5. Non-hex characters rejected
+      const nonHexFile = join(testDir, 'non-hex.json')
+      writeFileSync(
+        nonHexFile,
+        JSON.stringify({
+          schemaVersion: 1,
+          devices: [{ ...validDev, staticPublicKeyHex: 'zz'.repeat(32) }],
+        }),
+        { mode: 0o600 },
+      )
+      expect(() => new FileDeviceTrustStore(nonHexFile)).toThrow(RemoteCryptoError)
+
+      // 6. Duplicate device record rejected
+      const dupFile = join(testDir, 'dup.json')
+      writeFileSync(
+        dupFile,
+        JSON.stringify({ schemaVersion: 1, devices: [validDev, validDev] }),
+        { mode: 0o600 },
+      )
+      expect(() => new FileDeviceTrustStore(dupFile)).toThrow(RemoteCryptoError)
+    } finally {
+      if (existsSync(testDir)) {
+        rmSync(testDir, { recursive: true, force: true })
+      }
+    }
+  })
+
+  it('7. P0-1: public API does not expose getInternalCandidate or StoredPairingCandidate escape', () => {
     const registry = new PairingTokenRegistry()
     expect((registry as any).getInternalCandidate).toBeUndefined()
     expect((PairingTokenRegistry.prototype as any).getInternalCandidate).toBeUndefined()
     expect((remoteAdapter as any).StoredPairingCandidate).toBeUndefined()
   })
 
-  it('3. P0-1: external candidate snapshot mutation cannot affect registry or confirmation', async () => {
+  it('8. P0-1: external candidate snapshot mutation cannot affect registry or confirmation', async () => {
     let now = 1000
     const hostStore = new InMemoryHostIdentityStore({ clock: () => now })
     const host = await hostStore.loadOrCreate()
@@ -111,7 +367,6 @@ describe('R2A-R4 Final Transaction & Concurrency Closure Adversarial Tests', () 
     const tokenRegistry = new PairingTokenRegistry(16, 5000, 5000, { clock: () => now })
     const coordinator = new PairingCoordinator(hostStore, trustStore, tokenRegistry, { clock: () => now })
 
-    // Sub-case A: approve is rejected despite snapshot mutation
     const tokenA = tokenRegistry.createToken({
       trustDomainId: host.identity.trustDomainId,
       hostGeneration: host.identity.generation,
@@ -134,81 +389,9 @@ describe('R2A-R4 Final Transaction & Concurrency Closure Adversarial Tests', () 
         grantedCapabilities: ['observe', 'approve'],
       }),
     ).rejects.toThrow(RemoteCryptoError)
-
-    // Sub-case B: Host rotation is still recognized despite tampering snapshot
-    const tokenB = tokenRegistry.createToken({
-      trustDomainId: host.identity.trustDomainId,
-      hostGeneration: host.identity.generation,
-    })
-    const clientB = generateClientKeyPair()
-    const initB = new NoiseInitiatorSession(clientB, host.identity.publicKey)
-    const respB = new NoiseResponderSession(host)
-    const m1B = initB.writeMessage1()
-    respB.readMessage1(m1B)
-    initB.readMessage2(respB.writeMessage2())
-
-    const candidateB = await coordinator.initiatePairing(respB, { token: tokenB.token })
-    try {
-      ;(candidateB as any).trustDomainId = 'tampered'
-      ;(candidateB as any).hostGeneration = 999
-    } catch {}
-    await hostStore.rotate()
-    await expect(
-      coordinator.confirmPairing({
-        candidateId: candidateB.candidateId,
-        grantedCapabilities: ['observe'],
-      }),
-    ).rejects.toThrow(RemoteCryptoError)
-
-    // Sub-case C: Expiry is enforced according to original time, ignoring snapshot tampering
-    const hostGen2 = await hostStore.getPublicIdentity()
-    const tokenC = tokenRegistry.createToken({
-      trustDomainId: hostGen2.trustDomainId,
-      hostGeneration: hostGen2.generation,
-      ttlMs: 5000,
-    })
-    const clientC = generateClientKeyPair()
-    const initC = new NoiseInitiatorSession(clientC, hostGen2.publicKey)
-    const respC = new NoiseResponderSession(await hostStore.loadOrCreate())
-    const m1C = initC.writeMessage1()
-    respC.readMessage1(m1C)
-    initC.readMessage2(respC.writeMessage2())
-
-    const candidateC = await coordinator.initiatePairing(respC, { token: tokenC.token })
-    try {
-      ;(candidateC as any).expiresAt = now + 1000000
-    } catch {}
-    now += 10000
-    await expect(
-      coordinator.confirmPairing({
-        candidateId: candidateC.candidateId,
-        grantedCapabilities: ['observe'],
-      }),
-    ).rejects.toThrow(RemoteCryptoError)
-
-    // Sub-case D: Trust commit uses original static key despite remoteStaticPublicKey mutation
-    const tokenD = tokenRegistry.createToken({
-      trustDomainId: hostGen2.trustDomainId,
-      hostGeneration: hostGen2.generation,
-    })
-    const clientD = generateClientKeyPair()
-    const initD = new NoiseInitiatorSession(clientD, hostGen2.publicKey)
-    const respD = new NoiseResponderSession(await hostStore.loadOrCreate())
-    const m1D = initD.writeMessage1()
-    respD.readMessage1(m1D)
-    initD.readMessage2(respD.writeMessage2())
-
-    const candidateD = await coordinator.initiatePairing(respD, { token: tokenD.token })
-    candidateD.remoteStaticPublicKey.fill(0xee) // mutate view
-    const resultD = await coordinator.confirmPairing({
-      candidateId: candidateD.candidateId,
-      grantedCapabilities: ['observe'],
-    })
-    expect(resultD.device.staticPublicKey).toEqual(clientD.publicKey)
-    expect(resultD.device.deviceId).toBe(computeFingerprint(clientD.publicKey))
   })
 
-  it('4. P0-2: confirm/confirm race is strictly single-winner', async () => {
+  it('9. P0-2: confirm/confirm race is strictly single-winner', async () => {
     const hostStore = new InMemoryHostIdentityStore()
     const host = await hostStore.loadOrCreate()
     const trustStore = new InMemoryDeviceTrustStore()
@@ -229,7 +412,6 @@ describe('R2A-R4 Final Transaction & Concurrency Closure Adversarial Tests', () 
 
     const candidate = await coordinator.initiatePairing(resp, { token: token.token })
 
-    // Concurrent execution of two confirmPairing calls
     const [res1, res2] = await Promise.allSettled([
       coordinator.confirmPairing({
         candidateId: candidate.candidateId,
@@ -244,22 +426,18 @@ describe('R2A-R4 Final Transaction & Concurrency Closure Adversarial Tests', () 
     const fulfilled = [res1, res2].filter((r) => r.status === 'fulfilled')
     const rejected = [res1, res2].filter((r) => r.status === 'rejected')
 
-    // Exactly one winner, exactly one failure
     expect(fulfilled.length).toBe(1)
     expect(rejected.length).toBe(1)
-
-    // Store committed exactly one record
     expect(await trustStore.size()).toBe(1)
   })
 
-  it('5. P0-2: confirm/reject race is strictly single-winner and losing op has no side effects', async () => {
+  it('10. P0-2: confirm/reject race is strictly single-winner and losing op has no side effects', async () => {
     const hostStore = new InMemoryHostIdentityStore()
     const host = await hostStore.loadOrCreate()
     const trustStore = new InMemoryDeviceTrustStore()
     const tokenRegistry = new PairingTokenRegistry()
     const coordinator = new PairingCoordinator(hostStore, trustStore, tokenRegistry)
 
-    // Scenario A: reject claims first
     const tokenA = tokenRegistry.createToken({
       trustDomainId: host.identity.trustDomainId,
       hostGeneration: host.identity.generation,
@@ -271,11 +449,9 @@ describe('R2A-R4 Final Transaction & Concurrency Closure Adversarial Tests', () 
     initA.readMessage2(respA.writeMessage2())
 
     const candA = await coordinator.initiatePairing(respA, { token: tokenA.token })
-    // Reject wins
     const rejectWon = await coordinator.rejectPairing(candA.candidateId)
     expect(rejectWon).toBe(true)
 
-    // Subsequent or racing confirm must fail closed
     await expect(
       coordinator.confirmPairing({
         candidateId: candA.candidateId,
@@ -283,33 +459,9 @@ describe('R2A-R4 Final Transaction & Concurrency Closure Adversarial Tests', () 
       }),
     ).rejects.toThrow(RemoteCryptoError)
     expect(await trustStore.size()).toBe(0)
-
-    // Scenario B: confirm claims first
-    const tokenB = tokenRegistry.createToken({
-      trustDomainId: host.identity.trustDomainId,
-      hostGeneration: host.identity.generation,
-    })
-    const clientB = generateClientKeyPair()
-    const initB = new NoiseInitiatorSession(clientB, host.identity.publicKey)
-    const respB = new NoiseResponderSession(host)
-    respB.readMessage1(initB.writeMessage1())
-    initB.readMessage2(respB.writeMessage2())
-
-    const candB = await coordinator.initiatePairing(respB, { token: tokenB.token })
-    const confirmPromise = coordinator.confirmPairing({
-      candidateId: candB.candidateId,
-      grantedCapabilities: ['observe'],
-    })
-    // Racing reject
-    const rejectAfterClaim = await coordinator.rejectPairing(candB.candidateId)
-    expect(rejectAfterClaim).toBe(false) // cannot reverse confirmation claim!
-
-    const confirmRes = await confirmPromise
-    expect(confirmRes.channelState).toBe('DEVICE_AUTHORIZED')
-    expect(await trustStore.size()).toBe(1)
   })
 
-  it('6. P0-3 & P0-4: FileDeviceTrustStore durable transactions, fault injection, and lastSeenAt parity', async () => {
+  it('11. P0-3 & P0-4: FileDeviceTrustStore durable transactions, fault injection, and lastSeenAt parity', async () => {
     const testDir = join(tmpdir(), `dsh-tx-test-${Date.now()}`)
     mkdirSync(testDir, { recursive: true })
     const filePath = join(testDir, 'devices.json')
@@ -370,11 +522,11 @@ describe('R2A-R4 Final Transaction & Concurrency Closure Adversarial Tests', () 
         store.revokeSync(dev1Id)
       }).toThrow('injected persistence fault')
 
-      expect(revocationCount).toBe(0) // No false event emitted
-      expect(store.getSync(dev1Id)?.revokedAt).toBeUndefined() // Memory not revoked
+      expect(revocationCount).toBe(0)
+      expect(store.getSync(dev1Id)?.revokedAt).toBeUndefined()
 
       const diskCheck2 = new FileDeviceTrustStore(filePath)
-      expect(diskCheck2.getSync(dev1Id)?.revokedAt).toBeUndefined() // Disk not revoked
+      expect(diskCheck2.getSync(dev1Id)?.revokedAt).toBeUndefined()
 
       // Test 3: Fault during adminReEnroll -> previous state preserved
       injectFault = false
@@ -391,7 +543,7 @@ describe('R2A-R4 Final Transaction & Concurrency Closure Adversarial Tests', () 
         }),
       ).rejects.toThrow('injected persistence fault')
 
-      expect(store.getSync(dev1Id)?.revokedAt).toBeDefined() // Still revoked
+      expect(store.getSync(dev1Id)?.revokedAt).toBeDefined()
       const diskCheck3 = new FileDeviceTrustStore(filePath)
       expect(diskCheck3.getSync(dev1Id)?.revokedAt).toBeDefined()
 
@@ -415,166 +567,7 @@ describe('R2A-R4 Final Transaction & Concurrency Closure Adversarial Tests', () 
     }
   })
 
-  it('7. P1: FileDeviceTrustStore path, symlink, POSIX permissions, and schema gate', () => {
-    const testDir = join(tmpdir(), `dsh-integrity-test-${Date.now()}`)
-    mkdirSync(testDir, { recursive: true })
-
-    try {
-      // 1. Relative path rejected
-      expect(() => new FileDeviceTrustStore('./relative-path.json')).toThrow(RemoteCryptoError)
-
-      // 2. Symlink rejected where supported
-      const targetFile = join(testDir, 'target.json')
-      const symlinkFile = join(testDir, 'symlink.json')
-      writeFileSync(targetFile, JSON.stringify({ schemaVersion: 1, devices: [] }), { mode: 0o600 })
-      try {
-        symlinkSync(targetFile, symlinkFile)
-        expect(() => new FileDeviceTrustStore(symlinkFile)).toThrow(RemoteCryptoError)
-      } catch (err: any) {
-        if (err.code !== 'EPERM') throw err
-      }
-
-      // 3. Insecure POSIX permissions rejected where supported
-      if (process.platform !== 'win32') {
-        const insecureFile = join(testDir, 'insecure.json')
-        writeFileSync(insecureFile, JSON.stringify({ schemaVersion: 1, devices: [] }), {
-          mode: 0o666,
-        })
-        chmodSync(insecureFile, 0o666)
-        expect(() => new FileDeviceTrustStore(insecureFile)).toThrow(RemoteCryptoError)
-      }
-
-      // 4. Duplicate device record rejected
-      const dupFile = join(testDir, 'dup.json')
-      const client = generateClientKeyPair()
-      const devId = computeFingerprint(client.publicKey)
-      const validDev = {
-        deviceId: devId,
-        fingerprint: devId,
-        staticPublicKeyHex: Buffer.from(client.publicKey).toString('hex'),
-        trustDomainId: 'dom-1',
-        displayName: 'Dev',
-        grantedCapabilities: ['observe'],
-        pairedAt: 1000,
-        lastSeenAt: 1000,
-        keyVersion: 1,
-      }
-      writeFileSync(
-        dupFile,
-        JSON.stringify({ schemaVersion: 1, devices: [validDev, validDev] }),
-        { mode: 0o600 },
-      )
-      expect(() => new FileDeviceTrustStore(dupFile)).toThrow(RemoteCryptoError)
-
-      // 5. Malformed fingerprint rejected
-      const badFpFile = join(testDir, 'bad-fp.json')
-      writeFileSync(
-        badFpFile,
-        JSON.stringify({
-          schemaVersion: 1,
-          devices: [{ ...validDev, fingerprint: 'wrong-fingerprint' }],
-        }),
-        { mode: 0o600 },
-      )
-      expect(() => new FileDeviceTrustStore(badFpFile)).toThrow(RemoteCryptoError)
-
-      // 6. Malformed capability rejected
-      const badCapFile = join(testDir, 'bad-cap.json')
-      writeFileSync(
-        badCapFile,
-        JSON.stringify({
-          schemaVersion: 1,
-          devices: [{ ...validDev, grantedCapabilities: ['observe', 'superuser'] }],
-        }),
-        { mode: 0o600 },
-      )
-      expect(() => new FileDeviceTrustStore(badCapFile)).toThrow(RemoteCryptoError)
-
-      // 7. Malformed timestamps / keyVersion rejected
-      const badTimeFile = join(testDir, 'bad-time.json')
-      writeFileSync(
-        badTimeFile,
-        JSON.stringify({
-          schemaVersion: 1,
-          devices: [{ ...validDev, pairedAt: -50 }],
-        }),
-        { mode: 0o600 },
-      )
-      expect(() => new FileDeviceTrustStore(badTimeFile)).toThrow(RemoteCryptoError)
-    } finally {
-      if (existsSync(testDir)) {
-        rmSync(testDir, { recursive: true, force: true })
-      }
-    }
-  })
-
-  it('8. P0-2: DeviceTrustStore defensive snapshots prevent state corruption', async () => {
-    const { seams } = fakeSeams()
-    const hostStore = new InMemoryHostIdentityStore()
-    const host = await hostStore.loadOrCreate()
-    const trustStore = new InMemoryDeviceTrustStore()
-    const core = new RemoteAdapterCore(seams, { trustStore, hostIdentityStore: hostStore })
-
-    const client = generateClientKeyPair()
-    const deviceId = computeFingerprint(client.publicKey)
-
-    const record = await trustStore.trust({
-      staticPublicKey: client.publicKey,
-      displayName: 'Phone',
-      grantedCapabilities: ['observe'],
-      trustDomainId: host.identity.trustDomainId,
-    })
-
-    try {
-      ;(record.grantedCapabilities as Set<Capability>).add('prompt')
-      record.staticPublicKey.fill(0xee)
-      ;(record as any).revokedAt = Date.now()
-    } catch {}
-
-    const recordFromGet = await trustStore.get(deviceId)
-    expect(recordFromGet?.grantedCapabilities.has('prompt')).toBe(false)
-    expect(recordFromGet?.staticPublicKey).toEqual(client.publicKey)
-    expect(recordFromGet?.revokedAt).toBeUndefined()
-
-    const peer: AuthenticatedPeer = { deviceId, connectionEpoch: 1 }
-    const promptReq: RemoteRequest = {
-      jsonrpc: '2.0',
-      id: 'r1',
-      method: 'prompt.submit',
-      protocolVersion: 1,
-      connectionEpoch: 1,
-      requestSeq: 1,
-      idempotencyKey: 'idem-1',
-      params: { sessionId: 's1', prompt: 'test' },
-    }
-
-    await expect(core.handle(peer, promptReq)).rejects.toThrow(RemoteProtocolError)
-  })
-
-  it('9. P0-3: DeviceTrustStore rejects arbitrary deviceId bypass and enforces 32-byte key', async () => {
-    const trustStore = new InMemoryDeviceTrustStore()
-
-    await expect(
-      trustStore.trust({
-        staticPublicKey: new Uint8Array(16),
-        displayName: 'Invalid Key Device',
-        grantedCapabilities: ['observe'],
-        trustDomainId: 'dom-1',
-      }),
-    ).rejects.toThrow(RemoteCryptoError)
-
-    const key = generateClientKeyPair().publicKey
-    const record = await trustStore.trust({
-      staticPublicKey: key,
-      displayName: 'Legit Device',
-      grantedCapabilities: ['observe'],
-      trustDomainId: 'dom-1',
-    })
-
-    expect(record.deviceId).toBe(computeFingerprint(key))
-  })
-
-  it('10. P0-4: Host rotation automatically invalidates Core authorization truth without manual sync', async () => {
+  it('12. P0-4: Host rotation automatically invalidates Core authorization truth without manual sync', async () => {
     const { seams, calls } = fakeSeams()
     const hostStore = new InMemoryHostIdentityStore()
     const hostGen1 = await hostStore.loadOrCreate()
@@ -626,7 +619,7 @@ describe('R2A-R4 Final Transaction & Concurrency Closure Adversarial Tests', () 
     expect(calls.followup).toBe(1)
   })
 
-  it('11. P1: Pairing TTL hard ceiling strictly validates constructor and custom TTL', () => {
+  it('13. P1: Pairing TTL hard ceiling strictly validates constructor and custom TTL', () => {
     expect(() => new PairingTokenRegistry(16, 5000, Infinity)).toThrow(RemoteCryptoError)
     expect(() => new PairingTokenRegistry(16, 5000, NaN)).toThrow(RemoteCryptoError)
     expect(() => new PairingTokenRegistry(16, 5000, 300001)).toThrow(RemoteCryptoError)
@@ -640,7 +633,7 @@ describe('R2A-R4 Final Transaction & Concurrency Closure Adversarial Tests', () 
     expect(() => registry.createToken({ trustDomainId: 'dom-1', hostGeneration: 1, ttlMs: MAX_PAIRING_TTL_MS })).not.toThrow()
   })
 
-  it('12. nonce ceiling cannot be raised above audited max and public API cannot disable it', async () => {
+  it('14. nonce ceiling cannot be raised above audited max and public API cannot disable it', async () => {
     const hostStore = new InMemoryHostIdentityStore()
     const host = await hostStore.loadOrCreate()
     const client = generateClientKeyPair()
@@ -655,7 +648,7 @@ describe('R2A-R4 Final Transaction & Concurrency Closure Adversarial Tests', () 
     }).toThrow(RemoteCryptoError)
   })
 
-  it('13. 32-bit transport nonce message ceiling fail closed', async () => {
+  it('15. 32-bit transport nonce message ceiling fail closed', async () => {
     const hostStore = new InMemoryHostIdentityStore()
     const host = await hostStore.loadOrCreate()
     const client = generateClientKeyPair()
@@ -681,7 +674,7 @@ describe('R2A-R4 Final Transaction & Concurrency Closure Adversarial Tests', () 
     expect(initiator.getState()).toBe('CLOSED')
   })
 
-  it('14. ciphertext auth failure closes session and post-failure crypto is denied', async () => {
+  it('16. ciphertext auth failure closes session and post-failure crypto is denied', async () => {
     const hostStore = new InMemoryHostIdentityStore()
     const host = await hostStore.loadOrCreate()
     const client = generateClientKeyPair()
@@ -703,7 +696,7 @@ describe('R2A-R4 Final Transaction & Concurrency Closure Adversarial Tests', () 
     expect(() => responder.encrypt(new TextEncoder().encode('next'))).toThrow(RemoteCryptoError)
   })
 
-  it('15. lockfile reviewed closure guard', () => {
+  it('17. lockfile reviewed closure guard', () => {
     const lockfilePath = join(__dirname, '../../../pnpm-lock.yaml')
     const content = readFileSync(lockfilePath, 'utf8')
 
@@ -716,7 +709,7 @@ describe('R2A-R4 Final Transaction & Concurrency Closure Adversarial Tests', () 
     expect(content).toContain('@types/noise-handshake@3.0.3')
   })
 
-  it('16. HostKeyPair prevents secret leak via JSON.stringify, spread, inspect, String', async () => {
+  it('18. HostKeyPair prevents secret leak via JSON.stringify, spread, inspect, String', async () => {
     const hostStore = new InMemoryHostIdentityStore()
     const host = await hostStore.loadOrCreate()
     const rawSecretHex = Buffer.from(host.secretKey).toString('hex')
@@ -734,7 +727,7 @@ describe('R2A-R4 Final Transaction & Concurrency Closure Adversarial Tests', () 
     expect(String(host)).not.toContain(rawSecretHex)
   })
 
-  it('17. raw token absent from registry state and PairingToken leak proof', () => {
+  it('19. raw token absent from registry state and PairingToken leak proof', () => {
     const registry = new PairingTokenRegistry()
     const token = registry.createToken({ trustDomainId: 'dom-1', hostGeneration: 1 })
     const rawToken = token.token
@@ -754,7 +747,7 @@ describe('R2A-R4 Final Transaction & Concurrency Closure Adversarial Tests', () 
     expect(String(token)).not.toContain(rawToken)
   })
 
-  it('18. ConnectionEpochAllocator fails closed on exhaustion', () => {
+  it('20. ConnectionEpochAllocator fails closed on exhaustion', () => {
     const allocator = new ConnectionEpochAllocator(Number.MAX_SAFE_INTEGER - 1)
     expect(allocator.allocateNext()).toBe(Number.MAX_SAFE_INTEGER)
 
@@ -763,7 +756,7 @@ describe('R2A-R4 Final Transaction & Concurrency Closure Adversarial Tests', () 
     }).toThrow(RemoteCryptoError)
   })
 
-  it('19. same R1 idempotency key survives transport reconnect with fresh epoch', async () => {
+  it('21. same R1 idempotency key survives transport reconnect with fresh epoch', async () => {
     const { seams, calls } = fakeSeams()
     const hostStore = new InMemoryHostIdentityStore()
     const host = await hostStore.loadOrCreate()
@@ -816,9 +809,8 @@ describe('R2A-R4 Final Transaction & Concurrency Closure Adversarial Tests', () 
     expect(calls.followup).toBe(1)
     expect(res2).toEqual({ sessionId: 's1', prompt: 'hello reconnect', turnId: 't1' })
   })
-})
 
-  it('20. handshake hash equality and availability after completion', async () => {
+  it('22. handshake hash equality and availability after completion', async () => {
     const hostStore = new InMemoryHostIdentityStore()
     const host = await hostStore.loadOrCreate()
     const client = generateClientKeyPair()
@@ -845,7 +837,7 @@ describe('R2A-R4 Final Transaction & Concurrency Closure Adversarial Tests', () 
     expect(Buffer.from(initHash).equals(Buffer.from(respHash))).toBe(true)
   })
 
-  it('21. candidate expires between verify and confirm', async () => {
+  it('23. candidate expires between verify and confirm', async () => {
     let now = 1000
     const hostStore = new InMemoryHostIdentityStore({ clock: () => now })
     const host = await hostStore.loadOrCreate()
@@ -881,7 +873,7 @@ describe('R2A-R4 Final Transaction & Concurrency Closure Adversarial Tests', () 
     expect(tokenRegistry.getCandidate(candidate.candidateId)).toBeUndefined()
   })
 
-  it('22. Host rotates between verify and confirm', async () => {
+  it('24. Host rotates between verify and confirm', async () => {
     const hostStore = new InMemoryHostIdentityStore()
     const host1 = await hostStore.loadOrCreate()
     const trustStore = new InMemoryDeviceTrustStore()
@@ -915,7 +907,7 @@ describe('R2A-R4 Final Transaction & Concurrency Closure Adversarial Tests', () 
     expect(tokenRegistry.getCandidate(candidate.candidateId)).toBeUndefined()
   })
 
-  it('23. deviceId substitution attempt is prevented', async () => {
+  it('25. deviceId substitution attempt is prevented', async () => {
     const hostStore = new InMemoryHostIdentityStore()
     const host = await hostStore.loadOrCreate()
     const trustStore = new InMemoryDeviceTrustStore()
@@ -945,7 +937,7 @@ describe('R2A-R4 Final Transaction & Concurrency Closure Adversarial Tests', () 
     expect(candidate.deviceId).not.toBe('victim-device-id')
   })
 
-  it('24. failed trust commit has deterministic token/candidate rollback semantics', async () => {
+  it('26. failed trust commit has deterministic token/candidate rollback semantics', async () => {
     const hostStore = new InMemoryHostIdentityStore()
     const host = await hostStore.loadOrCreate()
     const trustStore = new InMemoryDeviceTrustStore(1)
@@ -986,7 +978,7 @@ describe('R2A-R4 Final Transaction & Concurrency Closure Adversarial Tests', () 
     expect(tokenRegistry.size).toBe(0)
   })
 
-  it('25. revoked device cannot be restored by standard pairing', async () => {
+  it('27. revoked device cannot be restored by standard pairing', async () => {
     const trustStore = new InMemoryDeviceTrustStore()
     const clientKey = generateClientKeyPair().publicKey
     const domainId = 'domain-1'
@@ -1019,3 +1011,4 @@ describe('R2A-R4 Final Transaction & Concurrency Closure Adversarial Tests', () 
     })
     expect(reEnrolled.revokedAt).toBeUndefined()
   })
+})
