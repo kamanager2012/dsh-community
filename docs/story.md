@@ -1,10 +1,10 @@
-# 对外叙事 · One Harness. Four Shipped Community Endpoints.
+# 对外叙事 · One Harness. Five Community Endpoints.
 
 > 本文件是传播素材的事实版。所有数字与状态必须与仓库代码、Release、CI 一致;禁止使用 production-ready / complete / 100% compatible 一类未经证实的词。产品端定义以 [community-endpoints.md](community-endpoints.md) 为准。
 
 ## 一句话
 
-**官方 DeepSeek Harness 是内核。我们基于官方内核发行：一套 Runtime，四个当前已发行入口（WSL/Linux 终端、Windows 桌面、macOS 桌面、Linux AppImage），和官方 Web 共用同一套 `~/.dsh`；Android 仅是已归档 Labs 中的 `[UNVERIFIED]` 实验端，不进入 Latest。**
+**官方 DeepSeek Harness 是内核。我们基于官方内核维护五个 Community endpoints：WSL/Linux 终端、Windows Desktop、macOS Desktop、Linux AppImage、Android。前四个当前已发行；Android 既有源码已恢复到本仓 `apps/android` 活跃主线，仍为 `[UNVERIFIED]`，在 Reality Gate 通过前不进入 Published Latest。官方 Web 与社区端共用同一套 `~/.dsh`，但不是 Community endpoint。**
 
 ## 三句话版本
 

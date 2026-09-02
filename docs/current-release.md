@@ -31,7 +31,7 @@ Candidate Source and Published Latest may coincide after publication, but they a
 | Candidate Dual-Badge | `DeepSeek Harness Community v0.1.2-alpha.4 [Official Core: @deepseek-ai/dsh@0.1.2-alpha.4]` |
 | Latest tested | `0.1.2-alpha.4` — promoted-tree consolidated acceptance PASS ([run 33577261413](https://github.com/kamanager2012/dsh-community/actions/runs/33577261413)); compatibility evidence only, not publication |
 | Shipped Community endpoints | WSL/Linux Terminal, Windows Desktop, macOS Desktop, Linux AppImage |
-| Experimental endpoint | Android Labs `[UNVERIFIED]`, not on the Latest download page |
+| Active unpublished endpoint | Android `apps/android` `[UNVERIFIED]`, not on the Latest download page |
 | Official Web | Kernel UI, not a community endpoint |
 | artifact-smoke | `[PARTIAL]` on `v0.1.1-rc.2` ([run 32579569995](https://github.com/kamanager2012/dsh-community/actions/runs/32579569995)): checksum + cosign bundle verify (12 assets) + Windows/macOS first-ready + Linux TUI; full user loop still separate |
 | Full user loop | `[UNVERIFIED]` — manual exact-release WSL/Linux new→answer→resume→answer gate now lives in [`user-loop-evidence.yml`](../.github/workflows/user-loop-evidence.yml); no successful release run is recorded yet, so status stays unchanged |

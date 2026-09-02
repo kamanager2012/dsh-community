@@ -11,11 +11,11 @@
 | 代码可以构建的 OS 目标 | 4 | Linux、Windows、macOS、Android |
 | Community UI 形态 | 3 | Terminal / TUI、Desktop、Mobile 壳 |
 | 我们发行给用户的社区端 | **4** | WSL/Linux 终端、Windows 桌面、macOS 桌面、Linux AppImage |
-| 实验端（不进入 Latest） | **1** | Android `[UNVERIFIED]`；仅保留于已归档 Labs |
+| 活跃但未发行端 | **1** | Android `[UNVERIFIED]`；源码位于本仓 `apps/android`，尚未进入 Published Latest |
 
 官方 Web 是 DeepSeek 官方界面。它与 Community 共享 `~/.dsh`，但**不是社区端**。
 
-## 四个已发行 Community 端 + 一个实验端
+## 五个 Community endpoints：四个已发行 + Android 活跃 / UNVERIFIED
 
 ```text
                     Official DeepSeek Harness Runtime
@@ -33,7 +33,7 @@
 | 2 | Windows 桌面 | `DSH Community Setup.exe` | Stable（已发布 Latest） |
 | 3 | macOS 桌面 | `dsh-community-*.dmg` | Stable（已发布 Latest） |
 | 4 | Linux 桌面 AppImage | `dsh-community-*.AppImage` | Beta（随 Release 附带；Linux CLI 用户仍以终端为主） |
-| — | Android 移动端（实验） | APK 原型（WebView + nodejs-mobile） | `[UNVERIFIED]`；源码在已归档 Labs，不进正式下载页 |
+| 5 | Android Mobile | APK 原型（WebView + nodejs-mobile） | 活跃源码在 `apps/android`；`[UNVERIFIED]`，不进 Published Latest |
 
 ### 1. WSL / Linux 终端
 
@@ -74,9 +74,9 @@ dsh-community-*.dmg
 
 同时：WSL / 无桌面服务器用户的默认路径仍是终端，不要告诉他们必须装 AppImage。
 
-### 实验端：Android 移动端
+### 社区端 5：Android Mobile（活跃源码 / UNVERIFIED）
 
-APK 薄壳：WebView 加载官方 Web UI，内嵌 Node 跑官方 `@deepseek-ai/dsh`。历史源码在已归档的 [`deepseek-harness-suite/apps/android`](https://github.com/kamanager2012/deepseek-harness-suite)，保持 `[UNVERIFIED]`，不写入 `dsh-community` Latest 下载清单。
+APK 薄壳：WebView 加载官方 Web UI，内嵌 Node 跑官方 `@deepseek-ai/dsh`。既有第一方源码已恢复到本仓 [`apps/android`](../apps/android)，保持 `[UNVERIFIED]`，在 Android Reality Gate 通过前不写入 Published Latest 下载清单。
 
 ## 官方 Web 是伙伴入口，不是我们的产品
 
@@ -91,12 +91,12 @@ APK 薄壳：WebView 加载官方 Web UI，内嵌 Node 跑官方 `@deepseek-ai/d
                                          ├── Windows
                                          ├── macOS
                                          ├── Linux AppImage
-                                         └── Android (Labs, not shipped)
+                                         └── Android (active source, UNVERIFIED, not yet published)
 ```
 
 正确说法：
 
-> 一套官方 Runtime，四个已发行 Community 端；Android 仅为 `[UNVERIFIED]` 实验端。与官方 Web 共用同一份 `~/.dsh`。
+> 一套官方 Runtime，五个 Community endpoints；前四个当前已发行，Android 为活跃源码 `[UNVERIFIED]` 端。与官方 Web 共用同一份 `~/.dsh`。
 
 错误说法：
 
@@ -108,12 +108,12 @@ APK 薄壳：WebView 加载官方 Web UI，内嵌 Node 跑官方 `@deepseek-ai/d
 
 优先使用：
 
-> **One Harness. Four shipped community endpoints.**
+> **One Harness. Five community endpoints. Four shipped today; Android active / UNVERIFIED.**
 
-> **一套 Harness，四个已发行社区端：WSL/Linux 终端、Windows 桌面、macOS 桌面、Linux AppImage；Android 为未验证实验端。**
+> **一套 Harness，五个社区端：WSL/Linux 终端、Windows Desktop、macOS Desktop、Linux AppImage、Android；前四个已发行，Android 活跃源码仍待 Reality Gate。**
 
 同时说明：
 
 > 与官方 Web 共用官方 `~/.dsh` Session 存储。Official Web 不是 Community 发行端。
 
-不要把 Android 实验原型计入当前已发行端数量，也不要把官方 Web 误写成 Community 发行端。
+Android 是 Community endpoint，但在 `[UNVERIFIED]` 阶段不得计入当前已发行端数量；官方 Web 也不得误写成 Community 发行端。

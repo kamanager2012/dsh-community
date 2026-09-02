@@ -15,15 +15,16 @@ or a forked tool-execution pipeline.
 
 ## Current product reality
 
-There are **four currently shipped Community endpoints**:
+There are **five Community endpoints**:
 
 1. WSL/Linux Terminal
 2. Windows Desktop
 3. macOS Desktop
 4. Linux AppImage
+5. Android
 
-Android is an archived-Labs **[UNVERIFIED] experimental endpoint**. It is not
-part of GitHub Latest and must not be counted as a shipped endpoint.
+The first four currently have published artifacts. Android source is active in
+`apps/android`, remains **[UNVERIFIED]**, and is not yet part of GitHub Latest.
 
 Official Web is an upstream companion surface owned by DeepSeek. It is not a
 Community-shipped endpoint.
@@ -40,14 +41,14 @@ Community-shipped endpoint.
                            ├─ macOS
                            └─ Linux AppImage
 
- Android: archived Labs / UNVERIFIED / not shipped
+ Android: active source / UNVERIFIED / not yet published
 ```
 
 Preferred public wording:
 
-> **One Harness. Four shipped community endpoints.**
+> **One Harness. Five community endpoints. Four shipped today; Android active / UNVERIFIED.**
 
-Always qualify Android separately as experimental and unverified.
+Always distinguish product membership from publication evidence: Android is in the active product tree but is not yet a Published Latest artifact.
 
 ## What the official Runtime owns
 

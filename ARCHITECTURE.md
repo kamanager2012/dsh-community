@@ -1,6 +1,6 @@
 # Architecture
 
-Official DeepSeek Harness is the kernel. Community is based on that kernel: one runtime, one `~/.dsh`, and four currently shipped community endpoints. Not a second harness. The shipped endpoints are WSL/Linux Terminal, Windows Desktop, macOS Desktop, and Linux AppImage. Android is an archived-Labs `[UNVERIFIED]` experiment, not a Latest artifact or shipped endpoint. Official Web is the kernel's own UI, not a Community endpoint.
+Official DeepSeek Harness is the kernel. Community is based on that kernel: one runtime, one `~/.dsh`, and five Community endpoints. Not a second harness. WSL/Linux Terminal, Windows Desktop, macOS Desktop, and Linux AppImage are currently published; Android source is active in `apps/android` but remains `[UNVERIFIED]` and is not a Published Latest artifact. Official Web is the kernel's own UI, not a Community endpoint.
 
 ```
                   DeepSeek Harness
