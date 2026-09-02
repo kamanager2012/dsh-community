@@ -10,6 +10,7 @@ export type RemoteCryptoErrorCode =
   | 'NONCE_EXHAUSTED'
   | 'TRUST_DOMAIN_STALE'
   | 'UNAUTHORIZED_CHANNEL'
+  | 'CAPABILITY_DENIED'
   | 'STATE_CAPACITY_EXCEEDED'
 
 export class RemoteCryptoError extends Error {

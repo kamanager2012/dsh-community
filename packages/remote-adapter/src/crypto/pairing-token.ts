@@ -7,7 +7,9 @@ import { computeFingerprint } from './host-identity.js'
 export const DEFAULT_PAIRING_TTL_MS = 5 * 60 * 1000 // 5 minutes
 export const MAX_PAIRING_TTL_MS = 5 * 60 * 1000 // 5 minutes ceiling (300,000 ms)
 
-export interface StoredPairingCandidate {
+export type PairingCandidateState = 'PENDING' | 'CONFIRMING' | 'CONSUMED'
+
+interface StoredPairingCandidate {
   readonly candidateId: string
   readonly remoteStaticPublicKey: Uint8Array
   readonly deviceId: string
@@ -17,6 +19,7 @@ export interface StoredPairingCandidate {
   readonly trustDomainId: string
   readonly hostGeneration: number
   readonly expiresAt: number
+  state: PairingCandidateState
 }
 
 export interface PairingCandidateView {
@@ -29,9 +32,24 @@ export interface PairingCandidateView {
   readonly trustDomainId: string
   readonly hostGeneration: number
   readonly expiresAt: number
+  readonly state: PairingCandidateState
 }
 
 export type PairingCandidate = PairingCandidateView
+
+export interface ClaimedCandidateTransaction {
+  readonly candidateId: string
+  readonly remoteStaticPublicKey: Uint8Array
+  readonly deviceId: string
+  readonly displayName: string
+  readonly maxAllowedCapabilities: readonly Capability[]
+  readonly tokenHash: string
+  readonly trustDomainId: string
+  readonly hostGeneration: number
+  readonly expiresAt: number
+  commit(): void
+  rollback(): void
+}
 
 function toCandidateView(stored: StoredPairingCandidate): PairingCandidateView {
   return Object.freeze({
@@ -44,6 +62,7 @@ function toCandidateView(stored: StoredPairingCandidate): PairingCandidateView {
     trustDomainId: stored.trustDomainId,
     hostGeneration: stored.hostGeneration,
     expiresAt: stored.expiresAt,
+    state: stored.state,
   })
 }
 
@@ -264,6 +283,7 @@ export class PairingTokenRegistry {
       trustDomainId: record.trustDomainId,
       hostGeneration: record.hostGeneration,
       expiresAt: record.expiresAt,
+      state: 'PENDING',
     }
 
     record.inReviewCandidateId = candidateId
@@ -277,8 +297,80 @@ export class PairingTokenRegistry {
     return stored ? toCandidateView(stored) : undefined
   }
 
-  getInternalCandidate(candidateId: string): StoredPairingCandidate | undefined {
-    return this.candidates.get(candidateId)
+  /**
+   * P0-2: Synchronously claim candidate for confirmation before any async operation.
+   * Enforces single-winner state transition: PENDING -> CONFIRMING -> CONSUMED.
+   * Returns a safe transaction handle with defensive snapshot copies.
+   */
+  claimCandidateForConfirmation(candidateId: string): ClaimedCandidateTransaction {
+    const candidate = this.candidates.get(candidateId)
+    if (!candidate) {
+      throw new RemoteCryptoError('PAIRING_FAILED', 'pairing candidate not found or already consumed')
+    }
+
+    if (candidate.state !== 'PENDING') {
+      throw new RemoteCryptoError(
+        'PAIRING_FAILED',
+        `candidate is in state '${candidate.state}' and cannot be claimed for confirmation`,
+      )
+    }
+
+    const now = this.clock()
+    if (now > candidate.expiresAt) {
+      candidate.state = 'CONSUMED'
+      this.burnCandidateAndToken(candidateId)
+      throw new RemoteCryptoError('PAIRING_FAILED', 'pairing candidate has expired')
+    }
+
+    // Atomically transition to CONFIRMING in the current tick
+    candidate.state = 'CONFIRMING'
+
+    const txRemoteStaticPublicKey = new Uint8Array(candidate.remoteStaticPublicKey)
+    const txMaxCapabilities = Object.freeze([...candidate.maxAllowedCapabilities])
+    let finalized = false
+
+    return Object.freeze({
+      candidateId: candidate.candidateId,
+      remoteStaticPublicKey: txRemoteStaticPublicKey,
+      deviceId: candidate.deviceId,
+      displayName: candidate.displayName,
+      maxAllowedCapabilities: txMaxCapabilities,
+      tokenHash: candidate.tokenHash,
+      trustDomainId: candidate.trustDomainId,
+      hostGeneration: candidate.hostGeneration,
+      expiresAt: candidate.expiresAt,
+      commit: () => {
+        if (finalized) return
+        finalized = true
+        candidate.state = 'CONSUMED'
+        this.burnCandidateAndToken(candidateId)
+      },
+      rollback: () => {
+        if (finalized) return
+        finalized = true
+        candidate.state = 'CONSUMED'
+        this.burnCandidateAndToken(candidateId)
+      },
+    })
+  }
+
+  /**
+   * P0-2: Synchronously reject candidate. Single-winner race against confirmation.
+   * If already CONFIRMING or CONSUMED, reject fails and cannot reverse in-flight confirmation.
+   */
+  rejectCandidate(candidateId: string): boolean {
+    const candidate = this.candidates.get(candidateId)
+    if (!candidate) {
+      return false
+    }
+
+    if (candidate.state !== 'PENDING') {
+      return false
+    }
+
+    candidate.state = 'CONSUMED'
+    this.burnCandidateAndToken(candidateId)
+    return true
   }
 
   burnCandidateAndToken(candidateId: string): void {

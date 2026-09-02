@@ -94,6 +94,7 @@ export interface DeviceTrustStore {
     trustDomainId: string
   }): DeviceRecord
   revokeSync(deviceId: string): boolean
+  recordSeenSync(deviceId: string, timestamp?: number): void
 }
 
 export class InMemoryDeviceTrustStore implements DeviceTrustStore {
@@ -262,11 +263,15 @@ export class InMemoryDeviceTrustStore implements DeviceTrustStore {
     return this.devices.delete(deviceId)
   }
 
-  async recordSeen(deviceId: string, timestamp?: number): Promise<void> {
+  recordSeenSync(deviceId: string, timestamp?: number): void {
     const record = this.devices.get(deviceId)
     if (record) {
       record.lastSeenAt = timestamp ?? this.clock()
     }
+  }
+
+  async recordSeen(deviceId: string, timestamp?: number): Promise<void> {
+    this.recordSeenSync(deviceId, timestamp)
   }
 
   assertAuthorizedSync(deviceId: string, currentTrustDomainId: string, method?: RemoteMethod): DeviceRecord {

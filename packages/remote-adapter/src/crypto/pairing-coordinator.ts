@@ -3,18 +3,7 @@ import type { DeviceRecord, DeviceTrustStore } from './device-trust.js'
 import { RemoteCryptoError } from './errors.js'
 import type { HostIdentityStore } from './host-identity.js'
 import type { NoiseResponderSession } from './noise.js'
-import type { PairingCandidate, PairingTokenRegistry } from './pairing-token.js'
-
-export interface PairingPayload {
-  readonly token: string
-  readonly displayName?: string
-  readonly requestedCapabilities?: readonly Capability[]
-  /**
-   * Adversarial attempt to substitute deviceId must be ignored/rejected.
-   * Authoritative deviceId is derived exclusively from Noise authenticated static key.
-   */
-  readonly claimedDeviceId?: string
-}
+import type { PairingCandidateView, PairingTokenRegistry } from './pairing-token.js'
 
 export interface PairingConfirmationParams {
   readonly candidateId: string
@@ -22,8 +11,8 @@ export interface PairingConfirmationParams {
 }
 
 export interface PairingResult {
-  readonly device: DeviceRecord
   readonly channelState: 'DEVICE_AUTHORIZED'
+  readonly device: DeviceRecord
 }
 
 export class PairingCoordinator {
@@ -40,8 +29,13 @@ export class PairingCoordinator {
 
   async initiatePairing(
     responder: NoiseResponderSession,
-    payload: PairingPayload,
-  ): Promise<PairingCandidate> {
+    payload: {
+      token: string
+      displayName?: string
+      requestedCapabilities?: readonly Capability[]
+      claimedDeviceId?: string
+    },
+  ): Promise<PairingCandidateView> {
     if (responder.getState() !== 'CHANNEL_AUTHENTICATED') {
       throw new RemoteCryptoError(
         'HANDSHAKE_STATE_INVALID',
@@ -64,69 +58,57 @@ export class PairingCoordinator {
   }
 
   async confirmPairing(params: PairingConfirmationParams): Promise<PairingResult> {
-    const candidate = this.tokenRegistry.getInternalCandidate(params.candidateId)
-    if (!candidate) {
-      throw new RemoteCryptoError('PAIRING_FAILED', 'pairing candidate not found or already consumed')
-    }
+    // P0-2: Synchronously claim candidate BEFORE ANY AWAIT (Single-winner race guarantee)
+    const tx = this.tokenRegistry.claimCandidateForConfirmation(params.candidateId)
 
-    const now = this.clock()
-
-    // P0-4: Expiry check at confirmation time
-    if (now > candidate.expiresAt) {
-      this.tokenRegistry.burnCandidateAndToken(params.candidateId)
-      throw new RemoteCryptoError('PAIRING_FAILED', 'pairing candidate has expired')
-    }
-
-    // P0-5: Host rotation check at confirmation time
-    const currentHost = await this.hostIdentityStore.getPublicIdentity()
-    if (
-      candidate.trustDomainId !== currentHost.trustDomainId ||
-      candidate.hostGeneration !== currentHost.generation
-    ) {
-      this.tokenRegistry.burnCandidateAndToken(params.candidateId)
-      throw new RemoteCryptoError(
-        'TRUST_DOMAIN_STALE',
-        'host identity rotated during pairing; pairing candidate invalidated',
-      )
-    }
-
-    // Capability escalation protection: cannot exceed allowed capabilities of the token
-    const maxSet = new Set(candidate.maxAllowedCapabilities)
-    for (const cap of params.grantedCapabilities) {
-      if (!maxSet.has(cap)) {
-        this.tokenRegistry.burnCandidateAndToken(params.candidateId)
+    try {
+      // P0-5: Host rotation check at confirmation time
+      const currentHost = await this.hostIdentityStore.getPublicIdentity()
+      if (
+        tx.trustDomainId !== currentHost.trustDomainId ||
+        tx.hostGeneration !== currentHost.generation
+      ) {
+        tx.rollback()
         throw new RemoteCryptoError(
-          'PAIRING_FAILED',
-          `cannot grant capability '${cap}' exceeding token permission`,
+          'TRUST_DOMAIN_STALE',
+          'host identity rotated during pairing; pairing candidate invalidated',
         )
       }
-    }
 
-    // P0-7: Transactional commit to DeviceTrustStore
-    let device: DeviceRecord
-    try {
-      device = await this.trustStore.trust({
-        staticPublicKey: candidate.remoteStaticPublicKey,
-        displayName: candidate.displayName,
+      // Capability escalation protection: cannot exceed allowed capabilities of the token
+      const maxSet = new Set(tx.maxAllowedCapabilities)
+      for (const cap of params.grantedCapabilities) {
+        if (!maxSet.has(cap)) {
+          tx.rollback()
+          throw new RemoteCryptoError(
+            'CAPABILITY_DENIED',
+            `requested capability '${cap}' exceeds token allowlist`,
+          )
+        }
+      }
+
+      // P0-7: Atomic commit into single authoritative DeviceTrustStore
+      const deviceRecord = await this.trustStore.trust({
+        staticPublicKey: tx.remoteStaticPublicKey,
+        displayName: tx.displayName,
         grantedCapabilities: params.grantedCapabilities,
-        trustDomainId: candidate.trustDomainId,
+        trustDomainId: tx.trustDomainId,
       })
+
+      // Finalize transaction: mark CONSUMED and clean token
+      tx.commit()
+
+      return {
+        channelState: 'DEVICE_AUTHORIZED',
+        device: deviceRecord,
+      }
     } catch (error) {
-      // Transaction rollback on trust store failure: burn candidate and token, fail closed
-      this.tokenRegistry.burnCandidateAndToken(params.candidateId)
+      tx.rollback()
       throw error
-    }
-
-    // Commit succeeded: atomically burn candidate and token
-    this.tokenRegistry.burnCandidateAndToken(params.candidateId)
-
-    return {
-      device,
-      channelState: 'DEVICE_AUTHORIZED',
     }
   }
 
-  rejectPairing(candidateId: string): void {
-    this.tokenRegistry.burnCandidateAndToken(candidateId)
+  async rejectPairing(candidateId: string): Promise<boolean> {
+    return this.tokenRegistry.rejectCandidate(candidateId)
   }
 }
