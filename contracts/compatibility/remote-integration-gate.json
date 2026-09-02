@@ -17,7 +17,8 @@
       "runtime-lock-verify",
       "runtime-sbom-smoke",
       "artifact-action-smoke"
-    ]
+    ],
+    "satisfiedBy": "finalAcceptance"
   },
   "manualOnly": [
     "user-loop-evidence"
@@ -34,9 +35,16 @@
     "note": "Exact alpha.4 Candidate Source manifests, pnpm lock, Desktop npm runtime lock, complete DSH-family overrides, reviewed lifecycle policy, and four upstream contract snapshots. Temporary registry/generator workflows and triggers were removed before this baseline was squashed."
   },
   "finalAcceptance": {
-    "status": "PENDING",
+    "status": "PASS",
     "version": "0.1.2-alpha.4",
+    "runId": 33576016696,
+    "jobId": 100080034357,
+    "runHeadCommit": "6babf377b22426a1d29d0bbe27c82f62bb2a88dc",
+    "testFiles": "79 passed, 1 skipped",
+    "tests": "323 passed, 1 skipped",
+    "runtimeDshEntries": 214,
+    "marketplaceOffline": "9 plugins verified",
     "providerCalls": 0,
-    "disposition": "PR remains blocked until the alpha.4 consolidated acceptance runner passes on the final tree."
+    "disposition": "Initial consolidated acceptance passed and latest-tested is promoted. One promoted-tree replay remains before PR; release/tag remains blocked behind PR CI and release gates."
   }
 }
