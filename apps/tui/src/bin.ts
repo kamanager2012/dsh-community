@@ -29,7 +29,7 @@ import {
   officialAppArgs,
   officialTuiArgv,
   parseCommunityLaunch,
-  resumeEnv,
+  tuiLaunchEnv,
 } from './launch.js'
 import { communityClientVersion, formatClientIdentity } from './version.js'
 import { ensureCommunityTuiProfile } from './profile.js'
@@ -224,7 +224,7 @@ const extra = resumeId === undefined
       id: resumeId,
       rest: launch.kind === 'resume' ? launch.rest : [],
     })
-const env = resumeId === undefined ? process.env : resumeEnv(process.env, resumeId)
+const env = tuiLaunchEnv(process.env, launch, resumeId)
 
 const install = resolveOfficialDsh({ from: import.meta.url })
 const result = spawnSync(

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Terminal 初始任务传输收紧：`dsh-community new <任务>`、简写任务和 resume 后续任务不再进入官方子进程 argv，而是由社区 TUI 启动后经现有 `DSH_TUI_FIRST_PROMPT` 一次性接收、立即从进程环境删除，并通过官方 `agent.followup` seam 提交。该改动只声明消除普通 process-list/argv 暴露，不把环境变量冒充秘密存储。
+- Android 活跃源码的本地 Web bootstrap 明确使用 `--host 127.0.0.1 --no-open`，并拒绝非法端口；新增静态契约固定 exact `@deepseek-ai/dsh@0.1.2-alpha.4`、loopback 边界和 `[UNVERIFIED]` Reality Gate 状态，不虚构真机证据。
+
 - Release identity contract now separates **Candidate Source** from **Published Latest**: candidate core/product/tag and Dual-Badge may advance for review while GitHub Latest and installer names remain bound to the last real release. The validator also rejects ranged official-runtime pins and fabricated candidate assets. Desktop readiness accepts the official alpha.3 `?token=` bootstrap URL only on canonical loopback HTTP. Lifecycle state returns only the clean origin; the credential is retained only in a one-shot in-process browser-bootstrap channel, redacted from diagnostics, exchanged by the official Web surface for its signed cookie, then discarded.
 - Release 供应链新增 **official-runtime CycloneDX SBOM**：使用 Node/npm 自带 `npm sbom --package-lock-only` 从 committed runtime lock 生成，只声明嵌入的官方 DSH 依赖树而不冒充整个 Electron 产品 SBOM。SBOM 作为正式 release asset 必须有独立 SHA256 与 Sigstore bundle；pre-publish verifier 要求唯一一份有效 CycloneDX、根组件正确且包含精确官方 DSH，否则拒绝发布。新增只读 PR smoke 真实生成并复算 checksum。
 - Desktop 官方 Runtime 的安装脚本执行面改为 deny-by-default：staging 先 `npm ci --ignore-scripts`，再只 rebuild 4 个已审查包（`@deepseek-ai/dsh-subprocess-local`、`koffi`、`node-pty`、`protobufjs`）；`@google/genai@1.52.0` 明确保持禁止执行。机器契约要求 runtime lock 中全部 `hasInstallScript` 条目必须与 lifecycle policy 精确一致，所有非根 tarball 必须来自 `registry.npmjs.org` 且带 sha512 integrity。真实 Windows/Linux/macOS package smoke 均通过。

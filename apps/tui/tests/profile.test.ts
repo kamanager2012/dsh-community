@@ -5,11 +5,13 @@ import { describe, expect, it } from 'vitest'
 import { composeCommunityTuiPatch } from '../src/compose-patch.ts'
 import {
   COMMUNITY_TUI_HELP,
+  initialPromptForLaunch,
   isCommunityListSessions,
   officialAppArgs,
   officialTuiArgv,
   parseCommunityLaunch,
   resumeEnv,
+  tuiLaunchEnv,
 } from '../src/launch.ts'
 import {
   COMMUNITY_TUI_BUNDLES,
@@ -65,6 +67,30 @@ describe('our TUI profile', () => {
     expect(parseCommunityLaunch(['-l', '--porcelain'])).toEqual({ kind: 'list', porcelain: true })
     expect(COMMUNITY_TUI_HELP).toMatch(/@deepseek-ai\/dsh/)
     expect(COMMUNITY_TUI_HELP).toMatch(/--resume last/)
+  })
+
+  it('keeps task text out of child argv and injects it only as the first TUI turn', () => {
+    const fresh = parseCommunityLaunch(['new', 'review', 'the', 'diff'])
+    expect(fresh).toEqual({ kind: 'new', rest: ['review', 'the', 'diff'] })
+    expect(initialPromptForLaunch(fresh)).toBe('review the diff')
+
+    const run = parseCommunityLaunch(['fix', 'the', 'tests'])
+    expect(run).toEqual({ kind: 'run', rest: ['fix', 'the', 'tests'] })
+    const runArgs = officialAppArgs(run as Extract<typeof run, { kind: 'run' }>)
+    expect(runArgs).toEqual([])
+    const childArgv = officialTuiArgv('/tmp/community.patch.yml', runArgs)
+    expect(childArgv.join(' ')).not.toContain('fix the tests')
+    expect(tuiLaunchEnv({}, run).DSH_TUI_FIRST_PROMPT).toBe('fix the tests')
+
+    const resumed = parseCommunityLaunch(['resume', 'sess-abc', 'continue', 'carefully'])
+    expect(initialPromptForLaunch(resumed)).toBe('continue carefully')
+    expect(officialAppArgs(resumed as Extract<typeof resumed, { kind: 'resume' }>)).toEqual([
+      '--resume',
+      'sess-abc',
+    ])
+    const resumedEnv = tuiLaunchEnv({}, resumed, 'sess-abc')
+    expect(resumedEnv.DSH_TUI_RESUME_SESSION).toBe('sess-abc')
+    expect(resumedEnv.DSH_TUI_FIRST_PROMPT).toBe('continue carefully')
   })
 
   it('resumes from an official session id, not a second store', () => {

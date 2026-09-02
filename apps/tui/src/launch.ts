@@ -28,7 +28,7 @@ export const COMMUNITY_TUI_HELP = `dsh-community — 社区发行层，跑官方
 不安装、不挂第三方 TUI，第三方只许参考。
 
   dsh-community                     有对话就接着最近一条，否则开新的
-  dsh-community new [任务]          官方 headless 开新对话
+  dsh-community new [任务]          新对话；任务正文不进入子进程 argv
   dsh-community resume last         接着最近一条
   dsh-community sessions            看官方 ~/.dsh 里的对话
   dsh-community version             统一 Dual-Badge（客户端版本 + 官方核心）
@@ -77,10 +77,42 @@ export function parseCommunityLaunch(argv: readonly string[]): CommunityLaunch {
   return { kind: 'run', rest: args }
 }
 
-/** Official app args after launcher flags. */
+/**
+ * Official app args after launcher flags.
+ *
+ * User task text deliberately does NOT ride argv. On multi-user systems argv
+ * is commonly process-list visible. The launcher transports the optional first
+ * prompt through DSH_TUI_FIRST_PROMPT and our TUI consumes it through the
+ * official agent.followup seam after boot.
+ */
 export function officialAppArgs(launch: Extract<CommunityLaunch, { kind: 'resume' } | { kind: 'run' }>): string[] {
-  if (launch.kind === 'resume') return ['--resume', launch.id, ...launch.rest]
-  return [...launch.rest]
+  if (launch.kind === 'resume') return ['--resume', launch.id]
+  return []
+}
+
+/** Optional first user turn, kept out of the child command line. */
+export function initialPromptForLaunch(launch: CommunityLaunch): string | undefined {
+  if (launch.kind !== 'new' && launch.kind !== 'run' && launch.kind !== 'resume') return undefined
+  const prompt = launch.rest.join(' ').trim()
+  return prompt === '' ? undefined : prompt
+}
+
+/**
+ * Build the child environment without mutating the parent process.
+ * Environment transport is process-scoped, not a secret store; the TUI deletes
+ * DSH_TUI_FIRST_PROMPT immediately after reading it so later subprocesses do
+ * not inherit the task text.
+ */
+export function tuiLaunchEnv(
+  env: NodeJS.ProcessEnv,
+  launch: CommunityLaunch,
+  resumeId?: string,
+): NodeJS.ProcessEnv {
+  const next = resumeId === undefined ? { ...env } : resumeEnv(env, resumeId)
+  const prompt = initialPromptForLaunch(launch)
+  if (prompt !== undefined) next.DSH_TUI_FIRST_PROMPT = prompt
+  else delete next.DSH_TUI_FIRST_PROMPT
+  return next
 }
 
 /**

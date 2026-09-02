@@ -77,6 +77,28 @@ Out of scope (report upstream instead):
 - **Single instance.** `app.requestSingleInstanceLock()` stops two Desktop
   processes from racing the same official session store.
 
+## Terminal prompt transport
+
+- Community task text is not forwarded as a child-process positional argument.
+  `dsh-community new <task>`, the shorthand `dsh-community <task>`, and an
+  optional prompt after `resume <id>` are converted into
+  `DSH_TUI_FIRST_PROMPT`; the child argv contains only launcher/profile
+  control data. The TUI captures and deletes that environment value before it
+  creates or resumes the official Agent, then submits the turn through the
+  official `agent.followup` seam.
+- This removes ordinary process-list / argv disclosure. It does **not** claim
+  environment variables are a cryptographic secret store: code running under
+  the same OS security principal may still inspect process state. Do not put
+  long-lived credentials in prompts; provider credentials remain in the
+  official credential/config path.
+
+## Android security boundary
+
+- Android source is active but remains `[UNVERIFIED]`. Its embedded official
+  Web bootstrap is explicitly bound to `127.0.0.1` and uses `--no-open`.
+  No APK or real-device security claim is made until the Android Reality Gate
+  passes.
+
 ## Session and credential data
 
 - By default, Desktop and TUI read and write the same official `~/.dsh`
