@@ -36,6 +36,10 @@ const METADATA_ONLY_CONFIG_PATHS = new Set([
   join('packages', 'marketplace', 'catalog.json'),
   join('apps', 'desktop', 'runtime-lock', 'package-lock.json'),
   join('apps', 'desktop', 'runtime-lock', 'lifecycle-scripts.json'),
+  // Android adversarial-audit evidence: records foreign native dependencies
+  // that block the official DSH runtime on Android. It is not a manifest,
+  // composition, install list, or shipped dependency surface.
+  join('apps', 'android', 'native-blockers.json'),
 ])
 
 /** Third-party packages that are harness products or harness surface implementations. */

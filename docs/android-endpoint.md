@@ -2,7 +2,7 @@
 
 > 状态：`[UNVERIFIED]`。2026-09-02 已从归档 Labs 恢复到本仓 `apps/android` 活跃主线；在 Android Reality Gate 通过前不承诺已发布能力。
 
-[English](android-endpoint.en.md) · [Reality Gate](reality-gate.md)
+[English](android-endpoint.en.md) · [Runtime Substrate](android-runtime-substrate.md) · [Reality Gate](reality-gate.md)
 
 ## 定位
 

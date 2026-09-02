@@ -18,5 +18,20 @@
     "status": "UNVERIFIED",
     "removedHistoricalPluginId": "com.github.nodejs-mobile"
   },
-  "decision": "Keep Android active. Do not claim an embedded local DSH runtime or publish an APK until a Node 22.19+ Android substrate and real-device Reality Gate are proven."
+  "decision": "Keep Android active. Do not claim an embedded local DSH runtime or publish an APK until a Node 22.19+ Android substrate and real-device Reality Gate are proven.",
+  "candidate": {
+    "id": "official-node-v22.19.0-android-crossbuild",
+    "source": "https://github.com/nodejs/node/tree/v22.19.0",
+    "status": "PROBE_REQUIRED",
+    "upstreamPlatformSupport": "UNSUPPORTED",
+    "configureEntry": "android_configure.py",
+    "androidApi": 26,
+    "architectures": [
+      "arm64",
+      "x86_64"
+    ],
+    "manualProbe": "scripts/android-node22-probe.sh"
+  },
+  "nextGate": "Build official Node v22.19.0 from source with Android NDK and execute it on a real Android device; then resolve apps/android/native-blockers.json before DSH host boot can be promoted.",
+  "nativeClosure": "apps/android/native-blockers.json"
 }

@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "asOf": "2026-09-02",
+  "officialDsh": "0.1.2-alpha.4",
+  "fullWebProfile": "BLOCKED",
+  "standaloneSdkMinimal": "BLOCKED",
+  "blockers": [
+    {
+      "id": "subprocess-local",
+      "package": "@deepseek-ai/dsh-subprocess-local",
+      "nativeDependencies": [
+        "node-pty@1.2.0-beta.15",
+        "koffi@^3.1.0"
+      ],
+      "affects": [
+        "dsh-base",
+        "sdk-minimal",
+        "shell",
+        "terminal"
+      ],
+      "severity": "HARD",
+      "evidence": "Official package imports node-pty for terminal sessions and declares node-pty+koffi dependencies."
+    },
+    {
+      "id": "attachment-local",
+      "package": "@deepseek-ai/dsh-attachment-local",
+      "nativeDependencies": [
+        "sharp@^0.35.3"
+      ],
+      "affects": [
+        "dsh-base",
+        "image attachments"
+      ],
+      "severity": "HARD",
+      "evidence": "Official package declares sharp as a runtime dependency."
+    },
+    {
+      "id": "sandbox-local",
+      "package": "@deepseek-ai/dsh-sandbox-local",
+      "nativeDependencies": [
+        "@deepseek-ai/node-addon-landlock-run",
+        "@deepseek-ai/dsh-sandbox-windows-acl"
+      ],
+      "affects": [
+        "dsh-base",
+        "sdk-minimal",
+        "local shell confinement"
+      ],
+      "severity": "HARD",
+      "evidence": "Official Linux Landlock binaries are published for linux-x64/linux-arm64, not Android; Windows backend uses koffi."
+    },
+    {
+      "id": "fs-search",
+      "package": "@deepseek-ai/dsh-tool-fs-search",
+      "nativeDependencies": [
+        "@vscode/ripgrep@^1.18.0"
+      ],
+      "affects": [
+        "dsh-base",
+        "glob/grep search"
+      ],
+      "severity": "FEATURE_BLOCKER",
+      "evidence": "Official fs-search package is backed by packaged ripgrep binary."
+    }
+  ],
+  "conclusion": "A Node 22 carrier is necessary but not sufficient. Full DSH Web and sdk-minimal both still contain native host dependencies that need Android-compatible official composition or native builds."
+}

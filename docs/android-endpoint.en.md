@@ -3,7 +3,7 @@
 > Status: `[UNVERIFIED]`. On 2026-09-02 the existing Android source was restored
 > from archived Labs into the active `apps/android` tree. No published Android capability is claimed before its Reality Gate passes.
 
-[中文](android-endpoint.md) · [Reality Gate](reality-gate.en.md)
+[中文](android-endpoint.md) · [Runtime Substrate](android-runtime-substrate.en.md) · [Reality Gate](reality-gate.en.md)
 
 ## Positioning
 

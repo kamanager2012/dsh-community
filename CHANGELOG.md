@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Android Local runtime 路线继续推进到第二层 Reality Gate：stock nodejs-mobile 因 Node 18.20.4 与 DSH alpha.4 的 Node 22.19+ 要求冲突继续判 `BLOCKED`，但已确认官方 Node `v22.19.0` 源码仍保留 Android NDK 交叉编译入口。新增 `scripts/android-node22-probe.sh`，只接受调用方提供的官方 Node 源码/NDK，必须在真机通过 `process.versions.node=22.19.0` 与 `process.platform=android` 才能升级 carrier 证据；普通 CI 不运行这个重型 gate。
+- 新增 `apps/android/native-blockers.json`：完整 Web 与官方 `sdk-minimal` 都不能仅靠 Node 22 自动成立，当前硬阻断包括 `dsh-subprocess-local → node-pty/koffi`、`dsh-attachment-local → sharp`、`dsh-sandbox-local` 的平台 native backend；`dsh-tool-fs-search → @vscode/ripgrep` 为 feature blocker。Android 第五端继续保留，不转成 Remote-only，也不引入 Codex。
+
 - Terminal 初始任务传输收紧：`dsh-community new <任务>`、简写任务和 resume 后续任务不再进入官方子进程 argv，而是由社区 TUI 启动后经现有 `DSH_TUI_FIRST_PROMPT` 一次性接收、立即从进程环境删除，并通过官方 `agent.followup` seam 提交。该改动只声明消除普通 process-list/argv 暴露，不把环境变量冒充秘密存储。
 - Android 活跃源码的本地 Web bootstrap 明确使用 `--host 127.0.0.1 --no-open`，并拒绝非法端口；新增静态契约固定 exact `@deepseek-ai/dsh@0.1.2-alpha.4`、loopback 边界和 `[UNVERIFIED]` Reality Gate 状态，不虚构真机证据。
 - Android runtime substrate 事实收紧：官方 DSH alpha.4 要求 Node `^22.19.0 || >=24.0.0`，而 2026-09-02 实测上游 stock nodejs-mobile 最新 Android release 为 Node 18.20.4，因此机器状态明确为 `BLOCKED`。移除未验证的 `com.github.nodejs-mobile` Gradle 插件声明，Android 壳在 gate 关闭时 fail-loud 展示未验证状态，不再伪装 embedded runtime 已启动；第五 Community endpoint 仍保留为活跃源码。
