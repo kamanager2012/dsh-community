@@ -199,17 +199,18 @@ describe('official runtime lock', () => {
       officialVersion?: string
       lockfileVersion?: number
       packageEntries?: number
+      dshFamilyEntries?: number
     }
 
     expect(createHash('sha256').update(raw).digest('hex')).toBe(
       evidence.lockSha256,
     )
-    expect(evidence.schemaVersion).toBe(2)
+    expect(evidence.schemaVersion).toBe(3)
     expect(evidence.source).toBe('github-actions')
     expect(evidence.delivery).toBe('direct-commit')
-    expect(evidence.workflowRunId).toBe(33540607690)
-    expect(evidence.workflowJobId).toBe(99965617854)
-    expect(evidence.generatorCommit).toBe('4458655c7225a308b770d881353ebdec90ff9fd2')
+    expect(evidence.workflowRunId).toBe(33575142240)
+    expect(evidence.workflowJobId).toBe(100077338019)
+    expect(evidence.generatorCommit).toBe('7b9c8bfefc9685678ed96878641f27bb10a8b54e')
     expect(evidence.artifactId).toBeUndefined()
     expect(evidence.artifactZipSha256).toBeUndefined()
     expect(evidence.runnerImage).toBe('ubuntu-24.04')
@@ -222,6 +223,13 @@ describe('official runtime lock', () => {
     expect(evidence.officialVersion).toBe(PINNED_DSH_VERSION)
     expect(evidence.lockfileVersion).toBe(lock.lockfileVersion)
     expect(evidence.packageEntries).toBe(Object.keys(lock.packages ?? {}).length)
+    const dshFamilyEntries = Object.keys(lock.packages ?? {}).filter((lockPath) => {
+      const marker = 'node_modules/'
+      const index = lockPath.lastIndexOf(marker)
+      const name = index === -1 ? '' : lockPath.slice(index + marker.length)
+      return name === OFFICIAL_DSH_PACKAGE || name.startsWith('@deepseek-ai/dsh-')
+    }).length
+    expect(evidence.dshFamilyEntries).toBe(dshFamilyEntries)
   })
 
   it('stages from committed package-lock with npm ci, never a free npm install', () => {
