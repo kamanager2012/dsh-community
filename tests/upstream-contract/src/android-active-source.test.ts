@@ -11,6 +11,10 @@ describe('active Android endpoint source contract', () => {
     ) as { dependencies?: Record<string, string> }
     expect(pkg.dependencies?.['@deepseek-ai/dsh']).toBe('0.1.2-alpha.4')
     expect(pkg.dependencies?.['@deepseek-ai/dsh-sandbox']).toBe('0.1.2-alpha.4')
+    expect(pkg.dependencies?.['@deepseek-ai/dsh-subprocess']).toBe('0.1.2-alpha.4')
+    expect(pkg.dependencies?.['@deepseek-ai/dsh-subprocess-local']).toBe('0.1.2-alpha.4')
+    expect(pkg.dependencies?.['@deepseek-ai/dsh-timeout']).toBe('0.1.2-alpha.4')
+    expect(pkg.dependencies?.['node-pty']).toBe('1.2.0-beta.15')
 
     const bootstrap = readFileSync(
       resolve(ROOT, 'apps/android/nodejs-project/src/main/js/main.js'),
@@ -23,7 +27,9 @@ describe('active Android endpoint source contract', () => {
     expect(bootstrap).toContain('DSH_ANDROID_LANDLOCK_RUN')
     expect(bootstrap).toContain("require('./android-app-uid-preflight.cjs')")
     expect(bootstrap).toContain('APP_UID_PREFLIGHT_OK')
-    expect(bootstrap.indexOf('const appUidPreflight = runAndroidAppUidPreflight('))
+    expect(bootstrap).toContain('async function main()')
+    expect(bootstrap).toContain('await runAndroidAppUidPreflight')
+    expect(bootstrap.indexOf('const appUidPreflight = await runAndroidAppUidPreflight('))
       .toBeLessThan(bootstrap.indexOf('const child = spawn('))
     expect(bootstrap).not.toMatch(/HOST:\s*['"]0\.0\.0\.0['"]/u)
   })

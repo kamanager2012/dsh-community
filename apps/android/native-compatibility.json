@@ -95,19 +95,24 @@
     {
       "id": "subprocess-terminal-inspector",
       "package": "@deepseek-ai/dsh-subprocess-local",
-      "status": "PUBLIC_PROVIDER_OR_UPSTREAM_ANDROID_PTY_REQUIRED",
+      "status": "COMMUNITY_PROVIDER_WIRED_NODE_PTY_AND_APP_UID_PROC_PROBE_REQUIRED",
       "severity": "HARD",
       "facts": [
-        "Ordinary LocalSubprocessRuntime.spawn() does not call createProcessInspector(); only spawnTerminal() resolves the terminal inspector.",
-        "The shipped Web default preset is standard and does not mount PTY, but the shipped minimal preset remains user-selectable and mounts the persistent PTY stack.",
-        "AgentPresets has no preset allowlist; disabling the shipped root would remove standard/ptc/cordis together with minimal.",
-        "LocalSubprocessRuntime.terminalInspector exists only as an explicitly documented test hook and is not accepted as a production Android seam."
+        "Android replaces only the shipped subprocess provider row in place with AndroidSubprocessRuntime, a subclass of official LocalSubprocessRuntime; ordinary resolve/spawn/tree/collect/spill behavior remains upstream-owned.",
+        "Only spawnTerminal() is Android-specific and uses exact node-pty@1.2.0-beta.15 plus AndroidProcessInspector.",
+        "The inspector reads only /proc/<pid>/stat PID/starttime, PPID, PGRP, session, foreground group and state; PID+starttime fences reuse and no /proc/<pid>/mem or syscall state is read.",
+        "inputWaiting=false is intentional and compatible with the official terminal-bash prompt/foreground and inferred-idle fallbacks; the official terminalInspector test hook is not used.",
+        "spawnTerminal() enforces the official MAX_TIMER_DELAY_MS grace contract and starts from scrubbedParentEnv() with explicit undefined tombstones.",
+        "The embedded app-UID preflight is wired before official DSH spawn and now requires node-pty allocation, PTY root/session/PGRP/tpgid/tty facts, foreground-group signal-0 visibility, output delivery, and a node-pty exit event.",
+        "Wiring is not evidence. Frozen node-pty Android build/load, the app-UID preflight, and a real shipped minimal persistent-terminal session remain required before terminal evidence can leave BLOCKED."
       ],
       "releaseBlocking": true,
       "scope": [
         "minimal preset",
         "persistent terminal"
-      ]
+      ],
+      "appUidPreflight": "apps/android/nodejs-project/src/main/js/android-app-uid-preflight.cjs",
+      "appUidPtyEvidence": "NOT_RUN"
     },
     {
       "id": "sandbox-platform-chain",
@@ -116,7 +121,7 @@
       "severity": "HARD",
       "facts": [
         "The official ctx.sandbox abstract provider seam is public and stable in @deepseek-ai/dsh-sandbox.",
-        "Android composition disables only the official sandbox-local row and inserts a Community provider through the official --patch layer; no official bundle is modified.",
+        "Android composition replaces the shipped sandbox row in place by id with the Community provider through the official --patch layer; the ctx.sandbox service id and row order are preserved and no official bundle is modified.",
         "The Community provider uses official writableRoots(policy), preserves exit-125 plus landlock-run signature classification, and advertises full only after an exact fully-enforced launcher probe.",
         "The frozen runtime lock contains @deepseek-ai/node-addon-landlock-run@0.1.1, whose npm payload publishes src/main.c; the Android NDK probe builds that source unmodified.",
         "The embedded Node bootstrap is wired to run android-app-uid-preflight.cjs before official DSH spawn; it repeats the full probe and proves an allowed write plus a denied sibling write under the APK app UID.",
@@ -142,7 +147,7 @@
       "preflight": "apps/android/nodejs-project/src/main/js/android-app-uid-preflight.cjs"
     }
   ],
-  "conclusion": "Android Local remains blocked. Sandbox and app-private hard-link checks are wired into the embedded app-UID bootstrap but require real APK evidence; PTY still needs a production Android subprocess provider; fs-search remains blocked until upstream exposes an Android ripgrep package or an explicit executable-path seam.",
+  "conclusion": "Android Local remains blocked. First-party sandbox and subprocess providers are wired through official seams; hard-link, Landlock, and PTY substrate checks are fail-closed before official DSH spawn. Real Node/NDK/native-addon and APK app-UID evidence, a shipped minimal persistent-terminal user path, sharp device execution, and the upstream-blocked fs-search seam remain open.",
   "portableDependencyAudit": "scripts/audit-android-portable-deps.mjs",
   "sandboxProbe": "scripts/android-sandbox-landlock-probe.sh",
   "androidCompositionPatch": "apps/android/nodejs-project/src/main/js/android.cordis.patch.yml",
@@ -150,7 +155,7 @@
     "subprocess": {
       "servicePackage": "@deepseek-ai/dsh-subprocess",
       "localProvider": "@deepseek-ai/dsh-subprocess-local",
-      "status": "PUBLIC_PROVIDER_SEAM_AVAILABLE_PTY_ANDROID_PROVIDER_STILL_REQUIRED",
+      "status": "COMMUNITY_PROVIDER_WIRED_NODE_PTY_AND_APP_UID_PROC_PROBE_REQUIRED",
       "ordinarySpawnUsesTerminalInspector": false,
       "terminalInspectorHook": "TEST_ONLY_NOT_ACCEPTED_FOR_PRODUCTION",
       "defaultWebPreset": "standard",
@@ -160,7 +165,27 @@
         "ptc",
         "cordis"
       ],
-      "reason": "Default standard Web does not mount PTY, but shipped minimal remains user-selectable and requires persistent terminal support; AgentPresets exposes no preset allowlist."
+      "reason": "AndroidSubprocessRuntime is wired in place through the official provider seam and subclasses official LocalSubprocessRuntime. Remaining proof is frozen node-pty Android build/load, the real APK app-UID PTY preflight, and a shipped minimal persistent-terminal user path; source wiring is not evidence.",
+      "e2bConservativeInputWaitingSourceBlob": "29af8c29c53c400a0a8dc2bb16c9e16e0ab43808",
+      "environmentMerge": "OFFICIAL_SCRUBBED_PARENT_PLUS_EXPLICIT_TOMBSTONES",
+      "compositionMode": "IN_PLACE_ID_REPLACEMENT",
+      "shippedRowId": "subprocess",
+      "graceMsContract": "OFFICIAL_MAX_TIMER_DELAY_MS",
+      "timeoutPackage": "@deepseek-ai/dsh-timeout@0.1.2-alpha.4",
+      "appUidPreflight": "apps/android/nodejs-project/src/main/js/android-app-uid-preflight.cjs",
+      "appUidPtyPreflightWired": true,
+      "appUidPtyEvidence": "NOT_RUN",
+      "appUidPtyChecks": [
+        "node-pty allocation",
+        "app-visible /proc root identity",
+        "session leader and process group",
+        "foreground process group",
+        "PTY tty device",
+        "signal-0 foreground group visibility",
+        "PTY output delivery",
+        "node-pty exit event"
+      ],
+      "realUserPathRequired": "shipped minimal persistent-terminal session"
     },
     "sandbox": {
       "servicePackage": "@deepseek-ai/dsh-sandbox",
@@ -174,7 +199,9 @@
       "enforcementRequirement": "full",
       "sourceMutationAllowed": false,
       "appUidPreflight": "apps/android/nodejs-project/src/main/js/android-app-uid-preflight.cjs",
-      "appUidEvidence": "NOT_RUN"
+      "appUidEvidence": "NOT_RUN",
+      "compositionMode": "IN_PLACE_ID_REPLACEMENT",
+      "shippedRowId": "sandbox"
     },
     "fsSearch": {
       "servicePackage": "@deepseek-ai/dsh-tool-fs-search",
@@ -206,7 +233,8 @@
       "webBundlePatch": "2c9bd259903d4ac7af6321c6c51f58ba0049edc6",
       "standardPreset": "63b179884004deb79b4f6392e41ebf2ddc80ee7b",
       "minimalPreset": "0e1f2b0f5d6c979895f19a6a3d1f0ca33e66da08",
-      "fsSearchCore": "60ea042d4f31f0e9c856536b8b34e2687482eec7"
+      "fsSearchCore": "60ea042d4f31f0e9c856536b8b34e2687482eec7",
+      "e2bTerminal": "29af8c29c53c400a0a8dc2bb16c9e16e0ab43808"
     }
   },
   "appUidPreflight": "apps/android/nodejs-project/src/main/js/android-app-uid-preflight.cjs",

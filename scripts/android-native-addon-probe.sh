@@ -425,6 +425,101 @@ device_probe() {
     });
   ' "$remote/node-pty"
 
+  "${adb[@]}" shell "$remote/node" -e '
+    const fs = require("node:fs");
+    const pty = require(process.argv[1]);
+
+    function parseStat(pid) {
+      const text = fs.readFileSync("/proc/" + pid + "/stat", "utf8");
+      const close = text.lastIndexOf(")");
+      if (close < 0) throw new Error("malformed /proc stat");
+      const fields = text.slice(close + 2).trim().split(/\\s+/);
+      const state = fields[0];
+      const pgrp = Number(fields[2]);
+      const session = Number(fields[3]);
+      const tpgid = Number(fields[5]);
+      const started = fields[19];
+      if (!Number.isSafeInteger(pgrp) || !Number.isSafeInteger(session)
+          || !Number.isSafeInteger(tpgid) || !started || !state) {
+        throw new Error("incomplete /proc stat");
+      }
+      return { state, pgrp, session, tpgid, started };
+    }
+
+    const child = pty.spawn("/system/bin/sh", ["-i"], {
+      name: "dumb",
+      cols: 80,
+      rows: 24,
+      cwd: "/data/local/tmp",
+      env: { PATH: "/system/bin" },
+    });
+
+    const root = parseStat(child.pid);
+    if (!(root.tpgid > 0) || !(root.session > 0) || !(root.pgrp > 0)) {
+      throw new Error("PTY root has no usable process/session/foreground group: " + JSON.stringify(root));
+    }
+
+    let output = "";
+    let finished = false;
+    const deadline = Date.now() + 5000;
+    child.onData(data => { output += data; });
+
+    const finish = (error) => {
+      if (finished) return;
+      finished = true;
+      try { child.kill("SIGTERM"); } catch {}
+      if (error) {
+        console.error(error);
+        process.exitCode = 1;
+      } else {
+        process.stdout.write(
+          "NODE_PTY_PROC_CONTROL_OK_NOT_APP_UID_ACCEPTANCE"
+          + " pid=" + child.pid
+          + " started=" + root.started
+          + " session=" + root.session
+          + "\\n"
+        );
+      }
+    };
+
+    child.write("sleep 30\\r");
+    const poll = setInterval(() => {
+      if (finished) return clearInterval(poll);
+      if (Date.now() >= deadline) {
+        clearInterval(poll);
+        return finish(new Error("PTY foreground process-group smoke timed out: " + JSON.stringify(output)));
+      }
+      let now;
+      try { now = parseStat(child.pid); } catch { return; }
+      if (now.started !== root.started) {
+        clearInterval(poll);
+        return finish(new Error("PTY root PID identity changed during smoke"));
+      }
+      if (!(now.tpgid > 0) || now.tpgid === root.pgrp) return;
+      try {
+        process.kill(-now.tpgid, "SIGINT");
+      } catch {
+        return;
+      }
+      clearInterval(poll);
+      setTimeout(() => {
+        if (finished) return;
+        child.write("printf DSH_PTY_PROC_OK\\r");
+        setTimeout(() => {
+          if (!output.includes("DSH_PTY_PROC_OK")) {
+            finish(new Error("PTY did not recover after foreground SIGINT: " + JSON.stringify(output)));
+            return;
+          }
+          finish();
+        }, 150);
+      }, 100);
+    }, 25);
+
+    child.onExit(() => {
+      if (!finished) finish(new Error("PTY exited before process-control smoke completed"));
+    });
+  ' "$remote/node-pty"
+
   "${adb[@]}" shell rm -rf "$remote" >/dev/null 2>&1 || true
   printf 'android-native-addon-probe: DEVICE_OK node=%s arch=%s\n' "$EXPECTED_NODE" "$ANDROID_ARCH"
 }

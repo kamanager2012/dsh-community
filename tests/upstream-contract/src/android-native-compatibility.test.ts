@@ -18,7 +18,31 @@ describe('Android G2 native compatibility', () => {
       appUidPreflight?: string
       ripgrepSeamAudit?: string
       providerSeams?: {
-        subprocess?: { status?: string; terminalInspectorHook?: string; shippedPresetExposure?: string[] }
+        subprocess?: {
+          status?: string
+          providerModule?: string
+          inspectorModule?: string
+          terminalHandleModule?: string
+          terminalInspectorHook?: string
+          shippedPresetExposure?: string[]
+          inheritsOfficialLocalRuntime?: boolean
+          ordinarySpawnOwner?: string
+          terminalOverrideOnly?: boolean
+          inputWaitingStrategy?: string
+          procMemoryInspection?: boolean
+          procSyscallInspection?: boolean
+          nodePtyVersion?: string
+          appUidProcEvidence?: string
+          e2bConservativeInputWaitingSourceBlob?: string
+          environmentMerge?: string
+          graceMsContract?: string
+          timeoutPackage?: string
+          appUidPreflight?: string
+          appUidPtyPreflightWired?: boolean
+          appUidPtyEvidence?: string
+          appUidPtyChecks?: string[]
+          realUserPathRequired?: string
+        }
         fsSearch?: {
           status?: string
           searchCoreGitBlob?: string
@@ -63,10 +87,39 @@ describe('Android G2 native compatibility', () => {
     expect(state.appUidPreflight).toBe('apps/android/nodejs-project/src/main/js/android-app-uid-preflight.cjs')
     expect(state.ripgrepSeamAudit).toBe('scripts/audit-android-ripgrep-seam.mjs')
     expect(state.providerSeams?.subprocess).toMatchObject({
-      status: 'PUBLIC_PROVIDER_SEAM_AVAILABLE_PTY_ANDROID_PROVIDER_STILL_REQUIRED',
-      terminalInspectorHook: 'TEST_ONLY_NOT_ACCEPTED_FOR_PRODUCTION',
+      status: 'COMMUNITY_PROVIDER_WIRED_NODE_PTY_AND_APP_UID_PROC_PROBE_REQUIRED',
+      providerModule: 'apps/android/nodejs-project/src/main/js/android-subprocess-provider.mjs',
+      inspectorModule: 'apps/android/nodejs-project/src/main/js/android-process-inspector.mjs',
+      terminalHandleModule: 'apps/android/nodejs-project/src/main/js/android-terminal-handle.mjs',
+      terminalInspectorHook: 'NOT_USED',
       shippedPresetExposure: ['standard', 'minimal', 'ptc', 'cordis'],
+      inheritsOfficialLocalRuntime: true,
+      ordinarySpawnOwner: 'OFFICIAL_LOCAL_SUBPROCESS_RUNTIME',
+      terminalOverrideOnly: true,
+      inputWaitingStrategy: 'CONSERVATIVE_FALSE_WITH_OFFICIAL_FALLBACK',
+      procMemoryInspection: false,
+      procSyscallInspection: false,
+      nodePtyVersion: '1.2.0-beta.15',
+      appUidProcEvidence: 'NOT_RUN',
+      e2bConservativeInputWaitingSourceBlob: '29af8c29c53c400a0a8dc2bb16c9e16e0ab43808',
+      environmentMerge: 'OFFICIAL_SCRUBBED_PARENT_PLUS_EXPLICIT_TOMBSTONES',
+      graceMsContract: 'OFFICIAL_MAX_TIMER_DELAY_MS',
+      timeoutPackage: '@deepseek-ai/dsh-timeout@0.1.2-alpha.4',
+      appUidPreflight: 'apps/android/nodejs-project/src/main/js/android-app-uid-preflight.cjs',
+      appUidPtyPreflightWired: true,
+      appUidPtyEvidence: 'NOT_RUN',
+      realUserPathRequired: 'shipped minimal persistent-terminal session',
     })
+    expect(state.providerSeams?.subprocess?.appUidPtyChecks).toEqual([
+      'node-pty allocation',
+      'app-visible /proc root identity',
+      'session leader and process group',
+      'foreground process group',
+      'PTY tty device',
+      'signal-0 foreground group visibility',
+      'PTY output delivery',
+      'node-pty exit event',
+    ])
     expect(state.providerSeams?.fsSearch).toMatchObject({
       status: 'NO_EXPLICIT_RG_PATH_SEAM_ALPHA4',
       searchCoreGitBlob: '60ea042d4f31f0e9c856536b8b34e2687482eec7',
@@ -123,7 +176,7 @@ describe('Android G2 native compatibility', () => {
 
     const blockers = new Map((state.semanticBlockers ?? []).map(item => [item.id, item]))
     expect(blockers.get('subprocess-terminal-inspector')).toMatchObject({
-      status: 'PUBLIC_PROVIDER_OR_UPSTREAM_ANDROID_PTY_REQUIRED',
+      status: 'COMMUNITY_PROVIDER_WIRED_NODE_PTY_AND_APP_UID_PROC_PROBE_REQUIRED',
       severity: 'HARD',
     })
     expect(blockers.get('sandbox-platform-chain')).toMatchObject({
@@ -154,6 +207,9 @@ describe('Android G2 native compatibility', () => {
     expect(probe).toContain('android.toolchain.cmake')
     expect(probe).toContain('KOFFI_DEVICE_OK')
     expect(probe).toContain('NODE_PTY_DEVICE_OK')
+    expect(probe).toContain('NODE_PTY_PROC_CONTROL_OK_NOT_APP_UID_ACCEPTANCE')
+    expect(probe).toContain('pty.spawn("/system/bin/sh", ["-i"]')
+    expect(probe).toContain('now.tpgid === root.pgrp')
     expect(probe).toContain('SHARP_WASM_DEVICE_OK')
     expect(probe).toContain('sharp WASM materialization gap')
     expect(probe).toContain('Node Android carrier has not been built')

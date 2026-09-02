@@ -8,6 +8,7 @@ const PROBE_TIMEOUT_MS = 5000;
 const FULL_PROBE_LINE = 'landlock: fully enforced';
 const WRITE_MARKER = 'DSH_APP_UID_OK';
 const HARDLINK_MARKER = 'DSH_HARDLINK_OK';
+const PTY_MARKER = 'DSH_PTY_APP_UID_OK';
 const WRITE_SCRIPT = 'require("node:fs").writeFileSync(process.argv[1], "DSH_APP_UID_OK")';
 
 function requireDirectory(name, value) {
@@ -132,7 +133,90 @@ function runLandlockProbe(cacheDir, launcher, spawn, execPath, baseEnv) {
   }
 }
 
-function runAndroidAppUidPreflight(options = {}) {
+async function runPtySubstrateProbe(cacheDir, options) {
+  const procModule = options.procModule ?? await import('./android-process-inspector.mjs');
+  const inspector = options.processInspector ?? procModule.createAndroidProcessInspector();
+  const pty = options.ptyModule ?? await import('node-pty');
+  const shell = options.ptyShell ?? '/system/bin/sh';
+  const timeoutMs = options.ptyTimeoutMs ?? PROBE_TIMEOUT_MS;
+
+  if (typeof shell !== 'string' || !path.isAbsolute(shell)) {
+    throw new Error('android-app-uid-preflight: PTY shell must be an absolute path');
+  }
+
+  const terminal = pty.spawn(shell, ['-c', `printf ${PTY_MARKER}; sleep 1`], {
+    name: 'dumb',
+    rows: 20,
+    cols: 80,
+    cwd: cacheDir,
+    env: {
+      PATH: process.env.PATH ?? '/system/bin:/system/xbin',
+      HOME: cacheDir,
+      TMPDIR: cacheDir,
+      TERM: 'dumb',
+    },
+  });
+
+  let output = '';
+  let exited = false;
+  let dataDisposable;
+  let exitDisposable;
+  let timer;
+  const completion = new Promise((resolve, reject) => {
+    timer = setTimeout(() => reject(new Error('PTY app-UID probe timed out')), timeoutMs);
+    dataDisposable = terminal.onData(data => { output += data; });
+    exitDisposable = terminal.onExit(event => {
+      exited = true;
+      clearTimeout(timer);
+      resolve(event);
+    });
+  });
+
+  try {
+    const rootStat = options.ptyRootStat?.(terminal.pid)
+      ?? procModule.parseAndroidProcStat(fs.readFileSync(`/proc/${terminal.pid}/stat`, 'utf8'));
+    if (rootStat === undefined) {
+      throw new Error('PTY root /proc stat is not visible to the APK app UID');
+    }
+    if (
+      rootStat.sessionId !== terminal.pid
+      || !(rootStat.processGroupId > 1)
+      || !(rootStat.foregroundProcessGroupId > 1)
+      || rootStat.ttyDevice === 0
+    ) {
+      throw new Error(`PTY root has unusable session/group/tty facts: ${JSON.stringify(rootStat)}`);
+    }
+
+    const snapshot = inspector.snapshot();
+    const rootIdentity = snapshot.tree(terminal.pid)
+      .find(identity => identity.pid === terminal.pid);
+    if (rootIdentity === undefined || !snapshot.alive(rootIdentity)) {
+      throw new Error('PTY root identity is not enumerable/alive through app-visible /proc');
+    }
+    if (!snapshot.session(terminal.pid)
+      .some(identity => identity.pid === terminal.pid && identity.started === rootIdentity.started)) {
+      throw new Error('PTY root is not visible in its app-UID process session');
+    }
+
+    // Signal 0 is a visibility/permission probe only; no signal is delivered.
+    inspector.signalGroup(rootStat.foregroundProcessGroupId, 0);
+
+    await completion;
+    if (!output.includes(PTY_MARKER)) {
+      throw new Error(`PTY app-UID probe output mismatch: ${JSON.stringify(output)}`);
+    }
+  } finally {
+    if (!exited) {
+      try { terminal.kill('SIGKILL'); } catch {}
+      await completion.catch(() => undefined);
+    }
+    clearTimeout(timer);
+    dataDisposable?.dispose?.();
+    exitDisposable?.dispose?.();
+  }
+}
+
+async function runAndroidAppUidPreflight(options = {}) {
   const platform = options.platform ?? process.platform;
   if (platform !== 'android') {
     throw new Error(`android-app-uid-preflight: expected process.platform=android, observed ${platform}`);
@@ -159,6 +243,7 @@ function runAndroidAppUidPreflight(options = {}) {
     options.execPath ?? process.execPath,
     options.env ?? process.env,
   );
+  await runPtySubstrateProbe(cacheDir, options);
 
   return {
     schemaVersion: 1,
@@ -167,12 +252,16 @@ function runAndroidAppUidPreflight(options = {}) {
     hardlink: 'PASS',
     sandbox: 'PASS',
     landlockEnforcement: 'full',
+    ptySubstrate: 'PASS',
+    ptyInputWaitingExactProbe: false,
   };
 }
 
 module.exports = {
   FULL_PROBE_LINE,
   HARDLINK_MARKER,
+  PTY_MARKER,
   WRITE_MARKER,
   runAndroidAppUidPreflight,
+  runPtySubstrateProbe,
 };
