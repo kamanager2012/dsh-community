@@ -24,5 +24,13 @@
     "arm64RealDeviceSmoke": false,
     "x86_64EmulatorSmoke": false
   },
-  "notes": "No Android real-device Reality Gate has been completed. This file must stay NOT_RUN until evidence is produced by the manual gates."
+  "notes": "No Android real-device Reality Gate has been completed. This file must stay NOT_RUN until evidence is produced by the manual gates.",
+  "nativeEvidence": {
+    "addonBuildAndLoad": "NOT_RUN",
+    "terminalInspector": "BLOCKED",
+    "sandbox": "BLOCKED",
+    "appPrivateHardlinks": "NOT_RUN",
+    "sharpFallback": "NOT_RUN",
+    "ripgrepPackaging": "BLOCKED"
+  }
 }

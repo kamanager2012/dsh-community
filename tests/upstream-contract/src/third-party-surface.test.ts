@@ -40,6 +40,7 @@ const METADATA_ONLY_CONFIG_PATHS = new Set([
   // that block the official DSH runtime on Android. It is not a manifest,
   // composition, install list, or shipped dependency surface.
   join('apps', 'android', 'native-blockers.json'),
+  join('apps', 'android', 'native-compatibility.json'),
 ])
 
 /** Third-party packages that are harness products or harness surface implementations. */

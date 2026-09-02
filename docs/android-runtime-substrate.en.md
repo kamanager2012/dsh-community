@@ -100,6 +100,46 @@ The explicit empty evidence record is `apps/android/evidence/reality-gate.json` 
 
 Every blocker must be resolved by an Android-native implementation, an explicit official-DSH composition that removes that capability, or upstream Android support. “Probably not imported” is not evidence.
 
+### G2 — Separate native-addon proof from Android runtime semantics
+
+G2 is now explicitly split. A successful native build is not a complete compatibility verdict.
+
+Machine sources:
+
+- `apps/android/native-compatibility.json`
+- manual probe: `scripts/android-native-addon-probe.sh`
+
+#### G2-A — Build/load the unmodified frozen addons
+
+After G1, provide a classic `node_modules` tree staged from the committed alpha.4 runtime lock, the exact Node `v22.19.0` source/build, Android NDK, and adb for device/verify mode:
+
+```bash
+RUNTIME_DIR=/abs/runtime-stage \
+NODE_SOURCE_DIR=/abs/node-v22.19.0 \
+ANDROID_NDK_HOME=/abs/android-ndk \
+bash scripts/android-native-addon-probe.sh verify
+```
+
+The probe downloads nothing and does not patch upstream source:
+
+- `node-pty@1.2.0-beta.15` is rebuilt through the Node Android GYP/NDK environment from upstream commit `8f218f6c194be81d98b1eeea344b150e83445824`.
+- `koffi@3.1.6` is built from the frozen package's original CMake source using the Android NDK toolchain.
+- device mode runs a Koffi `getpid()` FFI smoke and a node-pty `/system/bin/sh` PTY smoke.
+
+The probe deliberately does not pre-fix `-lutil`, Bionic, N-API, or linker failures. If the unmodified build fails, that exact failure becomes evidence for the next reviewed compatibility patch.
+
+#### G2-B — Addon loadability is not official DSH runtime compatibility
+
+Even a G2-A PASS leaves independent hard gates:
+
+1. **Terminal inspector:** alpha.4 `createProcessInspector()` accepts only `linux / darwin / win32`; the Android carrier reports `process.platform === "android"`.
+2. **Sandbox:** `dsh-sandbox-local` has no Android `PLATFORM_CHAINS` entry and intentionally fails closed for an unlisted platform. Any Android runner must be tested under the APK app UID and target kernel.
+3. **POSIX hard-link publication:** alpha.4 session persistence and attachment storage still use `link()` on non-win32 paths. Evidence must come from the app-private filesystem, not Termux or `/data/local/tmp`.
+4. **sharp:** frozen 0.35.4 has no Android prebuild. A WASM fallback has public Android/Termux evidence, but the exact 0.35.4 path is not yet project evidence.
+5. **ripgrep:** a Termux system `rg` is not a self-contained APK solution; an Android binary must be packaged or supplied upstream.
+
+G2 therefore remains **BLOCKED**, but its failure surface is now decomposed into directly testable gates.
+
 ### G3 — Official DSH boot
 
 On the Android carrier, prove:

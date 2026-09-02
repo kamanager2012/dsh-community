@@ -37,7 +37,7 @@
     "sourceCommit": "f8fe6858549f75a4b4e9633abf39dd2038dbf496",
     "tagSignatureVerifiedByGitHub": true
   },
-  "nextGate": "First prove the exact Node 22.19.0 Android carrier. In parallel, resolve the published official CLI package/native closure; profile-only row disabling is not a valid bypass.",
+  "nextGate": "Run G1 on the exact Node 22.19.0 Android carrier, then execute the no-patch G2 native-addon probe against the frozen alpha.4 runtime. Treat addon loadability, terminal inspection, sandbox, app-private hard links, sharp fallback, and ripgrep packaging as separate gates.",
   "nativeClosure": "apps/android/native-blockers.json",
   "releaseReadinessVerifier": "scripts/verify-android-release-ready.mjs",
   "realityEvidence": "apps/android/evidence/reality-gate.json",
@@ -47,5 +47,7 @@
     "audit": "scripts/audit-android-official-cli-closure.mjs",
     "profileOnlyMitigation": "INEFFECTIVE",
     "reason": "Published @deepseek-ai/dsh@0.1.2-alpha.4 eagerly includes dsh-base/sdk-minimal/tool-fs-search and their native dependency closure before profile selection."
-  }
+  },
+  "nativeCompatibility": "apps/android/native-compatibility.json",
+  "nativeAddonProbe": "scripts/android-native-addon-probe.sh"
 }

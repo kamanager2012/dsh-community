@@ -19,16 +19,21 @@
         "terminal"
       ],
       "severity": "HARD",
-      "evidence": "Official package imports node-pty for terminal sessions and declares node-pty+koffi dependencies. node-pty documents Linux/macOS/Windows support; Koffi's official tested OS matrix does not include Android.",
+      "evidence": "Official subprocess-local eagerly imports node-pty and its Windows inspector module imports koffi. The frozen Koffi 3.1.6 is post-statx-fix and has Android/Termux source-build evidence, but official support still excludes Android. node-pty v1.2.0-beta.15 has no Android support declaration; the Community NDK path must prove the unmodified package can build/load.",
       "status": "OPEN",
       "rowDisableRemovesInstallDependency": false,
       "failurePhase": "INSTALL_OR_LOAD",
-      "upstreamAndroidSupport": "NO_OFFICIAL_SUPPORT_EVIDENCE",
+      "upstreamAndroidSupport": "UNOFFICIAL_SOURCE_BUILD_EVIDENCE_ONLY",
       "packagePath": [
         "@deepseek-ai/dsh",
         "@deepseek-ai/dsh-base",
         "@deepseek-ai/dsh-subprocess-local"
-      ]
+      ],
+      "lockedNativeDependencies": [
+        "node-pty@1.2.0-beta.15",
+        "koffi@3.1.6"
+      ],
+      "nextProbe": "scripts/android-native-addon-probe.sh"
     },
     {
       "id": "attachment-local",
@@ -45,12 +50,13 @@
       "status": "OPEN",
       "rowDisableRemovesInstallDependency": false,
       "failurePhase": "LOAD_OR_IMAGE_USE",
-      "upstreamAndroidSupport": "NO_SHARP_ANDROID_PREBUILD",
+      "upstreamAndroidSupport": "WASM_FALLBACK_REPORTED_NOT_VERIFIED_FOR_FROZEN_0_35_4",
       "packagePath": [
         "@deepseek-ai/dsh",
         "@deepseek-ai/dsh-base",
         "@deepseek-ai/dsh-attachment-local"
-      ]
+      ],
+      "nextProbe": "Verify an exact sharp 0.35.4-compatible WASM fallback in the frozen Android runtime before changing status."
     },
     {
       "id": "sandbox-local",
@@ -74,7 +80,8 @@
         "@deepseek-ai/dsh",
         "@deepseek-ai/dsh-base",
         "@deepseek-ai/dsh-sandbox-local"
-      ]
+      ],
+      "nextProbe": "Provide an Android-safe runner through the official sandbox seam or wait for upstream Android support; then test under the APK app UID."
     },
     {
       "id": "fs-search",
@@ -95,7 +102,8 @@
       "packagePath": [
         "@deepseek-ai/dsh",
         "@deepseek-ai/dsh-tool-fs-search"
-      ]
+      ],
+      "nextProbe": "Package and verify an Android rg binary without relying on Termux system packages, or wait for upstream support."
     }
   ],
   "conclusion": "Node 22 is necessary but insufficient. The published top-level @deepseek-ai/dsh package eagerly carries the native closure, so profile-only row disabling cannot make the current official CLI package Android-safe.",

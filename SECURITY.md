@@ -120,6 +120,14 @@ Out of scope (report upstream instead):
   `dsh-base` pulls the blocker packages before profile selection. The
   network-free audit is `scripts/audit-android-official-cli-closure.mjs`;
   profile-only disabling is explicitly classified as ineffective.
+- Native addon compatibility and Android runtime semantics are tracked separately
+  in `apps/android/native-compatibility.json`. A node-pty/Koffi build or load
+  success cannot waive the independent terminal-inspector, sandbox, app-private
+  hard-link, sharp, or ripgrep gates.
+- `scripts/android-native-addon-probe.sh` is a manual no-download/no-source-patch
+  gate over the frozen alpha.4 runtime. It requires the exact G1 Node carrier
+  build and uses adb only for explicit device smoke; it does not convert public
+  Termux results into APK evidence.
 - Android publication is fail-closed through
   `scripts/verify-android-release-ready.mjs` (`node scripts/verify-android-release-ready.mjs`).
   It requires coherent PASS evidence for carrier identity, native closure,
