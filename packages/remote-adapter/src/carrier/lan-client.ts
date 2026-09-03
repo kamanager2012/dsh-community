@@ -82,6 +82,16 @@ export class LanClientCarrier {
         reject(new RemoteCryptoError('HANDSHAKE_FAILED', `websocket error: ${(err as any).message ?? 'connect failed'}`))
       }
 
+      ws.onclose = (event) => {
+        clearTimeout(timeout)
+        reject(
+          new RemoteCryptoError(
+            'HANDSHAKE_FAILED',
+            `websocket closed during handshake (code ${event.code}: ${event.reason || 'closed'})`,
+          ),
+        )
+      }
+
       // First message received is Message 2
       const handshakeHandler = (event: MessageEvent) => {
         try {

@@ -1,4 +1,5 @@
 export * from './constants.js'
+export * from './address-validator.js'
 export * from './websocket-frame.js'
 export * from './lan-connection.js'
 export * from './lan-host.js'

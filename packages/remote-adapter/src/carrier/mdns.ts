@@ -10,6 +10,22 @@ export interface DiscoveryHint {
   readonly hostFingerprint: string
 }
 
+export interface MdnsAdvertisementRecord {
+  readonly name: string
+  readonly type: typeof DSH_REMOTE_SERVICE_TYPE
+  readonly host: string
+  readonly port: number
+  readonly txt: Record<string, string>
+}
+
+export interface MdnsAdvertiser {
+  publish(record: MdnsAdvertisementRecord): Promise<void>
+  unpublish(): Promise<void>
+  destroy(): Promise<void>
+  isPublished(): boolean
+  getPublishedRecord(): MdnsAdvertisementRecord | undefined
+}
+
 const FORBIDDEN_SECRET_KEYS = Object.freeze([
   'token',
   'pairingtoken',
@@ -63,4 +79,40 @@ export function createDiscoveryHint(params: {
 
   assertNoSecretsInDiscoveryHint(hint as unknown as Record<string, unknown>)
   return Object.freeze(hint)
+}
+
+export class InMemoryMdnsAdvertiser implements MdnsAdvertiser {
+  private publishedRecord: MdnsAdvertisementRecord | undefined = undefined
+  private isDestroyed = false
+
+  async publish(record: MdnsAdvertisementRecord): Promise<void> {
+    if (this.isDestroyed) {
+      throw new RemoteCryptoError('HANDSHAKE_FAILED', 'cannot publish on destroyed mDNS advertiser')
+    }
+
+    // Strictly validate record for absence of any secret materials
+    assertNoSecretsInDiscoveryHint(record as unknown as Record<string, unknown>)
+
+    this.publishedRecord = Object.freeze({
+      ...record,
+      txt: Object.freeze({ ...record.txt }),
+    })
+  }
+
+  async unpublish(): Promise<void> {
+    this.publishedRecord = undefined
+  }
+
+  async destroy(): Promise<void> {
+    this.publishedRecord = undefined
+    this.isDestroyed = true
+  }
+
+  isPublished(): boolean {
+    return this.publishedRecord !== undefined && !this.isDestroyed
+  }
+
+  getPublishedRecord(): MdnsAdvertisementRecord | undefined {
+    return this.publishedRecord
+  }
 }

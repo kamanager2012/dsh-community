@@ -9,7 +9,9 @@ import type { PairingCoordinator } from '../crypto/pairing-coordinator.js'
 import type { PairingTokenRegistry } from '../crypto/pairing-token.js'
 import type { RemoteAdapterCore } from '../core.js'
 import { LanConnection } from './lan-connection.js'
-import { LAN_CARRIER_BOUNDS, type LanCarrierBounds } from './constants.js'
+import { LAN_CARRIER_BOUNDS, validateLanCarrierBounds, type LanCarrierBounds } from './constants.js'
+import { validateLanBindingAddress } from './address-validator.js'
+import { DSH_REMOTE_SERVICE_TYPE, type MdnsAdvertiser, type MdnsAdvertisementRecord } from './mdns.js'
 
 export interface HostLanCarrierOptions {
   /**
@@ -18,9 +20,8 @@ export interface HostLanCarrierOptions {
   readonly enabled?: boolean
 
   /**
-   * Explicit host/interface IP to bind. Default forbids wildcard.
-   * Must be an explicit IP (e.g. '127.0.0.1', '192.168.1.100', '::1').
-   * '0.0.0.0' or '::' or empty is strictly rejected fail-closed.
+   * Explicit host/interface IP to bind. Default forbids wildcard and public addresses.
+   * Must be an explicit LAN/loopback IP (e.g. '127.0.0.1', '192.168.1.100', '::1').
    */
   readonly host?: string
 
@@ -35,34 +36,24 @@ export interface HostLanCarrierOptions {
   readonly pairingCoordinator?: PairingCoordinator
   readonly pairingTokenRegistry?: PairingTokenRegistry
   readonly bounds?: Partial<LanCarrierBounds>
+
+  /**
+   * Optional mDNS advertiser for LAN discovery hint publication.
+   */
+  readonly mdnsAdvertiser?: MdnsAdvertiser
+
+  /**
+   * Human-readable host display label for mDNS advertisement.
+   */
+  readonly hostDisplayLabel?: string
+
+  /**
+   * Testing flag to allow policy-compliant mock private IPs without binding to local OS interface.
+   */
+  readonly skipInterfaceCheckForTesting?: boolean
 }
 
 const WS_MAGIC_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
-
-function assertValidHostBinding(host: string | undefined): string {
-  if (!host || host.trim().length === 0) {
-    throw new RemoteCryptoError(
-      'HANDSHAKE_FAILED',
-      'host binding address must be explicitly provided; wildcard default is forbidden',
-    )
-  }
-
-  const trimmed = host.trim().toLowerCase()
-  if (
-    trimmed === '0.0.0.0' ||
-    trimmed === '::' ||
-    trimmed === '0:0:0:0:0:0:0:0' ||
-    trimmed === '*' ||
-    trimmed === 'all'
-  ) {
-    throw new RemoteCryptoError(
-      'HANDSHAKE_FAILED',
-      `binding to wildcard or public default address '${host}' is strictly forbidden`,
-    )
-  }
-
-  return trimmed
-}
 
 export class HostLanCarrier {
   private readonly options: HostLanCarrierOptions
@@ -77,10 +68,8 @@ export class HostLanCarrier {
 
   constructor(options: HostLanCarrierOptions) {
     this.options = options
-    this.bounds = Object.freeze({
-      ...LAN_CARRIER_BOUNDS,
-      ...(options.bounds ?? {}),
-    })
+    // P0-5: Validate bounds on constructor/options
+    this.bounds = validateLanCarrierBounds(options.bounds)
   }
 
   isEnabled(): boolean {
@@ -115,7 +104,7 @@ export class HostLanCarrier {
   async start(): Promise<void> {
     if (this.isRunning) return
 
-    // 1. Default disabled check: if explicitly enabled is false and start called without enabled: true
+    // 1. Default disabled check: if explicitly enabled is false, fail closed
     if (!this.isEnabled()) {
       throw new RemoteCryptoError(
         'HANDSHAKE_FAILED',
@@ -123,45 +112,95 @@ export class HostLanCarrier {
       )
     }
 
-    // 2. Validate network binding: strictly forbids 0.0.0.0 and wildcard
-    const bindHost = assertValidHostBinding(this.options.host)
+    // 2. Validate network binding: strictly enforces LAN/loopback policy and valid IP
+    const bindHost = validateLanBindingAddress(this.options.host, {
+      skipInterfaceCheckForTesting: this.options.skipInterfaceCheckForTesting,
+    })
     const bindPort = this.options.port ?? 0
 
     if (bindPort < 0 || bindPort > 65535 || !Number.isInteger(bindPort)) {
       throw new RemoteCryptoError('HANDSHAKE_FAILED', `invalid port: ${bindPort}`)
     }
 
-    // 3. Load host identity
-    this.hostKeyPair = await this.options.hostIdentityStore.loadOrCreate()
+    try {
+      // 3. Load host identity
+      this.hostKeyPair = await this.options.hostIdentityStore.loadOrCreate()
 
-    // 4. Hook active channel revocation termination
-    this.unsubscribeRevocations = this.options.trustStore.subscribeRevocations((event) => {
-      this.handleRevocation(event.deviceId)
-    })
-
-    // 5. Create HTTP server for WebSocket upgrade
-    const server = createServer((_req, res) => {
-      res.writeHead(404, { 'Content-Type': 'text/plain' })
-      res.end('Not Found')
-    })
-
-    server.on('upgrade', (req: IncomingMessage, socket: Socket, head: Buffer) => {
-      this.handleUpgrade(req, socket, head)
-    })
-
-    await new Promise<void>((resolve, reject) => {
-      server.once('error', reject)
-      server.listen(bindPort, bindHost, () => {
-        server.removeListener('error', reject)
-        resolve()
+      // 4. Create HTTP server for WebSocket upgrade
+      const server = createServer((_req, res) => {
+        res.writeHead(404, { 'Content-Type': 'text/plain' })
+        res.end('Not Found')
       })
-    })
 
-    this.server = server
-    this.isRunning = true
+      server.on('upgrade', (req: IncomingMessage, socket: Socket, head: Buffer) => {
+        this.handleUpgrade(req, socket, head)
+      })
+
+      await new Promise<void>((resolve, reject) => {
+        server.once('error', reject)
+        server.listen(bindPort, bindHost, () => {
+          server.removeListener('error', reject)
+          resolve()
+        })
+      })
+
+      this.server = server
+      this.isRunning = true
+
+      // 5. P1-1: Publish mDNS advertisement lifecycle (if advertiser configured)
+      if (this.options.mdnsAdvertiser) {
+        const bound = this.getBoundAddress()!
+        const record: MdnsAdvertisementRecord = {
+          name: this.options.hostDisplayLabel ?? 'DSH Remote Host',
+          type: DSH_REMOTE_SERVICE_TYPE,
+          host: bound.host,
+          port: bound.port,
+          txt: {
+            v: '1',
+            fp: this.hostKeyPair.identity.fingerprint,
+          },
+        }
+        await this.options.mdnsAdvertiser.publish(record)
+      }
+
+      // 6. P1-4: Hook active channel revocation termination ONLY after successful listen
+      this.unsubscribeRevocations = this.options.trustStore.subscribeRevocations((event) => {
+        this.handleRevocation(event.deviceId)
+      })
+    } catch (err) {
+      // P1-4: Transactional startup rollback on failure
+      await this.rollbackStartup()
+      throw err
+    }
   }
 
-  private handleUpgrade(req: IncomingMessage, socket: Socket, _head: Buffer): void {
+  private async rollbackStartup(): Promise<void> {
+    if (this.unsubscribeRevocations) {
+      try {
+        this.unsubscribeRevocations()
+      } catch {}
+      this.unsubscribeRevocations = undefined
+    }
+
+    if (this.options.mdnsAdvertiser) {
+      try {
+        await this.options.mdnsAdvertiser.unpublish()
+      } catch {}
+    }
+
+    if (this.server) {
+      try {
+        await new Promise<void>((resolve) => {
+          this.server!.close(() => resolve())
+        })
+      } catch {}
+      this.server = undefined
+    }
+
+    this.isRunning = false
+  }
+
+  private handleUpgrade(req: IncomingMessage, socket: Socket, head: Buffer): void {
     // Check connection cap before accepting
     if (this.activeConnections.size >= this.bounds.maxConcurrentConnections) {
       socket.write('HTTP/1.1 503 Service Unavailable\r\n\r\n')
@@ -170,22 +209,50 @@ export class HostLanCarrier {
     }
 
     const upgradeHeader = req.headers['upgrade']
+    const connectionHeader = req.headers['connection']
+    const wsVersion = req.headers['sec-websocket-version']
     const wsKey = req.headers['sec-websocket-key']
 
-    if (
-      !upgradeHeader ||
-      typeof upgradeHeader !== 'string' ||
-      upgradeHeader.toLowerCase() !== 'websocket' ||
-      !wsKey ||
-      typeof wsKey !== 'string'
-    ) {
+    // RFC 6455 4.2.1 header validation
+    const hasUpgradeToken =
+      typeof connectionHeader === 'string' &&
+      connectionHeader
+        .split(',')
+        .map((s) => s.trim().toLowerCase())
+        .includes('upgrade')
+
+    const isWsUpgrade =
+      typeof upgradeHeader === 'string' && upgradeHeader.trim().toLowerCase() === 'websocket'
+
+    if (!isWsUpgrade || !hasUpgradeToken) {
       socket.write('HTTP/1.1 400 Bad Request\r\n\r\n')
       socket.destroy()
       return
     }
 
-    // RFC 6455 Accept response
-    const acceptKey = createHash('sha1').update(wsKey + WS_MAGIC_GUID).digest('base64')
+    // RFC 6455 Version check: must be 13
+    if (wsVersion !== '13') {
+      socket.write('HTTP/1.1 426 Upgrade Required\r\nSec-WebSocket-Version: 13\r\n\r\n')
+      socket.destroy()
+      return
+    }
+
+    // RFC 6455 Key validation: must decode to 16 bytes
+    if (typeof wsKey !== 'string') {
+      socket.write('HTTP/1.1 400 Bad Request\r\n\r\n')
+      socket.destroy()
+      return
+    }
+
+    const keyBuf = Buffer.from(wsKey.trim(), 'base64')
+    if (keyBuf.length !== 16 || keyBuf.toString('base64') !== wsKey.trim()) {
+      socket.write('HTTP/1.1 400 Bad Request\r\n\r\n')
+      socket.destroy()
+      return
+    }
+
+    // RFC 6455 Accept calculation
+    const acceptKey = createHash('sha1').update(wsKey.trim() + WS_MAGIC_GUID).digest('base64')
     const responseHeaders = [
       'HTTP/1.1 101 Switching Protocols',
       'Upgrade: websocket',
@@ -218,6 +285,7 @@ export class HostLanCarrier {
         onClosed: (closedConn) => this.removeConnection(closedConn),
       },
       connId,
+      head, // P1-3: Pass upgrade head buffer so initial frames are not lost
     )
 
     this.activeConnections.set(connId, conn)
@@ -268,8 +336,17 @@ export class HostLanCarrier {
     this.isRunning = false
 
     if (this.unsubscribeRevocations) {
-      this.unsubscribeRevocations()
+      try {
+        this.unsubscribeRevocations()
+      } catch {}
       this.unsubscribeRevocations = undefined
+    }
+
+    if (this.options.mdnsAdvertiser) {
+      try {
+        await this.options.mdnsAdvertiser.unpublish()
+        await this.options.mdnsAdvertiser.destroy()
+      } catch {}
     }
 
     // Close all active connections

@@ -46,13 +46,14 @@ export class LanConnection {
   private readonly parser: WebSocketFrameParser
   private handshakeTimer: NodeJS.Timeout | undefined = undefined
   private idleTimer: NodeJS.Timeout | undefined = undefined
-  private pendingInboundRequests = 0
+  private pendingInboundWork = 0
   private pendingOutboundFrames = 0
 
   constructor(
     readonly socket: Socket,
     private readonly ctx: LanConnectionContext,
     id: string,
+    initialHead?: Buffer,
   ) {
     this.id = id
     this.noiseSession = new NoiseResponderSession(ctx.hostKeyPair)
@@ -61,7 +62,13 @@ export class LanConnection {
       ctx.bounds.maxFrameBytes,
       true, // client-to-server frames must be masked
       {
-        onFrame: (frame) => this.handleFrame(frame),
+        onFrame: (frame) => {
+          try {
+            this.handleFrame(frame)
+          } catch {
+            this.terminate(1008, 'internal frame error')
+          }
+        },
         onTextFrameRejected: () => {
           this.terminate(1003, 'text WebSocket frames are strictly forbidden')
         },
@@ -76,6 +83,15 @@ export class LanConnection {
 
     this.setupSocketListeners()
     this.startHandshakeTimeout()
+
+    // Process initial head if any was buffered during HTTP upgrade
+    if (initialHead && initialHead.length > 0) {
+      try {
+        this.parser.push(initialHead)
+      } catch {
+        this.terminate(1008, 'error processing initial head')
+      }
+    }
   }
 
   getState(): ConnectionSecurityState {
@@ -88,8 +104,12 @@ export class LanConnection {
 
   private setupSocketListeners(): void {
     this.socket.on('data', (chunk: Buffer) => {
-      this.resetIdleTimeout()
-      this.parser.push(chunk)
+      try {
+        this.resetIdleTimeout()
+        this.parser.push(chunk)
+      } catch {
+        this.terminate(1008, 'internal socket processing error')
+      }
     })
 
     this.socket.on('error', () => {
@@ -132,15 +152,21 @@ export class LanConnection {
     }
 
     if (this.peer) {
-      this.ctx.core.closeConnection(this.peer)
+      try {
+        this.ctx.core.closeConnection(this.peer)
+      } catch {}
     }
 
     if (this.noiseSession) {
-      this.noiseSession.close()
+      try {
+        this.noiseSession.close()
+      } catch {}
       this.noiseSession = undefined
     }
 
-    this.ctx.onClosed(this)
+    try {
+      this.ctx.onClosed(this)
+    } catch {}
   }
 
   terminate(code = 1000, reason = ''): void {
@@ -154,7 +180,9 @@ export class LanConnection {
     } catch {}
 
     this.cleanup()
-    this.socket.destroy()
+    try {
+      this.socket.destroy()
+    } catch {}
   }
 
   private sendEncrypted(plaintext: Uint8Array): void {
@@ -162,9 +190,17 @@ export class LanConnection {
       return
     }
 
-    // Outbound queue check
+    // P0-4: Check outbound frame size BEFORE encryption & allocation
+    // Noise adds 16-byte Poly1305 MAC to plaintext
+    const expectedCipherLength = plaintext.byteLength + 16
+    if (expectedCipherLength > this.ctx.bounds.maxFrameBytes) {
+      this.terminate(1009, 'outbound frame size exceeds maxFrameBytes')
+      return
+    }
+
+    // Outbound queue & buffer check
     if (
-      this.socket.writableLength > this.ctx.bounds.maxBufferedEventBytes ||
+      this.socket.writableLength + expectedCipherLength > this.ctx.bounds.maxBufferedEventBytes ||
       this.pendingOutboundFrames >= this.ctx.bounds.maxOutboundQueue
     ) {
       this.terminate(1008, 'slow client: outbound buffer high-water mark exceeded')
@@ -176,6 +212,11 @@ export class LanConnection {
       ciphertext = this.noiseSession.encrypt(plaintext)
     } catch {
       this.terminate(1008, 'encryption failure')
+      return
+    }
+
+    if (ciphertext.byteLength > this.ctx.bounds.maxFrameBytes) {
+      this.terminate(1009, 'outbound ciphertext exceeds maxFrameBytes')
       return
     }
 
@@ -203,8 +244,20 @@ export class LanConnection {
       }
 
       case WebSocketOpcode.PING: {
+        // P0-3: Bound PONG write using unified bounds check
+        if (
+          this.socket.writableLength + frame.payload.byteLength > this.ctx.bounds.maxBufferedEventBytes ||
+          this.pendingOutboundFrames >= this.ctx.bounds.maxOutboundQueue
+        ) {
+          this.terminate(1008, 'slow client: buffer high-water mark exceeded on ping')
+          return
+        }
+
         const pong = encodeWebSocketFrame(frame.payload, WebSocketOpcode.PONG)
-        this.socket.write(pong)
+        this.pendingOutboundFrames += 1
+        this.socket.write(pong, () => {
+          this.pendingOutboundFrames = Math.max(0, this.pendingOutboundFrames - 1)
+        })
         return
       }
 
@@ -236,17 +289,28 @@ export class LanConnection {
       return
     }
 
-    if (this.state === 'PAIRING_PENDING') {
-      this.handlePairingPendingPayload(payload)
+    // P0-2: Unified Inbound Work Budget for PAIRING_PENDING, ACTIVE, and all async work
+    if (this.pendingInboundWork >= this.ctx.bounds.maxInboundQueue) {
+      this.terminate(1008, 'inbound work budget exceeded')
       return
     }
 
-    if (this.state === 'ACTIVE') {
-      this.handleActivePayload(payload)
-      return
-    }
+    this.pendingInboundWork += 1
 
-    this.terminate(1008, `cannot process frames in state ${this.state}`)
+    const workPromise =
+      this.state === 'PAIRING_PENDING'
+        ? this.handlePairingPendingPayload(payload)
+        : this.state === 'ACTIVE'
+          ? this.handleActivePayload(payload)
+          : Promise.reject(new Error(`cannot process frames in state ${this.state}`))
+
+    workPromise
+      .catch(() => {
+        this.terminate(1008, 'inbound work execution failure')
+      })
+      .finally(() => {
+        this.pendingInboundWork = Math.max(0, this.pendingInboundWork - 1)
+      })
   }
 
   private handleHandshakeMessage(message1: Uint8Array): void {
@@ -286,10 +350,18 @@ export class LanConnection {
 
     const epoch = this.ctx.epochAllocator.allocateNext()
     this.peer = this.ctx.epochAllocator.bindPeer(remotePeer.deviceId, epoch)
-    this.ctx.onPeerAuthenticated(this.peer, this)
 
-    // Evaluate device authorization
+    try {
+      this.ctx.onPeerAuthenticated(this.peer, this)
+    } catch {
+      this.terminate(1008, 'peer authentication hook failed')
+      return
+    }
+
+    // Evaluate device authorization (contained against store throw)
     this.evaluateAuthorization()
+
+    if ((this.state as ConnectionSecurityState) === 'CLOSED') return
 
     // Send encrypted handshake completion frame informing client of connectionEpoch
     this.sendEncrypted(
@@ -306,7 +378,15 @@ export class LanConnection {
   private evaluateAuthorization(): void {
     if (!this.peer) return
 
-    const record = this.ctx.trustStore.getSync(this.peer.deviceId)
+    let record: ReturnType<DeviceTrustStore['getSync']>
+    try {
+      record = this.ctx.trustStore.getSync(this.peer.deviceId)
+    } catch {
+      // P0-6: Contain poisoned store exceptions
+      this.terminate(1008, 'trust store error during device lookup')
+      return
+    }
+
     const hostTrustDomain = this.ctx.hostKeyPair.identity.trustDomainId
 
     if (!record) {
@@ -324,12 +404,18 @@ export class LanConnection {
       return
     }
 
+    try {
+      this.ctx.trustStore.recordSeenSync(this.peer.deviceId)
+    } catch {
+      this.terminate(1008, 'trust store error during record seen')
+      return
+    }
+
     this.state = 'DEVICE_AUTHORIZED'
     this.state = 'ACTIVE'
-    this.ctx.trustStore.recordSeenSync(this.peer.deviceId)
   }
 
-  private handlePairingPendingPayload(ciphertext: Uint8Array): void {
+  private async handlePairingPendingPayload(ciphertext: Uint8Array): Promise<void> {
     if (!this.noiseSession || !this.peer) {
       this.terminate(1008, 'unauthenticated channel')
       return
@@ -354,7 +440,7 @@ export class LanConnection {
     // Channel is unpaired: only pairing methods allowed
     const method = parsed?.method
     if (method === 'pairing.request') {
-      this.handlePairingRequest(parsed)
+      await this.handlePairingRequest(parsed)
       return
     }
 
@@ -399,13 +485,14 @@ export class LanConnection {
       }
       this.sendEncrypted(new TextEncoder().encode(JSON.stringify(successResp)))
     } catch (err) {
+      const code = (err as any).code ?? 'PAIRING_FAILED'
       const errResp = {
         jsonrpc: '2.0',
         id: request.id,
         error: {
           code: -32000,
-          name: (err as any).name ?? 'RemoteCryptoError',
-          message: (err as Error).message,
+          name: code,
+          message: `${code}: ${(err as Error).message}`,
         },
       }
       this.sendEncrypted(new TextEncoder().encode(JSON.stringify(errResp)))
@@ -415,12 +502,6 @@ export class LanConnection {
   private async handleActivePayload(ciphertext: Uint8Array): Promise<void> {
     if (!this.noiseSession || !this.peer) {
       this.terminate(1008, 'session not authenticated')
-      return
-    }
-
-    // Inbound queue bounding
-    if (this.pendingInboundRequests >= this.ctx.bounds.maxInboundQueue) {
-      this.terminate(1008, 'inbound queue capacity exceeded')
       return
     }
 
@@ -440,8 +521,6 @@ export class LanConnection {
       this.terminate(1002, 'malformed JSON payload')
       return
     }
-
-    this.pendingInboundRequests += 1
 
     try {
       const result = await this.ctx.core.handle(this.peer, requestObj)
@@ -466,8 +545,6 @@ export class LanConnection {
         },
       }
       this.sendEncrypted(new TextEncoder().encode(JSON.stringify(errResp)))
-    } finally {
-      this.pendingInboundRequests = Math.max(0, this.pendingInboundRequests - 1)
     }
   }
 }

@@ -34,10 +34,16 @@ export class WebSocketFrameParser {
   private buffer: Buffer = Buffer.alloc(0)
 
   private fin = true
+  private rsv = 0
   private opcode = WebSocketOpcode.BINARY
   private masked = false
   private payloadLength = 0
   private maskKey: Buffer | undefined = undefined
+
+  // Fragmentation state
+  private fragmentedOpcode: WebSocketOpcode | undefined = undefined
+  private fragmentedBuffers: Buffer[] = []
+  private fragmentedLength = 0
 
   constructor(
     private readonly maxFrameBytes: number,
@@ -51,6 +57,10 @@ export class WebSocketFrameParser {
     this.drain()
   }
 
+  private isControlOpcode(opcode: WebSocketOpcode): boolean {
+    return opcode >= 0x8
+  }
+
   private drain(): void {
     while (this.buffer.length > 0) {
       switch (this.state) {
@@ -60,14 +70,35 @@ export class WebSocketFrameParser {
           const b1 = this.buffer[1]!
 
           this.fin = (b0 & 0x80) !== 0
+          this.rsv = (b0 & 0x70) >> 4
           this.opcode = b0 & 0x0f
           this.masked = (b1 & 0x80) !== 0
           const lenIndicator = b1 & 0x7f
+
+          // RFC 6455 5.2: RSV bits must be 0 unless extension negotiated
+          if (this.rsv !== 0) {
+            this.callbacks.onProtocolError('RSV bits must be 0')
+            return
+          }
 
           // Strict binary only: reject text frames immediately
           if (this.opcode === WebSocketOpcode.TEXT) {
             this.callbacks.onTextFrameRejected()
             return
+          }
+
+          // Control frame checks (RFC 6455 5.5)
+          if (this.isControlOpcode(this.opcode)) {
+            // Control frames MUST NOT be fragmented
+            if (!this.fin) {
+              this.callbacks.onProtocolError('control frames must not be fragmented')
+              return
+            }
+            // Control frames payload MUST be <= 125 bytes
+            if (lenIndicator > 125) {
+              this.callbacks.onProtocolError('control frame payload cannot exceed 125 bytes')
+              return
+            }
           }
 
           // RFC 6455 5.1: client-to-server frames must be masked
@@ -98,6 +129,12 @@ export class WebSocketFrameParser {
           this.payloadLength = this.buffer.readUInt16BE(0)
           this.buffer = this.buffer.subarray(2)
 
+          // RFC 6455 5.2: Minimal length encoding check (must be >= 126)
+          if (this.payloadLength < 126) {
+            this.callbacks.onProtocolError('non-minimal length encoding (expected < 126 to use 7-bit length)')
+            return
+          }
+
           // Size check BEFORE allocating payload buffer
           if (this.payloadLength > this.maxFrameBytes) {
             this.callbacks.onOversizedFrame(this.payloadLength, this.maxFrameBytes)
@@ -114,8 +151,20 @@ export class WebSocketFrameParser {
           const low = this.buffer.readUInt32BE(4)
           this.buffer = this.buffer.subarray(8)
 
+          // Most significant bit must be 0
+          if ((high & 0x80000000) !== 0) {
+            this.callbacks.onProtocolError('most significant bit in 64-bit length must be 0')
+            return
+          }
+
           const length = high * 0x100000000 + low
           this.payloadLength = length
+
+          // RFC 6455 5.2: Minimal length encoding check (must be >= 65536)
+          if (length < 65536) {
+            this.callbacks.onProtocolError('non-minimal length encoding (expected < 65536 to use 16-bit length)')
+            return
+          }
 
           // Size check BEFORE allocating payload buffer
           if (this.payloadLength > this.maxFrameBytes) {
@@ -148,15 +197,56 @@ export class WebSocketFrameParser {
             }
           }
 
-          const payload = new Uint8Array(payloadBuf.buffer, payloadBuf.byteOffset, payloadBuf.byteLength)
           const opcode = this.opcode
+          const fin = this.fin
 
           // Reset parser state for next frame
           this.state = ParserState.HEADER
           this.maskKey = undefined
           this.payloadLength = 0
 
-          this.callbacks.onFrame({ opcode, payload })
+          // Fragmentation handling for data frames
+          if (this.isControlOpcode(opcode)) {
+            // Control frames are delivered immediately (even in the middle of fragmented data)
+            const payload = new Uint8Array(payloadBuf.buffer, payloadBuf.byteOffset, payloadBuf.byteLength)
+            this.callbacks.onFrame({ opcode, payload })
+          } else if (opcode === WebSocketOpcode.CONTINUATION) {
+            if (this.fragmentedOpcode === undefined) {
+              this.callbacks.onProtocolError('unexpected continuation frame without initial fragment')
+              return
+            }
+            this.fragmentedLength += payloadBuf.length
+            if (this.fragmentedLength > this.maxFrameBytes) {
+              this.callbacks.onOversizedFrame(this.fragmentedLength, this.maxFrameBytes)
+              return
+            }
+            this.fragmentedBuffers.push(payloadBuf)
+
+            if (fin) {
+              const fullBuffer = Buffer.concat(this.fragmentedBuffers)
+              const assembledOpcode = this.fragmentedOpcode
+              this.fragmentedBuffers = []
+              this.fragmentedLength = 0
+              this.fragmentedOpcode = undefined
+
+              const payload = new Uint8Array(fullBuffer.buffer, fullBuffer.byteOffset, fullBuffer.byteLength)
+              this.callbacks.onFrame({ opcode: assembledOpcode, payload })
+            }
+          } else {
+            // New data frame (BINARY)
+            if (!fin) {
+              if (this.fragmentedOpcode !== undefined) {
+                this.callbacks.onProtocolError('cannot start new fragmented frame while previous is incomplete')
+                return
+              }
+              this.fragmentedOpcode = opcode
+              this.fragmentedBuffers = [payloadBuf]
+              this.fragmentedLength = payloadBuf.length
+            } else {
+              const payload = new Uint8Array(payloadBuf.buffer, payloadBuf.byteOffset, payloadBuf.byteLength)
+              this.callbacks.onFrame({ opcode, payload })
+            }
+          }
           break
         }
       }
@@ -209,7 +299,7 @@ export function encodeWebSocketFrame(
     frame.set(maskKey, offset)
     offset += 4
     for (let i = 0; i < len; i++) {
-      frame[offset + i] = payload[i]! ^ maskKey[i % 4]!
+      frame[offset + i] = (payload[i] ?? 0) ^ (maskKey[i % 4] ?? 0)
     }
   } else {
     frame.set(payload, offset)
