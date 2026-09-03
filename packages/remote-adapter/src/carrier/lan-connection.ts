@@ -278,12 +278,11 @@ export class LanConnection {
   }
 
   private handleBinaryPayload(payload: Uint8Array): void {
-    // Plaintext JSON guard at carrier boundary: reject if starts with ASCII '{'
-    if (payload.length > 0 && payload[0] === 0x7b) {
-      this.terminate(1003, 'unencrypted plaintext JSON frame rejected; binary Noise ciphertext required')
-      return
-    }
-
+    // Binary application frames are authenticated by Noise itself.
+    // Do not classify ciphertext by byte prefix: valid Noise handshake or
+    // transport ciphertext is uniformly distributed and may begin with '{'.
+    // Plaintext binary JSON therefore fails closed at the Noise parser/AEAD
+    // verification step instead of relying on a lossy prefix heuristic.
     if (this.state === 'CONNECTED' || this.state === 'NOISE_HANDSHAKE') {
       this.handleHandshakeMessage(payload)
       return
