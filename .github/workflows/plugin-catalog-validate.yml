@@ -12,8 +12,6 @@ on:
       - 'packages/marketplace/catalog.json'
       - 'packages/marketplace/scripts/**'
       - '.github/workflows/plugin-catalog-validate.yml'
-  schedule:
-    - cron: '23 3 * * *'
   workflow_dispatch:
 
 permissions:
