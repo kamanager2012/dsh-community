@@ -137,7 +137,7 @@ const pairingResult = await coordinator.confirmPairing({
   grantedCapabilities: ['observe', 'prompt'],
 })
 const authoritativeDeviceId = pairingResult.device.deviceId
-if (authoritativeDeviceId !== authoritativeDeviceId) {
+if (candidate.deviceId !== authoritativeDeviceId) {
   throw new Error('client device fingerprint disagrees with Host authenticated identity')
 }
 send({ type: 'confirmed' })
