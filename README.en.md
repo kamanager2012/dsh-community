@@ -143,6 +143,7 @@ exists, use it; add community code only where a verified gap remains.
 contracts/              Official CLI and package surface snapshots
 packages/dsh-bridge     Runtime process and lifecycle boundary
 packages/marketplace    Plugin discovery CLI + catalog.json
+packages/remote-adapter  Remote control adapter, Noise IK E2EE, LAN carrier & session stream projection
 packages/tui-adapter    Community TUI adapter and patch surface
 packages/shared-types   Community-owned types, not an official event fork
 apps/desktop            Official `dsh web` shell and session entry

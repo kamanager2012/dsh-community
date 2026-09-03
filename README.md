@@ -137,6 +137,7 @@ Windows / macOS 安装包由 GitHub Actions(`release` workflow)在对应系统�
 contracts/              官方表面快照 + compatibility matrix
 packages/dsh-bridge     解析官方 bin、生命周期、数据目录
 packages/marketplace    插件发现 CLI + catalog.json
+packages/remote-adapter  远程控制适配器、Noise IK 加密、局域网传输与会话事件投射
 packages/tui-adapter    我们的 TUI 薄 patch + KPI
 packages/shared-types   社区自己的类型，不是官方 event fork
 apps/desktop            官方 `dsh web` 壳 + 官方 session 列表 + 内嵌社区市场页
