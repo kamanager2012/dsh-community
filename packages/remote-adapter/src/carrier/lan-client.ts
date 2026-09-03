@@ -4,12 +4,94 @@ import { NoiseInitiatorSession } from '../crypto/noise.js'
 import { computeFingerprint } from '../crypto/host-identity.js'
 import { REMOTE_PROTOCOL_VERSION } from '../protocol.js'
 
+export interface ReconnectBackoffPolicy {
+  readonly initialDelayMs?: number
+  readonly maxDelayMs?: number
+  readonly multiplier?: number
+  readonly maxAttempts?: number
+}
+
+interface ResolvedReconnectBackoffPolicy {
+  readonly initialDelayMs: number
+  readonly maxDelayMs: number
+  readonly multiplier: number
+  readonly maxAttempts: number
+}
+
 export interface LanClientCarrierOptions {
   readonly clientKeyPair: { publicKey: Uint8Array; secretKey: Uint8Array }
   readonly hostPublicKey: Uint8Array
   readonly endpointUrl: string
   readonly handshakeTimeoutMs?: number
   readonly requestTimeoutMs?: number
+  readonly sleep?: (delayMs: number) => Promise<void>
+}
+
+const DEFAULT_RECONNECT_POLICY: ResolvedReconnectBackoffPolicy = Object.freeze({
+  initialDelayMs: 100,
+  maxDelayMs: 2_000,
+  multiplier: 2,
+  maxAttempts: 5,
+})
+
+function positiveFiniteInteger(name: string, value: number, max: number): number {
+  if (!Number.isSafeInteger(value) || value < 1 || value > max) {
+    throw new RemoteProtocolError(
+      'INVALID_REQUEST',
+      name + ' must be an integer between 1 and ' + String(max),
+    )
+  }
+  return value
+}
+
+function resolveReconnectPolicy(
+  policy: ReconnectBackoffPolicy | undefined,
+): ResolvedReconnectBackoffPolicy {
+  const initialDelayMs = positiveFiniteInteger(
+    'initialDelayMs',
+    policy?.initialDelayMs ?? DEFAULT_RECONNECT_POLICY.initialDelayMs,
+    60_000,
+  )
+  const maxDelayMs = positiveFiniteInteger(
+    'maxDelayMs',
+    policy?.maxDelayMs ?? DEFAULT_RECONNECT_POLICY.maxDelayMs,
+    60_000,
+  )
+  const maxAttempts = positiveFiniteInteger(
+    'maxAttempts',
+    policy?.maxAttempts ?? DEFAULT_RECONNECT_POLICY.maxAttempts,
+    32,
+  )
+  const multiplier = policy?.multiplier ?? DEFAULT_RECONNECT_POLICY.multiplier
+  if (!Number.isFinite(multiplier) || multiplier < 1 || multiplier > 10) {
+    throw new RemoteProtocolError(
+      'INVALID_REQUEST',
+      'multiplier must be finite and between 1 and 10',
+    )
+  }
+  if (maxDelayMs < initialDelayMs) {
+    throw new RemoteProtocolError(
+      'INVALID_REQUEST',
+      'maxDelayMs cannot be smaller than initialDelayMs',
+    )
+  }
+  return Object.freeze({ initialDelayMs, maxDelayMs, multiplier, maxAttempts })
+}
+
+export function reconnectDelayMs(
+  retryIndex: number,
+  policy?: ReconnectBackoffPolicy,
+): number {
+  if (!Number.isSafeInteger(retryIndex) || retryIndex < 1) {
+    throw new RemoteProtocolError('INVALID_REQUEST', 'retryIndex must be a positive integer')
+  }
+  const resolved = resolveReconnectPolicy(policy)
+  const raw = resolved.initialDelayMs * Math.pow(resolved.multiplier, retryIndex - 1)
+  return Math.min(resolved.maxDelayMs, Math.max(1, Math.round(raw)))
+}
+
+function defaultSleep(delayMs: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, delayMs))
 }
 
 export class LanClientCarrier {
@@ -29,6 +111,7 @@ export class LanClientCarrier {
     }
   >()
   private readonly eventListeners = new Set<(event: unknown) => void>()
+  private readonly lastConfirmedSeqBySession = new Map<string, number>()
 
   constructor(options: LanClientCarrierOptions) {
     this.options = options
@@ -43,12 +126,17 @@ export class LanClientCarrier {
     return this.connectionEpoch
   }
 
+  getLastConfirmedSeq(sessionId: string): number | undefined {
+    return this.lastConfirmedSeqBySession.get(sessionId)
+  }
+
   isOpen(): boolean {
     return this.isConnected && this.ws !== undefined && this.ws.readyState === WebSocket.OPEN
   }
 
   async connect(): Promise<void> {
-    if (this.isConnected) return
+    if (this.isOpen()) return
+    if (this.isConnected) this.handleClose(this.ws)
 
     this.noiseSession = new NoiseInitiatorSession(
       this.options.clientKeyPair,
@@ -60,47 +148,67 @@ export class LanClientCarrier {
     this.ws = ws
 
     await new Promise<void>((resolve, reject) => {
+      let settled = false
+      const finishFailure = (error: Error): void => {
+        if (settled) return
+        settled = true
+        clearTimeout(timeout)
+        if (this.ws === ws) {
+          this.isConnected = false
+          this.ws = undefined
+        }
+        try {
+          this.noiseSession?.close()
+        } catch {}
+        try {
+          ws.close()
+        } catch {}
+        reject(error)
+      }
+
       const timeout = setTimeout(() => {
-        ws.close()
-        reject(new RemoteCryptoError('HANDSHAKE_FAILED', 'client connection timeout'))
+        finishFailure(new RemoteCryptoError('HANDSHAKE_FAILED', 'client connection timeout'))
       }, this.options.handshakeTimeoutMs ?? 5000)
 
       ws.onopen = () => {
         try {
-          // Send Noise Handshake Message 1 as binary
           const msg1 = this.noiseSession!.writeMessage1()
           ws.send(msg1)
         } catch (err) {
-          clearTimeout(timeout)
-          ws.close()
-          reject(err)
+          finishFailure(err instanceof Error ? err : new Error(String(err)))
         }
       }
 
       ws.onerror = (err) => {
-        clearTimeout(timeout)
-        reject(new RemoteCryptoError('HANDSHAKE_FAILED', `websocket error: ${(err as any).message ?? 'connect failed'}`))
-      }
-
-      ws.onclose = (event) => {
-        clearTimeout(timeout)
-        reject(
+        finishFailure(
           new RemoteCryptoError(
             'HANDSHAKE_FAILED',
-            `websocket closed during handshake (code ${event.code}: ${event.reason || 'closed'})`,
+            'websocket error: ' + String((err as any).message ?? 'connect failed'),
           ),
         )
       }
 
-      // First message received is Message 2
+      ws.onclose = (event) => {
+        finishFailure(
+          new RemoteCryptoError(
+            'HANDSHAKE_FAILED',
+            'websocket closed during handshake (code ' +
+              String(event.code) +
+              ': ' +
+              String(event.reason || 'closed') +
+              ')',
+          ),
+        )
+      }
+
       const handshakeHandler = (event: MessageEvent) => {
         try {
           const raw = new Uint8Array(event.data as ArrayBuffer)
           this.noiseSession!.readMessage2(raw)
           ws.removeEventListener('message', handshakeHandler)
 
-          // Second message received is encrypted handshake.complete frame with connectionEpoch
           const completionHandler = (compEvt: MessageEvent) => {
+            if (settled) return
             clearTimeout(timeout)
             ws.removeEventListener('message', completionHandler)
 
@@ -108,23 +216,26 @@ export class LanClientCarrier {
               const compRaw = new Uint8Array(compEvt.data as ArrayBuffer)
               const compPt = this.noiseSession!.decrypt(compRaw)
               const compParsed = JSON.parse(new TextDecoder().decode(compPt))
-              if (Number.isInteger(compParsed?.connectionEpoch)) {
-                this.connectionEpoch = compParsed.connectionEpoch
+              if (!Number.isSafeInteger(compParsed?.connectionEpoch) || compParsed.connectionEpoch < 1) {
+                throw new RemoteCryptoError(
+                  'HANDSHAKE_FAILED',
+                  'handshake completion did not contain a valid connection epoch',
+                )
               }
+              this.connectionEpoch = compParsed.connectionEpoch
+              this.requestSeq = 0
               this.isConnected = true
-              this.setupMessageHandler()
+              settled = true
+              this.setupMessageHandler(ws)
               resolve()
             } catch (err) {
-              ws.close()
-              reject(err)
+              finishFailure(err instanceof Error ? err : new Error(String(err)))
             }
           }
 
           ws.addEventListener('message', completionHandler)
         } catch (err) {
-          clearTimeout(timeout)
-          ws.close()
-          reject(err)
+          finishFailure(err instanceof Error ? err : new Error(String(err)))
         }
       }
 
@@ -132,17 +243,102 @@ export class LanClientCarrier {
     })
   }
 
-  private setupMessageHandler(): void {
-    if (!this.ws) return
+  async reconnectWithBackoff(policy?: ReconnectBackoffPolicy): Promise<void> {
+    if (this.isOpen()) return
+    const resolved = resolveReconnectPolicy(policy)
+    const sleep = this.options.sleep ?? defaultSleep
+    let lastError: Error | undefined
 
-    this.ws.onmessage = (event: MessageEvent) => {
-      if (!this.noiseSession) return
+    for (let attempt = 1; attempt <= resolved.maxAttempts; attempt += 1) {
+      if (attempt > 1) {
+        await sleep(reconnectDelayMs(attempt - 1, resolved))
+      }
+      try {
+        await this.connect()
+        return
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error))
+        this.close()
+      }
+    }
+
+    throw (
+      lastError ??
+      new RemoteCryptoError('HANDSHAKE_FAILED', 'reconnect attempts exhausted')
+    )
+  }
+
+  async resumeSession(sessionId: string): Promise<any> {
+    if (typeof sessionId !== 'string' || sessionId.length === 0) {
+      throw new RemoteProtocolError('INVALID_REQUEST', 'sessionId must be a non-empty string')
+    }
+    const afterSeq = this.lastConfirmedSeqBySession.get(sessionId)
+    return this.request(
+      'session.attach',
+      afterSeq === undefined ? { sessionId } : { sessionId, afterSeq },
+    )
+  }
+
+  async acknowledgeSessionSeq(sessionId: string, seq: number): Promise<any> {
+    if (!Number.isSafeInteger(seq) || seq < 0) {
+      throw new RemoteProtocolError('INVALID_REQUEST', 'seq must be a non-negative integer')
+    }
+    const result = await this.request('stream.ack', { sessionId, seq })
+    const current = this.lastConfirmedSeqBySession.get(sessionId)
+    if (current === undefined || seq > current) {
+      this.lastConfirmedSeqBySession.set(sessionId, seq)
+    }
+    return result
+  }
+
+  async reconnectAndResume(
+    sessionIds: readonly string[],
+    policy?: ReconnectBackoffPolicy,
+  ): Promise<Readonly<Record<string, unknown>>> {
+    const resolved = resolveReconnectPolicy(policy)
+    const sleep = this.options.sleep ?? defaultSleep
+    let lastError: Error | undefined
+
+    for (let attempt = 1; attempt <= resolved.maxAttempts; attempt += 1) {
+      if (attempt > 1) {
+        await sleep(reconnectDelayMs(attempt - 1, resolved))
+      }
+      try {
+        await this.connect()
+        const results: Record<string, unknown> = {}
+        for (const sessionId of new Set(sessionIds)) {
+          results[sessionId] = await this.resumeSession(sessionId)
+        }
+        return Object.freeze(results)
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error))
+        this.close()
+      }
+    }
+
+    throw (
+      lastError ??
+      new RemoteCryptoError('HANDSHAKE_FAILED', 'reconnect-and-resume attempts exhausted')
+    )
+  }
+
+  clearResumeState(sessionId?: string): void {
+    if (sessionId === undefined) {
+      this.lastConfirmedSeqBySession.clear()
+      return
+    }
+    this.lastConfirmedSeqBySession.delete(sessionId)
+  }
+
+  private setupMessageHandler(ws: WebSocket): void {
+    ws.onmessage = (event: MessageEvent) => {
+      if (this.ws !== ws || !this.noiseSession) return
 
       let plaintext: Uint8Array
       try {
         const raw = new Uint8Array(event.data as ArrayBuffer)
         plaintext = this.noiseSession.decrypt(raw)
-      } catch (err) {
+      } catch {
         this.close()
         return
       }
@@ -163,14 +359,13 @@ export class LanClientCarrier {
         if (parsed.error) {
           const codeName = parsed.error.name ?? 'RemoteProtocolError'
           const detail = parsed.error.message ?? 'RPC error'
-          const msg = detail.startsWith(codeName) ? detail : `${codeName}: ${detail}`
+          const msg = detail.startsWith(codeName) ? detail : codeName + ': ' + detail
           const err = new RemoteProtocolError(codeName, msg)
           pending.reject(err)
         } else {
           pending.resolve(parsed.result)
         }
       } else {
-        // Event broadcast
         for (const listener of this.eventListeners) {
           try {
             listener(parsed)
@@ -179,20 +374,31 @@ export class LanClientCarrier {
       }
     }
 
-    this.ws.onclose = () => {
-      this.handleClose()
+    ws.onerror = () => {
+      this.handleClose(ws)
+    }
+
+    ws.onclose = () => {
+      this.handleClose(ws)
     }
   }
 
-  private handleClose(): void {
+  private handleClose(source?: WebSocket): void {
+    if (source !== undefined && this.ws !== source) return
     this.isConnected = false
+    if (source === undefined || this.ws === source) {
+      this.ws = undefined
+    }
     for (const pending of this.pendingRequests.values()) {
       clearTimeout(pending.timer)
       pending.reject(new RemoteCryptoError('HANDSHAKE_FAILED', 'connection closed'))
     }
     this.pendingRequests.clear()
     if (this.noiseSession) {
-      this.noiseSession.close()
+      try {
+        this.noiseSession.close()
+      } catch {}
+      this.noiseSession = undefined
     }
   }
 
@@ -216,7 +422,7 @@ export class LanClientCarrier {
     }
 
     this.requestSeq += 1
-    const requestId = options?.customId !== undefined ? String(options.customId) : `req-${this.requestSeq}`
+    const requestId = options?.customId !== undefined ? String(options.customId) : 'req-' + String(this.requestSeq)
 
     const requestPayload: any = {
       jsonrpc: '2.0',
@@ -238,7 +444,7 @@ export class LanClientCarrier {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pendingRequests.delete(requestId)
-        reject(new RemoteProtocolError('INVALID_REQUEST', `request timeout: ${method}`))
+        reject(new RemoteProtocolError('INVALID_REQUEST', 'request timeout: ' + method))
       }, this.options.requestTimeoutMs ?? 5000)
 
       this.pendingRequests.set(requestId, { resolve, reject, timer: timeout })
@@ -254,11 +460,12 @@ export class LanClientCarrier {
   }
 
   close(): void {
-    if (this.ws) {
+    const ws = this.ws
+    this.ws = undefined
+    if (ws) {
       try {
-        this.ws.close()
+        ws.close()
       } catch {}
-      this.ws = undefined
     }
     this.handleClose()
   }

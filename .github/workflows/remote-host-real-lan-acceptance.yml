@@ -1,0 +1,96 @@
+name: remote-host-real-lan-acceptance
+
+on:
+  pull_request:
+    paths:
+      - 'packages/remote-adapter/**'
+      - 'scripts/r2-lan-real-*.mjs'
+      - '.github/workflows/remote-host-real-lan-acceptance.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  isolated-lan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          version: 11.21.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Build remote adapter
+        run: pnpm --filter @dsh-community/remote-adapter build
+      - name: Verify network tools
+        run: |
+          if ! command -v ip >/dev/null || ! command -v tcpdump >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y iproute2 tcpdump
+          fi
+          command -v ip
+          command -v tcpdump
+      - name: Create isolated LAN endpoints
+        run: |
+          sudo ip netns add dsh-r2-client
+          sudo ip link add veth-r2-host type veth peer name veth-r2-client
+          sudo ip addr add 10.203.0.1/24 dev veth-r2-host
+          sudo ip link set veth-r2-host up
+          sudo ip link set veth-r2-client netns dsh-r2-client
+          sudo ip netns exec dsh-r2-client ip addr add 10.203.0.2/24 dev veth-r2-client
+          sudo ip netns exec dsh-r2-client ip link set lo up
+          sudo ip netns exec dsh-r2-client ip link set veth-r2-client up
+      - name: Run encrypted isolated-LAN acceptance
+        env:
+          R2_HOST_ADDRESS: 10.203.0.1
+          R2_CLIENT_NETNS: dsh-r2-client
+          R2_EVIDENCE_PATH: /tmp/r2-real-evidence.json
+          R2_TOKEN_PATH: /tmp/r2-real-token.txt
+        run: |
+          sudo tcpdump -U -i veth-r2-host -w /tmp/r2-lan.pcap tcp >/tmp/r2-tcpdump.log 2>&1 &
+          TCPDUMP_PID=$!
+          trap 'sudo kill "$TCPDUMP_PID" 2>/dev/null || true' EXIT
+          sleep 0.3
+          node scripts/r2-lan-real-acceptance.mjs
+          sleep 0.3
+          sudo kill "$TCPDUMP_PID" 2>/dev/null || true
+          wait "$TCPDUMP_PID" 2>/dev/null || true
+          trap - EXIT
+          sudo chown "$USER":"$USER" /tmp/r2-lan.pcap /tmp/r2-tcpdump.log 2>/dev/null || true
+
+          TOKEN="$(cat /tmp/r2-real-token.txt)"
+          for marker in             R2_REAL_SESSION_MARKER             R2_REAL_EVENT_1             R2_REAL_EVENT_2             R2_REAL_EVENT_3             R2_REAL_PROMPT_MARKER             "$TOKEN"
+          do
+            if grep -aF -- "$marker" /tmp/r2-lan.pcap >/dev/null; then
+              echo "plaintext marker leaked on carrier: $marker" >&2
+              exit 1
+            fi
+          done
+
+          mkdir -p r2-real-evidence
+          cp /tmp/r2-real-evidence.json r2-real-evidence/evidence.json
+          cp /tmp/r2-lan.pcap r2-real-evidence/traffic.pcap
+          cp /tmp/r2-tcpdump.log r2-real-evidence/tcpdump.log
+          sha256sum             r2-real-evidence/evidence.json             r2-real-evidence/traffic.pcap             r2-real-evidence/tcpdump.log             > r2-real-evidence/SHA256SUMS
+          cat r2-real-evidence/evidence.json
+          cat r2-real-evidence/SHA256SUMS
+      - name: Upload acceptance evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: remote-host-real-lan-${{ github.sha }}
+          path: r2-real-evidence/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Cleanup isolated LAN
+        if: always()
+        run: |
+          sudo ip netns del dsh-r2-client 2>/dev/null || true
+          sudo ip link del veth-r2-host 2>/dev/null || true
