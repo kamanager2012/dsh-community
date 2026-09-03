@@ -1,5 +1,6 @@
 export * from './errors.js'
 export * from './host-identity.js'
+export * from './file-host-identity.js'
 export * from './device-trust.js'
 export * from './file-device-trust.js'
 export * from './pairing-token.js'
