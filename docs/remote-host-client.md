@@ -1,9 +1,9 @@
 # Remote Host-Client Architecture
 
-Status: **[LABS] / [UNVERIFIED]**  
+Status: **R1/R2 non-mobile Host scope: CLOSED / MERGED · R3-R6: [LABS] / [UNVERIFIED]**  
 Tracking: #67
 
-This document freezes the target boundary for remote control of an official DeepSeek Harness runtime. It does **not** claim that Noise, WebRTC, relay, or Android acceptance already exists.
+This document freezes the target boundary for remote control of an official DeepSeek Harness runtime. The non-mobile Host Adapter and LAN + Noise scope (R1/R2) is implemented and accepted on `main`; it does **not** claim WebRTC, relay, Android, or end-to-end production acceptance for the later gates.
 
 ## 1. Product decision
 
@@ -104,7 +104,7 @@ The same application protocol and the same end-to-end encryption layer are used 
 
 Primary path when Host and Client can reach each other locally.
 
-Discovery may use QR/deep-link endpoint hints and later mDNS. Discovery is not trust: Host identity is verified by the Noise static key fingerprint.
+Discovery may use the implemented QR/deep-link bootstrap descriptor and mDNS endpoint hints. Discovery is not trust: Host identity is verified by the Noise static key fingerprint.
 
 ### 5.2 WebRTC P2P
 
@@ -257,7 +257,7 @@ The adapter is not a message broker.
 - Relay compromise does not expose application plaintext.
 - Pairing token is single-use and short-lived.
 - Device private keys are non-exportable where platform facilities allow.
-- Device revocation takes effect on the next authenticated request/connection.
+- Device revocation terminates active authenticated channels and blocks subsequent authenticated reconnects.
 - Host credentials never synchronize to a Client by default.
 - No raw DSH_HOME export.
 - No generic remote filesystem API.
@@ -292,9 +292,9 @@ Network failure is not permission to retry a mutating action blindly.
 - mark embedded-Android runtime as a migration source, not the target;
 - no claim of working Remote transport.
 
-### R1 — Host Adapter core
+### R1 — Host Adapter core (CLOSED / MERGED)
 
-Create `packages/remote-adapter` with:
+Created `packages/remote-adapter` with:
 
 - official-seam facade;
 - capability policy;
@@ -303,13 +303,15 @@ Create `packages/remote-adapter` with:
 - fake-seam tests;
 - no network dependency.
 
-### R2 — LAN + Noise
+### R2 — LAN + Noise (Non-mobile Host scope: CLOSED / MERGED)
 
-- loopback/LAN byte transport;
-- Noise IK handshake;
-- QR pairing;
-- revoke/rotate;
-- reconnect and duplicate-submission tests.
+- loopback/LAN byte transport (`HostLanCarrier`);
+- Noise IK handshake and persistent Host identity (`FileHostIdentityStore`);
+- persistent device trust with atomic WAL crash consistency (`FileDeviceTrustStore`);
+- QR/deep-link bootstrap descriptor primitives plus secret-free mDNS endpoint advertisement (`BonjourMdnsAdvertiser`);
+- device revoke terminates active channels and blocks future authenticated reconnects; Host identity rotation remains durable and changes the trust domain;
+- fresh-epoch reconnect, Session resume/reset, and cross-reconnect idempotency;
+- isolated-LAN (`netns` + `tcpdump`) acceptance evidence proving the configured Session/event/Prompt/token markers are absent from carrier plaintext (`remote-host-real-lan-acceptance.yml`).
 
 ### R3 — WebRTC P2P
 
