@@ -25,7 +25,11 @@ import {
 import { RemoteCryptoError } from './errors.js'
 import { computeFingerprint } from './host-identity.js'
 
-export const VALID_CAPABILITIES: ReadonlySet<Capability> = new Set([
+const AUTHORITATIVE_CAPABILITIES: ReadonlySet<Capability> = Object.freeze(
+  new Set<Capability>(['observe', 'prompt', 'approve', 'answer-question']),
+)
+
+export const VALID_CAPABILITIES: readonly Capability[] = Object.freeze([
   'observe',
   'prompt',
   'approve',
@@ -50,13 +54,85 @@ export interface PersistentDeviceTrustSchema {
   readonly devices: readonly SerializedDeviceRecord[]
 }
 
+export type FileDeviceTrustFaultStage =
+  | 'before-write'
+  | 'before-rename'
+  | 'after-rename-before-dir-fsync'
+  | 'after-backup-fsync-before-journal'
+  | 'after-journal-fsync-before-prepare-dir-fsync'
+  | 'after-prepare-dir-fsync-before-target-rename'
+  | 'after-target-rename-before-commit-dir-fsync'
+  | 'after-commit-dir-fsync-before-cleanup'
+  | 'after-journal-cleanup-before-cleanup-dir-fsync'
+
 export interface FileDeviceTrustStoreOptions {
   readonly maxDevices?: number
   readonly clock?: () => number
   readonly recoveryMode?: 'auto-rollback' | 'fail-closed'
-  readonly faultInjector?: (
-    stage: 'before-write' | 'before-rename' | 'after-rename-before-dir-fsync'
-  ) => void
+  readonly faultInjector?: (stage: FileDeviceTrustFaultStage) => void
+}
+
+function fsyncDirectory(dirPath: string): void {
+  if (process.platform === 'win32') return
+  let fd: number | undefined
+  try {
+    fd = openSync(dirPath, 'r')
+    fsyncSync(fd)
+  } catch (err) {
+    const code = (err as { code?: string })?.code
+    if (code === 'EISDIR' || code === 'ENOSYS' || code === 'EPERM') {
+      // Documented platform/filesystem limitation where directory opening is not supported
+      return
+    }
+    throw err
+  } finally {
+    if (fd !== undefined) {
+      try {
+        closeSync(fd)
+      } catch {}
+    }
+  }
+}
+
+function executeInternalRollback(
+  dir: string,
+  targetPath: string,
+  journalPath: string,
+  backupPath: string,
+): void {
+  if (!existsSync(journalPath)) {
+    return
+  }
+
+  let journalData: { hasPriorCommit?: boolean } = {}
+  try {
+    const raw = readFileSync(journalPath, 'utf8')
+    journalData = JSON.parse(raw)
+  } catch {
+    // If journal unparseable, fallback to backup check
+  }
+
+  if (existsSync(backupPath)) {
+    renameSync(backupPath, targetPath)
+    if (process.platform !== 'win32') {
+      const fd = openSync(targetPath, 'r')
+      try {
+        fsyncSync(fd)
+      } finally {
+        closeSync(fd)
+      }
+    }
+    fsyncDirectory(dir)
+  } else if (journalData.hasPriorCommit === false) {
+    if (existsSync(targetPath)) {
+      unlinkSync(targetPath)
+    }
+    fsyncDirectory(dir)
+  }
+
+  // Only unlink journal after restored target state is proven durable
+  unlinkSync(journalPath)
+  fsyncDirectory(dir)
 }
 
 export class FileDeviceTrustStore extends InMemoryDeviceTrustStore {
@@ -87,54 +163,31 @@ export class FileDeviceTrustStore extends InMemoryDeviceTrustStore {
     }
   }
 
-  public static rollbackJournal(
-    dir: string,
-    targetPath: string,
-    journalPath: string,
-    backupPath: string,
-  ): boolean {
+  public static recover(filePath: string): boolean {
+    if (!isAbsolute(filePath)) {
+      throw new RemoteCryptoError(
+        'HANDSHAKE_FAILED',
+        `filePath must be an absolute path, got: ${filePath}`,
+      )
+    }
+    const dir = dirname(filePath)
+    const base = basename(filePath)
+    const journalPath = join(dir, `.${base}.journal`)
+    const backupPath = join(dir, `.${base}.committed`)
+
     if (!existsSync(journalPath)) {
       return false
     }
 
-    let journalData: { hasPriorCommit?: boolean } = {}
     try {
-      const raw = readFileSync(journalPath, 'utf8')
-      journalData = JSON.parse(raw)
-    } catch {
-      // Fallback
+      executeInternalRollback(dir, filePath, journalPath, backupPath)
+      return true
+    } catch (err) {
+      throw new RemoteCryptoError(
+        'HANDSHAKE_FAILED',
+        `recovery durability failure: ${(err as Error).message}`,
+      )
     }
-
-    if (existsSync(backupPath)) {
-      renameSync(backupPath, targetPath)
-      if (process.platform !== 'win32') {
-        try {
-          const fd = openSync(targetPath, 'r')
-          fsyncSync(fd)
-          closeSync(fd)
-        } catch {}
-      }
-    } else if (journalData.hasPriorCommit === false) {
-      if (existsSync(targetPath)) {
-        try {
-          unlinkSync(targetPath)
-        } catch {}
-      }
-    }
-
-    try {
-      unlinkSync(journalPath)
-    } catch {}
-
-    if (process.platform !== 'win32') {
-      try {
-        const dirFd = openSync(dir, 'r')
-        fsyncSync(dirFd)
-        closeSync(dirFd)
-      } catch {}
-    }
-
-    return true
   }
 
   private loadFromDisk(): void {
@@ -155,7 +208,16 @@ export class FileDeviceTrustStore extends InMemoryDeviceTrustStore {
       }
 
       // Default: auto-rollback to last-known-good committed state
-      FileDeviceTrustStore.rollbackJournal(dir, this.filePath, journalPath, backupPath)
+      try {
+        executeInternalRollback(dir, this.filePath, journalPath, backupPath)
+      } catch (err) {
+        this.isPoisoned = true
+        this.poisonReason = `startup rollback durability failure: ${(err as Error).message}`
+        throw new RemoteCryptoError(
+          'HANDSHAKE_FAILED',
+          `failed to recover last-known-good state on restart: ${(err as Error).message}`,
+        )
+      }
     }
 
     if (!existsSync(this.filePath)) {
@@ -333,7 +395,7 @@ export class FileDeviceTrustStore extends InMemoryDeviceTrustStore {
 
       const capabilitySet = new Set<Capability>()
       for (const cap of dev.grantedCapabilities) {
-        if (!VALID_CAPABILITIES.has(cap as Capability)) {
+        if (!AUTHORITATIVE_CAPABILITIES.has(cap as Capability)) {
           throw new RemoteCryptoError(
             'HANDSHAKE_FAILED',
             `unknown or malformed capability '${cap}' in persistent device store`,
@@ -359,10 +421,26 @@ export class FileDeviceTrustStore extends InMemoryDeviceTrustStore {
   }
 
   /**
-   * P0-3 & P0-4: Durable commit transaction with fail-closed poisoning and automatic rollback.
-   * Maintains last-known-good backup and transaction journal.
-   * If directory fsync fails, in-process instance is poisoned AND disk is rolled back to last-known-good.
-   * If process crashes before rollback completes, restart automatically recovers last-known-good state.
+   * P0: WAL ORDERING DURABLE COMMIT TRANSACTION.
+   *
+   * Exact durability barrier sequence:
+   * 1. Create backup file
+   * 2. fsync backup file
+   * 3. [fault stage: after-backup-fsync-before-journal]
+   * 4. Create journal file
+   * 5. fsync journal file
+   * 6. [fault stage: after-journal-fsync-before-prepare-dir-fsync]
+   * 7. fsync parent directory — PREPARE BARRIER
+   * 8. [fault stage: after-prepare-dir-fsync-before-target-rename]
+   * 9. Write temporary target file & fsync
+   * 10. Atomic rename temp -> authoritative target
+   * 11. [fault stage: after-target-rename-before-commit-dir-fsync]
+   * 12. fsync parent directory — COMMIT BARRIER
+   * 13. [fault stage: after-commit-dir-fsync-before-cleanup]
+   * 14. Delete journal & backup
+   * 15. [fault stage: after-journal-cleanup-before-cleanup-dir-fsync]
+   * 16. fsync parent directory — CLEANUP BARRIER
+   * 17. Commit live memory state
    */
   private commitDurableTransaction(stagedDevices: Map<string, StoredDeviceRecord>): void {
     this.assertNotPoisoned()
@@ -401,8 +479,11 @@ export class FileDeviceTrustStore extends InMemoryDeviceTrustStore {
         copyFileSync(this.filePath, backupPath)
         chmodSync(backupPath, 0o600)
         const backupFd = openSync(backupPath, 'r')
-        fsyncSync(backupFd)
-        closeSync(backupFd)
+        try {
+          fsyncSync(backupFd)
+        } finally {
+          closeSync(backupFd)
+        }
       } catch (err) {
         throw new RemoteCryptoError(
           'HANDSHAKE_FAILED',
@@ -410,6 +491,8 @@ export class FileDeviceTrustStore extends InMemoryDeviceTrustStore {
         )
       }
     }
+
+    this.storeOptions?.faultInjector?.('after-backup-fsync-before-journal')
 
     try {
       const journalPayload = JSON.stringify({
@@ -419,9 +502,12 @@ export class FileDeviceTrustStore extends InMemoryDeviceTrustStore {
         hasPriorCommit,
       })
       const journalFd = openSync(journalPath, 'wx', 0o600)
-      writeFileSync(journalFd, journalPayload, 'utf8')
-      fsyncSync(journalFd)
-      closeSync(journalFd)
+      try {
+        writeFileSync(journalFd, journalPayload, 'utf8')
+        fsyncSync(journalFd)
+      } finally {
+        closeSync(journalFd)
+      }
     } catch (err) {
       if (existsSync(backupPath)) {
         try {
@@ -434,11 +520,34 @@ export class FileDeviceTrustStore extends InMemoryDeviceTrustStore {
       )
     }
 
+    this.storeOptions?.faultInjector?.('after-journal-fsync-before-prepare-dir-fsync')
+
+    // BARRIER 1: PREPARE BARRIER — Directory fsync guarantees backup + journal entries are durable
+    try {
+      fsyncDirectory(dir)
+    } catch (err) {
+      if (existsSync(journalPath)) {
+        try {
+          unlinkSync(journalPath)
+        } catch {}
+      }
+      if (existsSync(backupPath)) {
+        try {
+          unlinkSync(backupPath)
+        } catch {}
+      }
+      throw new RemoteCryptoError(
+        'HANDSHAKE_FAILED',
+        `PREPARE directory fsync barrier failed: ${(err as Error).message}`,
+      )
+    }
+
+    this.storeOptions?.faultInjector?.('after-prepare-dir-fsync-before-target-rename')
+
     let fd: number | undefined
     try {
       this.storeOptions?.faultInjector?.('before-write')
 
-      // Exclusive create flag 'wx' prevents clobbering existing temporary files
       fd = openSync(tmpPath, 'wx', 0o600)
       writeFileSync(fd, raw, 'utf8')
       fsyncSync(fd)
@@ -449,82 +558,59 @@ export class FileDeviceTrustStore extends InMemoryDeviceTrustStore {
 
       renameSync(tmpPath, this.filePath)
 
+      // BARRIER 2: COMMIT BARRIER — Post-rename parent directory fsync
       try {
         this.storeOptions?.faultInjector?.('after-rename-before-dir-fsync')
+        this.storeOptions?.faultInjector?.('after-target-rename-before-commit-dir-fsync')
 
-        // P0-4: POSIX parent directory fsync.
-        if (process.platform !== 'win32') {
-          let dirFd: number | undefined
-          try {
-            dirFd = openSync(dir, 'r')
-            fsyncSync(dirFd)
-            closeSync(dirFd)
-            dirFd = undefined
-          } catch (err) {
-            if (dirFd !== undefined) {
-              try {
-                closeSync(dirFd)
-              } catch {
-                // Ignore
-              }
-            }
-            const code = (err as { code?: string })?.code
-            if (code === 'EISDIR' || code === 'ENOSYS' || code === 'EPERM') {
-              // Documented platform/filesystem limitation
-            } else {
-              throw err
-            }
-          }
-        }
-
-        // Durable transaction committed cleanly! Clean up journal and backup
-        if (existsSync(journalPath)) {
-          try {
-            unlinkSync(journalPath)
-          } catch {}
-        }
-        if (existsSync(backupPath)) {
-          try {
-            unlinkSync(backupPath)
-          } catch {}
-        }
-        if (process.platform !== 'win32') {
-          try {
-            const dirFd = openSync(dir, 'r')
-            fsyncSync(dirFd)
-            closeSync(dirFd)
-          } catch {}
-        }
+        fsyncDirectory(dir)
       } catch (err) {
         this.isPoisoned = true
-        this.poisonReason = `parent directory fsync or post-rename failure: ${(err as Error).message}`
+        this.poisonReason = `COMMIT directory fsync barrier failed: ${(err as Error).message}`
 
-        // Roll back target on disk immediately to restore last-known-good state!
         try {
-          FileDeviceTrustStore.rollbackJournal(dir, this.filePath, journalPath, backupPath)
+          executeInternalRollback(dir, this.filePath, journalPath, backupPath)
         } catch {
-          // If disk rollback fails here, loadFromDisk on restart will perform it
+          // If in-process rollback fails, loadFromDisk on restart will recover
         }
 
         throw new RemoteCryptoError(
           'HANDSHAKE_FAILED',
-          `durable commit failed: parent directory fsync failed after rename: ${(err as Error).message}`,
+          `COMMIT directory fsync barrier failed: ${(err as Error).message}`,
+        )
+      }
+
+      this.storeOptions?.faultInjector?.('after-commit-dir-fsync-before-cleanup')
+
+      // BARRIER 3: CLEANUP BARRIER — Remove journal & backup, then fsync directory
+      try {
+        if (existsSync(journalPath)) {
+          unlinkSync(journalPath)
+        }
+        if (existsSync(backupPath)) {
+          unlinkSync(backupPath)
+        }
+
+        this.storeOptions?.faultInjector?.('after-journal-cleanup-before-cleanup-dir-fsync')
+
+        fsyncDirectory(dir)
+      } catch (err) {
+        // Cleanup barrier failure: commit was successful, but cleanup did not cleanly flush
+        throw new RemoteCryptoError(
+          'HANDSHAKE_FAILED',
+          `CLEANUP directory fsync barrier failed: ${(err as Error).message}`,
         )
       }
     } catch (err) {
       if (fd !== undefined) {
         try {
           closeSync(fd)
-        } catch {
-          // Ignore
-        }
+        } catch {}
       }
       if (existsSync(tmpPath)) {
         try {
           unlinkSync(tmpPath)
-        } catch {
-          // Ignore
-        }
+        } catch {}
       }
       if (!this.isPoisoned) {
         if (existsSync(journalPath)) {
@@ -541,7 +627,7 @@ export class FileDeviceTrustStore extends InMemoryDeviceTrustStore {
       throw err
     }
 
-    // Only commit live memory state after durable disk persistence succeeds!
+    // Only commit live memory state after all 3 durable barriers succeed!
     this.devices.clear()
     for (const [id, rec] of stagedDevices.entries()) {
       this.devices.set(id, rec)

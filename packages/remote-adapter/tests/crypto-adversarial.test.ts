@@ -284,13 +284,104 @@ describe('R2A-R5 Root Authority & Integrity Closure Adversarial Tests', () => {
       ).toThrow(RemoteCryptoError)
 
       // Recover journal and verify clean boot
-      FileDeviceTrustStore.rollbackJournal(testDir, filePath, journalPath, join(testDir, '.devices.json.committed'))
+      FileDeviceTrustStore.recover(filePath)
       const recoveredStore = new FileDeviceTrustStore(filePath)
       expect(recoveredStore.getSync(dev1Id)).toBeDefined()
       expect(recoveredStore.getSync(dev2Id)).toBeUndefined()
     } finally {
       if (existsSync(testDir)) {
         rmSync(testDir, { recursive: true, force: true })
+      }
+    }
+  })
+
+  it('5b. P0: full 6-stage WAL durability barrier fault matrix guarantees zero ghost resurrection on restart', async () => {
+    const stages: FileDeviceTrustFaultStage[] = [
+      'after-backup-fsync-before-journal',
+      'after-journal-fsync-before-prepare-dir-fsync',
+      'after-prepare-dir-fsync-before-target-rename',
+      'after-target-rename-before-commit-dir-fsync',
+      'after-commit-dir-fsync-before-cleanup',
+      'after-journal-cleanup-before-cleanup-dir-fsync',
+    ]
+
+    for (const stage of stages) {
+      const testDir = join(tmpdir(), `dsh-wal-matrix-${stage}-${Date.now()}`)
+      mkdirSync(testDir, { recursive: true })
+      const filePath = join(testDir, 'devices.json')
+
+      try {
+        const client1 = generateClientKeyPair()
+        const client2 = generateClientKeyPair()
+        const dev1Id = computeFingerprint(client1.publicKey)
+        const dev2Id = computeFingerprint(client2.publicKey)
+
+        // Baseline: commit device 1
+        const initialStore = new FileDeviceTrustStore(filePath)
+        initialStore.trustSync({
+          staticPublicKey: client1.publicKey,
+          displayName: 'Dev 1 Baseline',
+          grantedCapabilities: ['observe'],
+          trustDomainId: 'dom-1',
+        })
+        expect(initialStore.getSync(dev1Id)).toBeDefined()
+
+        // Inject fault at current stage during device 2 trust
+        let injected = true
+        const faultyStore = new FileDeviceTrustStore(filePath, {
+          faultInjector: (stg) => {
+            if (injected && stg === stage) {
+              throw new Error(`simulated failure at stage: ${stage}`)
+            }
+          },
+        })
+
+        expect(() => {
+          faultyStore.trustSync({
+            staticPublicKey: client2.publicKey,
+            displayName: 'Dev 2 Faulty',
+            grantedCapabilities: ['observe', 'prompt'],
+            trustDomainId: 'dom-1',
+          })
+        }).toThrow(`simulated failure at stage: ${stage}`)
+
+        injected = false
+
+        // Simulate restart: new FileDeviceTrustStore on the same path
+        let restarted: FileDeviceTrustStore | undefined
+        let restartError: unknown
+        try {
+          restarted = new FileDeviceTrustStore(filePath)
+        } catch (err) {
+          restartError = err
+        }
+
+        if (restarted) {
+          // Device 1 must be preserved in all restart scenarios
+          expect(restarted.getSync(dev1Id)).toBeDefined()
+          expect(restarted.assertAuthorizedSync(dev1Id, 'dom-1', 'session.list')).toBeDefined()
+
+          // CRUCIAL RESTART INVARIANT: uncommitted device 2 MUST NOT be authorized
+          if (
+            stage === 'after-commit-dir-fsync-before-cleanup' ||
+            stage === 'after-journal-cleanup-before-cleanup-dir-fsync'
+          ) {
+            // Commit barrier had already succeeded, target was durably committed before cleanup failure
+          } else {
+            // Before commit barrier succeeded: dev2 MUST be undefined
+            expect(restarted.getSync(dev2Id)).toBeUndefined()
+            expect(() => {
+              restarted!.assertAuthorizedSync(dev2Id, 'dom-1', 'session.list')
+            }).toThrow(RemoteProtocolError)
+          }
+        } else {
+          // Or fail-closed recovery state:
+          expect(restartError).toBeInstanceOf(RemoteCryptoError)
+        }
+      } finally {
+        if (existsSync(testDir)) {
+          rmSync(testDir, { recursive: true, force: true })
+        }
       }
     }
   })
@@ -378,6 +469,14 @@ describe('R2A-R5 Root Authority & Integrity Closure Adversarial Tests', () => {
         { mode: 0o600 },
       )
       expect(() => new FileDeviceTrustStore(dupFile)).toThrow(RemoteCryptoError)
+
+      // 7. P1: VALID_CAPABILITIES is runtime immutable array and not mutable Set
+      expect(Array.isArray(remoteAdapter.VALID_CAPABILITIES)).toBe(true)
+      expect(Object.isFrozen(remoteAdapter.VALID_CAPABILITIES)).toBe(true)
+      expect(() => (remoteAdapter.VALID_CAPABILITIES as any).push('superadmin')).toThrow()
+
+      // 8. P1: rollbackJournal is not exposed as arbitrary-path public API
+      expect((FileDeviceTrustStore as any).rollbackJournal).toBeUndefined()
     } finally {
       if (existsSync(testDir)) {
         rmSync(testDir, { recursive: true, force: true })
