@@ -123,6 +123,9 @@ function executeInternalRollback(
       }
     }
     fsyncDirectory(dir)
+    try {
+      unlinkSync(backupPath)
+    } catch {}
   } else if (journalData.hasPriorCommit === false) {
     if (existsSync(targetPath)) {
       unlinkSync(targetPath)
@@ -180,7 +183,29 @@ export class FileDeviceTrustStore extends InMemoryDeviceTrustStore {
     }
 
     try {
-      executeInternalRollback(dir, filePath, journalPath, backupPath)
+      let journalData: { state?: string } = {}
+      try {
+        const raw = readFileSync(journalPath, 'utf8')
+        journalData = JSON.parse(raw)
+      } catch {
+        journalData = { state: 'COMMITTING' }
+      }
+
+      if (journalData.state === 'COMMITTED') {
+        if (existsSync(backupPath)) {
+          try {
+            unlinkSync(backupPath)
+          } catch {}
+        }
+        if (existsSync(journalPath)) {
+          try {
+            unlinkSync(journalPath)
+          } catch {}
+        }
+        fsyncDirectory(dir)
+      } else {
+        executeInternalRollback(dir, filePath, journalPath, backupPath)
+      }
       return true
     } catch (err) {
       throw new RemoteCryptoError(
@@ -197,26 +222,51 @@ export class FileDeviceTrustStore extends InMemoryDeviceTrustStore {
     const backupPath = join(dir, `.${base}.committed`)
 
     if (existsSync(journalPath)) {
-      if (this.storeOptions?.recoveryMode === 'fail-closed') {
-        this.isPoisoned = true
-        this.poisonReason =
-          'durable uncertainty detected: uncommitted transaction journal found on restart'
-        throw new RemoteCryptoError(
-          'HANDSHAKE_FAILED',
-          'device trust store has uncommitted transaction journal on restart; recovery required',
-        )
+      let journalData: { state?: string; hasPriorCommit?: boolean } = {}
+      try {
+        const raw = readFileSync(journalPath, 'utf8')
+        journalData = JSON.parse(raw)
+      } catch {
+        journalData = { state: 'COMMITTING' }
       }
 
-      // Default: auto-rollback to last-known-good committed state
-      try {
-        executeInternalRollback(dir, this.filePath, journalPath, backupPath)
-      } catch (err) {
-        this.isPoisoned = true
-        this.poisonReason = `startup rollback durability failure: ${(err as Error).message}`
-        throw new RemoteCryptoError(
-          'HANDSHAKE_FAILED',
-          `failed to recover last-known-good state on restart: ${(err as Error).message}`,
-        )
+      if (journalData.state === 'COMMITTED') {
+        // Transaction reached COMMIT POINT and was committed before restart.
+        // Keep authoritative target; clean up residual metadata.
+        try {
+          if (existsSync(backupPath)) {
+            unlinkSync(backupPath)
+          }
+          if (existsSync(journalPath)) {
+            unlinkSync(journalPath)
+          }
+          fsyncDirectory(dir)
+        } catch {
+          // If directory sync blips, retain metadata for next startup retry,
+          // but authoritative target is already committed and valid.
+        }
+      } else {
+        // State is COMMITTING: uncommitted transaction crashed before commit point.
+        if (this.storeOptions?.recoveryMode === 'fail-closed') {
+          this.isPoisoned = true
+          this.poisonReason =
+            'durable uncertainty detected: uncommitted transaction journal found on restart'
+          throw new RemoteCryptoError(
+            'HANDSHAKE_FAILED',
+            'device trust store has uncommitted transaction journal on restart; recovery required',
+          )
+        }
+
+        try {
+          executeInternalRollback(dir, this.filePath, journalPath, backupPath)
+        } catch (err) {
+          this.isPoisoned = true
+          this.poisonReason = `startup rollback durability failure: ${(err as Error).message}`
+          throw new RemoteCryptoError(
+            'HANDSHAKE_FAILED',
+            `failed to recover last-known-good state on restart: ${(err as Error).message}`,
+          )
+        }
       }
     }
 
@@ -421,26 +471,26 @@ export class FileDeviceTrustStore extends InMemoryDeviceTrustStore {
   }
 
   /**
-   * P0: WAL ORDERING DURABLE COMMIT TRANSACTION.
+   * P0: WAL ORDERING & COMMIT-POINT TRANSACTION LIFECYCLE:
    *
-   * Exact durability barrier sequence:
-   * 1. Create backup file
-   * 2. fsync backup file
-   * 3. [fault stage: after-backup-fsync-before-journal]
-   * 4. Create journal file
-   * 5. fsync journal file
-   * 6. [fault stage: after-journal-fsync-before-prepare-dir-fsync]
-   * 7. fsync parent directory — PREPARE BARRIER
-   * 8. [fault stage: after-prepare-dir-fsync-before-target-rename]
-   * 9. Write temporary target file & fsync
-   * 10. Atomic rename temp -> authoritative target
-   * 11. [fault stage: after-target-rename-before-commit-dir-fsync]
-   * 12. fsync parent directory — COMMIT BARRIER
+   * COMMITTING -> [COMMIT POINT] -> COMMITTED -> CLEAN
+   *
+   * 1. Create backup file & fsync
+   * 2. [fault stage: after-backup-fsync-before-journal]
+   * 3. Create journal file (state: COMMITTING) & fsync
+   * 4. [fault stage: after-journal-fsync-before-prepare-dir-fsync]
+   * 5. fsync parent directory — PREPARE BARRIER
+   * 6. [fault stage: after-prepare-dir-fsync-before-target-rename]
+   * 7. Write temporary target file & fsync
+   * 8. Atomic rename temp -> authoritative target
+   * 9. [fault stage: after-target-rename-before-commit-dir-fsync]
+   * 10. fsync parent directory — COMMIT BARRIER (ATOMIC COMMIT POINT)
+   * 11. Transition journal state -> COMMITTED & fsync
+   * 12. Commit live memory state
    * 13. [fault stage: after-commit-dir-fsync-before-cleanup]
    * 14. Delete journal & backup
    * 15. [fault stage: after-journal-cleanup-before-cleanup-dir-fsync]
    * 16. fsync parent directory — CLEANUP BARRIER
-   * 17. Commit live memory state
    */
   private commitDurableTransaction(stagedDevices: Map<string, StoredDeviceRecord>): void {
     this.assertNotPoisoned()
@@ -580,26 +630,53 @@ export class FileDeviceTrustStore extends InMemoryDeviceTrustStore {
         )
       }
 
-      this.storeOptions?.faultInjector?.('after-commit-dir-fsync-before-cleanup')
-
-      // BARRIER 3: CLEANUP BARRIER — Remove journal & backup, then fsync directory
+      // =========================================================================
+      // ★ TRANSACTION COMMIT POINT ATTAINED ★
+      // Authoritative target is durably committed on disk.
+      // Transition journal state COMMITTING -> COMMITTED and fsync.
+      // =========================================================================
       try {
-        if (existsSync(journalPath)) {
-          unlinkSync(journalPath)
+        const committedPayload = JSON.stringify({
+          state: 'COMMITTED',
+          target: this.filePath,
+          backup: backupPath,
+          hasPriorCommit,
+        })
+        const journalFd = openSync(journalPath, 'w', 0o600)
+        try {
+          writeFileSync(journalFd, committedPayload, 'utf8')
+          fsyncSync(journalFd)
+        } finally {
+          closeSync(journalFd)
         }
+      } catch {
+        // Authoritative target is already durably committed on disk.
+      }
+
+      // Commit live memory state immediately!
+      this.devices.clear()
+      for (const [id, rec] of stagedDevices.entries()) {
+        this.devices.set(id, rec)
+      }
+
+      // BARRIER 3: CLEANUP (post-commit metadata cleanup)
+      // Cleanup failures MUST NOT convert a COMMITTED transaction into FAILED.
+      try {
+        this.storeOptions?.faultInjector?.('after-commit-dir-fsync-before-cleanup')
+
         if (existsSync(backupPath)) {
           unlinkSync(backupPath)
+        }
+        if (existsSync(journalPath)) {
+          unlinkSync(journalPath)
         }
 
         this.storeOptions?.faultInjector?.('after-journal-cleanup-before-cleanup-dir-fsync')
 
         fsyncDirectory(dir)
-      } catch (err) {
-        // Cleanup barrier failure: commit was successful, but cleanup did not cleanly flush
-        throw new RemoteCryptoError(
-          'HANDSHAKE_FAILED',
-          `CLEANUP directory fsync barrier failed: ${(err as Error).message}`,
-        )
+      } catch {
+        // Cleanup error absorbed post-commit:
+        // COMMITTED metadata remains on disk and will be cleaned up on next startup.
       }
     } catch (err) {
       if (fd !== undefined) {
@@ -625,12 +702,6 @@ export class FileDeviceTrustStore extends InMemoryDeviceTrustStore {
         }
       }
       throw err
-    }
-
-    // Only commit live memory state after all 3 durable barriers succeed!
-    this.devices.clear()
-    for (const [id, rec] of stagedDevices.entries()) {
-      this.devices.set(id, rec)
     }
   }
 

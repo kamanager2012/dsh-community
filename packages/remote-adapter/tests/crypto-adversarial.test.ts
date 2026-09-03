@@ -295,17 +295,21 @@ describe('R2A-R5 Root Authority & Integrity Closure Adversarial Tests', () => {
     }
   })
 
-  it('5b. P0: full 6-stage WAL durability barrier fault matrix guarantees zero ghost resurrection on restart', async () => {
-    const stages: FileDeviceTrustFaultStage[] = [
-      'after-backup-fsync-before-journal',
-      'after-journal-fsync-before-prepare-dir-fsync',
-      'after-prepare-dir-fsync-before-target-rename',
-      'after-target-rename-before-commit-dir-fsync',
-      'after-commit-dir-fsync-before-cleanup',
-      'after-journal-cleanup-before-cleanup-dir-fsync',
+  it('5b. P0: full 6-stage WAL durability barrier fault matrix guarantees strict commit-point semantics', async () => {
+    const stages: Array<{
+      stage: FileDeviceTrustFaultStage
+      expectedApiOutcome: 'FAIL' | 'SUCCESS'
+      expectedRestartDev2: 'unauthorized' | 'authorized'
+    }> = [
+      { stage: 'after-backup-fsync-before-journal', expectedApiOutcome: 'FAIL', expectedRestartDev2: 'unauthorized' },
+      { stage: 'after-journal-fsync-before-prepare-dir-fsync', expectedApiOutcome: 'FAIL', expectedRestartDev2: 'unauthorized' },
+      { stage: 'after-prepare-dir-fsync-before-target-rename', expectedApiOutcome: 'FAIL', expectedRestartDev2: 'unauthorized' },
+      { stage: 'after-target-rename-before-commit-dir-fsync', expectedApiOutcome: 'FAIL', expectedRestartDev2: 'unauthorized' },
+      { stage: 'after-commit-dir-fsync-before-cleanup', expectedApiOutcome: 'SUCCESS', expectedRestartDev2: 'authorized' },
+      { stage: 'after-journal-cleanup-before-cleanup-dir-fsync', expectedApiOutcome: 'SUCCESS', expectedRestartDev2: 'authorized' },
     ]
 
-    for (const stage of stages) {
+    for (const { stage, expectedApiOutcome, expectedRestartDev2 } of stages) {
       const testDir = join(tmpdir(), `dsh-wal-matrix-${stage}-${Date.now()}`)
       mkdirSync(testDir, { recursive: true })
       const filePath = join(testDir, 'devices.json')
@@ -336,47 +340,47 @@ describe('R2A-R5 Root Authority & Integrity Closure Adversarial Tests', () => {
           },
         })
 
-        expect(() => {
-          faultyStore.trustSync({
+        let apiError: unknown
+        let trustResult: DeviceRecord | undefined
+        try {
+          trustResult = faultyStore.trustSync({
             staticPublicKey: client2.publicKey,
-            displayName: 'Dev 2 Faulty',
+            displayName: 'Dev 2 Matrix',
             grantedCapabilities: ['observe', 'prompt'],
             trustDomainId: 'dom-1',
           })
-        }).toThrow(`simulated failure at stage: ${stage}`)
+        } catch (err) {
+          apiError = err
+        }
+
+        // Assertion 1: API outcome must strictly match expected
+        if (expectedApiOutcome === 'FAIL') {
+          expect(apiError).toBeDefined()
+          expect(trustResult).toBeUndefined()
+        } else {
+          expect(apiError).toBeUndefined()
+          expect(trustResult).toBeDefined()
+          expect(trustResult!.deviceId).toBe(dev2Id)
+        }
 
         injected = false
 
-        // Simulate restart: new FileDeviceTrustStore on the same path
-        let restarted: FileDeviceTrustStore | undefined
-        let restartError: unknown
-        try {
-          restarted = new FileDeviceTrustStore(filePath)
-        } catch (err) {
-          restartError = err
-        }
+        // Assertion 2: Restart new FileDeviceTrustStore on the same path
+        const restarted = new FileDeviceTrustStore(filePath)
 
-        if (restarted) {
-          // Device 1 must be preserved in all restart scenarios
-          expect(restarted.getSync(dev1Id)).toBeDefined()
-          expect(restarted.assertAuthorizedSync(dev1Id, 'dom-1', 'session.list')).toBeDefined()
+        // Device 1 baseline must be preserved in all 6 stages
+        expect(restarted.getSync(dev1Id)).toBeDefined()
+        expect(restarted.assertAuthorizedSync(dev1Id, 'dom-1', 'session.list')).toBeDefined()
 
-          // CRUCIAL RESTART INVARIANT: uncommitted device 2 MUST NOT be authorized
-          if (
-            stage === 'after-commit-dir-fsync-before-cleanup' ||
-            stage === 'after-journal-cleanup-before-cleanup-dir-fsync'
-          ) {
-            // Commit barrier had already succeeded, target was durably committed before cleanup failure
-          } else {
-            // Before commit barrier succeeded: dev2 MUST be undefined
-            expect(restarted.getSync(dev2Id)).toBeUndefined()
-            expect(() => {
-              restarted!.assertAuthorizedSync(dev2Id, 'dom-1', 'session.list')
-            }).toThrow(RemoteProtocolError)
-          }
+        // Device 2 restart authorization must strictly match expected
+        if (expectedRestartDev2 === 'authorized') {
+          expect(restarted.getSync(dev2Id)).toBeDefined()
+          expect(restarted.assertAuthorizedSync(dev2Id, 'dom-1', 'session.prompt')).toBeDefined()
         } else {
-          // Or fail-closed recovery state:
-          expect(restartError).toBeInstanceOf(RemoteCryptoError)
+          expect(restarted.getSync(dev2Id)).toBeUndefined()
+          expect(() => {
+            restarted.assertAuthorizedSync(dev2Id, 'dom-1', 'session.prompt')
+          }).toThrow(RemoteProtocolError)
         }
       } finally {
         if (existsSync(testDir)) {
