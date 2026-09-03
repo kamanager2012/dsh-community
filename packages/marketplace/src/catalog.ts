@@ -96,6 +96,16 @@ export interface PluginCatalog {
 
 const DSH_RC_LINE = /^0\.1\.\d+-rc\.\d+$/u
 
+/** Only https: repositories are accepted into the catalog (rejects javascript:, data:, http:, etc.). */
+export function isValidPluginRepoUrl(raw: string): boolean {
+  try {
+    const url = new URL(raw)
+    return url.protocol === 'https:' && url.hostname.trim() !== ''
+  } catch {
+    return false
+  }
+}
+
 export function parseCatalog(raw: unknown): PluginCatalog | undefined {
   if (raw === null || typeof raw !== 'object') return undefined
   const value = raw as Record<string, unknown>
@@ -111,7 +121,7 @@ export function parseCatalog(raw: unknown): PluginCatalog | undefined {
       typeof name !== 'string' || name === '' || names.has(name)
       || typeof description !== 'string' || description === ''
       || typeof author !== 'string' || author === ''
-      || typeof repo !== 'string' || repo === ''
+      || typeof repo !== 'string' || !isValidPluginRepoUrl(repo)
       || typeof category !== 'string' || !PLUGIN_CATEGORIES.includes(category as PluginCategory)
     ) return undefined
     names.add(name)

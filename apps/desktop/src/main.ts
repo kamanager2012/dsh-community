@@ -41,6 +41,7 @@ import { resolveLatestTestedPath } from './contracts-path.ts'
 import { appendHostDiagnostics } from './host-log.ts'
 
 import { readJsonFile, writeJsonFile } from './json-file.ts'
+import { isAuthorizedIpcSender } from './navigation.ts'
 import { DESKTOP_IPC, LIFECYCLE_IPC } from './ipc-channels.ts'
 import {
   MARKETPLACE_CATALOG_URL,
@@ -643,43 +644,70 @@ function installMenu(): void {
   ]))
 }
 
+function assertAuthorizedSender(event: Electron.IpcMainInvokeEvent): void {
+  if (!isAuthorizedIpcSender(event.senderFrame)) {
+    const callerUrl = event.senderFrame?.url ?? 'unknown'
+    throw new Error(`Unauthorized IPC sender rejected: ${callerUrl}`)
+  }
+}
+
 function bindIpc(): void {
-  ipcMain.handle(LIFECYCLE_IPC.restartHost, async () => {
+  ipcMain.handle(LIFECYCLE_IPC.restartHost, async (event) => {
+    assertAuthorizedSender(event)
     await restartOfficial()
   })
-  ipcMain.handle(LIFECYCLE_IPC.snapshot, () => host?.snapshot() ?? { phase: 'idle', generation: 0 })
-  ipcMain.handle(LIFECYCLE_IPC.diagnostics, () => host?.logs() ?? '')
-  ipcMain.handle(LIFECYCLE_IPC.openOfficial, async () => {
+  ipcMain.handle(LIFECYCLE_IPC.snapshot, (event) => {
+    assertAuthorizedSender(event)
+    return host?.snapshot() ?? { phase: 'idle', generation: 0 }
+  })
+  ipcMain.handle(LIFECYCLE_IPC.diagnostics, (event) => {
+    assertAuthorizedSender(event)
+    return host?.logs() ?? ''
+  })
+  ipcMain.handle(LIFECYCLE_IPC.openOfficial, async (event) => {
+    assertAuthorizedSender(event)
     if (origin !== '') await showOfficial(origin)
   })
-  ipcMain.handle(LIFECYCLE_IPC.refreshMarketplace, async () => {
+  ipcMain.handle(LIFECYCLE_IPC.refreshMarketplace, async (event) => {
+    assertAuthorizedSender(event)
     await showMarketplace(true)
   })
-  ipcMain.handle(DESKTOP_IPC.copyText, (_event, text: unknown) => copyDesktopText(text))
-  ipcMain.handle(DESKTOP_IPC.applySettings, async (_event, patch: unknown) => {
+  ipcMain.handle(DESKTOP_IPC.copyText, (event, text: unknown) => {
+    assertAuthorizedSender(event)
+    return copyDesktopText(text)
+  })
+  ipcMain.handle(DESKTOP_IPC.applySettings, async (event, patch: unknown) => {
+    assertAuthorizedSender(event)
     await applySettings(patch)
   })
-  ipcMain.handle(DESKTOP_IPC.showSessions, async () => {
+  ipcMain.handle(DESKTOP_IPC.showSessions, async (event) => {
+    assertAuthorizedSender(event)
     await showOfficialSessions()
   })
-  ipcMain.handle(DESKTOP_IPC.showMarketplace, async () => {
+  ipcMain.handle(DESKTOP_IPC.showMarketplace, async (event) => {
+    assertAuthorizedSender(event)
     await showMarketplace()
   })
-  ipcMain.handle(DESKTOP_IPC.pluginAction, async (_event, raw: unknown) => {
+  ipcMain.handle(DESKTOP_IPC.pluginAction, async (event, raw: unknown) => {
+    assertAuthorizedSender(event)
     const request = parsePluginActionRequest(raw)
     if (request === undefined) return
     await runPluginAction(request)
   })
-  ipcMain.handle(DESKTOP_IPC.showSettings, async () => {
+  ipcMain.handle(DESKTOP_IPC.showSettings, async (event) => {
+    assertAuthorizedSender(event)
     await showSettings()
   })
-  ipcMain.handle(DESKTOP_IPC.showDiagnostics, async () => {
+  ipcMain.handle(DESKTOP_IPC.showDiagnostics, async (event) => {
+    assertAuthorizedSender(event)
     await showDiagnostics()
   })
-  ipcMain.handle(DESKTOP_IPC.showRuntime, async () => {
+  ipcMain.handle(DESKTOP_IPC.showRuntime, async (event) => {
+    assertAuthorizedSender(event)
     await showRuntime()
   })
-  ipcMain.handle(DESKTOP_IPC.showAbout, async () => {
+  ipcMain.handle(DESKTOP_IPC.showAbout, async (event) => {
+    assertAuthorizedSender(event)
     await showAbout()
   })
 }

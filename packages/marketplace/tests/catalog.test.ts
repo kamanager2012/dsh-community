@@ -169,4 +169,31 @@ describe('catalog schema', () => {
     }
     assert.equal(parseCatalog(bad), undefined)
   })
+
+  it('rejects non-https, javascript, or malformed repository URLs', () => {
+    for (const hostileRepo of [
+      'javascript:alert(1)',
+      'data:text/html,<h1>bad</h1>',
+      'http://insecure.example.com',
+      'ftp://example.com/repo',
+      'file:///etc/passwd',
+      'not-a-url',
+    ]) {
+      const bad = {
+        version: 1 as const,
+        updatedAt: 'x',
+        plugins: [
+          {
+            name: 'x',
+            description: 'x',
+            author: 'x',
+            repo: hostileRepo,
+            category: 'tool' as const,
+            versions: [{ version: '1.0.0', testedDsh: DSH_TESTED_VERSION }],
+          },
+        ],
+      }
+      assert.equal(parseCatalog(bad), undefined)
+    }
+  })
 })

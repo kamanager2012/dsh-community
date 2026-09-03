@@ -94,6 +94,7 @@ function escapeHtml(value: string): string {
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
 }
 
 function shellDocument(title: string, body: string): string {
@@ -294,18 +295,18 @@ export function renderSettingsPage(model: SettingsPageModel): string {
   return shellDocument(
     `${model.product} · 设置`,
     `<h1>Desktop 设置</h1>
-     <p>只改壳自己的偏好。官方 session 仍在 <code>${escapeHtml(model.officialHome)}</code>${model.isolated ? '（隔离）' : ''}。</p>
+     <p>只改壳自己的偏好。官方 session 仍在 <code>${escapeHtml(model.officialHome)}</code>${model.isolated ? '（独立数据目录）' : ''}。</p>
      <label class="opt">
        <input type="checkbox" id="hideToTray" ${model.hideToTray ? 'checked' : ''} />
        <span>关窗藏到托盘，官方 <code>dsh web</code> 继续跑</span>
      </label>
      <label class="opt">
        <input type="checkbox" id="isolated" ${model.isolated ? 'checked' : ''} ${model.envIsolated ? 'disabled' : ''} />
-       <span>隔离官方数据到 <code>${escapeHtml(model.isolatedHome)}</code>（不再共用 <code>~/.dsh</code>）</span>
+       <span>独立数据目录：数据重定向到 <code>${escapeHtml(model.isolatedHome)}</code>（非加密沙箱，仅独立存储会话，不再共用 <code>~/.dsh</code>）</span>
      </label>
      <p>${model.envIsolated
-       ? '环境变量 <code>DSH_COMMUNITY_ISOLATED=1</code> 已强制隔离，界面关不掉。'
-       : '默认不要开隔离。开了之后 TUI / 系统浏览器里的官方 session 不会出现在这个窗口。改这项会重启官方 <code>dsh web</code>。'}</p>
+       ? '环境变量 <code>DSH_COMMUNITY_ISOLATED=1</code> 已强制启用独立数据目录，界面关不掉。'
+       : '默认建议关闭（非加密沙箱）。开启后仅将会话与配置独立存放在专用目录，不与 TUI / 官方 Web 共用；这并非沙箱安全隔离或加密，子进程仍拥有相同系统权限。改这项会重启官方 <code>dsh web</code>。'}</p>
      <div class="row">
        <button id="save">保存</button>
        <button class="secondary" data-go="official">返回会话</button>

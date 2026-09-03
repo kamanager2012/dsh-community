@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   decideNavigation,
   decideOfficialViewNavigation,
+  isAuthorizedIpcSender,
   isDataHtmlUrl,
   isHttpUrl,
   sameOrigin,
@@ -47,5 +48,23 @@ describe('decideNavigation', () => {
     const crafted = `data:text/html;charset=utf-8,${encodeURIComponent('<h1>phishing</h1>')}`
     expect(isDataHtmlUrl(crafted)).toBe(false)
     expect(decideNavigation(crafted, origin)).toBe('block')
+  })
+
+  it('authorizes IPC invocations only from genuine shell chrome documents', () => {
+    const genuinePage = '<!doctype html><html><body><script>window.dshCommunity?.showSessions()</script></body></html>'
+    const genuineUrl = `data:text/html;charset=utf-8,${encodeURIComponent(genuinePage)}`
+    expect(isAuthorizedIpcSender({ url: genuineUrl })).toBe(true)
+
+    // Null or missing frame
+    expect(isAuthorizedIpcSender(null)).toBe(false)
+    expect(isAuthorizedIpcSender(undefined)).toBe(false)
+
+    // Official origin WebContentsView must never be accepted as authorized IPC caller
+    expect(isAuthorizedIpcSender({ url: 'http://127.0.0.1:4310/chat' })).toBe(false)
+    expect(isAuthorizedIpcSender({ url: 'https://example.com' })).toBe(false)
+
+    // Craft data URLs without bridge marker
+    expect(isAuthorizedIpcSender({ url: 'data:text/html,<h1>fake</h1>' })).toBe(false)
+    expect(isAuthorizedIpcSender({ url: `data:text/html;charset=utf-8,${encodeURIComponent('<h1>phishing</h1>')}` })).toBe(false)
   })
 })
