@@ -47,6 +47,16 @@ export interface MarketplaceCatalog {
 /** Any 0.1.x official rc line. The registry moves across minors; the desktop must follow, not freeze on one release. */
 const DSH_RC_LINE = /^0\.1\.\d+-rc\.\d+$/u
 
+/** Only https: repositories are accepted into the catalog (rejects javascript:, data:, http:, etc.). */
+export function isValidPluginRepoUrl(raw: string): boolean {
+  try {
+    const url = new URL(raw)
+    return url.protocol === 'https:' && url.hostname.trim() !== ''
+  } catch {
+    return false
+  }
+}
+
 export function parseMarketplaceCatalog(raw: unknown): MarketplaceCatalog | undefined {
   if (raw === null || typeof raw !== 'object') return undefined
   const value = raw as Record<string, unknown>
@@ -62,7 +72,7 @@ export function parseMarketplaceCatalog(raw: unknown): MarketplaceCatalog | unde
       typeof name !== 'string' || name === '' || names.has(name)
       || typeof description !== 'string' || description === ''
       || typeof author !== 'string' || author === ''
-      || typeof repo !== 'string' || repo === ''
+      || typeof repo !== 'string' || !isValidPluginRepoUrl(repo)
       || typeof category !== 'string' || !PLUGIN_CATEGORIES.includes(category as PluginCategory)
     ) return undefined
     names.add(name)

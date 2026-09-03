@@ -38,11 +38,12 @@ function escapeHtml(value: string): string {
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
 }
 
 /** Thin bar that stays up while official `dsh web` fills the rest of the window. */
 export function renderChromePage(model: ChromeBarModel): string {
-  const status = `${model.phase}${model.isolated ? ' · 隔离' : ' · 共用 ~/.dsh'}`
+  const status = `${model.phase}${model.isolated ? ' · 独立数据目录' : ' · 共用 ~/.dsh'}`
   return `<!doctype html>
 <html lang="zh-CN">
   <head>

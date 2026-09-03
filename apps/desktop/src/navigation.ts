@@ -51,3 +51,12 @@ export function decideOfficialViewNavigation(raw: string, origin: string): Navig
   if (isHttpUrl(raw)) return 'open-external'
   return 'block'
 }
+
+/**
+ * Fail-closed origin check for IPC calls: only shell chrome documents
+ * bearing our bridge marker are permitted to trigger desktop IPC.
+ */
+export function isAuthorizedIpcSender(senderFrame: { url: string } | null | undefined): boolean {
+  if (senderFrame == null || typeof senderFrame.url !== 'string') return false
+  return isDataHtmlUrl(senderFrame.url)
+}

@@ -81,6 +81,14 @@ describe('marketplace catalog parse', () => {
       plugins: [{ ...VALID_CATALOG.plugins[0], repo: '' }],
     }
     expect(parseMarketplaceCatalog(missingRepo)).toBeUndefined()
+
+    for (const hostileRepo of ['javascript:alert(1)', 'data:text/html,bad', 'http://insecure.org', 'not-a-url']) {
+      const badRepo = {
+        ...VALID_CATALOG,
+        plugins: [{ ...VALID_CATALOG.plugins[0], repo: hostileRepo }],
+      }
+      expect(parseMarketplaceCatalog(badRepo)).toBeUndefined()
+    }
   })
 
   it('accepts every official rc line family, old and current', () => {
