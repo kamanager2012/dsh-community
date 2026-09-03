@@ -128,6 +128,7 @@ function executeInternalRollback(
       unlinkSync(backupPath)
     } catch {}
   } else if (journalData.hasPriorCommit === false) {
+    // First enrollment failure without prior commit: unlink newly created target
     if (existsSync(targetPath)) {
       unlinkSync(targetPath)
     }
@@ -633,9 +634,15 @@ export class FileDeviceTrustStore extends InMemoryDeviceTrustStore {
       }
 
       // =========================================================================
-      // DURABLE COMMITTED MARKER
-      // The transaction is NOT committed until COMMITTED marker is fsynced!
+      // DURABLE COMMITTED MARKER (ATOMIC JOURNAL STATE TRANSITION)
+      // Original journalPath remains intact as COMMITTING until COMMITTED is durable.
       // =========================================================================
+      const journalCommittedTmp = join(
+        dir,
+        `.${base}.journal.committed.${randomBytes(8).toString('hex')}`,
+      )
+      let committedTmpFd: number | undefined
+
       try {
         this.storeOptions?.faultInjector?.(
           'after-target-commit-dir-fsync-before-committed-marker-fsync',
@@ -647,24 +654,40 @@ export class FileDeviceTrustStore extends InMemoryDeviceTrustStore {
           backup: backupPath,
           hasPriorCommit,
         })
-        const journalFd = openSync(journalPath, 'w', 0o600)
-        try {
-          writeFileSync(journalFd, committedPayload, 'utf8')
-          fsyncSync(journalFd)
-        } finally {
-          closeSync(journalFd)
-        }
+
+        committedTmpFd = openSync(journalCommittedTmp, 'wx', 0o600)
+        writeFileSync(committedTmpFd, committedPayload, 'utf8')
+        fsyncSync(committedTmpFd)
+        closeSync(committedTmpFd)
+        committedTmpFd = undefined
+
+        // Atomic rename replaces COMMITTING -> COMMITTED journal entry
+        renameSync(journalCommittedTmp, journalPath)
+
+        // Fsync parent directory to ensure journal rename is durable
+        fsyncDirectory(dir)
       } catch (err) {
+        if (committedTmpFd !== undefined) {
+          try {
+            closeSync(committedTmpFd)
+          } catch {}
+        }
+        if (existsSync(journalCommittedTmp)) {
+          try {
+            unlinkSync(journalCommittedTmp)
+          } catch {}
+        }
+
         // DO NOT SWALLOW!
-        // If COMMITTED marker write or fsync fails, the transaction is NOT committed.
-        // Poison store, rollback target using durable backup, and throw FAIL!
+        // Original journalPath is still intact on disk as COMMITTING!
+        // Roll back target using durable backup (or unlink target if hasPriorCommit === false).
         this.isPoisoned = true
-        this.poisonReason = `COMMITTED marker fsync failed: ${(err as Error).message}`
+        this.poisonReason = `COMMITTED marker state transition failed: ${(err as Error).message}`
 
         try {
           executeInternalRollback(dir, this.filePath, journalPath, backupPath)
         } catch {
-          // If in-process rollback fails, loadFromDisk on restart will see COMMITTING and recover
+          // If in-process rollback blips, loadFromDisk on restart will see intact COMMITTING journal and recover
         }
 
         throw new RemoteCryptoError(

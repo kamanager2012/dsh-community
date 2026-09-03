@@ -391,6 +391,65 @@ describe('R2A-R5 Root Authority & Integrity Closure Adversarial Tests', () => {
     }
   })
 
+  it('5c. P0: first enrollment failure before COMMITTED marker fsync guarantees zero trusted devices on restart without prior backup', async () => {
+    const testDir = join(tmpdir(), `dsh-first-commit-${Date.now()}`)
+    mkdirSync(testDir, { recursive: true })
+    const filePath = join(testDir, 'devices.json')
+
+    try {
+      // 1. Brand new empty store with no existing target file and no backup
+      expect(existsSync(filePath)).toBe(false)
+      expect(existsSync(join(testDir, '.devices.json.committed'))).toBe(false)
+      expect(existsSync(join(testDir, '.devices.json.journal'))).toBe(false)
+
+      const clientA = generateClientKeyPair()
+      const devAId = computeFingerprint(clientA.publicKey)
+
+      let injected = true
+      const store = new FileDeviceTrustStore(filePath, {
+        faultInjector: (stage) => {
+          if (injected && stage === 'after-target-commit-dir-fsync-before-committed-marker-fsync') {
+            throw new Error('simulated marker transition failure on first commit')
+          }
+        },
+      })
+
+      // 2. First enrollment must fail
+      expect(() => {
+        store.trustSync({
+          staticPublicKey: clientA.publicKey,
+          displayName: 'Dev A First Commit',
+          grantedCapabilities: ['observe'],
+          trustDomainId: 'dom-1',
+        })
+      }).toThrow('simulated marker transition failure on first commit')
+
+      injected = false
+
+      // 3. Current in-memory store is poisoned
+      expect(() => store.getSync(devAId)).toThrow(RemoteCryptoError)
+      expect(() => store.assertAuthorizedSync(devAId, 'dom-1', 'session.list')).toThrow(RemoteCryptoError)
+
+      // 4. Restart store on same path
+      const restarted = new FileDeviceTrustStore(filePath)
+
+      // 5. devA must NOT exist on restart
+      expect(restarted.getSync(devAId)).toBeUndefined()
+      expect(await restarted.size()).toBe(0)
+      expect(() => {
+        restarted.assertAuthorizedSync(devAId, 'dom-1', 'session.list')
+      }).toThrow(RemoteProtocolError)
+
+      // 6. Verify filesystem clean state
+      expect(existsSync(join(testDir, '.devices.json.journal'))).toBe(false)
+      expect(existsSync(join(testDir, '.devices.json.committed'))).toBe(false)
+    } finally {
+      if (existsSync(testDir)) {
+        rmSync(testDir, { recursive: true, force: true })
+      }
+    }
+  })
+
   it('6. P1: FileDeviceTrustStore path, symlink, strict 0600 mode, and strict 64-hex key gate', () => {
     const testDir = join(tmpdir(), `dsh-integrity-test-${Date.now()}`)
     mkdirSync(testDir, { recursive: true })
