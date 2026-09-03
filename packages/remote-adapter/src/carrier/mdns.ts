@@ -146,7 +146,18 @@ export class BonjourMdnsAdvertiser implements MdnsAdvertiser {
       this.options?.networkInterface ??
       (record.host !== '127.0.0.1' && record.host !== '::1' ? record.host : undefined)
 
-    this.bonjour = new Bonjour(iface ? { host: iface } : undefined)
+    // bonjour-service forwards constructor options to multicast-dns.
+    // multicast-dns uses `interface` (not service-level `host`) to bind
+    // multicast traffic to one selected local interface.
+    const bonjourOptions = iface
+      ? ({ interface: iface } as unknown as ConstructorParameters<typeof Bonjour>[0])
+      : undefined
+
+    this.bonjour = new Bonjour(bonjourOptions, () => {
+      // mDNS is an unauthenticated discovery hint only. Contain asynchronous
+      // multicast socket failures so they cannot crash the Remote Host.
+      this.publishedRecord = undefined
+    })
 
     // In bonjour-service, type 'dsh-remote' publishes as '_dsh-remote._tcp'
     const serviceType = record.type.startsWith('_')
