@@ -28,7 +28,7 @@ security metadata for network access, data egress, credentials, filesystem,
 process execution, and persistence. Installation still uses the official
 `dsh plugin add` chain.
 
-[简体中文](README.md) | **English**
+**English** | [简体中文](README.zh-CN.md)
 
 [![CI](https://github.com/kamanager2012/dsh-community/actions/workflows/ci.yml/badge.svg)](https://github.com/kamanager2012/dsh-community/actions/workflows/ci.yml)
 
@@ -71,6 +71,7 @@ session persistence, official UI, and core lifecycle.
 | Run the official Runtime directly | [`npx @deepseek-ai/dsh web`](https://github.com/deepseek-ai/deepseek-harness) |
 | Download the community product | [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) — exact tag/file names: `docs/current-release.json`; cosign verification: [release docs](docs/release.md#artifact-signing-keyless) |
 | Use the WSL/Linux Terminal / TUI | `pnpm tui` or `dsh-community` after a source install |
+| LAN Remote Host access / Mobile foundation | In-repo `packages/remote-adapter` (Noise IK + LAN transport merged; mobile endpoint remains [UNVERIFIED]) |
 | Use the Windows Desktop shell | [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) Setup.exe, or `pnpm desktop` |
 | Use the macOS Desktop shell | [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) dmg, or `pnpm desktop` |
 | Read operational guidance | [DeepSeek Harness Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/) |
@@ -126,6 +127,17 @@ remain on the official `dsh plugin add` chain or the Desktop marketplace flow.
 The community layer must not vendor `packages/*`, fork the official event vocabulary,
 or maintain a second equivalent Session source of truth. When an official capability
 exists, use it; add community code only where a verified gap remains.
+
+## Success criteria
+
+1. Official Source Ownership = 0 (zero vendored official code).
+2. TUI patch-surface on official Cordis rows drops toward zero.
+3. TUI/Desktop do not implement Agent loop, Session persistence, or Tool execution.
+4. One upstream rc bump requires zero business UI edits in principle.
+5. WSL/Linux TUI, Windows/macOS Desktop, and official Web share the same session truth.
+6. Upstream regressions break in contract CI before user release.
+
+Currently: 1, 3, and 5 hold by design; 2 community overlay touches official rows without mounting third-party TUIs. Criterion 4 is verified against upstream releases.
 
 ## Repository map
 

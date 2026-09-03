@@ -13,6 +13,7 @@ describe('current endpoint narrative', () => {
   const currentNarrativeFiles = [
     'README.md',
     'README.en.md',
+    'README.zh-CN.md',
     'ARCHITECTURE.md',
     'ECOSYSTEM.md',
     'AGENTS.md',
@@ -59,6 +60,7 @@ describe('current endpoint narrative', () => {
     for (const rel of [
       'README.md',
       'README.en.md',
+      'README.zh-CN.md',
       'AGENTS.md',
       'ECOSYSTEM.md',
       'docs/getting-started.md',
@@ -70,7 +72,10 @@ describe('current endpoint narrative', () => {
       expect(text, rel).toMatch(/Published Latest/u)
     }
 
-    expect(read('README.md')).not.toMatch(/当前发行[^\n]{0,160}根目录[^\n]{0,80}workspace/u)
+    expect(read('README.zh-CN.md')).not.toMatch(/当前发行[^\n]{0,160}根目录[^\n]{0,80}workspace/u)
+    expect(read('README.md')).not.toMatch(
+      /current release[^\n]{0,160}root[^\n]{0,80}workspace/iu,
+    )
     expect(read('README.en.md')).not.toMatch(
       /current release[^\n]{0,160}root[^\n]{0,80}workspace/iu,
     )
