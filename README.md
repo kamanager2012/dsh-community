@@ -1,163 +1,198 @@
-# dsh-community
+# DSH Community
 
-**DeepSeek Harness 的社区发行、兼容性与安全验证层。**
+**Community distribution, compatibility, and security-validation infrastructure for DeepSeek Harness.**
 
-官方 DeepSeek Harness 是唯一执行内核。本仓不重写 Agent Runtime，而是在已发布的 `@deepseek-ai/dsh` 周围维护四件事：**精确上游版本与契约跟踪、跨平台社区发行、第三方插件兼容性注册表、发行与插件安全证据**。
+Official DeepSeek Harness remains the only execution kernel. This repository
+does not reimplement the Agent Runtime; it maintains four surrounding concerns:
+**exact upstream pin and contract tracking, cross-platform community
+distribution, a third-party plugin compatibility registry, and release/plugin
+security evidence**.
 
-项目共有 **5 个 Community endpoints**：WSL/Linux 终端、Windows Desktop、macOS Desktop、Linux AppImage、Android。前 4 个当前已有 Published Latest 发行产物；Android 的既有源码已恢复到本仓 `apps/android` 活跃主线，当前仍为 **[UNVERIFIED]**，尚未进入 Published Latest。所有已发行入口默认共享官方 Runtime、官方插件链和同一个 `~/.dsh` Session 真源。
+There are **five Community endpoints**: WSL/Linux Terminal, Windows Desktop,
+macOS Desktop, Linux AppImage, and Android. The first four currently have
+Published Latest artifacts. The existing Android source has been restored to the
+active `apps/android` tree; it remains **[UNVERIFIED]** and is not yet part of
+Published Latest. Shipped endpoints share the official Runtime, official plugin
+chain, and the same `~/.dsh` Session source of truth by default.
 
-你今天在官方 Web 开的对话，关掉以后用 `dsh-community` 终端可以接着聊；再打开 Desktop，仍然是同一条会话。
+A conversation you start in official Web is the same conversation you resume in
+`dsh-community` and then open again in Desktop.
 
-> **One Harness. Five community endpoints. Four shipped today; Android active / UNVERIFIED.** Runtime / Session / 插件事实仍归官方内核所有；社区层只维护发行、UX、兼容性与验证，不 vendor 官方源码，不另建第二套 Agent loop 或 Session store。
+> **One Harness. Five community endpoints. Four shipped today; Android active / UNVERIFIED.**
+> Runtime, Session, and plugin execution remain owned by the official kernel; the
+> community layer owns distribution, UX, compatibility, and verification only.
 
-本仓的 Compatibility Registry 不是 awesome-list：第三方插件条目记录实际 `testedDsh` 版本、包完整性以及 network / data egress / credentials / filesystem / process / persistence 等结构化安全元数据；安装仍走官方 `dsh plugin add` 链。
+The in-repo Compatibility Registry is not an awesome list: third-party entries
+carry an actual `testedDsh` line, package integrity evidence, and structured
+security metadata for network access, data egress, credentials, filesystem,
+process execution, and persistence. Installation still uses the official
+`dsh plugin add` chain.
 
-[English](README.en.md) | 简体中文
+**English** | [简体中文](README.zh-CN.md)
 
-[![ci](https://github.com/kamanager2012/dsh-community/actions/workflows/ci.yml/badge.svg)](https://github.com/kamanager2012/dsh-community/actions/workflows/ci.yml)
+[![CI](https://github.com/kamanager2012/dsh-community/actions/workflows/ci.yml/badge.svg)](https://github.com/kamanager2012/dsh-community/actions/workflows/ci.yml)
 
-| 状态 | 去哪看 |
+| State | Source of truth |
 |---|---|
-| **Published Latest** | [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest)；真实 tag、安装包名、release/asset 证据以 [`current-release.json`](docs/current-release.json) 为准 |
-| **Candidate Source** | 当前源码候选的 `candidateTag`、官方 core pin、workspace 产品号与 Dual-Badge 以 [`current-release.json`](docs/current-release.json) 为准 |
+| **Published Latest** | [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest); exact tag, asset names, release ID, and asset evidence live in [`current-release.json`](docs/current-release.json) |
+| **Candidate Source** | `candidateTag`, official-core pin, workspace product version, and Dual-Badge live in [`current-release.json`](docs/current-release.json) |
 | **Historical / Pre-release** | [Releases](https://github.com/kamanager2012/dsh-community/releases) |
 
-**Candidate Source 与 Published Latest 是两条独立状态。** 源码可以先升级到新的官方候选版本，而 GitHub Latest、已发布安装包、插件 `testedDsh` 和真实 User-Loop 证据继续停留在上一个已验证版本。不要从 `releases/latest` 的版本号反推当前 workspace 版本，也不要从源码候选版本伪造尚未发布的安装包。
+**Candidate Source and Published Latest are independent states.** Source may move
+to a newer reviewed upstream candidate while GitHub Latest, published installers,
+plugin `testedDsh`, and real User-Loop evidence remain on the last version that
+actually passed those gates. Do not infer workspace version from
+`releases/latest`, and never synthesize installer names from an unpublished
+candidate.
 
-五个社区端的状态、Candidate / Published 身份、安装包名和证据标签统一以 [current-release](docs/current-release.md) / [`current-release.json`](docs/current-release.json) 为准。发行产物使用 keyless cosign 签名；验证方法见 [release 文档](docs/release.md#artifact-signing-keyless)。
+Endpoint status, Candidate/Published identity, asset names, and evidence labels
+are centralized in [current-release](docs/current-release.md) /
+[`current-release.json`](docs/current-release.json). Published assets carry
+keyless cosign signatures; see [release docs](docs/release.md#artifact-signing-keyless).
 
-| 发行面 | 命名 | 入口 |
-|---|---|---|
-| 官方 Web | 官方上游兼容入口，不是 Community 发行端 | [`npx @deepseek-ai/dsh web`](https://github.com/deepseek-ai/deepseek-harness) |
-| WSL/Linux 终端 | **社区端 1：Terminal / TUI** | `dsh-community` / `dsh-community-tui` / `pnpm tui` |
-| Windows 桌面 | **社区端 2：Desktop** | [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) Setup.exe，或 `pnpm desktop` |
-| macOS 桌面 | **社区端 3：Desktop** | [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) dmg，或 `pnpm desktop` |
-| Linux AppImage | **社区端 4：Desktop** | 随 Release 附带；CLI 用户仍以终端为主 |
-| Android | **社区端 5：Remote Mobile（活跃源码，尚未发行）** | `apps/android`；目标为轻量 Remote Client，`[UNVERIFIED]`，不进 Published Latest，直到 Remote Android Acceptance 通过 |
+[Official Runtime](https://github.com/deepseek-ai/deepseek-harness)
 
-> 命名红线：不叫 dsh-TUI / DeepSeek Harness Desktop（那是别人的产品名），不在 npm 冒用 `@deepseek-ai` 或 `dsh-tui` 的包名。我们基于官方内核，不是第二套 Harness。
+Read the locked endpoint definition in [Community endpoints](docs/community-endpoints.en.md).
 
-[仓库](https://github.com/kamanager2012/dsh-community) · [Stable](https://github.com/kamanager2012/dsh-community/releases/latest) · [Releases](https://github.com/kamanager2012/dsh-community/releases) · [已验证插件](packages/marketplace/catalog.json)
+## What this repository is
 
-开发基础是已发布的 `@deepseek-ai/dsh`。我们不 vendor 官方源码，也不用 `patch-package` 改官方 UI。扩展走外围发行层、契约层和插件验证层。
+`dsh-community` is the only download entry. It is based on the official
+kernel, not a second Harness: thin adapters and contracts around published
+`@deepseek-ai/dsh`, official source ownership = 0, no `patch-package` on official
+UI.
 
-中文 | [使用指南](docs/getting-started.md) · [发行端与实验端定义](docs/community-endpoints.md) · [Architecture](ARCHITECTURE.md) · [Remote Host-Client](docs/remote-host-client.md) · [重构说明](docs/reconstruction.md) · [Upgrade](docs/upgrade.md) · [TUI adapter](docs/tui-adapter.md) · [contracts](contracts/README.md) · [Version Manager](docs/version-manager.md)
+Official Runtime still owns the Agent loop, model execution, tool execution,
+session persistence, official UI, and core lifecycle.
 
-## 现在能给谁用
+## Choose an entry
 
-| 你要什么 | 用谁 |
+| Goal | Use |
 |---|---|
-| 真正跑 agent | 官方 [`npx @deepseek-ai/dsh web`](https://github.com/deepseek-ai/deepseek-harness) |
-| 终端 | 本仓 `dsh-community`（启动官方 `dsh --profile headless`，不挂第三方 TUI） |
-| 局域网远程 Host 接入 | 本仓 `packages/remote-adapter`（已合入 Noise IK + 局域网传输；移动端保持 [UNVERIFIED]） |
-| 下载安装包 | [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest)（具体 tag / 文件名见 `docs/current-release.json`；cosign 验证见 [release 文档](docs/release.md#artifact-signing-keyless)） |
-| 已验证能装的社区插件 | Desktop 市场页 · 本仓 `pnpm marketplace` · [`packages/marketplace/catalog.json`](packages/marketplace/catalog.json)（不是 awesome 目录） |
-| 官方表面快照 / 升 rc 契约 | **本仓** |
+| Run the official Runtime directly | [`npx @deepseek-ai/dsh web`](https://github.com/deepseek-ai/deepseek-harness) |
+| Download the community product | [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) — exact tag/file names: `docs/current-release.json`; cosign verification: [release docs](docs/release.md#artifact-signing-keyless) |
+| Use the WSL/Linux Terminal / TUI | `pnpm tui` or `dsh-community` after a source install |
+| LAN Remote Host access / Mobile foundation | In-repo `packages/remote-adapter` (Noise IK + LAN transport merged; mobile endpoint remains [UNVERIFIED]) |
+| Use the Windows Desktop shell | [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) Setup.exe, or `pnpm desktop` |
+| Use the macOS Desktop shell | [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) dmg, or `pnpm desktop` |
+| Read operational guidance | [DeepSeek Harness Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/) |
+| Verified community plugins | Desktop marketplace page, in-repo `pnpm marketplace`, and [`packages/marketplace/catalog.json`](packages/marketplace/catalog.json) — not an awesome list |
 
-不要把本仓发到 npm 当 `@deepseek-ai/dsh` 或 `dsh-tui` 的替代。
+Only this repository is the download entry. Handbook is the other live repo. Suite, the standalone marketplace, the standalone plugins registry, and Edition are archived.
 
-## 社区生态导航
+## Source and publication status
 
-本仓是唯一用户下载入口。插件发现 CLI 和兼容性目录也在本仓；手册仍是独立仓。Labs、独立 Marketplace、独立 Plugins 已归档。
+The workspace has one **Candidate Source** identity (community product + official
+core pin + Dual-Badge), while GitHub exposes a separate **Published Latest**
+identity backed by real release assets. They may be equal after a release, but
+the repository does not depend on that equality. Exact current values live only
+in `docs/current-release.json`.
 
-| 仓库 | 角色 | 现在实际是 |
-|---|---|---|
-| [`deepseek-harness-handbook`](https://github.com/kamanager2012/deepseek-harness-handbook) | 手册 | 知识 / 证据 |
-| 本仓 `packages/marketplace` | 发现 / 安装 CLI + 兼容性目录 | `pnpm marketplace`；`catalog.json` 在本包内；安装仍走官方 `dsh plugin add` |
-| [`deepseek-harness-suite`](https://github.com/kamanager2012/deepseek-harness-suite) | 已归档 Labs | 不要从那里安装 |
-| [`dsh-marketplace`](https://github.com/kamanager2012/dsh-marketplace) | 已归档 | 跳转到本仓 marketplace 包 |
-| [`dsh-community-plugins`](https://github.com/kamanager2012/dsh-community-plugins) | 已归档 | 跳转到本仓 marketplace 包 |
-| [`dsh-community-edition`](https://github.com/kamanager2012/dsh-community-edition) | 已归档 | 不要从那里下载 |
+Earlier independent numbers `v0.1.2`–`v0.1.6` are historical only.
+The Linux AppImage is shipped endpoint 4; the primary Linux CLI path remains WSL/Linux
+Terminal. Official Web is an upstream companion, not a Community endpoint. Android stays
+`[UNVERIFIED]`, is not shipped in Latest, and its first-party source lives in this repository under `apps/android`. Its target is now a lightweight Remote Client; the Host retains the official DSH runtime, repository/toolchain, credentials, and durable Session truth. See `docs/remote-host-client.md`.
 
-官方执行核心仍是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)。社区层不重新实现 Agent loop、不另建 session 目录、不用 patch 改官方 UI。
+## From source
 
-## 从源码跑
-
-需要 Node 22.15+、pnpm，以及 `DEEPSEEK_API_KEY`。官方 0.1.0-rc.8 起，session JSONL 用了 `node:zlib` 的 zstd API（22.15 才有）。Candidate Source 的实际 pin 以 `packages/dsh-bridge/src/pin.ts` / `current-release.json` 为准；`latest-tested.json` 只是契约兼容性推荐，不是 pin 真源。对话在官方 `~/.dsh`。没密钥不会闷头进 Ink。
+Requirements: Node.js 22.15+, pnpm, and a configured `DEEPSEEK_API_KEY`.
+Since official 0.1.0-rc.8, session JSONL uses `node:zlib` zstd APIs added in 22.15. Candidate Source pin comes from `packages/dsh-bridge/src/pin.ts` / `current-release.json`; `latest-tested.json` is compatibility evidence, not the pin source of truth.
+Sessions continue to use the official `~/.dsh` data source.
 
 ```sh
 git clone https://github.com/kamanager2012/dsh-community.git
 cd dsh-community
 pnpm install
 export DEEPSEEK_API_KEY=...
-pnpm start              # 有对话就接着最近一条，否则开新的
-pnpm new                # 强制开新对话
-pnpm sessions           # 查看本地会话历史
-pnpm plugins            # 查看已安装插件
-pnpm desktop            # 桌面壳（含社区市场页）
-pnpm marketplace -- list  # 插件发现 CLI（需先能访问注册表）
-pnpm run doctor         # 自检（不要裸跑 pnpm doctor，那是 pnpm 自己的）
+pnpm start
+pnpm new
+pnpm sessions           # list session history
+pnpm plugins            # list installed plugins
+pnpm desktop
+pnpm run doctor         # not bare `pnpm doctor` — that is pnpm's own command
 ```
 
-同一入口也叫 `dsh-community`（`dsh-community-tui` 仍可用）：
+Useful commands exposed by the source distribution include `sessions`, `resume`,
+`version`, and the read-only `plugins` catalog view. Plugin installation should
+remain on the official `dsh plugin add` chain or the Desktop marketplace flow.
 
-```sh
-dsh-community                 # 有对话就接着最近一条
-dsh-community new
-dsh-community resume last
-dsh-community sessions
-dsh-community doctor
-dsh-community version
-dsh-community plugins         # 只读目录；安装仍走官方 dsh plugin add / 桌面市场页
-dsh-community desktop
-```
+## Architectural boundary
 
-打 Linux 解包目录或 AppImage（预览，未签名）：
-
-```sh
-pnpm desktop:package
-./apps/desktop/release/linux-unpacked/dsh-community
-
-pnpm desktop:package -- --appimage
-```
-
-Windows / macOS 安装包由 GitHub Actions(`release` workflow)在对应系统构建,本地无需坐在那些 OS 上。不要 `npm publish` 本仓的 workspace 包。发布顺序见 [docs/release.md](docs/release.md)。
-
-## 硬边界
-
-| 做 | 不做 |
+| Official Runtime owns | This repository owns |
 |---|---|
-| 依赖已发布的 `@deepseek-ai/dsh` | 不 vendor 官方 `packages/*`（Official Source Ownership = 0） |
-| Desktop 子进程启动 `dsh web`，只管理生命周期 | 不把 stdout 解析成业务协议 |
-| 默认共用官方 `~/.dsh` session 真源 | 不把 DSH 数据迁进 Desktop AppData |
-| 我们的 TUI 自己组合、自己列官方 session | 不把参考 TUI 当上游，不维护第二套 session log |
-| `contracts/` 快照官方表面 | 不维护一套社区 `event-types.ts` |
+| Agent loop and model execution | Desktop / TUI distribution and UX |
+| Tool execution and Runtime lifecycle | Lifecycle wrapping, diagnostics, and compatibility |
+| Official Session persistence and event surface | Session selection, resume UX, and adapters |
+| Official CLI, profiles, and plugin surface | Release packaging, safe integration, and ecosystem links |
 
-## 成功标准
+The community layer must not vendor `packages/*`, fork the official event vocabulary,
+or maintain a second equivalent Session source of truth. When an official capability
+exists, use it; add community code only where a verified gap remains.
 
-1. 官方源代码 vendor = 0
-2. TUI 对官方 Cordis row 的覆盖数量显著下降（33 → 15 → 8 → 只剩 TUI 自己的 insert）
-3. TUI/Desktop 不实现 Agent loop、Session persistence、Tool execution
-4. 一次 upstream rc bump，业务 UI 原则上零修改
-5. WSL/Linux TUI、Windows/macOS Desktop 与官方 Web 能共享同一 Session 真源
-6. 新版本兼容问题首先在 contract CI 爆
+## Success criteria
 
-当前：1 / 3 / 5 按设计成立；2 社区 overlay 只改官方行，不挂第三方 TUI。第 4 条是官方发新包时的回归。
+1. Official Source Ownership = 0 (zero vendored official code).
+2. TUI patch-surface on official Cordis rows drops toward zero.
+3. TUI/Desktop do not implement Agent loop, Session persistence, or Tool execution.
+4. One upstream rc bump requires zero business UI edits in principle.
+5. WSL/Linux TUI, Windows/macOS Desktop, and official Web share the same session truth.
+6. Upstream regressions break in contract CI before user release.
 
-## 仓库布局
+Currently: 1, 3, and 5 hold by design; 2 community overlay touches official rows without mounting third-party TUIs. Criterion 4 is verified against upstream releases.
 
+## Repository map
+
+| Repository | Role | User-facing status |
+|---|---|---|
+| [`dsh-community`](https://github.com/kamanager2012/dsh-community) | Canonical Product | **唯一正式下载入口 / only official community download** |
+| [`deepseek-harness-suite`](https://github.com/kamanager2012/deepseek-harness-suite) | Archived Labs | Frozen; do not install |
+| [`deepseek-harness-handbook`](https://github.com/kamanager2012/deepseek-harness-handbook) | Knowledge / Evidence | Documentation and operational evidence |
+| [`dsh-community-plugins`](https://github.com/kamanager2012/dsh-community-plugins) | Archived | Redirect to this repo's marketplace package |
+| This repo `packages/marketplace` | Discovery / install CLI + catalog | `pnpm marketplace`; `catalog.json` lives in this package; install still goes through official `dsh plugin add` |
+| [`dsh-marketplace`](https://github.com/kamanager2012/dsh-marketplace) | Archived | Redirect only |
+| [`dsh-community-edition`](https://github.com/kamanager2012/dsh-community-edition) | Archived | Do not download from here |
+
+## Layout and further reading
+
+```text
+contracts/              Official CLI and package surface snapshots
+packages/dsh-bridge     Runtime process and lifecycle boundary
+packages/marketplace    Plugin discovery CLI + catalog.json
+packages/remote-adapter Remote control adapter, Noise IK E2EE, LAN carrier & session stream projection
+packages/tui            Community terminal UI library (@dsh-community/tui-surface, Ink-based)
+packages/tui-adapter    Community TUI adapter and patch surface
+packages/shared-types   Community-owned types, not an official event fork
+apps/desktop            Official `dsh web` shell and session entry
+apps/android            Android Remote Client ([LABS]/[UNVERIFIED]; migration target)
+apps/tui                Official profile / resume launcher
+tests/upstream-contract Compatibility and upstream contract checks
 ```
-contracts/              官方表面快照 + compatibility matrix
-packages/dsh-bridge     解析官方 bin、生命周期、数据目录
-packages/marketplace    插件发现 CLI + catalog.json
-packages/remote-adapter 远程控制适配器、Noise IK 加密、局域网传输与会话事件投射
-packages/tui            社区终端界面库（@dsh-community/tui-surface，基于 Ink）
-packages/tui-adapter    我们的 TUI 薄 patch + KPI
-packages/shared-types   社区自己的类型，不是官方 event fork
-apps/desktop            官方 `dsh web` 壳 + 官方 session 列表 + 内嵌社区市场页
-apps/android            Android Remote Client（[LABS]/[UNVERIFIED]；旧 embedded-runtime 证据待迁移）
-apps/tui                官方 `dsh --profile` / `--resume` 启动器
-tests/upstream-contract vendor=0、pin、CLI
-```
+
+Start with the [Getting Started guide](docs/getting-started.en.md). Then read [ARCHITECTURE.md](ARCHITECTURE.md), the [release guide](docs/release.md),
+the [contract snapshots](contracts/README.md), and the [Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/)
+before changing the runtime boundary.
+
+## Evidence language
+
+Use explicit status labels such as `[REAL]`, `[PARTIAL]`, `[LABS]`, `[PROBE]`,
+`[FAIL-CLOSED]`, `[BLOCKED_BY_UPSTREAM]`, and `[UNVERIFIED]`. A green unit test,
+a successful fallback, or a README statement is not by itself proof of a real
+Runtime E2E.
 
 ## Security
 
-见 [SECURITY.md](SECURITY.md)：Desktop 的 Electron 加固边界（contextIsolation / 权限默认拒绝 / 导航白名单）、cosign keyless 发行签名的验证方法、`~/.dsh` 会话数据共享范围，以及如何私下报告安全问题。
+See [SECURITY.md](SECURITY.md) for the Desktop shell's Electron hardening
+(contextIsolation, default-deny permissions, allow-listed navigation), how to
+verify a release's cosign keyless signature, the `~/.dsh` session-sharing
+boundary, and how to report a security issue privately.
 
 ## Community
 
-贡献与维护入口：[Contributing](CONTRIBUTING.md) · [Governance](GOVERNANCE.md) · [Community Conduct](CODE_OF_CONDUCT.md) · [Support](SUPPORT.md) · [Security](SECURITY.md)。
+Project collaboration and maintenance entry points:
+[Contributing](CONTRIBUTING.md) · [Governance](GOVERNANCE.md) ·
+[Community Conduct](CODE_OF_CONDUCT.md) · [Support](SUPPORT.md) ·
+[Security](SECURITY.md).
 
 ## License
 
-MIT。运行时版权与第三方声明见 [NOTICE](NOTICE) 和官方包。
+MIT. Runtime and third-party notices are documented in [NOTICE](NOTICE) and the
+official package metadata.
