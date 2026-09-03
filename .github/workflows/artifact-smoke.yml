@@ -17,8 +17,6 @@ on:
         description: 'release tag to verify (empty = GitHub Latest)'
         required: false
         default: ''
-  schedule:
-    - cron: '17 4 * * *'
 
 # Every job is read-only against the repository: release metadata reads,
 # asset downloads, and local install/launch smoke checks. Nothing writes back.

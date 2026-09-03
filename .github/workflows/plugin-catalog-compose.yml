@@ -12,8 +12,6 @@ on:
       - 'packages/marketplace/catalog.json'
       - 'packages/marketplace/scripts/compose-check.mjs'
       - '.github/workflows/plugin-catalog-compose.yml'
-  schedule:
-    - cron: '41 3 * * *'
   workflow_dispatch:
 
 permissions:
