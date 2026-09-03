@@ -11,6 +11,7 @@ export type ToolCapability =
   | 'net:write'
   | 'credential:read'
   | 'git:write'
+  | 'io:read'
   | 'system:mutate';
 
 export interface ToolDescriptor {
@@ -51,8 +52,8 @@ const KNOWN_SAFE_READ_TOOLS: Record<string, ToolCapability[]> = {
   'search_web': ['net:read'],
   'web_search': ['net:read'],
   'read_url_content': ['net:read'],
-  'ask_user_question': ['net:read'],
-  'ask_user': ['net:read'],
+  'ask_user_question': ['io:read'],
+  'ask_user': ['io:read'],
   'get_health': ['fs:read'],
   'list_sessions': ['fs:read'],
   'contract_checker': ['process:exec'],

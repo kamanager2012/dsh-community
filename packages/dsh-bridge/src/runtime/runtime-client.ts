@@ -5,14 +5,14 @@ import {
 } from '@deepseek-ai/dsh-sdk-client';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { DshEventStream } from '../events/event-stream.js';
-import type { DshConfig, DshToolCall } from '../types/index.js';
+import type { DshConfig, DshToolCall, DshImageContentPart } from '../types/index.js';
 
 export interface RuntimeExecutionOptions {
   prompt: string;
   config: DshConfig;
   events: DshEventStream;
   sessionId?: string;
-  images?: import('../types/index.js').DshImageContentPart[];
+  images?: DshImageContentPart[];
   signal?: AbortSignal;
 }
 
@@ -96,7 +96,24 @@ export class DshRuntimeClient {
       let accumulatedReasoning = '';
       const toolCalls: DshToolCall[] = [];
 
-      const result: RunResult = await harness.run(prompt, {
+      // Build SDK content blocks: text block + optional image blocks.
+      // The SDK's run(input) accepts either a plain string (normalised to a
+      // single text block) or a pre-built content-block array.  When images
+      // are present we construct the array explicitly so multimodal turns are
+      // forwarded correctly instead of being silently dropped.
+      type ContentBlock = { type: string; [k: string]: unknown };
+      const contentBlocks: ContentBlock[] = [{ type: 'text', text: prompt }];
+      if (images && images.length > 0) {
+        for (const img of images) {
+          const url = img.data.startsWith('data:')
+            ? img.data
+            : `data:${img.mimeType};base64,${img.data}`;
+          contentBlocks.push({ type: 'image_url', image_url: { url } });
+        }
+      }
+      const runInput: string | ContentBlock[] = contentBlocks.length === 1 ? prompt : contentBlocks;
+
+      const result: RunResult = await harness.run(runInput as any, {
         sessionId,
         onNotification: (notif: HarnessNotification) => {
           isPromptEnqueuedOrActive = true;
