@@ -15,7 +15,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "noise-handshake": "4.2.0"
+    "noise-handshake": "4.2.0",
+    "bonjour-service": "1.4.4"
   },
   "devDependencies": {
     "@types/noise-handshake": "3.0.3"
