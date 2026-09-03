@@ -295,7 +295,7 @@ describe('R2A-R5 Root Authority & Integrity Closure Adversarial Tests', () => {
     }
   })
 
-  it('5b. P0: full 6-stage WAL durability barrier fault matrix guarantees strict commit-point semantics', async () => {
+  it('5b. P0: full 7-stage WAL durability barrier fault matrix guarantees strict commit-point semantics', async () => {
     const stages: Array<{
       stage: FileDeviceTrustFaultStage
       expectedApiOutcome: 'FAIL' | 'SUCCESS'
@@ -305,6 +305,7 @@ describe('R2A-R5 Root Authority & Integrity Closure Adversarial Tests', () => {
       { stage: 'after-journal-fsync-before-prepare-dir-fsync', expectedApiOutcome: 'FAIL', expectedRestartDev2: 'unauthorized' },
       { stage: 'after-prepare-dir-fsync-before-target-rename', expectedApiOutcome: 'FAIL', expectedRestartDev2: 'unauthorized' },
       { stage: 'after-target-rename-before-commit-dir-fsync', expectedApiOutcome: 'FAIL', expectedRestartDev2: 'unauthorized' },
+      { stage: 'after-target-commit-dir-fsync-before-committed-marker-fsync', expectedApiOutcome: 'FAIL', expectedRestartDev2: 'unauthorized' },
       { stage: 'after-commit-dir-fsync-before-cleanup', expectedApiOutcome: 'SUCCESS', expectedRestartDev2: 'authorized' },
       { stage: 'after-journal-cleanup-before-cleanup-dir-fsync', expectedApiOutcome: 'SUCCESS', expectedRestartDev2: 'authorized' },
     ]

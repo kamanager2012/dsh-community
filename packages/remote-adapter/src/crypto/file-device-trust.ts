@@ -62,6 +62,7 @@ export type FileDeviceTrustFaultStage =
   | 'after-journal-fsync-before-prepare-dir-fsync'
   | 'after-prepare-dir-fsync-before-target-rename'
   | 'after-target-rename-before-commit-dir-fsync'
+  | 'after-target-commit-dir-fsync-before-committed-marker-fsync'
   | 'after-commit-dir-fsync-before-cleanup'
   | 'after-journal-cleanup-before-cleanup-dir-fsync'
 
@@ -473,7 +474,7 @@ export class FileDeviceTrustStore extends InMemoryDeviceTrustStore {
   /**
    * P0: WAL ORDERING & COMMIT-POINT TRANSACTION LIFECYCLE:
    *
-   * COMMITTING -> [COMMIT POINT] -> COMMITTED -> CLEAN
+   * COMMITTING -> target COMMIT barrier -> COMMITTED marker fsync -> [TRANSACTION COMMITTED] -> CLEAN
    *
    * 1. Create backup file & fsync
    * 2. [fault stage: after-backup-fsync-before-journal]
@@ -484,13 +485,14 @@ export class FileDeviceTrustStore extends InMemoryDeviceTrustStore {
    * 7. Write temporary target file & fsync
    * 8. Atomic rename temp -> authoritative target
    * 9. [fault stage: after-target-rename-before-commit-dir-fsync]
-   * 10. fsync parent directory — COMMIT BARRIER (ATOMIC COMMIT POINT)
-   * 11. Transition journal state -> COMMITTED & fsync
-   * 12. Commit live memory state
-   * 13. [fault stage: after-commit-dir-fsync-before-cleanup]
-   * 14. Delete journal & backup
-   * 15. [fault stage: after-journal-cleanup-before-cleanup-dir-fsync]
-   * 16. fsync parent directory — CLEANUP BARRIER
+   * 10. fsync parent directory — COMMIT BARRIER
+   * 11. [fault stage: after-target-commit-dir-fsync-before-committed-marker-fsync]
+   * 12. Transition journal state -> COMMITTED & fsync (FINAL ATOMIC COMMIT POINT)
+   * 13. Commit live memory state
+   * 14. [fault stage: after-commit-dir-fsync-before-cleanup]
+   * 15. Delete journal & backup
+   * 16. [fault stage: after-journal-cleanup-before-cleanup-dir-fsync]
+   * 17. fsync parent directory — CLEANUP BARRIER
    */
   private commitDurableTransaction(stagedDevices: Map<string, StoredDeviceRecord>): void {
     this.assertNotPoisoned()
@@ -631,11 +633,14 @@ export class FileDeviceTrustStore extends InMemoryDeviceTrustStore {
       }
 
       // =========================================================================
-      // ★ TRANSACTION COMMIT POINT ATTAINED ★
-      // Authoritative target is durably committed on disk.
-      // Transition journal state COMMITTING -> COMMITTED and fsync.
+      // DURABLE COMMITTED MARKER
+      // The transaction is NOT committed until COMMITTED marker is fsynced!
       // =========================================================================
       try {
+        this.storeOptions?.faultInjector?.(
+          'after-target-commit-dir-fsync-before-committed-marker-fsync',
+        )
+
         const committedPayload = JSON.stringify({
           state: 'COMMITTED',
           target: this.filePath,
@@ -649,11 +654,31 @@ export class FileDeviceTrustStore extends InMemoryDeviceTrustStore {
         } finally {
           closeSync(journalFd)
         }
-      } catch {
-        // Authoritative target is already durably committed on disk.
+      } catch (err) {
+        // DO NOT SWALLOW!
+        // If COMMITTED marker write or fsync fails, the transaction is NOT committed.
+        // Poison store, rollback target using durable backup, and throw FAIL!
+        this.isPoisoned = true
+        this.poisonReason = `COMMITTED marker fsync failed: ${(err as Error).message}`
+
+        try {
+          executeInternalRollback(dir, this.filePath, journalPath, backupPath)
+        } catch {
+          // If in-process rollback fails, loadFromDisk on restart will see COMMITTING and recover
+        }
+
+        throw new RemoteCryptoError(
+          'HANDSHAKE_FAILED',
+          `COMMITTED marker fsync failed: ${(err as Error).message}`,
+        )
       }
 
-      // Commit live memory state immediately!
+      // =========================================================================
+      // ★ TRANSACTION COMMITTED ★
+      // Both authoritative target AND COMMITTED journal marker are fully durable.
+      // =========================================================================
+
+      // Commit live memory state immediately:
       this.devices.clear()
       for (const [id, rec] of stagedDevices.entries()) {
         this.devices.set(id, rec)
