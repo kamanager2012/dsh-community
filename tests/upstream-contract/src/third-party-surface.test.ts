@@ -70,7 +70,7 @@ const SCAN_EXTENSION = /\.(json|yml|yaml)$/u
  * and removing the last real use of an entry also fails CI (stale entry).
  * New entries require conscious review of their transitive install surface.
  */
-const THIRD_PARTY_RUNTIME_ALLOWLIST = ['ink', 'ink-spinner', 'react']
+const THIRD_PARTY_RUNTIME_ALLOWLIST = ['ink', 'ink-spinner', 'noise-handshake', 'react']
 
 /** Type-only packages: compile-time inputs, fully erased from runtime bundles. */
 const TYPES_ONLY_PREFIX = '@types/'

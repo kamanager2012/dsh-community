@@ -13,5 +13,11 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "noise-handshake": "4.2.0"
+  },
+  "devDependencies": {
+    "@types/noise-handshake": "3.0.3"
   }
 }

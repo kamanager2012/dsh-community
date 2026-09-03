@@ -1,6 +1,8 @@
 import { RemoteProtocolError } from './errors.js'
 import { IdempotencyStore } from './idempotency.js'
 import { DeviceRegistry } from './policy.js'
+import type { DeviceTrustStore } from './crypto/device-trust.js'
+import { InMemoryHostIdentityStore, type HostIdentityStore } from './crypto/host-identity.js'
 import {
   REMOTE_PROTOCOL_VERSION,
   parseRemoteRequest,
@@ -24,6 +26,8 @@ export interface RemoteAdapterOptions {
   readonly terminalStateCapacity?: number
   readonly connectionStateCapacity?: number
   readonly maxDevices?: number
+  readonly trustStore?: DeviceTrustStore
+  readonly hostIdentityStore?: HostIdentityStore
 }
 
 function asObject(value: unknown): Record<string, unknown> {
@@ -103,6 +107,8 @@ function parseAck(value: unknown): StreamAckParams {
 
 export class RemoteAdapterCore {
   readonly devices: DeviceRegistry
+  readonly trustStore: DeviceTrustStore
+  readonly hostIdentityStore: HostIdentityStore
   private readonly idempotency: IdempotencyStore
   private readonly replayBySession = new Map<string, BoundedReplayBuffer>()
   private readonly lastRequestSeq = new Map<string, number>()
@@ -125,7 +131,11 @@ export class RemoteAdapterCore {
     }
     this.terminalStateCapacity = options.terminalStateCapacity ?? 4096
     this.connectionStateCapacity = options.connectionStateCapacity ?? 1024
-    this.devices = new DeviceRegistry(options.maxDevices ?? 128)
+    this.hostIdentityStore = options.hostIdentityStore ?? new InMemoryHostIdentityStore()
+    this.devices = new DeviceRegistry(
+      options.trustStore ?? options.maxDevices ?? 128,
+    )
+    this.trustStore = this.devices.trustStore
     this.idempotency = new IdempotencyStore(options.idempotencyCapacity ?? 4096)
   }
 
@@ -161,7 +171,9 @@ export class RemoteAdapterCore {
   async handle(peer: AuthenticatedPeer, input: unknown): Promise<unknown> {
     const request = parseRemoteRequest(input)
     this.assertEnvelope(peer, request)
-    this.devices.assertAuthorized(peer.deviceId, request.method)
+    // P0-4: Live authoritative check against HostIdentityStore trust domain:
+    const hostIdentity = await this.hostIdentityStore.getPublicIdentity()
+    this.devices.assertAuthorized(peer.deviceId, request.method, hostIdentity.trustDomainId)
 
     switch (request.method) {
       case 'ping':

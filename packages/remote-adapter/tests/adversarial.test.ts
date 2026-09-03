@@ -3,7 +3,9 @@ import {
   REMOTE_PROTOCOL_VERSION,
   RemoteAdapterCore,
   RemoteProtocolError,
+  computeFingerprint,
   type AuthenticatedPeer,
+  type Capability,
   type OfficialRemoteSeams,
   type RemoteMethod,
   type RemoteRequest,
@@ -56,7 +58,16 @@ function request(
   }
 }
 
-const peer: AuthenticatedPeer = { deviceId: 'phone-1', connectionEpoch: 1 }
+const testKey = new Uint8Array(32).fill(0x33)
+const peer: AuthenticatedPeer = {
+  deviceId: computeFingerprint(testKey),
+  connectionEpoch: 1,
+}
+
+async function trustPeer(adapter: RemoteAdapterCore, capabilities: readonly Capability[]) {
+  const host = await adapter.hostIdentityStore.getPublicIdentity()
+  adapter.devices.trust(testKey, capabilities, { trustDomainId: host.trustDomainId })
+}
 
 async function expectCode(promise: Promise<unknown>, code: string) {
   try {
@@ -72,7 +83,7 @@ describe('R1 remote protocol adversarial matrix', () => {
   it('deduplicates the same prompt submission but rejects payload collisions', async () => {
     const { seams, calls } = fakeSeams()
     const adapter = new RemoteAdapterCore(seams)
-    adapter.devices.trust(peer.deviceId, ['prompt'])
+    await trustPeer(adapter, ['prompt'])
 
     const first = await adapter.handle(
       peer,
@@ -107,7 +118,7 @@ describe('R1 remote protocol adversarial matrix', () => {
   it('makes approval terminal state monotonic', async () => {
     const { seams, calls } = fakeSeams()
     const adapter = new RemoteAdapterCore(seams)
-    adapter.devices.trust(peer.deviceId, ['approve'])
+    await trustPeer(adapter, ['approve'])
 
     await adapter.handle(
       peer,
@@ -131,7 +142,7 @@ describe('R1 remote protocol adversarial matrix', () => {
   it('rejects a stale connection epoch without revoking pairing', async () => {
     const { seams, calls } = fakeSeams()
     const adapter = new RemoteAdapterCore(seams)
-    adapter.devices.trust(peer.deviceId, ['prompt'])
+    await trustPeer(adapter, ['prompt'])
     const current = { ...peer, connectionEpoch: 2 }
 
     await expectCode(
@@ -150,7 +161,7 @@ describe('R1 remote protocol adversarial matrix', () => {
   it('rejects a revoked device before touching official seams', async () => {
     const { seams, calls } = fakeSeams()
     const adapter = new RemoteAdapterCore(seams)
-    adapter.devices.trust(peer.deviceId, ['prompt'])
+    await trustPeer(adapter, ['prompt'])
     adapter.devices.revoke(peer.deviceId)
 
     await expectCode(
@@ -168,7 +179,7 @@ describe('R1 remote protocol adversarial matrix', () => {
   it('enforces least-privilege capabilities before official seams', async () => {
     const { seams, calls } = fakeSeams()
     const adapter = new RemoteAdapterCore(seams)
-    adapter.devices.trust(peer.deviceId, ['observe'])
+    await trustPeer(adapter, ['observe'])
 
     await expectCode(
       adapter.handle(
@@ -185,7 +196,7 @@ describe('R1 remote protocol adversarial matrix', () => {
   it('replays the retained official event suffix after reconnect', async () => {
     const { seams } = fakeSeams()
     const adapter = new RemoteAdapterCore(seams, { replayCapacity: 500 })
-    adapter.devices.trust(peer.deviceId, ['observe'])
+    await trustPeer(adapter, ['observe'])
     for (let seq = 43; seq <= 50; seq += 1) {
       adapter.onOfficialEvent('s1', { seq, type: 'test/event' })
     }
@@ -202,7 +213,7 @@ describe('R1 remote protocol adversarial matrix', () => {
   it('fails closed to resync when the bounded replay window was exceeded', async () => {
     const { seams } = fakeSeams()
     const adapter = new RemoteAdapterCore(seams, { replayCapacity: 5 })
-    adapter.devices.trust(peer.deviceId, ['observe'])
+    await trustPeer(adapter, ['observe'])
     for (let seq = 43; seq <= 50; seq += 1) {
       adapter.onOfficialEvent('s1', { seq, type: 'test/event' })
     }
@@ -222,7 +233,7 @@ describe('R1 remote protocol adversarial matrix', () => {
   it('resets when a resume point references a replay window that is not resident', async () => {
     const { seams } = fakeSeams()
     const adapter = new RemoteAdapterCore(seams)
-    adapter.devices.trust(peer.deviceId, ['observe'])
+    await trustPeer(adapter, ['observe'])
 
     const result = await adapter.handle(
       peer,
@@ -238,7 +249,7 @@ describe('R1 remote protocol adversarial matrix', () => {
     const { seams } = fakeSeams()
     seams.assertSession = async () => {}
     const adapter = new RemoteAdapterCore(seams, { maxReplaySessions: 1 })
-    adapter.devices.trust(peer.deviceId, ['observe'])
+    await trustPeer(adapter, ['observe'])
 
     adapter.onOfficialEvent('s1', { seq: 1, type: 'test/event' })
     adapter.onOfficialEvent('s2', { seq: 1, type: 'test/event' })
@@ -259,7 +270,7 @@ describe('R1 remote protocol adversarial matrix', () => {
       replayCapacity: 500,
       replayByteCapacity: 64,
     })
-    adapter.devices.trust(peer.deviceId, ['observe'])
+    await trustPeer(adapter, ['observe'])
 
     adapter.onOfficialEvent('s1', {
       seq: 1,
@@ -282,7 +293,7 @@ describe('R1 remote protocol adversarial matrix', () => {
   it('rejects replayed request sequence numbers within one authenticated connection', async () => {
     const { seams } = fakeSeams()
     const adapter = new RemoteAdapterCore(seams)
-    adapter.devices.trust(peer.deviceId, ['observe'])
+    await trustPeer(adapter, ['observe'])
 
     await adapter.handle(peer, request('session.list', 1, {}))
     await expectCode(
@@ -294,7 +305,7 @@ describe('R1 remote protocol adversarial matrix', () => {
   it('allows a new transport epoch without resetting official event sequence or duplicating mutation', async () => {
     const { seams, calls } = fakeSeams()
     const adapter = new RemoteAdapterCore(seams)
-    adapter.devices.trust(peer.deviceId, ['prompt', 'observe'])
+    await trustPeer(adapter, ['prompt', 'observe'])
     adapter.onOfficialEvent('s1', { seq: 50, type: 'test/event' })
 
     await adapter.handle(
@@ -339,7 +350,7 @@ describe('R1 remote protocol adversarial matrix', () => {
     }
 
     const adapter = new RemoteAdapterCore(seams)
-    adapter.devices.trust(peer.deviceId, ['prompt'])
+    await trustPeer(adapter, ['prompt'])
 
     const first = adapter.handle(
       peer,
@@ -378,7 +389,7 @@ describe('R1 remote protocol adversarial matrix', () => {
     }
 
     const adapter = new RemoteAdapterCore(seams)
-    adapter.devices.trust(peer.deviceId, ['approve'])
+    await trustPeer(adapter, ['approve'])
 
     const first = adapter.handle(
       peer,
@@ -406,7 +417,7 @@ describe('R1 remote protocol adversarial matrix', () => {
   it('does not retain unbounded stream ACK state and validates the referenced session', async () => {
     const { seams } = fakeSeams()
     const adapter = new RemoteAdapterCore(seams)
-    adapter.devices.trust(peer.deviceId, ['observe'])
+    await trustPeer(adapter, ['observe'])
 
     await expect(adapter.handle(
       peer,
@@ -422,7 +433,7 @@ describe('R1 remote protocol adversarial matrix', () => {
   it('runtime-validates untrusted JSON before it can reach official seams', async () => {
     const { seams, calls } = fakeSeams()
     const adapter = new RemoteAdapterCore(seams)
-    adapter.devices.trust(peer.deviceId, ['prompt'])
+    await trustPeer(adapter, ['prompt'])
 
     await expectCode(
       adapter.handle(peer, {
@@ -438,7 +449,7 @@ describe('R1 remote protocol adversarial matrix', () => {
   it('fails closed instead of evicting old idempotency keys when memory is full', async () => {
     const { seams, calls } = fakeSeams()
     const adapter = new RemoteAdapterCore(seams, { idempotencyCapacity: 1 })
-    adapter.devices.trust(peer.deviceId, ['prompt'])
+    await trustPeer(adapter, ['prompt'])
 
     await adapter.handle(
       peer,
