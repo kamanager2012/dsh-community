@@ -104,6 +104,8 @@ pnpm install
 export DEEPSEEK_API_KEY=...
 pnpm start
 pnpm new
+pnpm sessions           # list session history
+pnpm plugins            # list installed plugins
 pnpm desktop
 pnpm run doctor         # not bare `pnpm doctor` — that is pnpm's own command
 ```
@@ -143,10 +145,12 @@ exists, use it; add community code only where a verified gap remains.
 contracts/              Official CLI and package surface snapshots
 packages/dsh-bridge     Runtime process and lifecycle boundary
 packages/marketplace    Plugin discovery CLI + catalog.json
-packages/remote-adapter  Remote control adapter, Noise IK E2EE, LAN carrier & session stream projection
+packages/remote-adapter Remote control adapter, Noise IK E2EE, LAN carrier & session stream projection
+packages/tui            Community terminal UI library (@dsh-community/tui-surface, Ink-based)
 packages/tui-adapter    Community TUI adapter and patch surface
 packages/shared-types   Community-owned types, not an official event fork
 apps/desktop            Official `dsh web` shell and session entry
+apps/android            Android Remote Client ([LABS]/[UNVERIFIED]; migration target)
 apps/tui                Official profile / resume launcher
 tests/upstream-contract Compatibility and upstream contract checks
 ```
