@@ -11,7 +11,12 @@ import type { RemoteAdapterCore } from '../core.js'
 import { LanConnection } from './lan-connection.js'
 import { LAN_CARRIER_BOUNDS, validateLanCarrierBounds, type LanCarrierBounds } from './constants.js'
 import { validateLanBindingAddress } from './address-validator.js'
-import { DSH_REMOTE_SERVICE_TYPE, type MdnsAdvertiser, type MdnsAdvertisementRecord } from './mdns.js'
+import {
+  DSH_REMOTE_SERVICE_TYPE,
+  type MdnsAdvertiser,
+  type MdnsAdvertisementRecord,
+  BonjourMdnsAdvertiser,
+} from './mdns.js'
 
 export interface HostLanCarrierOptions {
   /**
@@ -43,6 +48,11 @@ export interface HostLanCarrierOptions {
   readonly mdnsAdvertiser?: MdnsAdvertiser
 
   /**
+   * Automatically enable concrete Bonjour mDNS advertiser if mdnsAdvertiser is not specified.
+   */
+  readonly enableMdns?: boolean
+
+  /**
    * Human-readable host display label for mDNS advertisement.
    */
   readonly hostDisplayLabel?: string
@@ -62,8 +72,10 @@ export class HostLanCarrier {
   private isRunning = false
   private hostKeyPair: HostKeyPair | undefined = undefined
   private readonly epochAllocator = new ConnectionEpochAllocator()
+  private readonly preUpgradeSockets = new Map<Socket, NodeJS.Timeout>()
   private readonly activeConnections = new Map<string, LanConnection>()
   private readonly deviceConnections = new Map<string, Set<LanConnection>>()
+  private activeMdnsAdvertiser: MdnsAdvertiser | undefined = undefined
   private unsubscribeRevocations: (() => void) | undefined = undefined
 
   constructor(options: HostLanCarrierOptions) {
@@ -81,7 +93,7 @@ export class HostLanCarrier {
   }
 
   getActiveConnectionCount(): number {
-    return this.activeConnections.size
+    return this.preUpgradeSockets.size + this.activeConnections.size
   }
 
   getBoundAddress(): { host: string; port: number } | undefined {
@@ -132,6 +144,32 @@ export class HostLanCarrier {
         res.end('Not Found')
       })
 
+      // P0-2: Track pre-upgrade TCP sockets and enforce connection bounds before upgrade
+      server.on('connection', (socket: Socket) => {
+        if (this.preUpgradeSockets.size + this.activeConnections.size >= this.bounds.maxConcurrentConnections) {
+          socket.write('HTTP/1.1 503 Service Unavailable\r\n\r\n')
+          socket.destroy()
+          return
+        }
+
+        const preUpgradeTimer = setTimeout(() => {
+          this.preUpgradeSockets.delete(socket)
+          socket.destroy()
+        }, this.bounds.handshakeTimeoutMs)
+
+        this.preUpgradeSockets.set(socket, preUpgradeTimer)
+
+        const onPreUpgradeEnd = () => {
+          const timer = this.preUpgradeSockets.get(socket)
+          if (timer) {
+            clearTimeout(timer)
+            this.preUpgradeSockets.delete(socket)
+          }
+        }
+        socket.once('close', onPreUpgradeEnd)
+        socket.once('error', onPreUpgradeEnd)
+      })
+
       server.on('upgrade', (req: IncomingMessage, socket: Socket, head: Buffer) => {
         this.handleUpgrade(req, socket, head)
       })
@@ -147,8 +185,12 @@ export class HostLanCarrier {
       this.server = server
       this.isRunning = true
 
-      // 5. P1-1: Publish mDNS advertisement lifecycle (if advertiser configured)
-      if (this.options.mdnsAdvertiser) {
+      // 5. P0-1: Publish concrete or injected mDNS advertiser lifecycle
+      if (this.options.mdnsAdvertiser || this.options.enableMdns) {
+        this.activeMdnsAdvertiser =
+          this.options.mdnsAdvertiser ??
+          new BonjourMdnsAdvertiser({ networkInterface: bindHost })
+
         const bound = this.getBoundAddress()!
         const record: MdnsAdvertisementRecord = {
           name: this.options.hostDisplayLabel ?? 'DSH Remote Host',
@@ -160,7 +202,7 @@ export class HostLanCarrier {
             fp: this.hostKeyPair.identity.fingerprint,
           },
         }
-        await this.options.mdnsAdvertiser.publish(record)
+        await this.activeMdnsAdvertiser.publish(record)
       }
 
       // 6. P1-4: Hook active channel revocation termination ONLY after successful listen
@@ -182,11 +224,21 @@ export class HostLanCarrier {
       this.unsubscribeRevocations = undefined
     }
 
-    if (this.options.mdnsAdvertiser) {
+    if (this.activeMdnsAdvertiser) {
       try {
-        await this.options.mdnsAdvertiser.unpublish()
+        await this.activeMdnsAdvertiser.unpublish()
+        await this.activeMdnsAdvertiser.destroy()
+      } catch {}
+      this.activeMdnsAdvertiser = undefined
+    }
+
+    for (const [socket, timer] of this.preUpgradeSockets.entries()) {
+      clearTimeout(timer)
+      try {
+        socket.destroy()
       } catch {}
     }
+    this.preUpgradeSockets.clear()
 
     if (this.server) {
       try {
@@ -201,6 +253,13 @@ export class HostLanCarrier {
   }
 
   private handleUpgrade(req: IncomingMessage, socket: Socket, head: Buffer): void {
+    // P0-2: Transition socket from pre-upgrade to active connection accounting
+    const preTimer = this.preUpgradeSockets.get(socket)
+    if (preTimer) {
+      clearTimeout(preTimer)
+      this.preUpgradeSockets.delete(socket)
+    }
+
     // Check connection cap before accepting
     if (this.activeConnections.size >= this.bounds.maxConcurrentConnections) {
       socket.write('HTTP/1.1 503 Service Unavailable\r\n\r\n')
@@ -342,12 +401,22 @@ export class HostLanCarrier {
       this.unsubscribeRevocations = undefined
     }
 
-    if (this.options.mdnsAdvertiser) {
+    if (this.activeMdnsAdvertiser) {
       try {
-        await this.options.mdnsAdvertiser.unpublish()
-        await this.options.mdnsAdvertiser.destroy()
+        await this.activeMdnsAdvertiser.unpublish()
+        await this.activeMdnsAdvertiser.destroy()
+      } catch {}
+      this.activeMdnsAdvertiser = undefined
+    }
+
+    // Close all pre-upgrade pending sockets
+    for (const [socket, timer] of this.preUpgradeSockets.entries()) {
+      clearTimeout(timer)
+      try {
+        socket.destroy()
       } catch {}
     }
+    this.preUpgradeSockets.clear()
 
     // Close all active connections
     for (const conn of Array.from(this.activeConnections.values())) {

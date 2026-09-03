@@ -1,3 +1,4 @@
+import { Bonjour, type Service } from 'bonjour-service'
 import { RemoteCryptoError } from '../crypto/errors.js'
 
 export const DSH_REMOTE_SERVICE_TYPE = '_dsh-remote._tcp'
@@ -105,6 +106,86 @@ export class InMemoryMdnsAdvertiser implements MdnsAdvertiser {
 
   async destroy(): Promise<void> {
     this.publishedRecord = undefined
+    this.isDestroyed = true
+  }
+
+  isPublished(): boolean {
+    return this.publishedRecord !== undefined && !this.isDestroyed
+  }
+
+  getPublishedRecord(): MdnsAdvertisementRecord | undefined {
+    return this.publishedRecord
+  }
+}
+
+export interface BonjourMdnsAdvertiserOptions {
+  readonly networkInterface?: string
+}
+
+export class BonjourMdnsAdvertiser implements MdnsAdvertiser {
+  private bonjour: Bonjour | undefined = undefined
+  private service: Service | undefined = undefined
+  private publishedRecord: MdnsAdvertisementRecord | undefined = undefined
+  private isDestroyed = false
+
+  constructor(private readonly options?: BonjourMdnsAdvertiserOptions) {}
+
+  async publish(record: MdnsAdvertisementRecord): Promise<void> {
+    if (this.isDestroyed) {
+      throw new RemoteCryptoError('HANDSHAKE_FAILED', 'cannot publish on destroyed mDNS advertiser')
+    }
+
+    // Strictly validate record for absence of any secret materials
+    assertNoSecretsInDiscoveryHint(record as unknown as Record<string, unknown>)
+
+    if (this.service) {
+      await this.unpublish()
+    }
+
+    const iface =
+      this.options?.networkInterface ??
+      (record.host !== '127.0.0.1' && record.host !== '::1' ? record.host : undefined)
+
+    this.bonjour = new Bonjour(iface ? { host: iface } : undefined)
+
+    // In bonjour-service, type 'dsh-remote' publishes as '_dsh-remote._tcp'
+    const serviceType = record.type.startsWith('_')
+      ? record.type.replace(/^_/, '').replace(/\._(tcp|udp)$/, '')
+      : record.type
+
+    this.service = this.bonjour.publish({
+      name: record.name,
+      type: serviceType,
+      port: record.port,
+      host: record.host,
+      txt: record.txt,
+    })
+
+    this.publishedRecord = Object.freeze({
+      ...record,
+      txt: Object.freeze({ ...record.txt }),
+    })
+  }
+
+  async unpublish(): Promise<void> {
+    if (this.service) {
+      await new Promise<void>((resolve) => {
+        this.service!.stop(() => resolve())
+      })
+      this.service = undefined
+    }
+    if (this.bonjour) {
+      this.bonjour.unpublishAll()
+    }
+    this.publishedRecord = undefined
+  }
+
+  async destroy(): Promise<void> {
+    await this.unpublish()
+    if (this.bonjour) {
+      this.bonjour.destroy()
+      this.bonjour = undefined
+    }
     this.isDestroyed = true
   }
 

@@ -99,6 +99,21 @@ export class WebSocketFrameParser {
               this.callbacks.onProtocolError('control frame payload cannot exceed 125 bytes')
               return
             }
+          } else {
+            // RFC 6455 5.4: Data frame fragmentation rules
+            if (this.fragmentedOpcode !== undefined) {
+              // Fragmented message in progress: only CONTINUATION or control frames allowed
+              if (this.opcode !== WebSocketOpcode.CONTINUATION) {
+                this.callbacks.onProtocolError('cannot interleave new data frame into incomplete fragmented message')
+                return
+              }
+            } else {
+              // No fragmented message in progress: CONTINUATION is forbidden
+              if (this.opcode === WebSocketOpcode.CONTINUATION) {
+                this.callbacks.onProtocolError('unexpected continuation frame without initial fragment')
+                return
+              }
+            }
           }
 
           // RFC 6455 5.1: client-to-server frames must be masked

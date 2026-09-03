@@ -22,6 +22,7 @@ import {
   validateLanCarrierBounds,
   validateLanBindingAddress,
   InMemoryMdnsAdvertiser,
+  BonjourMdnsAdvertiser,
   type OfficialRemoteSeams,
   REMOTE_PROTOCOL_VERSION,
 } from '../src/index.js'
@@ -452,6 +453,26 @@ describe('R2B LAN Carrier Adversarial Security & Regression Suite', () => {
       })
       expect(closed2).toBe(true)
       socket2.destroy()
+
+      // 3. P1-1: Fragmentation interleave (BINARY FIN=0 followed by BINARY FIN=1)
+      const socket3 = await performRawWsHandshake(port)
+      const fragStart = Buffer.alloc(6)
+      fragStart[0] = 0x02 // FIN=0, BINARY
+      fragStart[1] = 0x80 | 0
+      socket3.write(fragStart)
+
+      const interleaveFrame = Buffer.alloc(6)
+      interleaveFrame[0] = 0x82 // FIN=1, BINARY
+      interleaveFrame[1] = 0x80 | 0
+      socket3.write(interleaveFrame)
+
+      const closed3 = await new Promise<boolean>((resolve) => {
+        socket3.on('close', () => resolve(true))
+        socket3.on('data', (c) => { if (c[0] === 0x88) resolve(true) })
+        setTimeout(() => resolve(false), 2000)
+      })
+      expect(closed3).toBe(true)
+      socket3.destroy()
     } finally {
       await carrier.stop()
     }
@@ -512,8 +533,29 @@ describe('R2B LAN Carrier Adversarial Security & Regression Suite', () => {
     const host = await hostStore.loadOrCreate()
     const trustStore = new InMemoryDeviceTrustStore()
     const tokenRegistry = new PairingTokenRegistry()
-    const coordinator = new PairingCoordinator(trustStore, tokenRegistry)
+    const realCoordinator = new PairingCoordinator(hostStore, trustStore, tokenRegistry)
     const core = new RemoteAdapterCore(fakeSeams().seams, { trustStore, hostIdentityStore: hostStore })
+
+    let started = 0
+    let active = 0
+    let maxActive = 0
+
+    const instrumentedCoordinator = {
+      async initiatePairing(responder: any, payload: any) {
+        started += 1
+        active += 1
+        maxActive = Math.max(maxActive, active)
+        try {
+          await new Promise((r) => setTimeout(r, 40))
+          return await realCoordinator.initiatePairing(responder, payload)
+        } finally {
+          active = Math.max(0, active - 1)
+        }
+      },
+      async confirmPairing(params: any) {
+        return await realCoordinator.confirmPairing(params)
+      },
+    } as unknown as PairingCoordinator
 
     const carrier = new HostLanCarrier({
       enabled: true,
@@ -522,7 +564,7 @@ describe('R2B LAN Carrier Adversarial Security & Regression Suite', () => {
       core,
       trustStore,
       hostIdentityStore: hostStore,
-      pairingCoordinator: coordinator,
+      pairingCoordinator: instrumentedCoordinator,
       bounds: {
         maxInboundQueue: 2, // Strict inbound limit
       },
@@ -543,10 +585,13 @@ describe('R2B LAN Carrier Adversarial Security & Regression Suite', () => {
       const p2 = client.request('pairing.request', { token: 't2' })
       const p3 = client.request('pairing.request', { token: 't3' })
       const p4 = client.request('pairing.request', { token: 't4' })
+      const p5 = client.request('pairing.request', { token: 't5' })
 
-      const results = await Promise.allSettled([p1, p2, p3, p4])
-      const rejected = results.some((r) => r.status === 'rejected')
-      expect(rejected).toBe(true)
+      const results = await Promise.allSettled([p1, p2, p3, p4, p5])
+      expect(started).toBeGreaterThan(0)
+      expect(maxActive).toBeLessThanOrEqual(2)
+      expect(started).toBeLessThan(5)
+      expect(results.some((r) => r.status === 'rejected')).toBe(true)
 
       client.close()
     } finally {
@@ -820,14 +865,55 @@ describe('R2B LAN Carrier Adversarial Security & Regression Suite', () => {
     await carrierRetry.stop()
   })
 
-  // P1-1: Actual mDNS Advertiser Lifecycle
+  // P0-1: Concrete Bonjour mDNS Advertiser & In-Memory Fake Lifecycle
   it('21. actual mDNS advertiser lifecycle', async () => {
     const hostStore = new InMemoryHostIdentityStore()
+    const host = await hostStore.loadOrCreate()
     const trustStore = new InMemoryDeviceTrustStore()
     const core = new RemoteAdapterCore(fakeSeams().seams, { trustStore, hostIdentityStore: hostStore })
 
-    const advertiser = new InMemoryMdnsAdvertiser()
-    expect(advertiser.isPublished()).toBe(false)
+    // 1. Concrete network BonjourMdnsAdvertiser lifecycle
+    const concreteAdvertiser = new BonjourMdnsAdvertiser({ networkInterface: '127.0.0.1' })
+    expect(concreteAdvertiser.isPublished()).toBe(false)
+
+    await concreteAdvertiser.publish({
+      name: 'Concrete DSH Host',
+      type: '_dsh-remote._tcp',
+      host: '127.0.0.1',
+      port: 8443,
+      txt: { v: '1', fp: host.identity.fingerprint },
+    })
+    expect(concreteAdvertiser.isPublished()).toBe(true)
+    const concreteRec = concreteAdvertiser.getPublishedRecord()!
+    expect(concreteRec.name).toBe('Concrete DSH Host')
+    expect(concreteRec.type).toBe('_dsh-remote._tcp')
+    expect(concreteRec.port).toBe(8443)
+    expect(concreteRec.txt.v).toBe('1')
+    expect(concreteRec.txt.fp).toBe(host.identity.fingerprint)
+    assertNoSecretsInDiscoveryHint(concreteRec as any)
+
+    await concreteAdvertiser.unpublish()
+    expect(concreteAdvertiser.isPublished()).toBe(false)
+    await concreteAdvertiser.destroy()
+
+    // 2. Carrier integration with enableMdns: true (uses concrete BonjourMdnsAdvertiser)
+    const carrierWithMdns = new HostLanCarrier({
+      enabled: true,
+      host: '127.0.0.1',
+      port: 0,
+      core,
+      trustStore,
+      hostIdentityStore: hostStore,
+      enableMdns: true,
+      hostDisplayLabel: 'Concrete Auto DSH Host',
+    })
+    await carrierWithMdns.start()
+    expect(carrierWithMdns.isListening()).toBe(true)
+    await carrierWithMdns.stop()
+
+    // 3. In-memory fake advertiser deterministic lifecycle
+    const inMemoryAdvertiser = new InMemoryMdnsAdvertiser()
+    expect(inMemoryAdvertiser.isPublished()).toBe(false)
 
     const carrier = new HostLanCarrier({
       enabled: true,
@@ -836,24 +922,22 @@ describe('R2B LAN Carrier Adversarial Security & Regression Suite', () => {
       core,
       trustStore,
       hostIdentityStore: hostStore,
-      mdnsAdvertiser: advertiser,
+      mdnsAdvertiser: inMemoryAdvertiser,
       hostDisplayLabel: 'Test DSH Host',
     })
 
     await carrier.start()
-    expect(advertiser.isPublished()).toBe(true)
-    const record = advertiser.getPublishedRecord()!
+    expect(inMemoryAdvertiser.isPublished()).toBe(true)
+    const record = inMemoryAdvertiser.getPublishedRecord()!
     expect(record.name).toBe('Test DSH Host')
     expect(record.type).toBe('_dsh-remote._tcp')
     expect(record.port).toBe(carrier.getBoundAddress()!.port)
     expect(record.txt.v).toBe('1')
     expect(record.txt.fp).toBeDefined()
-
-    // Verify no secrets in mDNS
     assertNoSecretsInDiscoveryHint(record as any)
 
     await carrier.stop()
-    expect(advertiser.isPublished()).toBe(false)
+    expect(inMemoryAdvertiser.isPublished()).toBe(false)
   })
 
   // Pairing Transport Integration: 3 tests
@@ -948,9 +1032,12 @@ describe('R2B LAN Carrier Adversarial Security & Regression Suite', () => {
       await client1.connect()
       const res = await client1.request('pairing.request', { token, displayName: 'Device 1' })
       expect(res.candidateId).toBeDefined()
+      // P1-3: Host confirms pairing; token is fully consumed
+      await coordinator.confirmPairing({ candidateId: res.candidateId, grantedCapabilities: ['observe'] })
+      expect(trustStore.getSync(client1.deviceId)).toBeDefined()
       client1.close()
 
-      // Second client attempts to reuse token
+      // Second client attempts to reuse consumed token
       const clientKeys2 = generateClientKeyPair()
       const client2 = new LanClientCarrier({
         clientKeyPair: clientKeys2,
@@ -961,6 +1048,9 @@ describe('R2B LAN Carrier Adversarial Security & Regression Suite', () => {
       await expect(
         client2.request('pairing.request', { token, displayName: 'Device 2' }),
       ).rejects.toThrow('PAIRING_FAILED')
+
+      // Second device must not be enrolled in trust store
+      expect(trustStore.getSync(client2.deviceId)).toBeUndefined()
       client2.close()
     } finally {
       await carrier.stop()
@@ -1718,12 +1808,14 @@ describe('R2B LAN Carrier Adversarial Security & Regression Suite', () => {
     }
   })
 
-  it('39. concurrent connection cap enforced', async () => {
+  // P0-2: Pre-upgrade Connection Bounds and accounting
+  it('39. concurrent connection cap enforced pre-upgrade', async () => {
     const hostStore = new InMemoryHostIdentityStore()
     const host = await hostStore.loadOrCreate()
     const trustStore = new InMemoryDeviceTrustStore()
     const core = new RemoteAdapterCore(fakeSeams().seams, { trustStore, hostIdentityStore: hostStore })
 
+    const handshakeTimeoutMs = 250
     const carrier = new HostLanCarrier({
       enabled: true,
       host: '127.0.0.1',
@@ -1733,43 +1825,70 @@ describe('R2B LAN Carrier Adversarial Security & Regression Suite', () => {
       hostIdentityStore: hostStore,
       bounds: {
         maxConcurrentConnections: 2,
+        handshakeTimeoutMs,
       },
     })
     await carrier.start()
     const port = carrier.getBoundAddress()!.port
 
     try {
-      const sock1 = await performRawWsHandshake(port)
-      const sock2 = await performRawWsHandshake(port)
+      // 1. Stalled TCP connection #1 (connects, sends no HTTP headers)
+      const sock1 = createConnection({ port, host: '127.0.0.1' })
+      sock1.on('error', () => {})
+      await new Promise<void>((r) => sock1.once('connect', r))
 
+      // 2. Stalled partial-header connection #2 (sends partial HTTP header, incomplete)
+      const sock2 = createConnection({ port, host: '127.0.0.1' })
+      sock2.on('error', () => {})
+      await new Promise<void>((r) => sock2.once('connect', r))
+      sock2.write('GET / HTTP/1.1\r\nHost: 127.0.0.1\r\n')
+
+      await new Promise<void>((resolve) => {
+        const check = () => {
+          if (carrier.getActiveConnectionCount() === 2) return resolve()
+          setTimeout(check, 10)
+        }
+        check()
+      })
+      expect(carrier.getActiveConnectionCount()).toBe(2)
+
+      // 3. Third connection attempts to enter: must be rejected / closed immediately!
       const sock3 = createConnection({ port, host: '127.0.0.1' })
+      sock3.on('error', () => {})
       await new Promise<void>((r) => sock3.once('connect', r))
 
-      const req3 = [
-        'GET / HTTP/1.1',
-        `Host: 127.0.0.1:${port}`,
-        'Upgrade: websocket',
-        'Connection: Upgrade',
-        'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==',
-        'Sec-WebSocket-Version: 13',
-        '\r\n',
-      ].join('\r\n')
-      sock3.write(req3)
-
-      const rejected = await new Promise<boolean>((resolve) => {
+      const sock3Rejected = await new Promise<boolean>((resolve) => {
         sock3.on('data', (chunk) => {
           if (chunk.toString('utf8').includes('503 Service Unavailable')) {
             resolve(true)
           }
         })
         sock3.on('close', () => resolve(true))
+        setTimeout(() => resolve(false), 1000)
+      })
+      expect(sock3Rejected).toBe(true)
+      sock3.destroy()
+
+      // 4. Wait for stalled connection #1 to time out under configured handshakeTimeoutMs
+      const t0 = Date.now()
+      const sock1Closed = await new Promise<boolean>((resolve) => {
+        sock1.on('close', () => resolve(true))
         setTimeout(() => resolve(false), 2000)
       })
+      const elapsed = Date.now() - t0
+      expect(sock1Closed).toBe(true)
+      expect(elapsed).toBeLessThanOrEqual(handshakeTimeoutMs + 400)
 
-      expect(rejected).toBe(true)
+      // 5. Accounting slot freed: active count dropped
+      expect(carrier.getActiveConnectionCount()).toBeLessThan(2)
+
+      // 6. Now connection #4 enters and performs successful WebSocket upgrade
+      const sock4 = await performRawWsHandshake(port)
+      expect(sock4).toBeDefined()
+
       sock1.destroy()
       sock2.destroy()
-      sock3.destroy()
+      sock4.destroy()
     } finally {
       await carrier.stop()
     }
@@ -1796,6 +1915,7 @@ describe('R2B LAN Carrier Adversarial Security & Regression Suite', () => {
 
     try {
       const socket = await performRawWsHandshake(port)
+      socket.on('error', () => {})
 
       const closed = await new Promise<boolean>((resolve) => {
         socket.on('close', () => resolve(true))
