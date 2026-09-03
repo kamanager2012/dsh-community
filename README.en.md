@@ -1,5 +1,8 @@
 # DSH Community
 
+> **Start a task in official `dsh web`, close your browser, and resume it seamlessly in Terminal or Desktop.**  
+> The unvendored cross-platform distribution layer for DeepSeek Harness — 100% shared `~/.dsh` session truth, zero second agent loop.
+
 **Community distribution, compatibility, and security-validation infrastructure for DeepSeek Harness.**
 
 Official DeepSeek Harness remains the only execution kernel. This repository

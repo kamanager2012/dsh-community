@@ -1,5 +1,8 @@
 # dsh-community
 
+> **你在官方 Web 开的对话，关掉以后在终端或桌面接着聊。**  
+> 官方 DeepSeek Harness 的跨平台社区入口层：共享同一个 `~/.dsh` 会话真源，绝不重写第二套 Agent 循环。
+
 **DeepSeek Harness 的社区发行、兼容性与安全验证层。**
 
 官方 DeepSeek Harness 是唯一执行内核。本仓不重写 Agent Runtime，而是在已发布的 `@deepseek-ai/dsh` 周围维护四件事：**精确上游版本与契约跟踪、跨平台社区发行、第三方插件兼容性注册表、发行与插件安全证据**。
