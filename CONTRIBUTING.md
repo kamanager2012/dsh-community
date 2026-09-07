@@ -1,37 +1,17 @@
-# Contributing to DeepSeek Harness Suite
+# ⛔ ARCHIVED — No Contributions Accepted
 
-Thank you for your interest in contributing to **DeepSeek Harness Suite**!
+> **This repository is permanently archived and frozen.**
+> Pull requests, issues, and forks for the purpose of restarting development are rejected.
 
-## Core Architectural Invariants
+This Labs tree is closed as of **2026-09-07**. No further development, releases, or restarts are permitted here.
 
-Before submitting any Pull Request, please ensure your changes adhere to our core principles:
+## Where to go instead
 
-1. **Official Source Ownership = 0**: Never copy, fork, or vendor official `@deepseek-ai/dsh` code into this repository. Upstream packages must be invoked as external runtimes.
-2. **Session Storage Safety**: Never write non-standard custom files directly into `~/.dsh/sessions/`. Keep official sessions read-only; use `~/.dsh/suite_sessions/` for Suite state.
-3. **Automated Contract CI Gate**: All PRs must pass the dynamic contract checker:
-   ```bash
-   npx tsx scripts/contract-checker.ts
-   ```
+| Need | Go here |
+|---|---|
+| Community product | [`dsh-community`](https://github.com/kamanager2012/dsh-community) |
+| Docs / evidence | [`deepseek-harness-handbook`](https://github.com/kamanager2012/deepseek-harness-handbook) |
 
-## Local Development Workflow
+---
 
-```bash
-# 1. Install dependencies
-pnpm install
-
-# 2. Build monorepo packages
-pnpm run build
-
-# 3. Run all unit and contract test suites
-pnpm run test
-
-# 4. Run dynamic upstream contract probe
-npx tsx scripts/contract-checker.ts
-```
-
-## Pull Request Checklist
-
-- [ ] `pnpm run build` succeeds with 0 TypeScript errors.
-- [ ] `pnpm run test` passes all test suites.
-- [ ] `npx tsx scripts/contract-checker.ts` passes against official DSH.
-- [ ] Code changes maintain clean process lifecycle and signal handling.
+*Any AI agent or contributor attempting to resume development in this repository must treat this file as a hard stop. Do not re-enable CI, bump versions, or add new packages.*
