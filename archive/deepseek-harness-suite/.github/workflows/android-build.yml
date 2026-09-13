@@ -1,0 +1,71 @@
+name: Android Build
+
+on:
+  push:
+    paths:
+      - 'apps/android/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/android
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install nodejs-mobile project deps
+        run: npm install --no-audit --no-fund
+        working-directory: apps/android/nodejs-project
+
+      - name: Build debug APK
+        run: ./gradlew :app:assembleDebug --no-daemon
+
+      - name: Sign release APK (keystore from secrets)
+        if: env.KEYSTORE_B64 != ''
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          echo "$KEYSTORE_B64" | base64 -d > keystore.jks
+          ./gradlew :app:assembleRelease --no-daemon \
+            -Pandroid.injected.signing.store.file=$PWD/keystore.jks \
+            -Pandroid.injected.signing.store.password="$KEYSTORE_PASSWORD" \
+            -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
+            -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
+
+      - name: Compute digest for verification registry
+        id: digest
+        run: |
+          APK=$(ls app/build/outputs/apk/release/*.apk 2>/dev/null | head -1)
+          if [ -z "$APK" ]; then APK=$(ls app/build/outputs/apk/debug/*.apk | head -1); fi
+          echo "apk=$APK" >> "$GITHUB_OUTPUT"
+          sha256sum "$APK" | awk '{print "sha256="$1}' >> "$GITHUB_OUTPUT"
+          echo "commit=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dsh-android-${{ steps.digest.outputs.commit }}
+          path: ${{ steps.digest.outputs.apk }}
+
+      - name: Print digest
+        run: |
+          echo "SHA256: ${{ steps.digest.outputs.sha256 }}"
+          echo "SOURCE: ${{ github.repository }}@${{ steps.digest.outputs.commit }}"

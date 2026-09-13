@@ -1,0 +1,49 @@
+name: Labs npm publish
+
+# This repo is Community Labs, not a download channel.
+# Tag pushes do not publish. A human must dispatch this workflow
+# and pick a dist-tag other than latest (default: labs).
+
+on:
+  workflow_dispatch:
+    inputs:
+      npm_tag:
+        description: 'npm dist-tag. "latest" is refused.'
+        required: true
+        default: 'labs'
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  publish-labs-tag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Refuse latest
+        env:
+          NPM_TAG: ${{ inputs.npm_tag }}
+        run: |
+          set -euo pipefail
+          if [ -z "$NPM_TAG" ] || [ "$NPM_TAG" = "latest" ]; then
+            echo "refusing npm dist-tag '$NPM_TAG'; Labs must not publish latest" >&2
+            echo "canonical downloads: https://github.com/kamanager2012/dsh-community/releases/latest" >&2
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: 'https://registry.npmjs.org'
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 11.21.0
+      - run: pnpm install
+      - run: pnpm run build
+      - run: pnpm run test
+      - name: Publish with non-latest dist-tag
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_TAG: ${{ inputs.npm_tag }}
+        run: pnpm -r publish --access public --no-git-checks --tag "$NPM_TAG"

@@ -1,0 +1,33 @@
+{
+  "name": "@dsh-community/tui",
+  "version": "0.1.0",
+  "description": "Terminal User Interface (TUI) for DeepSeek Harness with Claude Code level UX",
+  "type": "module",
+  "bin": {
+    "dsh-tui": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepare": "npm run build",
+    "dev": "tsc --watch",
+    "start": "node ./dist/index.js"
+  },
+  "dependencies": {
+    "@dsh-community/dsh-bridge": "workspace:*",
+    "chalk": "^5.4.1",
+    "ink": "^5.1.0",
+    "ink-select-input": "^6.0.0",
+    "ink-spinner": "^5.0.0",
+    "ink-text-input": "^6.0.0",
+    "react": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.4",
+    "@types/react": "^18.3.18",
+    "typescript": "^5.7.3"
+  }
+}

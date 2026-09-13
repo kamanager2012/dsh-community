@@ -1,6 +1,6 @@
 # Community Labs handoff：给接手 Agent 的执行基线
 
-> 内部维护说明。基线日期：2026-08-16。本文记录**已归档** Labs 仓的历史门禁，不替代官方 Runtime 文档。GitHub 仓库 `deepseek-harness-suite` 已冻结；不要从那里安装，也不要把新功能开回这个仓。
+> 内部维护说明。基线日期：2026-08-16。本文记录**已归档** Labs 仓的历史门禁，不替代官方 Runtime 文档。GitHub 仓库 `deepseek-harness-suite` 已冻结，代码与历史已并入本仓 `archive/deepseek-harness-suite/`；不要安装，也不要把新功能开回这个仓。
 
 ## 目标和禁止事项
 

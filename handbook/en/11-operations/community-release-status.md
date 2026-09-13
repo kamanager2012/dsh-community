@@ -76,7 +76,7 @@ Exact-release-artifact evidence only. First-launch smoke is `[PARTIAL]`; uncover
 | Plugin / restart | `[待复核]` | Official `dsh plugin add` + `--dump-config` passed for 9 catalog plugins on `0.1.1-rc.2`; still-usable-after-restart and clear failure errors are not separately proven |
 | Lifecycle recovery | `[待复核]` | Uninstall/reinstall, upgrade, offline, missing key, interrupted Runtime extract |
 | Official Runtime staging / installer | `[PARTIAL]` | Real Windows/macOS first-ready passed; not a full install lifecycle claim |
-| Android | `[UNVERIFIED]` | Archived Labs (`deepseek-harness-suite`); not on the Latest download list |
+| Android | `[UNVERIFIED]` | Archived Labs (now in this repo at `archive/deepseek-harness-suite/`); not on the Latest download list |
 
 Conclusions must come from the files on the Release page plus install, Runtime staging, and user-loop results. Main-source smoke, ordinary CI, or README prose cannot replace that.
 
@@ -107,5 +107,5 @@ See:
 - [`dsh-community` release workflow](https://github.com/kamanager2012/dsh-community/blob/main/.github/workflows/release.yml)
 - [`dsh-community` changelog](https://github.com/kamanager2012/dsh-community/blob/main/CHANGELOG.md)
 - [`dsh-community` contract snapshots](https://github.com/kamanager2012/dsh-community/tree/main/contracts)
-- [`deepseek-harness-suite` Actions](https://github.com/kamanager2012/deepseek-harness-suite/actions)
+- In-repo [`archive/deepseek-harness-suite/`](https://github.com/kamanager2012/dsh-community/tree/main/archive/deepseek-harness-suite) (formerly the standalone Labs repo, deleted)
 - `dsh-community-edition` freeze commit `09eb1c0` (standalone repo deleted; no longer linkable)

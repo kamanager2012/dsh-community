@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' http://127.0.0.1:*;">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DeepSeek Harness Desktop Setup</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <div class="logo-badge">DSH</div>
+      <h1>DeepSeek Harness Desktop</h1>
+      <p class="subtitle">Zero-configuration desktop runner for DeepSeek Agent runtime</p>
+    </header>
+
+    <main class="card">
+      <section id="setup-form">
+        <h2>Runtime Configuration</h2>
+
+        <div class="form-group">
+          <label for="apiKey">DeepSeek API Key <span class="required">*</span></label>
+          <input type="password" id="apiKey" placeholder="sk-..." required autocomplete="off" />
+          <small>Your API key is stored locally in ~/.config/dsh-desktop/config.json</small>
+        </div>
+
+        <div class="form-group">
+          <label for="model">Default Model</label>
+          <select id="model">
+            <option value="deepseek-reasoner">deepseek-reasoner (R1 Reasoning)</option>
+            <option value="deepseek-chat">deepseek-chat (V3 Chat)</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="workspacePath">Default Workspace Directory</label>
+          <input type="text" id="workspacePath" placeholder="/path/to/project" />
+        </div>
+
+        <div class="form-group">
+          <label for="runtimeVersion">DSH Runtime Version</label>
+          <select id="runtimeVersion">
+            <option value="0.1.0-rc.8" selected>0.1.0-rc.8 (Recommended & Verified)</option>
+            <option value="0.1.0-rc.7">0.1.0-rc.7 (Supported)</option>
+            <option value="0.1.0-rc.6">0.1.0-rc.6 (Legacy Support)</option>
+          </select>
+          <small>Verified by Contract CI against breaking upstream changes</small>
+        </div>
+
+        <div class="form-group">
+          <label for="sandboxMode">Sandbox Policy</label>
+          <select id="sandboxMode">
+            <option value="workspace_only">Workspace Only (Recommended)</option>
+            <option value="strict">Strict Read-Only</option>
+            <option value="unrestricted">Unrestricted Local</option>
+          </select>
+        </div>
+
+        <div class="form-actions">
+          <button id="save-btn" class="btn btn-primary">Save & Launch Harness</button>
+        </div>
+      </section>
+
+      <section id="diagnostics-panel" class="diagnostics-panel">
+        <div class="diag-header">
+          <h3>Runtime Status & Diagnostics</h3>
+          <span id="runtime-badge" class="badge">Checking...</span>
+        </div>
+        <div id="logs-container" class="logs-container">
+          <pre id="logs-output">Waiting for supervisor output...</pre>
+        </div>
+      </section>
+
+      <section id="sessions-panel" class="diagnostics-panel">
+        <div class="diag-header">
+          <h3>Shared Sessions (~/.dsh/sessions)</h3>
+          <span id="sessions-count" class="badge">0 Sessions</span>
+        </div>
+        <ul id="sessions-list" class="sessions-list">
+          <li class="empty-sessions">No sessions found in ~/.dsh/sessions</li>
+        </ul>
+      </section>
+    </main>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>

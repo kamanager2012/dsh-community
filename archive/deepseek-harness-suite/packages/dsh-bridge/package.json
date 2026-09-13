@@ -1,0 +1,52 @@
+{
+  "name": "@dsh-community/dsh-bridge",
+  "version": "0.1.0",
+  "description": "Anti-Corruption & Contract Layer for DeepSeek Harness (DSH)",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./types": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/types/index.js"
+    },
+    "./events": {
+      "types": "./dist/events/event-stream.d.ts",
+      "import": "./dist/events/event-stream.js"
+    },
+    "./agent": {
+      "types": "./dist/agent/agent-controller.d.ts",
+      "import": "./dist/agent/agent-controller.js"
+    },
+    "./runtime": {
+      "types": "./dist/runtime/subprocess-manager.d.ts",
+      "import": "./dist/runtime/subprocess-manager.js"
+    },
+    "./security": {
+      "types": "./dist/security/risk-evaluator.d.ts",
+      "import": "./dist/security/risk-evaluator.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "prepare": "npm run build",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:contract": "vitest run __tests__/contract"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-sdk-client": "^0.1.0-rc.6"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.4",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  }
+}

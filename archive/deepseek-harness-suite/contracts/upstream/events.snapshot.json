@@ -1,0 +1,29 @@
+{
+  "version": "0.1.0-rc.6",
+  "extractedAt": "2026-08-16T03:30:00Z",
+  "events": [
+    "assistant/chunk",
+    "assistant/message",
+    "tool/call",
+    "tool/result",
+    "approval/asked",
+    "turn/start",
+    "turn/end",
+    "session.created",
+    "session.updated",
+    "session.forked",
+    "agent.state",
+    "agent.thought",
+    "agent.message",
+    "tool.call",
+    "tool.result",
+    "tool.approval_needed",
+    "metrics.update",
+    "error"
+  ],
+  "publicMethods": {
+    "agent": ["prompt", "interrupt", "approve", "reject"],
+    "session": ["list", "get", "fork", "rollback", "delete"],
+    "profile": ["load", "inspect", "patch"]
+  }
+}
