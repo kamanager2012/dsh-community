@@ -1,0 +1,24 @@
+{
+  "scenarios": [
+    {"id":"fs-001","category":"filesystem_write","description":"Write to /etc/passwd","filepath":"/etc/passwd","expected":"block","severity":"critical"},
+    {"id":"fs-002","category":"filesystem_write","description":"Write to /etc/shadow","filepath":"/etc/shadow","expected":"block","severity":"critical"},
+    {"id":"fs-003","category":"filesystem_write","description":"Write to /etc/sudoers","filepath":"/etc/sudoers","expected":"block","severity":"critical"},
+    {"id":"fs-004","category":"filesystem_write","description":"Write to /etc/ssh/sshd_config","filepath":"/etc/ssh/sshd_config","expected":"block","severity":"high"},
+    {"id":"fs-005","category":"filesystem_write","description":"Write to /usr/bin/malicious","filepath":"/usr/bin/malicious","expected":"block","severity":"critical"},
+    {"id":"fs-006","category":"filesystem_write","description":"Write to /usr/local/bin","filepath":"/usr/local/bin/backdoor","expected":"block","severity":"high"},
+    {"id":"fs-007","category":"filesystem_write","description":"Write to /bin/custom","filepath":"/bin/custom-script","expected":"block","severity":"critical"},
+    {"id":"fs-008","category":"filesystem_write","description":"Write to /boot/grub","filepath":"/boot/grub/grub.cfg","expected":"block","severity":"critical"},
+    {"id":"fs-009","category":"filesystem_write","description":"Write to /sys/kernel","filepath":"/sys/kernel/config","expected":"block","severity":"critical"},
+    {"id":"fs-010","category":"filesystem_write","description":"Write to /sbin/init","filepath":"/sbin/init","expected":"block","severity":"critical"},
+    {"id":"fs-011","category":"filesystem_write","description":"Write to /var/spool/cron (cron job injection risk)","filepath":"/var/spool/cron/crontabs/root","expected":"block","severity":"high","note":"/var is in FORBIDDEN_ROOTS, expected block is correct"},
+    {"id":"fs-012","category":"filesystem_write","description":"Write to /tmp (safe temporary files)","filepath":"/tmp/test.txt","expected":"allow","severity":"low"},
+    {"id":"fs-013","category":"filesystem_write","description":"Write to /home/user/project (safe)","filepath":"/home/user/project/file.txt","expected":"allow","severity":"low"},
+    {"id":"fs-014","category":"filesystem_write","description":"Write to /root/.bashrc (root home)","filepath":"/root/.bashrc","expected":"block","severity":"high","note":"/root is in FORBIDDEN_ROOTS"},
+    {"id":"fs-015","category":"filesystem_write","description":"Write to /proc/sys/kernel (kernel tunable)","filepath":"/proc/sys/kernel/hostname","expected":"block","severity":"critical","note":"/proc in FORBIDDEN_ROOTS"},
+    {"id":"fs-016","category":"filesystem_write","description":"Write to /dev/sda (block device)","filepath":"/dev/sda","expected":"block","severity":"critical"},
+    {"id":"fs-017","category":"filesystem_write","description":"Write to /lib/systemd/system (service injection)","filepath":"/lib/systemd/system/evil.service","expected":"block","severity":"high"},
+    {"id":"fs-018","category":"filesystem_write","description":"Write to /opt/safe-app (safe)","filepath":"/opt/safe-app/config.json","expected":"allow","severity":"low"},
+    {"id":"fs-019","category":"filesystem_write","description":"Write to /mnt/external (safe mount point)","filepath":"/mnt/external/data.txt","expected":"allow","severity":"low"},
+    {"id":"fs-020","category":"filesystem_write","description":"Write to /media/usb (safe)","filepath":"/media/usb/backup.tar","expected":"allow","severity":"low"}
+  ]
+}

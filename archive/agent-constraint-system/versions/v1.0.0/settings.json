@@ -1,0 +1,126 @@
+{
+  "env": {
+    "ANTHROPIC_AUTH_TOKEN": "sk-f325ce7420814a259507b784b5b4bcc8",
+    "ANTHROPIC_BASE_URL": "https://api.deepseek.com/anthropic",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "deepseek-v4-flash[1m]",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME": "deepseek-v4-flash",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "deepseek-v4-pro[1m]",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME": "deepseek-v4-pro",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "deepseek-v4-flash[1m]",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME": "deepseek-v4-flash",
+    "ANTHROPIC_MODEL": "deepseek-v4-flash[1m]",
+    "CLAUDE_CODE_EFFORT_LEVEL": "max",
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
+    "ENABLE_TOOL_SEARCH": "true",
+    "MINIMAX_API_KEY": "sk-cp-6Kea_zhAetOvlLWa7a1eqU6N0-cUdwcbCq_LzxZB3zh-637bqLqLWobL9ZJcII5f5xBXP8pd6D-_f97W7zzGURA_E7s2NOMnM3Ztwg2hKu4FPuUDg7XX-Ow",
+    "MINIMAX_BASE_URL": "https://api.minimaxi.com/v1"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(cat *)",
+      "Bash(cd *)",
+      "Bash(comm *)",
+      "Bash(curl *)",
+      "Bash(cut *)",
+      "Bash(date *)",
+      "Bash(df *)",
+      "Bash(diff *)",
+      "Bash(du *)",
+      "Bash(echo *)",
+      "Bash(env *)",
+      "Bash(file *)",
+      "Bash(find *)",
+      "Bash(free *)",
+      "Bash(git *)",
+      "Bash(grep *)",
+      "Bash(head *)",
+      "Bash(id *)",
+      "Bash(jq *)",
+      "Bash(ls *)",
+      "Bash(lsblk *)",
+      "Bash(lscpu *)",
+      "Bash(mkdir *)",
+      "Bash(nl *)",
+      "Bash(node *)",
+      "Bash(npm *)",
+      "Bash(npx *)",
+      "Bash(od *)",
+      "Bash(pip *)",
+      "Bash(pip3 *)",
+      "Bash(printenv *)",
+      "Bash(ps *)",
+      "Bash(pwd *)",
+      "Bash(python *)",
+      "Bash(sort *)",
+      "Bash(source *)",
+      "Bash(stat *)",
+      "Bash(tail *)",
+      "Bash(tar *)",
+      "Bash(touch *)",
+      "Bash(tr *)",
+      "Bash(tree *)",
+      "Bash(uname *)",
+      "Bash(uniq *)",
+      "Bash(unzip *)",
+      "Bash(wc *)",
+      "Bash(wget *)",
+      "Bash(which *)",
+      "Bash(whoami *)",
+      "Bash(sed *)",
+      "Write(*)",
+      "Edit(*)"
+    ],
+    "ask": [
+      "Bash(rm *)",
+      "Bash(cp *)",
+      "Bash(mv *)",
+      "Bash(chmod *)",
+      "Bash(chown *)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /home/jamesoldman/.claude/hooks/acs_lite.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /home/jamesoldman/.claude/hooks/acs_lite.py"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /home/jamesoldman/.claude/hooks/acs_lite.py status"
+          }
+        ]
+      }
+    ]
+  },
+  "enabledPlugins": {
+    "webnovel-writer@webnovel-writer-marketplace": true
+  },
+  "extraKnownMarketplaces": {
+    "webnovel-writer-marketplace": {
+      "source": {
+        "source": "github",
+        "repo": "lingfengQAQ/webnovel-writer"
+      }
+    }
+  },
+  "autoCompactEnabled": true,
+  "model": "opus"
+}

@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.claude/
+.aios/
+*.tsbuildinfo
+.DS_Store
+Thumbs.db

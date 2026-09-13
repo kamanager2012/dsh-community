@@ -15,6 +15,8 @@
 
 workspace 自身的检查结果、分支状态和排除项见 [`AIOS-WORKSPACE-BASELINE-2026-08-14.yaml`](../../evidence/records/AIOS-WORKSPACE-BASELINE-2026-08-14.yaml)。该记录只证明 workspace 可作为测试对象，不证明 dsh 已经成功分析它。
 
+workspace 仓的完整历史已并入本手册所在仓库（见 `archive/aios-core/`，独立仓于 2026-09-13 删除）；固定 commit `6af8968180eb9b14acd61c99d04253180d456303` 在合并后保持原 SHA，可直接检出复现。
+
 ## 发送给 dsh 的任务文本
 
 ```text

@@ -1,0 +1,14 @@
+{
+  "backend": "TypeScript / Node.js",
+  "frontend": "none (CLI)",
+  "test_framework": "vitest",
+  "build": "tsc --noEmit",
+  "lint": "none",
+  "deploy": "none",
+  "modules": {
+    "kernel": "task execution pipeline (planner, executor, verifier, reconciler, runtime)",
+    "memory": "project memory store (current, tasks, decisions, architecture, incidents, snapshots)",
+    "governor": "governance constraints (scope, approval, rollback, audit, limits)",
+    "cli": "command-line interface"
+  }
+}

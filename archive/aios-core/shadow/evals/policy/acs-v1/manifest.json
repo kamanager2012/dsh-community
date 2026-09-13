@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "corpusId": "acs-v1",
+  "kind": "policy",
+  "status": "shadow",
+  "source": {
+    "repository": "kamanager2012/agent-constraint-system",
+    "commit": "a8e41fa27822f32d2a39163767ef2d5413b9c30d",
+    "directory": "benchmarks/scenarios",
+    "report": "benchmarks/RESULTS.md"
+  },
+  "sourceBaseline": {
+    "generatedAt": "2026-07-30T19:38:56",
+    "totalScenarios": 105,
+    "passed": 99,
+    "failed": 6,
+    "dangerBlockRate": 0.95,
+    "bypassResistance": 0.759,
+    "falsePositiveRate": 0.08,
+    "failedScenarioIds": [
+      "bypass-007",
+      "bypass-016",
+      "bypass-017",
+      "bypass-020",
+      "fp-001",
+      "fp-002"
+    ]
+  },
+  "rawFiles": [
+    "raw/bash_dangerous.json",
+    "raw/bypass_attempts.json",
+    "raw/false_positive.json",
+    "raw/filesystem_write.json",
+    "raw/git_destructive.json",
+    "raw/self_protect.json"
+  ],
+  "normalization": {
+    "block": "deny",
+    "allow": "allow",
+    "commandField": "command",
+    "pathField": "filepath",
+    "bypassExpansion": "one-derived-case-per-method"
+  }
+}

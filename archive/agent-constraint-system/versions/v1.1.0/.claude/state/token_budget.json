@@ -1,0 +1,8 @@
+{
+  "session_started": 1780488565.250992,
+  "total_tokens": 1666,
+  "tool_calls": 15,
+  "read_files": {},
+  "warnings_issued": 0,
+  "mode": "deploy"
+}

@@ -1,0 +1,28 @@
+{
+  "hooks": {
+    "BeforeTool": [
+      {
+        "matcher": "run_shell_command|execute_command|write_file|replace|read_file",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 $HOME/.codebuddy/hooks/acs_orchestrator.py",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "AfterTool": [
+      {
+        "matcher": "run_shell_command|execute_command|write_file|replace",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 $HOME/.codebuddy/hooks/acs_orchestrator.py",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}

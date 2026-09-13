@@ -1,0 +1,37 @@
+{
+  "_comment": "v1.2.0 hook orchestrator 配置。P0-1: proposal_guard 从 PreToolUse 移到 PostToolUse（审计不拦截）",
+  "_default_behavior": "missing hook → allow + warning; timeout → allow + warning",
+  "PreToolUse": {
+    "Write|Edit": [
+      "acs_lite.py",
+      "filesystem_guard.py"
+    ],
+    "Bash": [
+      "acs_lite.py",
+      "sed_guard.py",
+      "filesystem_guard.py"
+    ],
+    "Read": [
+      "read_guard.py"
+    ]
+  },
+  "PostToolUse": {
+    "Write|Edit|Bash": [
+      "abi_guard.py",
+      "audit_hook.py",
+      "token_budget.py",
+      "risk_engine.py"
+    ],
+    "Write|Edit": [
+      "proposal_guard.py"
+    ],
+    "Read": [
+      "agent_memory.py"
+    ]
+  },
+  "Stop": [
+    "acs_lite.py status",
+    "stability_report.py check",
+    "runtime_loop.py tick --reason session_end"
+  ]
+}

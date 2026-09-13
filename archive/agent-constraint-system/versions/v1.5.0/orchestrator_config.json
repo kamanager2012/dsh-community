@@ -1,0 +1,37 @@
+{
+  "_comment": "v5.0 统一配置 - 与 settings.json hooks 保持一致。2026-06-09 审计后更新。",
+  "_default_behavior": "missing hook → allow + warning; timeout → allow + warning",
+  "PreToolUse": {
+    "Write|Edit": [
+      "acs_lite.py",
+      "guard.py",
+      "filesystem_guard.py",
+      "proposal_guard.py",
+      "authority_invariant.py",
+      "shadow_workspace.py",
+      "abi_guard.py"
+    ],
+    "Bash": [
+      "acs_lite.py",
+      "bash_guard.py",
+      "sed_guard.py",
+      "filesystem_guard.py"
+    ],
+    "Read": [
+      "read_guard.py"
+    ]
+  },
+  "PostToolUse": {
+    "Write|Edit|Bash": [
+      "audit_hook.py",
+      "token_budget.py"
+    ],
+    "Write": [
+      "risk_engine.py assess --stdin"
+    ]
+  },
+  "Stop": [
+    "acs_lite.py status",
+    "stability_report.py check"
+  ]
+}

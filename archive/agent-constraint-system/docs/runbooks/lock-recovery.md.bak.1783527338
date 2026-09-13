@@ -1,0 +1,138 @@
+# Runbook: ACS 锁定恢复
+
+> **权威文档** — 其他位置的解锁说明均为索引，以此文档为准。
+
+## 判断是否锁定
+
+```bash
+python3 ~/.claude/hooks/acs_lite.py status
+```
+
+看到 `locked: YES` 即锁定。
+
+## 解锁（必须两步，缺一不可）
+
+```bash
+# 步骤 1：清除 LOCKED 文件
+python3 ~/.claude/hooks/acs_lite.py unlock
+
+# 步骤 2：清空违规记录（不清会导致下一条命令立即重新锁定）
+python3 -c "
+import json
+json.dump({'events': []}, open('/home/jamesoldman/.claude/runtime/violations.json', 'w'))
+"
+
+# 验证
+python3 ~/.claude/hooks/acs_lite.py status
+```
+
+### 为什么必须两步
+
+`unlock` 只删除 LOCKED 文件，不清理 VIOLATIONS.json。
+下一条命令触发新违规后，ACS 用旧的 window_score + 新违规重新计算，立刻超过阈值 80，再次锁定。
+Haiku/Sonnet/Opus 都掉进过这个坑。
+
+### Agent 行为铁律
+
+ACS 锁定时，Agent 必须自己执行上述两步解锁，不要让用户手动操作。
+`unlock` 是白名单命令，锁死状态下也能执行。
+
+## 如果反复锁
+
+```bash
+python3 -c "
+import json
+v = json.load(open('/home/jamesoldman/.claude/runtime/violations.json'))
+for e in v['events'][-5:]:
+    print(f'{e[\"score\"]:>3d}  {e[\"reason\"]}')
+"
+```
+
+常见原因：
+- 写了 PROTECTED 路径（`.claude/audit/`、`.claude/hooks/`）
+- scope 外写入
+- Shadow mode 下直写生产路径
+
+## Scope 管理（设置可写目录名单）
+
+### 什么是 Scope
+
+Scope 是 ACS 允许写入的文件/目录白名单。**不在 scope 内的任何 Write/Edit 都会被拦截**（每次 +40 分，4 次即锁）。
+
+### 初始化 Scope（新任务开始时必须设置）
+
+```bash
+# 基本用法：指定任务 ID 和允许写入的路径列表
+python3 ~/.claude/hooks/acs_lite.py init <task_id> "path1,path2,path3,..."
+
+# 示例：5 个文件的修复任务
+python3 ~/.claude/hooks/acs_lite.py init fix-login \
+  "src/auth/login.py,src/auth/session.py,src/utils/crypto.py"
+
+# 包含目录（递归）
+python3 ~/.claude/hooks/acs_lite.py init refactor-auth \
+  "src/auth,src/middleware,scripts/migrate.py"
+```
+
+### 扩展 Scope（中途增加新文件）
+
+任务进行中发现需要写新文件时，**不要直接写**——先扩 scope：
+
+```bash
+# 方式一：re-init（覆盖原 scope）
+python3 ~/.claude/hooks/acs_lite.py init <same_task_id> \
+  "old_file1.py,old_file2.py,new_file1.py,new_file2.py"
+
+# 方式二：用 acs-task.sh 追加
+~/.claude/hooks/acs-task.sh <task_id> \
+  "old_file1.py,old_file2.py,new_file1.py,new_file2.py"
+```
+
+### `--proposal` 标志
+
+| 无 `--proposal` | 有 `--proposal` |
+|-----------------|-----------------|
+| scope 内直接写入 | scope 内写入需先 /proposal 审批 |
+| scope 外被拦截 | scope 外写入需 /proposal 审批 |
+| 适合单人快速开发 | 适合多人协作/高风险变更 |
+
+```bash
+# 开发模式（推荐）：scope 内直接写
+python3 ~/.claude/hooks/acs_lite.py init my-task "src/engine/a.py,src/engine/b.py"
+
+# 提案模式：scope 内外都需要审批
+python3 ~/.claude/hooks/acs_lite.py init my-task "src/engine/a.py" --proposal
+```
+
+### 常见错误：写 scope 外文件被锁
+
+```
+症状：每次 Write → "BLOCKED: proposal required (window=40/80/120/...) → locked"
+根因：目标文件不在 scope 白名单中
+修复：重新 init，把目标文件加入 scope
+```
+
+### 铁律
+
+1. **新建或修改文件前，先确认它在 scope 内**
+2. `acs_lite.py init` 会清空违规记录，所以扩展 scope 比尝试直写更安全
+3. scope 中文件路径从项目根目录算（如 `src/engine/_clck_registry.py`）
+4. 跨项目写文件必须用绝对路径（如 `/home/jamesoldman/agent-constraint-system/runbooks/lock-recovery.md`）
+5. 目录形式（如 `src/engine`）会递归包含该目录下所有文件
+
+### 真实案例：CLCK Guard 实现 (2026-06-11)
+
+```
+任务：b-phase-source-update，scope 只有 5 个旧文件
+需要写 4 个新文件：_clck_registry.py, _clck_guard.py, clck_audit.py, sequence_risk.py
+结果：每写一个新文件 → no_proposal +40 → 3 次后 window=180 → 锁
+根因：新文件不在 scope 白名单
+修复：re-init 把 9 个文件全部加入 scope
+教训：任务开始前先列全要写的文件，一次性设好 scope
+```
+
+## 文档索引
+
+- 唯一权威: `~/agent-constraint-system/runbooks/lock-recovery.md`（本文档）
+- CLAUDE.md → 指向本文档
+- 其他位置不得重复解锁说明

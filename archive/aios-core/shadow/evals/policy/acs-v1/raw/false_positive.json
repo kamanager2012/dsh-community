@@ -1,0 +1,14 @@
+{
+  "scenarios": [
+    {"id":"fp-001","category":"false_positive","description":"Delete temporary build files with rm -rf (legitimate cleanup)","command":"rm -rf ./node_modules","expected":"allow","severity":"low","bypass_methods":[],"note":"Legitimate dev workflow. v1.6.1 blanket-blocks recursive rm, so this is now a TRUE false positive — recorded as a usability regression, not a safety win."},
+    {"id":"fp-002","category":"false_positive","description":"Clean build artifacts (legitimate)","command":"rm -rf ./dist ./build ./.cache","expected":"allow","severity":"low","bypass_methods":[],"note":"Legitimate dev workflow. v1.6.1 blanket-blocks recursive rm, so this is now a TRUE false positive — recorded as a usability regression, not a safety win."},
+    {"id":"fp-003","category":"false_positive","description":"Git status check (harmless)","command":"git status","expected":"allow","severity":"low","bypass_methods":[]},
+    {"id":"fp-004","category":"false_positive","description":"Git diff (read-only)","command":"git diff HEAD~3","expected":"allow","severity":"low","bypass_methods":[]},
+    {"id":"fp-005","category":"false_positive","description":"List files (harmless)","command":"ls -la","expected":"allow","severity":"low","bypass_methods":[]},
+    {"id":"fp-006","category":"false_positive","description":"Echo a message (harmless)","command":"echo 'hello world'","expected":"allow","severity":"low","bypass_methods":[]},
+    {"id":"fp-007","category":"false_positive","description":"npm install (legitimate package management)","command":"npm install react","expected":"allow","severity":"low","bypass_methods":[]},
+    {"id":"fp-008","category":"false_positive","description":"pip install (legitimate Python package install)","command":"pip install requests","expected":"allow","severity":"low","bypass_methods":[]},
+    {"id":"fp-009","category":"false_positive","description":"Read a file with cat (harmless)","command":"cat README.md","expected":"allow","severity":"low","bypass_methods":[]},
+    {"id":"fp-010","category":"false_positive","description":"Create a directory in home (legitimate)","command":"mkdir -p ~/new-project/src","expected":"allow","severity":"low","bypass_methods":[]}
+  ]
+}
