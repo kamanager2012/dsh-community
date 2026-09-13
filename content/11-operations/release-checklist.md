@@ -6,7 +6,7 @@
 
 - [ ] 普通用户的下载、安装和 Release 链接只指向 [`dsh-community/releases/latest`](https://github.com/kamanager2012/dsh-community/releases/latest)；
 - [ ] `deepseek-harness-suite` 明确标为已归档 Labs，不作为发行渠道；
-- [ ] `dsh-community-edition` 明确标为 Merge & Archive，不再作为并行产品；
+- [ ] 不再有指向已删除独立仓（`dsh-marketplace` / `dsh-community-plugins` / `dsh-community-edition`）的链接或下载承诺；
 - [ ] 插件目录被描述为 `dsh-community/packages/marketplace/catalog.json`，而不是独立 Plugin Manager；
 - [ ] Marketplace CLI（`dsh-community/packages/marketplace`）被描述为 Discovery / Distribution UX，而不是 Runtime 或 Package Manager replacement；
 - [ ] 官方 Runtime 的 Agent loop、工具执行和 Session persistence 没有被社区仓库的 README 重新认领；

@@ -111,4 +111,4 @@ Historical independent numbers: v0.1.2–v0.1.6 (not a user download)
 - [`dsh-community` changelog](https://github.com/kamanager2012/dsh-community/blob/main/CHANGELOG.md)
 - [`dsh-community` contract snapshots](https://github.com/kamanager2012/dsh-community/tree/main/contracts)
 - [`deepseek-harness-suite` Actions](https://github.com/kamanager2012/deepseek-harness-suite/actions)
-- [`dsh-community-edition` freeze commit `09eb1c0`](https://github.com/kamanager2012/dsh-community-edition/commit/09eb1c0)
+- `dsh-community-edition` freeze commit `09eb1c0`（独立仓已删除，不再可链接）
