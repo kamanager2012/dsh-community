@@ -2,7 +2,7 @@
 
 官方是内核，社区基于官方内核。下面按当前真实发行状态定义产品端；不要混淆 **操作系统目标**、**UI 形态**、**已发行端** 和 **实验端**。
 
-[English](community-endpoints.en.md) · [中文使用指南](getting-started.md) · [在线 Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/)
+[English](community-endpoints.en.md) · [中文使用指南](getting-started.md) · [在线 Handbook](https://kamanager2012.github.io/dsh-community/)
 
 ## 三个不能混为一谈的层次
 

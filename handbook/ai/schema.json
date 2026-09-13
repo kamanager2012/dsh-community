@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://kamanager2012.github.io/deepseek-harness-handbook/ai/schema.json",
+  "$id": "https://kamanager2012.github.io/dsh-community/ai/schema.json",
   "title": "DeepSeek Harness AI retrieval record",
   "type": "object",
   "required": [

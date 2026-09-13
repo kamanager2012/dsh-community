@@ -1,6 +1,6 @@
 # dsh-marketplace 使用与数据流
 
-[English](usage.en.md) · [返回中文 README](../README.md) · [在线 Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/)
+[English](usage.en.md) · [返回中文 README](../README.md) · [在线 Handbook](https://kamanager2012.github.io/dsh-community/)
 
 ## 它是什么
 
@@ -85,5 +85,5 @@ npm test
 - [Canonical Product：dsh-community](https://github.com/kamanager2012/dsh-community)
 - [插件目录 catalog.json](../catalog.json)
 - [已归档 Labs](https://github.com/kamanager2012/deepseek-harness-suite)（不要从那里安装）
-- [Handbook 插件章节](https://kamanager2012.github.io/deepseek-harness-handbook/content/10-plugins/)
+- [Handbook 插件章节](https://kamanager2012.github.io/dsh-community/content/10-plugins/)
 - [官方 Runtime](https://github.com/deepseek-ai/deepseek-harness)

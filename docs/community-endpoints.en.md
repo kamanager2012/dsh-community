@@ -3,7 +3,7 @@
 Official is the kernel; community is based on that kernel. This document follows the
 current shipped reality. Do not mix **OS targets**, **UI surfaces**, **shipped endpoints**, and **experimental endpoints**.
 
-[简体中文](community-endpoints.md) · [Getting started](getting-started.en.md) · [Online Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/en/)
+[简体中文](community-endpoints.md) · [Getting started](getting-started.en.md) · [Online Handbook](https://kamanager2012.github.io/dsh-community/en/)
 
 ## Three layers that are not the same thing
 

@@ -77,7 +77,7 @@ session persistence, official UI, and core lifecycle.
 | LAN Remote Host access / Mobile foundation | In-repo `packages/remote-adapter` (Noise IK + LAN transport merged; mobile endpoint remains [UNVERIFIED]) |
 | Use the Windows Desktop shell | [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) Setup.exe, or `pnpm desktop` |
 | Use the macOS Desktop shell | [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) dmg, or `pnpm desktop` |
-| Read operational guidance | [DeepSeek Harness Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/) |
+| Read operational guidance | [DeepSeek Harness Handbook](https://kamanager2012.github.io/dsh-community/) |
 | Verified community plugins | Desktop marketplace page, in-repo `pnpm marketplace`, and [`packages/marketplace/catalog.json`](packages/marketplace/catalog.json) — not an awesome list |
 
 Only this repository is the download entry. Handbook is the other live repo. Suite, the standalone marketplace, the standalone plugins registry, and Edition are archived.
@@ -172,7 +172,7 @@ tests/upstream-contract Compatibility and upstream contract checks
 ```
 
 Start with the [Getting Started guide](docs/getting-started.en.md). Then read [ARCHITECTURE.md](ARCHITECTURE.md), the [release guide](docs/release.md),
-the [contract snapshots](contracts/README.md), and the [Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/)
+the [contract snapshots](contracts/README.md), and the [Handbook](https://kamanager2012.github.io/dsh-community/)
 before changing the runtime boundary.
 
 ## Evidence language

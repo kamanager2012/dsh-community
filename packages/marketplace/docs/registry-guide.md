@@ -1,6 +1,6 @@
 # 插件注册表与验证指南
 
-[English](registry-guide.en.md) · [返回中文 README](../README.md) · [在线 Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/)
+[English](registry-guide.en.md) · [返回中文 README](../README.md) · [在线 Handbook](https://kamanager2012.github.io/dsh-community/)
 
 ## 这份目录负责什么
 
@@ -100,5 +100,5 @@ existence
 - [Canonical Product：dsh-community](https://github.com/kamanager2012/dsh-community)
 - [已归档 Labs](https://github.com/kamanager2012/deepseek-harness-suite)（不要从那里安装）
 - [Marketplace CLI](../README.md)
-- [Handbook 插件章节](https://kamanager2012.github.io/deepseek-harness-handbook/content/10-plugins/)
+- [Handbook 插件章节](https://kamanager2012.github.io/dsh-community/content/10-plugins/)
 - [官方 Runtime](https://github.com/deepseek-ai/deepseek-harness)
