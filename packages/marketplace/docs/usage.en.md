@@ -1,6 +1,6 @@
 # dsh-marketplace Usage and Data Flow
 
-[简体中文](usage.md) · [Back to English README](../README.en.md) · [Online Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/en/)
+[简体中文](usage.md) · [Back to English README](../README.en.md) · [Online Handbook](https://kamanager2012.github.io/dsh-community/en/)
 
 ## What it is
 
@@ -87,5 +87,5 @@ When catalog fields change, update this package's [`catalog.json`](../catalog.js
 - [Canonical Product: dsh-community](https://github.com/kamanager2012/dsh-community)
 - [Plugin catalog](../catalog.json)
 - [Archived Labs](https://github.com/kamanager2012/deepseek-harness-suite) (do not install from there)
-- [Handbook plugin section](https://kamanager2012.github.io/deepseek-harness-handbook/en/10-plugins/)
+- [Handbook plugin section](https://kamanager2012.github.io/dsh-community/en/10-plugins/)
 - [Official Runtime](https://github.com/deepseek-ai/deepseek-harness)

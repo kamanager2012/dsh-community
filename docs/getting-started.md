@@ -2,7 +2,7 @@
 
 > 面向第一次使用者的任务型入口。事实快照：2026-08-21。
 
-[English](getting-started.en.md) · [返回中文 README](../README.md) · [发行端与实验端定义](community-endpoints.md) · [在线 Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/)
+[English](getting-started.en.md) · [返回中文 README](../README.md) · [发行端与实验端定义](community-endpoints.md) · [在线 Handbook](https://kamanager2012.github.io/dsh-community/)
 
 ## 先选正确入口
 
@@ -13,7 +13,7 @@
 | 下载 Windows 桌面包 | [Latest `v0.1.1-rc.2`](https://github.com/kamanager2012/dsh-community/releases/latest) | 新 tag 需重跑 exact-asset smoke；完整用户闭环仍需复核 |
 | 下载 macOS 桌面包 | [Latest `v0.1.1-rc.2`](https://github.com/kamanager2012/dsh-community/releases/latest) | 新 tag 需重跑 exact-asset smoke；完整用户闭环仍需复核 |
 | 使用 WSL/Linux 终端 | `dsh-community` / `pnpm tui` | Linux 的主力 Community endpoint |
-| 查完整操作手册 | [DeepSeek Harness Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/) | Provider、Session、安全、自动化和验收 |
+| 查完整操作手册 | [DeepSeek Harness Handbook](https://kamanager2012.github.io/dsh-community/) | Provider、Session、安全、自动化和验收 |
 
 不要从已归档的 Suite、独立 Marketplace、独立 Plugins 或 Edition 下载正式客户端。**Published Latest** 仍以 [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) 和 `current-release.json` 中的 `githubLatestTag / publishedAssets / publishedReleaseEvidence` 为准；发行产物带 keyless cosign 签名（`.sigstore.json`）。不要下载历史编号 `v0.1.2`–`v0.1.6` 当当前产品。官方 Web 是上游兼容入口，不是 Community 发行端。五个 Community endpoints（四个当前已发行 + Android 活跃源码 `[UNVERIFIED]`）的定义见 [community-endpoints.md](community-endpoints.md)。详见[版本策略](version-policy.md)。
 
@@ -80,7 +80,7 @@ dsh-community desktop         # 启动桌面壳
 
 - 官方 Session 真源仍在 `~/.dsh`；Community 不维护第二套等价 Session persistence。
 - `new`、`resume` 和 `sessions` 是入口体验，不代表社区层拥有官方 Session 数据格式。
-- 需要备份、恢复、事件阅读或自动化时，先看 Handbook 的 [Session 章节](https://kamanager2012.github.io/deepseek-harness-handbook/content/07-sessions/)。
+- 需要备份、恢复、事件阅读或自动化时，先看 Handbook 的 [Session 章节](https://kamanager2012.github.io/dsh-community/content/07-sessions/)。
 - 不要把 API key、私有 Session 或客户数据放进仓库、截图或 issue。
 
 ## 插件路径

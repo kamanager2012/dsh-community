@@ -12,8 +12,8 @@ upstream Runtime or invent a second command contract.
 
 ## Read online
 
-- [English handbook](https://kamanager2012.github.io/deepseek-harness-handbook/en/)
-- [Chinese handbook](https://kamanager2012.github.io/deepseek-harness-handbook/)
+- [English handbook](https://kamanager2012.github.io/dsh-community/en/)
+- [Chinese handbook](https://kamanager2012.github.io/dsh-community/)
 - [English translation status](en/translation-status.md)
 - [Machine-readable AI catalog](ai/README.md)
 - [Community ecosystem map](en/00-overview/community-ecosystem.md)

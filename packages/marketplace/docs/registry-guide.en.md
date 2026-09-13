@@ -1,6 +1,6 @@
 # Plugin Registry and Verification Guide
 
-[简体中文](registry-guide.md) · [Back to package README](../README.md) · [Online Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/en/)
+[简体中文](registry-guide.md) · [Back to package README](../README.md) · [Online Handbook](https://kamanager2012.github.io/dsh-community/en/)
 
 ## What this catalog owns
 
@@ -100,5 +100,5 @@ This table describes **compatibility** evidence, a separate axis from `security.
 - [Canonical Product: dsh-community](https://github.com/kamanager2012/dsh-community)
 - [Archived Labs](https://github.com/kamanager2012/deepseek-harness-suite) (do not install from there)
 - [Marketplace CLI](../README.md)
-- [Handbook plugin section](https://kamanager2012.github.io/deepseek-harness-handbook/en/10-plugins/)
+- [Handbook plugin section](https://kamanager2012.github.io/dsh-community/en/10-plugins/)
 - [Official Runtime](https://github.com/deepseek-ai/deepseek-harness)

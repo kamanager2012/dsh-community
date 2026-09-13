@@ -2,7 +2,7 @@
 
 > A task-oriented entry point for first-time users. Evidence snapshot: 2026-08-21.
 
-[简体中文](getting-started.md) · [Back to English README](../README.en.md) · [Community endpoints](community-endpoints.en.md) · [Online Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/en/)
+[简体中文](getting-started.md) · [Back to English README](../README.en.md) · [Community endpoints](community-endpoints.en.md) · [Online Handbook](https://kamanager2012.github.io/dsh-community/en/)
 
 ## Choose the right entry
 
@@ -13,7 +13,7 @@
 | Download the Windows Desktop build | [Latest `v0.1.1-rc.2`](https://github.com/kamanager2012/dsh-community/releases/latest) | Re-run exact-asset smoke on the new tag; full user loop still requires review |
 | Download the macOS Desktop build | [Latest `v0.1.1-rc.2`](https://github.com/kamanager2012/dsh-community/releases/latest) | Re-run exact-asset smoke on the new tag; full user loop still requires review |
 | Use the WSL/Linux Terminal | `dsh-community` / `pnpm tui` | Primary Linux Community endpoint |
-| Read the full operational guide | [DeepSeek Harness Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/en/) | Providers, Sessions, security, automation, and acceptance |
+| Read the full operational guide | [DeepSeek Harness Handbook](https://kamanager2012.github.io/dsh-community/en/) | Providers, Sessions, security, automation, and acceptance |
 
 Do not download a formal client from archived Suite, the standalone Marketplace, the standalone Plugins registry, or Edition. **Published Latest** is defined by [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) plus `githubLatestTag / publishedAssets / publishedReleaseEvidence` in `current-release.json`; published assets carry keyless cosign signatures (`.sigstore.json`). Do not download historical `v0.1.2`–`v0.1.6` as the current product. Official Web is an upstream companion, not a Community endpoint. The product has five Community endpoints: four currently published plus the active-source Android endpoint, which remains `[UNVERIFIED]` and outside Published Latest. See [community-endpoints.en.md](community-endpoints.en.md) and the [version policy](version-policy.md).
 
@@ -80,7 +80,7 @@ Source development also supports `pnpm start`, `pnpm new`, `pnpm run doctor`, an
 
 - The official Session source of truth remains `~/.dsh`; Community does not maintain an equivalent second persistence layer.
 - `new`, `resume`, and `sessions` are entry-point UX. They do not make Community the owner of the official Session format.
-- For backup, recovery, event reading, or automation, start with the Handbook [Sessions section](https://kamanager2012.github.io/deepseek-harness-handbook/en/07-sessions/).
+- For backup, recovery, event reading, or automation, start with the Handbook [Sessions section](https://kamanager2012.github.io/dsh-community/en/07-sessions/).
 - Never put API keys, private Sessions, or customer data in repositories, screenshots, or issues.
 
 ## Plugin path

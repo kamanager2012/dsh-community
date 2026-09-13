@@ -24,14 +24,14 @@ than the installed version.
 | --- | --- |
 | Understand what dsh is | [What is dsh?](00-overview/what-is-dsh.md) → [Five-layer model](00-overview/harness-five-layers.md) |
 | Install and run it | [Installation](01-installation/README.md) → [First Web UI task](02-web-ui/first-run.md) |
-| Run a scripted task | [CLI commands](03-cli/commands.md) → the Chinese [headless CLI guide](https://kamanager2012.github.io/deepseek-harness-handbook/content/automation/headless-cli/) |
-| Configure DeepSeek | [Official Provider](04-providers/deepseek.md) → the Chinese [Provider guide](https://kamanager2012.github.io/deepseek-harness-handbook/content/04-providers/) |
+| Run a scripted task | [CLI commands](03-cli/commands.md) → the Chinese [headless CLI guide](https://kamanager2012.github.io/dsh-community/content/automation/headless-cli/) |
+| Configure DeepSeek | [Official Provider](04-providers/deepseek.md) → the Chinese [Provider guide](https://kamanager2012.github.io/dsh-community/content/04-providers/) |
 | Deliver a code change safely | [Main workflow](05-workflows/from-blank-to-delivery.md) |
 | Diagnose a Provider failure | [Provider troubleshooting](04-providers/troubleshooting.md) |
 | Recover or clean up a Session | [Session recovery](07-sessions/recovery.md) |
 | Accept a result with external checks | [Review and acceptance](05-workflows/review-and-acceptance.md) |
 | Find common failure patterns | [FAQ](12-reference/faq.md) |
-| Review permissions and data flow | [Security](06-security/README.md) → the Chinese [security chapters](https://kamanager2012.github.io/deepseek-harness-handbook/content/06-security/) |
+| Review permissions and data flow | [Security](06-security/README.md) → the Chinese [security chapters](https://kamanager2012.github.io/dsh-community/content/06-security/) |
 | Look up a term | [Glossary](12-reference/glossary.md) |
 | Understand the community ecosystem | [Community ecosystem](00-overview/community-ecosystem.md) |
 | Historical Labs freeze notes | [Labs handoff](11-operations/community-labs-handoff.md) |

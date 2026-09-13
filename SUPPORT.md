@@ -39,6 +39,6 @@ Advisory.
 ## Usage and troubleshooting
 
 Start with the [Getting Started guide](docs/getting-started.md) and the
-[DeepSeek Harness Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/).
+[DeepSeek Harness Handbook](https://kamanager2012.github.io/dsh-community/).
 When asking for help, include the dsh-community version, official DSH version,
 OS, exact command/path, and sanitized error evidence.

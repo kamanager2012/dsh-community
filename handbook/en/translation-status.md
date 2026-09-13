@@ -1,6 +1,6 @@
 # English edition status
 
-This is the maintained English edition of the [DeepSeek Harness Chinese Handbook](https://kamanager2012.github.io/deepseek-harness-handbook/).
+This is the maintained English edition of the [DeepSeek Harness Chinese Handbook](https://kamanager2012.github.io/dsh-community/).
 It prioritizes the chapters that contain operating judgment rather than translating every
 reference page in filename order. The current path covers core concepts, installation,
 the first Web UI task, CLI, DeepSeek Provider setup and troubleshooting, the main delivery
@@ -23,4 +23,4 @@ coverage comes first.
 - When a version or capability may change, follow current upstream documentation and `--help` output.
 
 Use the [English handbook home](index.md) to read the available path. The complete Chinese
-edition is available on the [online handbook](https://kamanager2012.github.io/deepseek-harness-handbook/).
+edition is available on the [online handbook](https://kamanager2012.github.io/dsh-community/).
