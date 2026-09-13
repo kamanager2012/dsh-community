@@ -18,7 +18,7 @@ packages/marketplace/catalog.json
 
 ## 安装
 
-需要 Node.js 22+，并确保官方 `dsh` CLI 在 PATH 中。真源在 `dsh-community`，不要再从独立仓 `npm i -g github:kamanager2012/dsh-marketplace`。
+需要 Node.js 22+，并确保官方 `dsh` CLI 在 PATH 中。真源在 `dsh-community`；历史独立仓已删除，`npm i -g github:kamanager2012/dsh-marketplace` 不再有效。
 
 ```sh
 npm i -g @deepseek-ai/dsh

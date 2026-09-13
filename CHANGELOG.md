@@ -66,6 +66,7 @@
 - 新增手动、billable 的 exact-release WSL/Linux user-loop evidence gate：`new → real model ACK → clean exit → resume same official Session → second real model ACK`，隔离 `DSH_HOME` 且只输出脱敏证据。当前仍保持 `[UNVERIFIED]`，直到有真实 `DEEPSEEK_API_KEY` 的成功 Release run，workflow 存在本身不升级证据等级。
 - Marketplace CLI 并入本仓 `packages/marketplace`（`pnpm marketplace`）。独立仓 `dsh-marketplace`、`dsh-community-plugins` 与 Community Labs `deepseek-harness-suite` 已归档。插件兼容性目录现为 `packages/marketplace/catalog.json`。
 - `DshMcpBridge` 从 `@dsh-community/dsh-bridge` 导出。Windows / macOS 发行任务在打包后同样跑 asar vendor=0 护栏。
+- 仓库收敛收尾：独立仓 `dsh-marketplace`、`dsh-community-plugins`、`dsh-community-edition` 在内容合流后于 2026-09-13 删除；README / ECOSYSTEM / SECURITY 与手册仓中的跳转说明同步更新。
 
 ## 0.1.2-alpha.4 — Candidate Source (2026-09-02)
 
@@ -224,8 +225,8 @@ Release: https://github.com/kamanager2012/dsh-community/releases/tag/v0.1.1
 
 0.1.1 = 0.1.1-preview 之上新增桌面内嵌市场页与壳打磨，注册表同时扩容。
 
-- Desktop 社区市场页（托盘「社区市场」/ Host → Community marketplace）：只读浏览 [dsh-community-plugins](https://github.com/kamanager2012/dsh-community-plugins) 目录，10 分钟在线缓存，抓取失败回退 userData 缓存
-- 安装仍走官方 `dsh plugin add <name>` 或 [dsh-marketplace](https://github.com/kamanager2012/dsh-marketplace) CLI；Desktop 不做第二套安装器
+- Desktop 社区市场页（托盘「社区市场」/ Host → Community marketplace）：只读浏览 `dsh-community-plugins` 目录，10 分钟在线缓存，抓取失败回退 userData 缓存
+- 安装仍走官方 `dsh plugin add <name>` 或 `dsh-marketplace` CLI；Desktop 不做第二套安装器
 - 注册表收录 7 个社区验证插件（dsh-compressor / dsh-context / dsh-lan-access / dsh-memory-vault / dsh-plugin-hello / dsh-rtk-optimizer / dsh-voice），全部在 rc.6 上 `dsh plugin add` 安装 + 合成验证通过
 - Desktop settings：hide-to-tray、可选隔离官方数据到 `userData/isolated-dsh`（改动重启 `dsh web`）
 - 官方 session 列表显示 mtime，可复制 `dsh-community-tui --resume <id>`

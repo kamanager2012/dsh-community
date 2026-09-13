@@ -141,10 +141,10 @@ without retesting.
 ### Archived / historical
 
 - **deepseek-harness-suite** — archived Labs
-- **dsh-community-edition** — archived
-- **dsh-marketplace** — archived standalone registry/CLI; functionality moved
-  into this repository
-- **dsh-community-plugins** — archived standalone plugin registry
+
+The former standalone repositories `dsh-marketplace`, `dsh-community-plugins`,
+and `dsh-community-edition` were merged into this repository and deleted on
+2026-09-13.
 
 Archived repositories are not current download channels.
 
