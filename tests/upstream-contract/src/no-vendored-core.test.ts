@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, lstatSync } from 'node:fs'
 import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
@@ -59,12 +59,15 @@ function walkFiles(dir: string, into: string[]): void {
   for (const name of readdirSync(dir)) {
     if (SKIP_DIRS.has(name)) continue
     const full = join(dir, name)
-    const stat = statSync(full)
+    // lstat, not stat: frozen archive trees can carry symlinks from their
+    // original repositories, including dangling ones. Symlinks are listed
+    // (name/path checks still see them) but never followed.
+    const stat = lstatSync(full)
     if (stat.isDirectory()) {
       walkFiles(full, into)
       continue
     }
-    if (stat.isFile()) into.push(full)
+    if (stat.isFile() || stat.isSymbolicLink()) into.push(full)
   }
 }
 
@@ -118,6 +121,7 @@ function collectRepoSourceEntries(): SourceEntry[] {
   return files
     .filter((file) => {
       if (file === thisFile) return false
+      if (!lstatSync(file).isFile()) return false // symlinks hold no content of their own (and may dangle)
       const dot = file.lastIndexOf('.')
       return dot !== -1 && FINGERPRINT_EXTS.has(file.slice(dot).toLowerCase())
     })
