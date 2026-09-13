@@ -142,17 +142,19 @@ without retesting.
 ### Archived / historical
 
 - **`archive/deepseek-harness-suite/`** (formerly the standalone `deepseek-harness-suite`) — archived Labs, merged with full history and deleted on 2026-09-13
-- **`archive/aios-core/`, `archive/governor-core/`, `archive/agent-constraint-system/`** (formerly the standalone `aios-core`, `governor-core`, and `agent-constraint-system` repositories) — the frozen Agent Governance Stack lineage, merged with full history and deleted on 2026-09-13
 
 The former standalone repositories `dsh-marketplace`, `dsh-community-plugins`,
 `dsh-community-edition`, `deepseek-harness-suite`, and `deepseek-harness-handbook`
 were merged into this repository and deleted on 2026-09-13 (the handbook content
 lives in [`handbook/`](handbook/), the frozen Labs code in
 [`archive/deepseek-harness-suite/`](archive/deepseek-harness-suite/)). The
-frozen Agent Governance Stack lineage (`agent-constraint-system`,
-`governor-core`, `aios-core`) was likewise merged with full history into
-[`archive/`](archive/), and its three standalone repositories were deleted the
-same day.
+**Agent Governance Stack** (`aios-core`, `governor-core`,
+`agent-constraint-system`) is a separate, independent project line: it was
+briefly merged into this repository's `archive/` on 2026-09-13 and reverted on
+2026-09-14. `aios-core` lives on as its own repository
+[`kamanager2012/aios-core`](https://github.com/kamanager2012/aios-core); the
+`governor-core` and `agent-constraint-system` histories are preserved there as
+the `legacy/governor-core` and `legacy/agent-constraint-system` branches.
 
 Archived repositories are not current download channels.
 

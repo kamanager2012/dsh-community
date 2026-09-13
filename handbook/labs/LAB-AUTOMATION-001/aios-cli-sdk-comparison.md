@@ -33,7 +33,7 @@
 
 AIOS 基线和既有排除项见 [`AIOS-WORKSPACE-BASELINE-2026-08-14.yaml`](../../evidence/records/AIOS-WORKSPACE-BASELINE-2026-08-14.yaml)。Python SDK 的固定源码行为见 [`SOURCE-PYTHON-SDK-47F9438-2026-08-14.yaml`](../../evidence/records/SOURCE-PYTHON-SDK-47F9438-2026-08-14.yaml)。
 
-AIOS Core 的完整仓库历史已并入本手册所在仓库（见 `archive/aios-core/`，独立仓于 2026-09-13 删除）；固定版本 `aios-core@6af8968` 可直接从该仓库 git 历史检出，检出内容与原始仓一致。
+AIOS Core 是独立项目仓库：[`kamanager2012/aios-core`](https://github.com/kamanager2012/aios-core)。固定版本 `aios-core@6af8968` 可直接从该仓检出，检出内容与原始仓一致。
 
 ## 执行矩阵
 

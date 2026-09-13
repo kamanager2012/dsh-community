@@ -68,7 +68,7 @@
 - `DshMcpBridge` 从 `@dsh-community/dsh-bridge` 导出。Windows / macOS 发行任务在打包后同样跑 asar vendor=0 护栏。
 - 仓库收敛收尾：独立仓 `dsh-marketplace`、`dsh-community-plugins`、`dsh-community-edition` 在内容合流后于 2026-09-13 删除；README / ECOSYSTEM / SECURITY 与手册仓中的跳转说明同步更新。
 - 旧 Labs 仓 `deepseek-harness-suite` 的完整代码与提交历史并入本仓 `archive/deepseek-harness-suite/`（其 5 个未并入 main 的分支尖端保存为 `archive/suite/*` 标签），独立仓随后于 2026-09-13 删除；独立手册仓 `deepseek-harness-handbook`（内容与历史已在本仓 `handbook/`）同日删除；README / ECOSYSTEM / 手册与 marketplace 文档中的引用同步改指仓内路径。
-- 冻结的 Agent Governance Stack 三仓以完整代码与提交历史并入本仓：`aios-core` → `archive/aios-core/`、`governor-core` → `archive/governor-core/`、`agent-constraint-system` → `archive/agent-constraint-system/`；三仓全部分支此前已并入各自默认分支（无需保留游离分支标签），独立仓于 2026-09-13 删除；手册实验固定的 workspace 版本 `aios-core@6af8968` 在本仓 git 历史中仍可直接检出。
+- 冻结的 Agent Governance Stack 三仓曾以完整代码与提交历史并入本仓 `archive/`，独立仓于 2026-09-13 删除；**2026-09-14 回退**：AIOS 是独立项目，与 dsh 无技术依赖——`aios-core` 已在独立仓 [`kamanager2012/aios-core`](https://github.com/kamanager2012/aios-core) 恢复（原始提交 SHA 与全部分支不变），`governor-core` 与 `agent-constraint-system` 的完整历史现保留为该仓 `legacy/governor-core`、`legacy/agent-constraint-system` 分支，本仓 `archive/` 中的三个副本已移除。手册实验固定的 workspace 版本 `aios-core@6af8968` 改从独立仓检出。
 - 安全修复：通过 `pnpm-workspace.yaml` 的 `overrides` 修补官方传递依赖新披露的高危漏洞——`@xmldom/xmldom` 0.8.14→0.8.15（electron 打包链，plist 现解析 0.9.12）、`js-yaml` 4.3.1→4.3.2（官方 cordis-plugin-include 传递依赖）、`sharp` 0.35.3→0.35.4（官方 dsh-attachment-local 传递依赖，与 Android 裁决同版本）。`pnpm audit --audit-level high` 恢复通过：8 high + 9 moderate → 0 high + 7 moderate。
 
 ## 0.1.2-alpha.4 — Candidate Source (2026-09-02)
