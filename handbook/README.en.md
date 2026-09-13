@@ -49,7 +49,7 @@ have separate responsibilities:
 |---|---|---|
 | [`dsh-community`](https://github.com/kamanager2012/dsh-community) | Canonical Product: Desktop, TUI, diagnostics, compatibility, and releases | **Only normal download entry** |
 | [`deepseek-harness-suite`](https://github.com/kamanager2012/deepseek-harness-suite) | Archived Labs | Frozen; do not install |
-| `deepseek-harness-handbook` | Knowledge, evidence, and operations | This repository |
+| This repo `handbook/` (formerly `deepseek-harness-handbook`) | Knowledge, evidence, and operations | In this repository |
 | [`dsh-community` packages/marketplace](https://github.com/kamanager2012/dsh-community/tree/main/packages/marketplace) | Discovery, install CLI, and `catalog.json` | In the product repo |
 
 The former standalone repositories `dsh-marketplace`, `dsh-community-plugins`,
@@ -58,7 +58,7 @@ and `dsh-community-edition` were merged into the product repo and deleted on
 
 Users should download only from
 [`dsh-community/releases/latest`](https://github.com/kamanager2012/dsh-community/releases/latest).
-Suite, the standalone Marketplace, and the standalone Plugins registry are archived. Edition is an archive. None is a second Runtime or client.
+Suite is archived; the former standalone Marketplace, Plugins registry, and Edition repositories were merged into this repository and deleted. None is a second Runtime or client.
 
 ## Evidence rules
 
