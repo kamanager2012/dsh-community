@@ -46,8 +46,7 @@ Out of scope (report upstream instead):
 - Windows SmartScreen or macOS Gatekeeper warnings on installers — this is a
   disclosed, known gap (no OS-level code signing), not a vulnerability; see
   "Release integrity".
-- Issues already superseded by the archived
-  [`dsh-community-edition`](https://github.com/kamanager2012/dsh-community-edition).
+- Issues already superseded by the current releases in this repository.
 
 ## Desktop security model
 
@@ -338,7 +337,6 @@ See [docs/remote-host-client.md](docs/remote-host-client.md). None of these Remo
 | --- | --- |
 | Current [`releases/latest`](https://github.com/kamanager2012/dsh-community/releases/latest) tag | Yes |
 | Older tags, including historical `v0.1.2`–`v0.1.6` | No — never the current download; see [docs/release.md](docs/release.md) |
-| [`dsh-community-edition`](https://github.com/kamanager2012/dsh-community-edition) | No — archived, migrated into this repository |
 
 ## Reporting a Vulnerability
 

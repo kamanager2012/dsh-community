@@ -61,16 +61,13 @@
 
 ## 社区生态导航
 
-本仓是唯一用户下载入口。插件发现 CLI 和兼容性目录也在本仓；手册仍是独立仓。Labs、独立 Marketplace、独立 Plugins 已归档。
+本仓是唯一用户下载入口。插件发现 CLI 和兼容性目录也在本仓；手册仍是独立仓。Labs 已归档；独立 Marketplace、Plugins、Edition 仓已在内容合流后删除。
 
 | 仓库 | 角色 | 现在实际是 |
 |---|---|---|
 | [`deepseek-harness-handbook`](https://github.com/kamanager2012/deepseek-harness-handbook) | 手册 | 知识 / 证据 |
 | 本仓 `packages/marketplace` | 发现 / 安装 CLI + 兼容性目录 | `pnpm marketplace`；`catalog.json` 在本包内；安装仍走官方 `dsh plugin add` |
 | [`deepseek-harness-suite`](https://github.com/kamanager2012/deepseek-harness-suite) | 已归档 Labs | 不要从那里安装 |
-| [`dsh-marketplace`](https://github.com/kamanager2012/dsh-marketplace) | 已归档 | 跳转到本仓 marketplace 包 |
-| [`dsh-community-plugins`](https://github.com/kamanager2012/dsh-community-plugins) | 已归档 | 跳转到本仓 marketplace 包 |
-| [`dsh-community-edition`](https://github.com/kamanager2012/dsh-community-edition) | 已归档 | 不要从那里下载 |
 
 官方执行核心仍是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)。社区层不重新实现 Agent loop、不另建 session 目录、不用 patch 改官方 UI。
 
