@@ -50,10 +50,11 @@ have separate responsibilities:
 | [`dsh-community`](https://github.com/kamanager2012/dsh-community) | Canonical Product: Desktop, TUI, diagnostics, compatibility, and releases | **Only normal download entry** |
 | [`deepseek-harness-suite`](https://github.com/kamanager2012/deepseek-harness-suite) | Archived Labs | Frozen; do not install |
 | `deepseek-harness-handbook` | Knowledge, evidence, and operations | This repository |
-| [`dsh-community-plugins`](https://github.com/kamanager2012/dsh-community-plugins) | Archived | Redirect to the product repo marketplace package |
 | [`dsh-community` packages/marketplace](https://github.com/kamanager2012/dsh-community/tree/main/packages/marketplace) | Discovery, install CLI, and `catalog.json` | In the product repo |
-| [`dsh-marketplace`](https://github.com/kamanager2012/dsh-marketplace) | Archived | Redirect only |
-| [`dsh-community-edition`](https://github.com/kamanager2012/dsh-community-edition) | Merge & Archive | Historical reference |
+
+The former standalone repositories `dsh-marketplace`, `dsh-community-plugins`,
+and `dsh-community-edition` were merged into the product repo and deleted on
+2026-09-13.
 
 Users should download only from
 [`dsh-community/releases/latest`](https://github.com/kamanager2012/dsh-community/releases/latest).

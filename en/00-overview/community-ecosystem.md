@@ -41,9 +41,10 @@ The five Community endpoints are **WSL/Linux Terminal, Windows Desktop, macOS De
 Linux AppImage, and Android**. The first four ship with Latest; the Android prototype
 stays in archived Labs as `[UNVERIFIED]` and is not on Latest. Official Web is the
 kernel's own UI, shares `~/.dsh`, and is not a Community endpoint.
-Do not download a client from Suite, the standalone Marketplace, the standalone
-Plugins repo, or Edition: they are archived. The plugin catalog lives in the
-product repo at `packages/marketplace/catalog.json`.
+Do not download a client from Suite (archived Labs). The standalone Marketplace,
+Plugins, and Edition repositories were merged into the product repo and deleted
+on 2026-09-13. The plugin catalog lives in the product repo at
+`packages/marketplace/catalog.json`.
 
 ## Public repositories
 
@@ -52,10 +53,11 @@ product repo at `packages/marketplace/catalog.json`.
 | [`dsh-community`](https://github.com/kamanager2012/dsh-community) | Canonical Product: Desktop, TUI, diagnostics, compatibility, and releases | All users and maintainers | **Yes; the only one** |
 | [`deepseek-harness-handbook`](https://github.com/kamanager2012/deepseek-harness-handbook) | Knowledge / Evidence: installation, operations, acceptance, and version facts | Users, maintainers, and Agents | No |
 | [`dsh-community` packages/marketplace](https://github.com/kamanager2012/dsh-community/tree/main/packages/marketplace) | Discovery / Distribution UX + compatibility catalog `catalog.json` | Users and plugin authors | No; not a Runtime |
-| [`dsh-community-plugins`](https://github.com/kamanager2012/dsh-community-plugins) | Archived; redirect to the product repo marketplace package | Old bookmarks | No |
 | [`deepseek-harness-suite`](https://github.com/kamanager2012/deepseek-harness-suite) | Archived Labs; last Labs pin `0.1.0-rc.6`, not current Latest | Historical reference | No; do not install |
-| [`dsh-marketplace`](https://github.com/kamanager2012/dsh-marketplace) | Archived redirect to the product repo marketplace package | Old bookmarks | No |
-| [`dsh-community-edition`](https://github.com/kamanager2012/dsh-community-edition) | Merge & Archive: code frozen, useful UX merged | Maintainers | No; historical reference only |
+
+The former standalone repositories `dsh-marketplace`, `dsh-community-plugins`,
+and `dsh-community-edition` were merged into the product repo and deleted on
+2026-09-13.
 
 ## Official and community boundaries
 
@@ -85,7 +87,8 @@ official dsh plugin add chain
 
 The catalog and the marketplace CLI both live in `dsh-community/packages/marketplace`.
 Neither owns the Runtime or replaces the official plugin manager. The standalone
-`dsh-community-plugins` repo is archived.
+`dsh-community-plugins` repo was deleted after its content merged into
+`catalog.json`.
 
 Current evidence snapshot `[待复核]`: the registry has 9 verified plugins. CI checks
 shape, npm existence/version, `dist.integrity`, provenance, and repository reachability;
