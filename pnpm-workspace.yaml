@@ -3,6 +3,21 @@ packages:
   - apps/*
   - tests/*
 
+# Security overrides for transitive dependencies. Direct dependencies stay on
+# the exact official pin; these are patch/minor safety bumps of transitive deps:
+# - @xmldom/xmldom via electron packaging tooling (plist / @electron/*)
+# - js-yaml via official cordis-plugin-include
+# - sharp via official dsh-attachment-local (same 0.35.4 as the Android verdict)
+# The second group holds the security-reviewed closure at its reviewed versions
+# (remote-adapter crypto-adversarial test 17 rejects unreviewed drifts of these).
+overrides:
+  '@xmldom/xmldom@>=0.7.0 <=0.8.14': '0.8.15'
+  'js-yaml@>=4.0.0 <4.3.2': '4.3.2'
+  'sharp@<0.35.4': '0.35.4'
+  'glob@>=7.0.0 <8.0.0': '7.2.3'
+  'negotiator@>=1.0.0 <2.0.0': '1.0.0'
+  'plist@>=3.0.0 <4.0.0': '3.1.0'
+
 onlyBuiltDependencies:
   - '@deepseek-ai/dsh-subprocess-local'
   - electron

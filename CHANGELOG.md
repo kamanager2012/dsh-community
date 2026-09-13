@@ -68,6 +68,7 @@
 - `DshMcpBridge` 从 `@dsh-community/dsh-bridge` 导出。Windows / macOS 发行任务在打包后同样跑 asar vendor=0 护栏。
 - 仓库收敛收尾：独立仓 `dsh-marketplace`、`dsh-community-plugins`、`dsh-community-edition` 在内容合流后于 2026-09-13 删除；README / ECOSYSTEM / SECURITY 与手册仓中的跳转说明同步更新。
 - 旧 Labs 仓 `deepseek-harness-suite` 的完整代码与提交历史并入本仓 `archive/deepseek-harness-suite/`（其 5 个未并入 main 的分支尖端保存为 `archive/suite/*` 标签），独立仓随后于 2026-09-13 删除；独立手册仓 `deepseek-harness-handbook`（内容与历史已在本仓 `handbook/`）同日删除；README / ECOSYSTEM / 手册与 marketplace 文档中的引用同步改指仓内路径。
+- 安全修复：通过 `pnpm-workspace.yaml` 的 `overrides` 修补官方传递依赖新披露的高危漏洞——`@xmldom/xmldom` 0.8.14→0.8.15（electron 打包链，plist 现解析 0.9.12）、`js-yaml` 4.3.1→4.3.2（官方 cordis-plugin-include 传递依赖）、`sharp` 0.35.3→0.35.4（官方 dsh-attachment-local 传递依赖，与 Android 裁决同版本）。`pnpm audit --audit-level high` 恢复通过：8 high + 9 moderate → 0 high + 7 moderate。
 
 ## 0.1.2-alpha.4 — Candidate Source (2026-09-02)
 
