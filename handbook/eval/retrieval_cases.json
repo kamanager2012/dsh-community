@@ -1,0 +1,402 @@
+{
+  "schema_version": "1.0",
+  "description": "Bilingual retrieval regression fixtures for the static handbook catalogs. These are search tests, not runtime experiment records.",
+  "cases": [
+    {
+      "id": "zh-overview-what-is-dsh",
+      "language": "zh-CN",
+      "category": "overview",
+      "query": "dsh 是什么？它和普通调用模型有什么区别？",
+      "expected_record_ids": ["dsh.content.00-overview.what-is-dsh.一句话定义", "dsh.content.00-overview.what-is-dsh.它解决的不是-如何调用一次模型"],
+      "expected_source_paths": ["content/00-overview/what-is-dsh.md"],
+      "must_include_terms": ["模型", "Provider"]
+    },
+    {
+      "id": "zh-overview-choose-entry",
+      "language": "zh-CN",
+      "category": "overview",
+      "query": "什么时候用 Web UI、Headless CLI、Python SDK 或插件？",
+      "expected_record_ids": ["dsh.content.00-overview.when-to-use.快速选择"],
+      "expected_source_paths": ["content/00-overview/when-to-use.md"],
+      "must_include_terms": ["Web UI", "Python SDK"]
+    },
+    {
+      "id": "zh-overview-five-questions",
+      "language": "zh-CN",
+      "category": "overview",
+      "query": "给 Agent 扩大权限前要先问哪五个问题？",
+      "expected_record_ids": ["dsh.content.00-overview.harness-five-layers.发出任务前的五个问题"],
+      "expected_source_paths": ["content/00-overview/harness-five-layers.md"],
+      "must_include_terms": ["workspace", "Provider"]
+    },
+    {
+      "id": "zh-install-prerequisites",
+      "language": "zh-CN",
+      "category": "installation",
+      "query": "安装 dsh 需要什么 Node、Git、pnpm 和 Python 前置条件？",
+      "expected_record_ids": ["dsh.content.01-installation.README.运行时前置条件", "dsh.content.automation.python-sdk.前置条件和安装"],
+      "expected_source_paths": ["content/01-installation/README.md", "content/automation/python-sdk.md"],
+      "must_include_terms": ["Node.js", "pnpm"]
+    },
+    {
+      "id": "zh-install-pin-version",
+      "language": "zh-CN",
+      "category": "installation",
+      "query": "团队或 CI 如何固定 dsh 版本？",
+      "expected_record_ids": ["dsh.content.01-installation.README.固定版本"],
+      "expected_source_paths": ["content/01-installation/README.md"],
+      "must_include_terms": ["版本", "npx"]
+    },
+    {
+      "id": "zh-web-first-model",
+      "language": "zh-CN",
+      "category": "web-ui",
+      "query": "第一次使用 Web UI 时如何配置模型和 Provider？",
+      "expected_record_ids": ["dsh.content.02-web-ui.first-run.第二步-配置模型"],
+      "expected_source_paths": ["content/02-web-ui/first-run.md"],
+      "must_include_terms": ["Provider", "MISSING_CREDENTIAL"]
+    },
+    {
+      "id": "zh-web-workspace-baseline",
+      "language": "zh-CN",
+      "category": "web-ui",
+      "query": "首次 Web UI 任务如何准备 workspace 并保存 git 基线？",
+      "expected_record_ids": ["dsh.content.02-web-ui.first-run.第三步-准备-workspace"],
+      "expected_source_paths": ["content/02-web-ui/first-run.md"],
+      "must_include_terms": ["workspace", "git status"]
+    },
+    {
+      "id": "zh-approval-plan-not-permission",
+      "language": "zh-CN",
+      "category": "security",
+      "query": "为什么计划不等于权限？审批时要注意什么？",
+      "expected_record_ids": ["dsh.content.02-web-ui.approvals-and-plans.计划不是权限"],
+      "expected_source_paths": ["content/02-web-ui/approvals-and-plans.md"],
+      "must_include_terms": ["计划", "权限"]
+    },
+    {
+      "id": "zh-cli-help",
+      "language": "zh-CN",
+      "category": "cli",
+      "query": "dsh CLI 参数不确定时应该先执行什么？",
+      "expected_record_ids": ["dsh.content.03-cli.commands.先看帮助"],
+      "expected_source_paths": ["content/03-cli/commands.md"],
+      "must_include_terms": ["--help", "版本"]
+    },
+    {
+      "id": "zh-cli-exit-code",
+      "language": "zh-CN",
+      "category": "cli",
+      "query": "Headless 脚本如何理解 dsh 的退出码？",
+      "expected_record_ids": ["dsh.content.automation.headless-cli.退出码和完成定义", "dsh.content.03-cli.commands.退出码"],
+      "expected_source_paths": ["content/automation/headless-cli.md", "content/03-cli/commands.md"],
+      "must_include_terms": ["退出码", "非 0"]
+    },
+    {
+      "id": "zh-headless-basic-call",
+      "language": "zh-CN",
+      "category": "automation",
+      "query": "如何用 headless CLI 运行一次可脚本化任务？",
+      "expected_record_ids": ["dsh.content.automation.headless-cli.导语", "dsh.content.automation.headless-cli.基本调用", "dsh.content.automation.headless-cli.退出码和完成定义"],
+      "expected_source_paths": ["content/automation/headless-cli.md"],
+      "must_include_terms": ["headless", "退出码"]
+    },
+    {
+      "id": "zh-python-sdk-paths",
+      "language": "zh-CN",
+      "category": "automation",
+      "query": "Python SDK 运行任务时需要管理哪些路径参数？",
+      "expected_record_ids": ["dsh.content.automation.python-sdk.三个路径参数"],
+      "expected_source_paths": ["content/automation/python-sdk.md"],
+      "must_include_terms": ["workspace", "session"]
+    },
+    {
+      "id": "zh-deepseek-web-config",
+      "language": "zh-CN",
+      "category": "provider",
+      "query": "怎么在 Web UI 里配置 DeepSeek 官方 Provider？",
+      "expected_record_ids": ["dsh.content.04-providers.deepseek.在-web-ui-配置", "dsh.content.quickstart.providers.配置-deepseek"],
+      "expected_source_paths": ["content/04-providers/deepseek.md", "content/quickstart/providers.md"],
+      "must_include_terms": ["API key", "DSH_HOME"]
+    },
+    {
+      "id": "zh-provider-missing-credential",
+      "language": "zh-CN",
+      "category": "provider",
+      "query": "Provider 报 MISSING_CREDENTIAL 应该怎么排查？",
+      "expected_record_ids": ["dsh.content.04-providers.troubleshooting.missing-credential", "dsh.content.12-reference.faq.missing-credential-怎么办"],
+      "expected_source_paths": ["content/04-providers/troubleshooting.md", "content/12-reference/faq.md"],
+      "must_include_terms": ["MISSING_CREDENTIAL", "凭据"]
+    },
+    {
+      "id": "zh-provider-unknown-model",
+      "language": "zh-CN",
+      "category": "provider",
+      "query": "Provider 报 UNKNOWN_MODEL 时先查什么？",
+      "expected_record_ids": ["dsh.content.04-providers.troubleshooting.unknown-model"],
+      "expected_source_paths": ["content/04-providers/troubleshooting.md"],
+      "must_include_terms": ["UNKNOWN_MODEL", "模型 ID"]
+    },
+    {
+      "id": "zh-custom-provider",
+      "language": "zh-CN",
+      "category": "provider",
+      "query": "如何添加公司网关或 OpenAI 兼容的自定义 Provider？",
+      "expected_record_ids": ["dsh.content.quickstart.providers.添加自定义-provider"],
+      "expected_source_paths": ["content/quickstart/providers.md"],
+      "must_include_terms": ["Base URL", "模型 ID"]
+    },
+    {
+      "id": "zh-multimodal-input",
+      "language": "zh-CN",
+      "category": "provider",
+      "query": "图片输入和多模态模型需要怎样声明能力？",
+      "expected_record_ids": ["dsh.content.04-providers.multimodal.模型级声明"],
+      "expected_source_paths": ["content/04-providers/multimodal.md"],
+      "must_include_terms": ["image", "input"]
+    },
+    {
+      "id": "zh-model-routing",
+      "language": "zh-CN",
+      "category": "provider",
+      "query": "一条模型路由由哪些部分组成？",
+      "expected_record_ids": ["dsh.content.04-providers.model-routing.路由的组成"],
+      "expected_source_paths": ["content/04-providers/model-routing.md"],
+      "must_include_terms": ["Provider", "Base URL"]
+    },
+    {
+      "id": "zh-session-history",
+      "language": "zh-CN",
+      "category": "session",
+      "query": "看到旧消息为什么不等于恢复 Session？",
+      "expected_record_ids": ["dsh.content.07-sessions.model.history", "dsh.content.core.session-lifecycle.history-不等于恢复"],
+      "expected_source_paths": ["content/07-sessions/model.md", "content/core/session-lifecycle.md"],
+      "must_include_terms": ["history", "恢复"]
+    },
+    {
+      "id": "zh-session-fork",
+      "language": "zh-CN",
+      "category": "session",
+      "query": "什么时候应该 Fork Session？Fork 和 resume 有什么区别？",
+      "expected_record_ids": ["dsh.content.07-sessions.model.fork", "dsh.content.core.session-lifecycle.fork-是新的事实链", "dsh.content.07-sessions.recovery.什么时候-fork"],
+      "expected_source_paths": ["content/07-sessions/model.md", "content/core/session-lifecycle.md", "content/07-sessions/recovery.md"],
+      "must_include_terms": ["Fork", "resume"]
+    },
+    {
+      "id": "zh-session-recovery",
+      "language": "zh-CN",
+      "category": "session",
+      "query": "恢复 Session 之前应该检查哪些东西？",
+      "expected_record_ids": ["dsh.content.07-sessions.recovery.恢复前的检查点"],
+      "expected_source_paths": ["content/07-sessions/recovery.md"],
+      "must_include_terms": ["workspace", "权限"]
+    },
+    {
+      "id": "zh-task-contract",
+      "language": "zh-CN",
+      "category": "workflow",
+      "query": "如何写一个可验收的任务契约最小模板？",
+      "expected_record_ids": ["dsh.content.core.task-contract.最小模板"],
+      "expected_source_paths": ["content/core/task-contract.md"],
+      "must_include_terms": ["目标", "验收"]
+    },
+    {
+      "id": "zh-read-only-task",
+      "language": "zh-CN",
+      "category": "workflow",
+      "query": "只读分析任务应该使用什么任务模板和观察顺序？",
+      "expected_record_ids": ["dsh.content.05-workflows.read-only.任务模板", "dsh.content.05-workflows.read-only.推荐观察顺序"],
+      "expected_source_paths": ["content/05-workflows/read-only.md"],
+      "must_include_terms": ["只读", "workspace"]
+    },
+    {
+      "id": "zh-code-change-task",
+      "language": "zh-CN",
+      "category": "workflow",
+      "query": "让 Agent 修改代码前，修改任务模板要写什么？",
+      "expected_record_ids": ["dsh.content.05-workflows.code-change.修改任务模板"],
+      "expected_source_paths": ["content/05-workflows/code-change.md"],
+      "must_include_terms": ["允许修改", "验收"]
+    },
+    {
+      "id": "zh-external-acceptance",
+      "language": "zh-CN",
+      "category": "workflow",
+      "query": "为什么不能把 Agent 说完成当成验收？应该用什么外部检查？",
+      "expected_record_ids": ["dsh.content.05-workflows.from-blank-to-delivery.阶段-4-用外部检查验收", "dsh.content.05-workflows.review-and-acceptance.三类验收", "dsh.content.12-reference.faq.测试命令通过-为什么不能发布"],
+      "expected_source_paths": ["content/05-workflows/from-blank-to-delivery.md", "content/05-workflows/review-and-acceptance.md", "content/12-reference/faq.md"],
+      "must_include_terms": ["diff", "测试"]
+    },
+    {
+      "id": "zh-tool-rejected",
+      "language": "zh-CN",
+      "category": "tools",
+      "query": "工具在目录里可见但执行被拒绝，应该从哪一层排查？",
+      "expected_record_ids": ["dsh.content.09-tools.boundaries.工具可见但被拒绝"],
+      "expected_source_paths": ["content/09-tools/boundaries.md"],
+      "must_include_terms": ["权限", "审批"]
+    },
+    {
+      "id": "zh-network-data-flow",
+      "language": "zh-CN",
+      "category": "security",
+      "query": "开启网络前要回答哪六个数据流问题？",
+      "expected_record_ids": ["dsh.content.06-security.data-flow.开启网络前回答六个问题"],
+      "expected_source_paths": ["content/06-security/data-flow.md"],
+      "must_include_terms": ["Provider", "网络"]
+    },
+    {
+      "id": "zh-credential-leak",
+      "language": "zh-CN",
+      "category": "security",
+      "query": "发现 API Key 或凭据泄露时怎么处理？",
+      "expected_record_ids": ["dsh.content.06-security.credentials.发现泄露时"],
+      "expected_source_paths": ["content/06-security/credentials.md"],
+      "must_include_terms": ["撤销", "凭据"]
+    },
+    {
+      "id": "zh-retry-matrix",
+      "language": "zh-CN",
+      "category": "automation",
+      "query": "自动化任务遇到失败时，重试矩阵怎么设计？",
+      "expected_record_ids": ["dsh.content.08-automation.queues-and-retries.重试矩阵"],
+      "expected_source_paths": ["content/08-automation/queues-and-retries.md"],
+      "must_include_terms": ["重试", "人工"]
+    },
+    {
+      "id": "zh-sdk-result",
+      "language": "zh-CN",
+      "category": "automation",
+      "query": "Python SDK 的 RunResult 应该怎样使用？",
+      "expected_record_ids": ["dsh.content.08-automation.results-and-errors.runresult-的角色", "dsh.content.automation.python-sdk.不要只打印最终回答"],
+      "expected_source_paths": ["content/08-automation/results-and-errors.md", "content/automation/python-sdk.md"],
+      "must_include_terms": ["session_id", "final_response"]
+    },
+    {
+      "id": "zh-plugin-model",
+      "language": "zh-CN",
+      "category": "plugin",
+      "query": "dsh 的插件模型里 Service、Context 和 Event 分别是什么？",
+      "expected_record_ids": ["dsh.content.10-plugins.plugin-model.service-context-和-event"],
+      "expected_source_paths": ["content/10-plugins/plugin-model.md"],
+      "must_include_terms": ["Service", "Context"]
+    },
+    {
+      "id": "zh-public-web-ui",
+      "language": "zh-CN",
+      "category": "security",
+      "query": "可以把 dsh Web UI 直接暴露到公网吗？",
+      "expected_record_ids": ["dsh.content.12-reference.faq.可以把-web-ui-暴露到公网吗"],
+      "expected_source_paths": ["content/12-reference/faq.md"],
+      "must_include_terms": ["公网", "认证"]
+    },
+    {
+      "id": "en-what-is-dsh",
+      "language": "en",
+      "category": "overview",
+      "query": "What is dsh, and how is it different from a one-shot model API call?",
+      "expected_record_ids": ["dsh.en.00-overview.what-is-dsh.one-sentence-definition", "dsh.en.00-overview.what-is-dsh.it-is-not-just-a-one-shot-model-call"],
+      "expected_source_paths": ["en/00-overview/what-is-dsh.md"],
+      "must_include_terms": ["Provider", "session"]
+    },
+    {
+      "id": "en-install-launch",
+      "language": "en",
+      "category": "installation",
+      "query": "How do I install and launch the Web UI, and what is the default local address?",
+      "expected_record_ids": ["dsh.en.01-installation.README.shortest-launch-path"],
+      "expected_source_paths": ["en/01-installation/README.md"],
+      "must_include_terms": ["npx", "127.0.0.1:3080"]
+    },
+    {
+      "id": "en-web-first-task",
+      "language": "en",
+      "category": "web-ui",
+      "query": "What should I check during the first Web UI task?",
+      "expected_record_ids": ["dsh.en.02-web-ui.first-run.4-send-the-first-task", "dsh.en.02-web-ui.first-run.what-counts-as-a-successful-first-run"],
+      "expected_source_paths": ["en/02-web-ui/first-run.md"],
+      "must_include_terms": ["read-only", "workspace"]
+    },
+    {
+      "id": "en-cli-layers",
+      "language": "en",
+      "category": "cli",
+      "query": "What are the three layers of dsh CLI arguments?",
+      "expected_record_ids": ["dsh.en.03-cli.commands.three-argument-layers"],
+      "expected_source_paths": ["en/03-cli/commands.md"],
+      "must_include_terms": ["launcher", "task"]
+    },
+    {
+      "id": "en-provider-config",
+      "language": "en",
+      "category": "provider",
+      "query": "How do I configure the official DeepSeek Provider in the Web UI?",
+      "expected_record_ids": ["dsh.en.04-providers.deepseek.configure-it-in-the-web-ui"],
+      "expected_source_paths": ["en/04-providers/deepseek.md"],
+      "must_include_terms": ["API key", "DSH_HOME"]
+    },
+    {
+      "id": "en-acceptance",
+      "language": "en",
+      "category": "workflow",
+      "query": "How should I accept an agent code change with external checks?",
+      "expected_record_ids": ["dsh.en.05-workflows.from-blank-to-delivery.stage-4-accept-with-external-checks"],
+      "expected_source_paths": ["en/05-workflows/from-blank-to-delivery.md"],
+      "must_include_terms": ["diff", "tests"]
+    },
+    {
+      "id": "en-security-boundaries",
+      "language": "en",
+      "category": "security",
+      "query": "Which four security questions must be kept separate in dsh?",
+      "expected_record_ids": ["dsh.en.06-security.README.four-questions-to-keep-separate"],
+      "expected_source_paths": ["en/06-security/README.md"],
+      "must_include_terms": ["access", "Provider"]
+    },
+    {
+      "id": "en-glossary-provider",
+      "language": "en",
+      "category": "reference",
+      "query": "What does Provider mean in this handbook?",
+      "expected_record_ids": ["dsh.en.12-reference.glossary.body"],
+      "expected_source_paths": ["en/12-reference/glossary.md"],
+      "must_include_terms": ["model", "credentials"]
+    },
+    {
+      "id": "en-provider-troubleshooting",
+      "language": "en",
+      "category": "provider",
+      "query": "How do I troubleshoot MISSING_CREDENTIAL and UNKNOWN_MODEL in a Provider?",
+      "expected_record_ids": ["dsh.en.04-providers.troubleshooting.missing-credential", "dsh.en.04-providers.troubleshooting.unknown-model"],
+      "expected_source_paths": ["en/04-providers/troubleshooting.md"],
+      "must_include_terms": ["credential", "model ID"]
+    },
+    {
+      "id": "en-session-recovery",
+      "language": "en",
+      "category": "session",
+      "query": "What should I check before recovering a Session?",
+      "expected_record_ids": ["dsh.en.07-sessions.recovery.checkpoint-before-recovery"],
+      "expected_source_paths": ["en/07-sessions/recovery.md"],
+      "must_include_terms": ["workspace", "permissions"]
+    },
+    {
+      "id": "en-review-acceptance-types",
+      "language": "en",
+      "category": "workflow",
+      "query": "How should I distinguish machine, structural, and human acceptance?",
+      "expected_record_ids": ["dsh.en.05-workflows.review-and-acceptance.three-kinds-of-acceptance"],
+      "expected_source_paths": ["en/05-workflows/review-and-acceptance.md"],
+      "must_include_terms": ["diff", "tests"]
+    },
+    {
+      "id": "en-faq-no-diff",
+      "language": "en",
+      "category": "troubleshooting",
+      "query": "Why did an agent say it was complete without producing a diff?",
+      "expected_record_ids": ["dsh.en.12-reference.faq.why-did-the-task-say-it-was-complete-without-producing-a-diff"],
+      "expected_source_paths": ["en/12-reference/faq.md"],
+      "must_include_terms": ["read-only", "workspace"]
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+id: WEB-BOOT-2026-08-14
+claim: "固定发布包 dsh Web profile 能在随机端口完成启动公告。"
+layer: F2
+status: pass
+provenance:
+  official_url: "https://github.com/deepseek-ai/deepseek-harness"
+  source_commit: null
+  package_version: "0.1.0-rc.6"
+  document_version: "2026-08-14 research snapshot"
+observed_at: "2026-08-14T15:54:52+08:00"
+environment:
+  os: "Linux 6.18.33.1-microsoft-standard-WSL2"
+  architecture: "x64"
+  node: "v24.18.0"
+  python: null
+  provider: null
+  permission_mode: "server startup only; no model request"
+execution:
+  command: "DSH_HOME=/tmp/dsh-handbook-web-boot-rc6 timeout 20s npx --yes @deepseek-ai/dsh@0.1.0-rc.6 web --port 0"
+  input_ref: null
+  workspace_ref: null
+  session_ref: null
+result:
+  summary: "The process printed a local URL with a dynamically allocated port before the 20-second probe timeout stopped it."
+  exit_code: 124
+  artifacts:
+    - "evidence/records/WEB-BOOT-2026-08-14.md"
+observed_output: "dsh web: http://127.0.0.1:43533"
+interpretation: "The expected long-running server was intentionally stopped by timeout after the startup announcement; exit 124 is expected for this probe and is not a dsh failure."
+limitations:
+  - "The endpoint was not browser-tested or HTTP-fetched after startup."
+  - "No Provider, credential, model request, workspace selection or task execution was performed."
+  - "The printed port is ephemeral and must not be reused as a stable configuration value."
+affected_docs:
+  - "labs/LAB-BOOT-001/README.md"
+  - "VERSION.md"

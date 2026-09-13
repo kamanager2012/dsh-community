@@ -1,0 +1,45 @@
+id: DSH-AIOS-WEB-BROWSER-BLOCKED-2026-08-14
+claim: "dsh Web 服务在 aios-core workspace 能启动并等待浏览器探针，但当前环境没有可用的 Playwright Chromium。"
+layer: F2
+status: blocked
+provenance:
+  official_url: "https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/guide/index.zh.md"
+  source_commit: null
+  package_version: "0.1.0-rc.6"
+  document_version: "2026-08-14 research snapshot"
+observed_at: "2026-08-14T16:54:00+08:00"
+environment:
+  os: "Linux 6.18.33.1-microsoft-standard-WSL2; Playwright reports ubuntu26.04-x64"
+  architecture: "x64"
+  node: "v24.18.0"
+  python: "3.14 with Playwright"
+  provider: null
+  permission_mode: "read-only; UI inspection only"
+execution:
+  command: "webapp-testing with_server helper: dsh web --port 3082 + native Python Playwright probe"
+  input_ref: null
+  workspace_ref: "aios-core@6af8968; absolute path omitted"
+  session_ref: null
+result:
+  summary: >-
+    The helper reported the dsh Web server ready on port 3082 and then stopped
+    it after the browser probe failed at Chromium launch. Playwright reported
+    that its Chromium executable was absent. A subsequent browser install
+    attempt failed because this Playwright release does not support
+    ubuntu26.04-x64.
+  exit_code: 1
+  artifacts:
+    - "no screenshot; browser did not launch"
+observed_output:
+  server: "Server ready on port 3082"
+  browser: "BrowserType.launch: Executable doesn't exist"
+  install: "Playwright does not support chromium on ubuntu26.04-x64"
+limitations:
+  - "This is an environment/tooling block, not evidence that the dsh Web UI fails."
+  - "No browser DOM, rendered controls, Settings page, workspace picker or input-disabled state was observed."
+  - "HTTP root availability remains covered by WEB-HTTP-2026-08-14."
+  - "No credential, model request, workspace task or AIOS file operation was performed."
+affected_docs:
+  - "content/quickstart/web-ui.md"
+  - "labs/LAB-BOOT-001/README.md"
+  - "labs/manifest.yaml"

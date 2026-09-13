@@ -1,0 +1,94 @@
+schema_version: "1.0"
+title: "DeepSeek Harness Handbook Evidence Schema"
+purpose: >-
+  Record every publishable claim and every Lab result without conflating
+  official specification, source implementation, local observation, analysis,
+  and research-method inspiration.
+
+layers:
+  F0:
+    name: "规范事实"
+    meaning: "官方文档、发布说明、API/配置规范或政策页"
+    may_support: ["产品声明", "公开契约", "推荐用法"]
+  F1:
+    name: "实现事实"
+    meaning: "固定版本、固定 commit 的官方源码或生成配置"
+    may_support: ["当前实现", "内部组合", "未必稳定的实现行为"]
+  F2:
+    name: "观察事实"
+    meaning: "固定环境、固定命令、可重复 Lab 得到的结果"
+    may_support: ["实际运行表现", "边界条件", "回归基线"]
+  F3:
+    name: "推导结论"
+    meaning: "基于 F0/F1/F2 的工程解释、建议或第一性原理分析"
+    may_support: ["决策建议", "工作流设计", "治理策略"]
+  M:
+    name: "研究方法"
+    meaning: "外部资料对研究问题和验证动作的启发"
+    may_support: ["研究问题", "实验设计提示"]
+    may_not_support: ["任何单独的 dsh 产品事实"]
+
+statuses: ["planned", "not_run", "pass", "fail", "blocked", "superseded"]
+
+required:
+  - id
+  - claim
+  - layer
+  - status
+  - observed_at
+  - environment
+  - limitations
+
+fields:
+  id:
+    type: "string"
+    pattern: "^[A-Z0-9-]+$"
+  claim:
+    type: "string"
+  layer:
+    enum: ["F0", "F1", "F2", "F3", "M"]
+  status:
+    enum: ["planned", "not_run", "pass", "fail", "blocked", "superseded"]
+  provenance:
+    fields:
+      official_url: "string or null"
+      source_commit: "string or null"
+      package_version: "string or null"
+      document_version: "string or null"
+  environment:
+    fields:
+      os: "string"
+      architecture: "string"
+      node: "string or null"
+      python: "string or null"
+      provider: "string or null"
+      permission_mode: "string or null"
+  execution:
+    fields:
+      command: "string or null"
+      input_ref: "string or null"
+      workspace_ref: "sanitized fingerprint or null"
+      session_ref: "sanitized identifier or null"
+  result:
+    fields:
+      summary: "string or null"
+      exit_code: "integer or null"
+      artifacts: "list of sanitized paths or hashes"
+  limitations:
+    type: "list[string]"
+  affected_docs:
+    type: "list[string]"
+
+provenance_tags:
+  "[O]": "Official / F0"
+  "[S]": "Source / F1"
+  "[L]": "Lab / F2"
+  "[A]": "Analysis / F3"
+  "[M]": "Method inspiration"
+
+rules:
+  - "F0, F1 and F2 are evidence layers, not a blind override hierarchy."
+  - "If F0 conflicts with F1/F2, preserve and describe the discrepancy."
+  - "F3 must cite the F0/F1/F2 records it depends on."
+  - "M can create a question or experiment, never a standalone product claim."
+  - "Never store API keys, private paths, private repository content, or raw sensitive logs."

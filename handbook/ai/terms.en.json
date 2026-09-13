@@ -1,0 +1,377 @@
+{
+  "schema_version": "1.0",
+  "name": "DeepSeek Harness Glossary Index",
+  "description": "Machine-readable definitions extracted line by line from the initial English glossary translation.",
+  "language": "en",
+  "source": {
+    "path": "en/12-reference/glossary.md",
+    "repository": "https://github.com/kamanager2012/deepseek-harness-handbook",
+    "branch": "main"
+  },
+  "terms": [
+    {
+      "term": "Agent",
+      "definition": "The execution subject that receives input, requests models, calls tools, and advances a task inside a session",
+      "language": "en",
+      "source": {
+        "path": "en/12-reference/glossary.md",
+        "line_start": 5,
+        "line_end": 5,
+        "url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/en/12-reference/glossary.md#L5",
+        "translation_of": "content/12-reference/glossary.md",
+        "translation_url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/content/12-reference/glossary.md"
+      }
+    },
+    {
+      "term": "Agent loop",
+      "definition": "The cycle that processes input, model responses, tool results, and the next action",
+      "language": "en",
+      "source": {
+        "path": "en/12-reference/glossary.md",
+        "line_start": 6,
+        "line_end": 6,
+        "url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/en/12-reference/glossary.md#L6",
+        "translation_of": "content/12-reference/glossary.md",
+        "translation_url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/content/12-reference/glossary.md"
+      }
+    },
+    {
+      "term": "bundle",
+      "definition": "A distributable composition of configuration and mounted code",
+      "language": "en",
+      "source": {
+        "path": "en/12-reference/glossary.md",
+        "line_start": 7,
+        "line_end": 7,
+        "url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/en/12-reference/glossary.md#L7",
+        "translation_of": "content/12-reference/glossary.md",
+        "translation_url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/content/12-reference/glossary.md"
+      }
+    },
+    {
+      "term": "cwd",
+      "definition": "The process or agent's current working directory",
+      "language": "en",
+      "source": {
+        "path": "en/12-reference/glossary.md",
+        "line_start": 8,
+        "line_end": 8,
+        "url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/en/12-reference/glossary.md#L8",
+        "translation_of": "content/12-reference/glossary.md",
+        "translation_url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/content/12-reference/glossary.md"
+      }
+    },
+    {
+      "term": "Cordis",
+      "definition": "The plugin framework underneath dsh",
+      "language": "en",
+      "source": {
+        "path": "en/12-reference/glossary.md",
+        "line_start": 9,
+        "line_end": 9,
+        "url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/en/12-reference/glossary.md#L9",
+        "translation_of": "content/12-reference/glossary.md",
+        "translation_url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/content/12-reference/glossary.md"
+      }
+    },
+    {
+      "term": "DSH_HOME",
+      "definition": "The directory that stores dsh user configuration, credentials, profiles, and state",
+      "language": "en",
+      "source": {
+        "path": "en/12-reference/glossary.md",
+        "line_start": 10,
+        "line_end": 10,
+        "url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/en/12-reference/glossary.md#L10",
+        "translation_of": "content/12-reference/glossary.md",
+        "translation_url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/content/12-reference/glossary.md"
+      }
+    },
+    {
+      "term": "Provider",
+      "definition": "A configuration object that connects a model, protocol, endpoint, and credentials",
+      "language": "en",
+      "source": {
+        "path": "en/12-reference/glossary.md",
+        "line_start": 11,
+        "line_end": 11,
+        "url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/en/12-reference/glossary.md#L11",
+        "translation_of": "content/12-reference/glossary.md",
+        "translation_url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/content/12-reference/glossary.md"
+      }
+    },
+    {
+      "term": "profile",
+      "definition": "A named runtime composition",
+      "language": "en",
+      "source": {
+        "path": "en/12-reference/glossary.md",
+        "line_start": 12,
+        "line_end": 12,
+        "url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/en/12-reference/glossary.md#L12",
+        "translation_of": "content/12-reference/glossary.md",
+        "translation_url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/content/12-reference/glossary.md"
+      }
+    },
+    {
+      "term": "patch",
+      "definition": "An override that replaces or inserts nodes in the plugin configuration tree",
+      "language": "en",
+      "source": {
+        "path": "en/12-reference/glossary.md",
+        "line_start": 13,
+        "line_end": 13,
+        "url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/en/12-reference/glossary.md#L13",
+        "translation_of": "content/12-reference/glossary.md",
+        "translation_url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/content/12-reference/glossary.md"
+      }
+    },
+    {
+      "term": "workspace",
+      "definition": "The project directory used as the agent's task filesystem",
+      "language": "en",
+      "source": {
+        "path": "en/12-reference/glossary.md",
+        "line_start": 14,
+        "line_end": 14,
+        "url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/en/12-reference/glossary.md#L14",
+        "translation_of": "content/12-reference/glossary.md",
+        "translation_url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/content/12-reference/glossary.md"
+      }
+    },
+    {
+      "term": "session",
+      "definition": "The boundary for conversation events, history, model, state, and recovery",
+      "language": "en",
+      "source": {
+        "path": "en/12-reference/glossary.md",
+        "line_start": 15,
+        "line_end": 15,
+        "url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/en/12-reference/glossary.md#L15",
+        "translation_of": "content/12-reference/glossary.md",
+        "translation_url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/content/12-reference/glossary.md"
+      }
+    },
+    {
+      "term": "turn",
+      "definition": "One cycle from accepting input to having no pending work",
+      "language": "en",
+      "source": {
+        "path": "en/12-reference/glossary.md",
+        "line_start": 16,
+        "line_end": 16,
+        "url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/en/12-reference/glossary.md#L16",
+        "translation_of": "content/12-reference/glossary.md",
+        "translation_url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/content/12-reference/glossary.md"
+      }
+    },
+    {
+      "term": "step",
+      "definition": "One model request and its chain of tool calls",
+      "language": "en",
+      "source": {
+        "path": "en/12-reference/glossary.md",
+        "line_start": 17,
+        "line_end": 17,
+        "url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/en/12-reference/glossary.md#L17",
+        "translation_of": "content/12-reference/glossary.md",
+        "translation_url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/content/12-reference/glossary.md"
+      }
+    },
+    {
+      "term": "tool schema",
+      "definition": "The structure that declares a tool's name, description, and parameters to the model",
+      "language": "en",
+      "source": {
+        "path": "en/12-reference/glossary.md",
+        "line_start": 18,
+        "line_end": 18,
+        "url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/en/12-reference/glossary.md#L18",
+        "translation_of": "content/12-reference/glossary.md",
+        "translation_url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/content/12-reference/glossary.md"
+      }
+    },
+    {
+      "term": "headless",
+      "definition": "A CLI profile that runs one agent task without starting a Web server",
+      "language": "en",
+      "source": {
+        "path": "en/12-reference/glossary.md",
+        "line_start": 19,
+        "line_end": 19,
+        "url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/en/12-reference/glossary.md#L19",
+        "translation_of": "content/12-reference/glossary.md",
+        "translation_url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/content/12-reference/glossary.md"
+      }
+    },
+    {
+      "term": "history",
+      "definition": "A view read from persisted events",
+      "language": "en",
+      "source": {
+        "path": "en/12-reference/glossary.md",
+        "line_start": 20,
+        "line_end": 20,
+        "url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/en/12-reference/glossary.md#L20",
+        "translation_of": "content/12-reference/glossary.md",
+        "translation_url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/content/12-reference/glossary.md"
+      }
+    },
+    {
+      "term": "resume",
+      "definition": "Continuing or recovering work in the same session",
+      "language": "en",
+      "source": {
+        "path": "en/12-reference/glossary.md",
+        "line_start": 21,
+        "line_end": 21,
+        "url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/en/12-reference/glossary.md#L21",
+        "translation_of": "content/12-reference/glossary.md",
+        "translation_url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/content/12-reference/glossary.md"
+      }
+    },
+    {
+      "term": "fork",
+      "definition": "Creating a child session from a completed boundary of a parent session",
+      "language": "en",
+      "source": {
+        "path": "en/12-reference/glossary.md",
+        "line_start": 22,
+        "line_end": 22,
+        "url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/en/12-reference/glossary.md#L22",
+        "translation_of": "content/12-reference/glossary.md",
+        "translation_url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/content/12-reference/glossary.md"
+      }
+    },
+    {
+      "term": "MCP",
+      "definition": "A protocol/integration pattern for providing external tools or resources to an agent",
+      "language": "en",
+      "source": {
+        "path": "en/12-reference/glossary.md",
+        "line_start": 23,
+        "line_end": 23,
+        "url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/en/12-reference/glossary.md#L23",
+        "translation_of": "content/12-reference/glossary.md",
+        "translation_url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/content/12-reference/glossary.md"
+      }
+    },
+    {
+      "term": "PTY",
+      "definition": "A pseudo-terminal used for persistent shells or interactive processes",
+      "language": "en",
+      "source": {
+        "path": "en/12-reference/glossary.md",
+        "line_start": 24,
+        "line_end": 24,
+        "url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/en/12-reference/glossary.md#L24",
+        "translation_of": "content/12-reference/glossary.md",
+        "translation_url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/content/12-reference/glossary.md"
+      }
+    },
+    {
+      "term": "sandbox",
+      "definition": "A mechanism that limits process access, writes, network, or execution",
+      "language": "en",
+      "source": {
+        "path": "en/12-reference/glossary.md",
+        "line_start": 25,
+        "line_end": 25,
+        "url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/en/12-reference/glossary.md#L25",
+        "translation_of": "content/12-reference/glossary.md",
+        "translation_url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/content/12-reference/glossary.md"
+      }
+    },
+    {
+      "term": "approval",
+      "definition": "A person's permission requested before a high-impact action",
+      "language": "en",
+      "source": {
+        "path": "en/12-reference/glossary.md",
+        "line_start": 26,
+        "line_end": 26,
+        "url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/en/12-reference/glossary.md#L26",
+        "translation_of": "content/12-reference/glossary.md",
+        "translation_url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/content/12-reference/glossary.md"
+      }
+    },
+    {
+      "term": "DSH permission mode",
+      "definition": "A dsh preset or policy for read/write, command, and tool requests",
+      "language": "en",
+      "source": {
+        "path": "en/12-reference/glossary.md",
+        "line_start": 27,
+        "line_end": 27,
+        "url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/en/12-reference/glossary.md#L27",
+        "translation_of": "content/12-reference/glossary.md",
+        "translation_url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/content/12-reference/glossary.md"
+      }
+    },
+    {
+      "term": "finish_reason",
+      "definition": "The reason an agent run ended",
+      "language": "en",
+      "source": {
+        "path": "en/12-reference/glossary.md",
+        "line_start": 28,
+        "line_end": 28,
+        "url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/en/12-reference/glossary.md#L28",
+        "translation_of": "content/12-reference/glossary.md",
+        "translation_url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/content/12-reference/glossary.md"
+      }
+    },
+    {
+      "term": "JSONL",
+      "definition": "A format with one JSON object per line",
+      "language": "en",
+      "source": {
+        "path": "en/12-reference/glossary.md",
+        "line_start": 29,
+        "line_end": 29,
+        "url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/en/12-reference/glossary.md#L29",
+        "translation_of": "content/12-reference/glossary.md",
+        "translation_url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/content/12-reference/glossary.md"
+      }
+    },
+    {
+      "term": "seam",
+      "definition": "An extension boundary made of replaceable capabilities, providers, and consumers",
+      "language": "en",
+      "source": {
+        "path": "en/12-reference/glossary.md",
+        "line_start": 30,
+        "line_end": 30,
+        "url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/en/12-reference/glossary.md#L30",
+        "translation_of": "content/12-reference/glossary.md",
+        "translation_url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/content/12-reference/glossary.md"
+      }
+    },
+    {
+      "term": "service",
+      "definition": "A capability exposed in the Cordis context for other plugins to use",
+      "language": "en",
+      "source": {
+        "path": "en/12-reference/glossary.md",
+        "line_start": 31,
+        "line_end": 31,
+        "url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/en/12-reference/glossary.md#L31",
+        "translation_of": "content/12-reference/glossary.md",
+        "translation_url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/content/12-reference/glossary.md"
+      }
+    },
+    {
+      "term": "disposer",
+      "definition": "Cleanup logic that undoes registrations and closes resources when a plugin unloads",
+      "language": "en",
+      "source": {
+        "path": "en/12-reference/glossary.md",
+        "line_start": 32,
+        "line_end": 32,
+        "url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/en/12-reference/glossary.md#L32",
+        "translation_of": "content/12-reference/glossary.md",
+        "translation_url": "https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/content/12-reference/glossary.md"
+      }
+    }
+  ]
+}
