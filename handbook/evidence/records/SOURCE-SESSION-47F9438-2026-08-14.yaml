@@ -1,0 +1,55 @@
+id: SOURCE-SESSION-47F9438-2026-08-14
+claim: >-
+  固定官方源码将 Session 定义为仅追加事件日志，消息历史由日志派生；持久化
+  history 读取不会自动发布或恢复 Agent；Web Host 的 fork 从源 session 的已完成
+  turn 前缀创建新 session，子 session 继承 cwd、最近记录的模型目标和 parent
+  lineage；SessionHeader 保存 parentSession、seedLength 和 agentPreset 等恢复所需
+  元数据。headless 一次性入口创建新的持久化 Agent，Python SDK 公共 API 通过
+  session_id 表达同一 session 的运行边界。
+layer: F1
+status: pass
+provenance:
+  official_url: "https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/session.zh.md"
+  source_commit: "47f943859bef60e4160492346772ded9b24f765a"
+  package_version: "0.1.0-rc.5 source tree"
+  document_version: "session.zh.md, persistence.zh.md, packages/host/apiproxy/src/api/sessions.ts, python/sdk README/source; viewed 2026-08-14"
+observed_at: "2026-08-14T17:55:00+08:00"
+environment:
+  os: "Linux 6.18.33.1-microsoft-standard-WSL2"
+  architecture: "x64"
+  node: "v24.18.0"
+  python: null
+  provider: null
+  permission_mode: "read-only source inspection"
+execution:
+  command: >-
+    git -C /tmp/deepseek-harness-research rev-parse HEAD; sed/rg over
+    docs/subsystems/{session,persistence}.zh.md,
+    packages/host/apiproxy/src/api/sessions.ts,
+    apps/cli/reference/README.zh.md and python/sdk/{README.zh.md,src}
+  input_ref: "session persistence, resume, fork and entrypoint-boundary cross-check"
+  workspace_ref: "official-source@47f9438; absolute path omitted"
+  session_ref: null
+result:
+  summary: >-
+    The source documentation describes an append-only SessionEvent log as the
+    source of truth and derives message history from it. The Host session API
+    distinguishes history reads from agent resume: history inspection does not
+    resume or publish an Agent. Its fork operation cuts at a completed-turn
+    boundary, creates a new session, and records parent lineage and inherited
+    metadata. The CLI reference describes headless as a fresh persistent Agent
+    per one-shot invocation, while the Python SDK exposes session_id on its
+    run boundary. These are entrypoint-specific contracts and require separate
+    F2 tests before being presented as end-user guarantees for the published
+    package.
+  exit_code: 0
+  artifacts:
+    - "fixed source paths and documentation (not copied into the handbook)"
+limitations:
+  - "No Web resume/fork, headless persistence, or Python SDK session reuse was run in this environment."
+  - "The record does not claim that every entrypoint exposes the same resume/fork operation."
+  - "The pinned source tree is 0.1.0-rc.5 while the CLI probes used published 0.1.0-rc.6."
+affected_docs:
+  - "content/core/session-lifecycle.md"
+  - "labs/LAB-SESSION-001/README.md"
+  - "labs/manifest.yaml"

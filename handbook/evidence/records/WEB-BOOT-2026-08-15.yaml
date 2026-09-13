@@ -1,0 +1,36 @@
+id: WEB-BOOT-2026-08-15
+claim: "固定 dsh 发布包 Web profile 能在随机本机端口完成启动公告。"
+layer: F2
+status: pass
+provenance:
+  official_url: "https://github.com/deepseek-ai/deepseek-harness"
+  source_commit: null
+  package_version: "0.1.0-rc.6"
+  document_version: "2026-08-15 research continuation"
+observed_at: "2026-08-15T10:21:12+08:00"
+environment:
+  os: "Linux 6.18.33.1-microsoft-standard-WSL2"
+  architecture: "x86_64"
+  node: "v22.23.2"
+  python: "3.14.4"
+  provider: null
+  permission_mode: "server startup only; no model request"
+execution:
+  command: "DSH_HOME=<temporary> DSH_PERMISSION_MODE=read-only node <resolved dsh 0.1.0-rc.6>/lib/bin.js web --port 0"
+  input_ref: null
+  workspace_ref: null
+  session_ref: null
+result:
+  summary: "The process printed a local URL with a dynamically allocated port and remained available for the HTTP probe before the harness stopped it."
+  exit_code: 0
+  artifacts:
+    - "evidence/records/WEB-BOOT-2026-08-15.md"
+observed_output: "dsh web: http://127.0.0.1:43367"
+interpretation: "The Web profile startup gate passed; this is not evidence of browser interaction or a successful model task."
+limitations:
+  - "The endpoint was fetched with curl rather than a browser engine."
+  - "No Provider, credential, model request, workspace selection or task execution was performed."
+  - "The printed port is ephemeral and must not be reused as a stable configuration value."
+affected_docs:
+  - "labs/LAB-BOOT-001/README.md"
+  - "VERSION.md"

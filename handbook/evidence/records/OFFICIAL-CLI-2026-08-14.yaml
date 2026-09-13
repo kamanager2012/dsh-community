@@ -1,0 +1,37 @@
+id: OFFICIAL-CLI-2026-08-14
+claim: "官方 CLI 参考定义了 profile 启动、headless 一次性任务、配置 dump、Web 别名和插件管理的公开参数边界。"
+layer: F0
+status: pass
+provenance:
+  official_url: "https://github.com/deepseek-ai/deepseek-harness/blob/master/apps/cli/reference/README.zh.md"
+  source_commit: null
+  package_version: null
+  document_version: "master viewed 2026-08-14"
+observed_at: "2026-08-14"
+observed_at_precision: "date-only"
+environment:
+  os: "not applicable"
+  architecture: "not applicable"
+  node: null
+  python: null
+  provider: null
+  permission_mode: null
+execution:
+  command: null
+  input_ref: null
+  workspace_ref: null
+  session_ref: null
+result:
+  summary: >-
+    The official CLI reference documents profile arguments, headless task text,
+    exit-status semantics, config dumps, Web aliases, plugin forwarding and
+    the distinction between the headless runtime and the Web HTTP/browser
+    runtime.
+  exit_code: null
+  artifacts: []
+limitations:
+  - "This record captures the official reference, not a submitted headless task."
+  - "Exit status, output and session behavior still require a pinned Lab."
+affected_docs:
+  - "content/automation/headless-cli.md"
+  - "content/tasks/index.md"

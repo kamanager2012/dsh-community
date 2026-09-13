@@ -1,0 +1,42 @@
+id: WEB-HTTP-2026-08-14
+claim: "固定发布包 dsh Web profile 在本机固定端口返回 HTML 页面。"
+layer: F2
+status: pass
+provenance:
+  official_url: "https://github.com/deepseek-ai/deepseek-harness"
+  source_commit: null
+  package_version: "0.1.0-rc.6"
+  document_version: "2026-08-14 research snapshot"
+observed_at: "2026-08-14T16:15:28+08:00"
+environment:
+  os: "Linux 6.18.33.1-microsoft-standard-WSL2"
+  architecture: "x64"
+  node: "v24.18.0"
+  python: null
+  provider: null
+  permission_mode: "HTTP probe only; no model request"
+execution:
+  command: "curl --silent --show-error --max-time 5 --dump-header - http://127.0.0.1:3081/"
+  commands:
+    - "DSH_HOME=/tmp/dsh-handbook-http-rc6 npx --yes @deepseek-ai/dsh@0.1.0-rc.6 web --port 3081"
+    - "curl --silent --show-error --max-time 5 --dump-header - http://127.0.0.1:3081/"
+  input_ref: null
+  workspace_ref: null
+  session_ref: null
+result:
+  summary: "The local Web root returned HTTP 200 with text/html and the DeepSeek Harness HTML shell."
+  exit_code: 0
+  artifacts:
+    - "evidence/records/WEB-HTTP-2026-08-14.md"
+observed_output:
+  status_line: "HTTP/1.1 200 OK"
+  content_type: "text/html; charset=utf-8"
+  title: "DeepSeek Harness"
+limitations:
+  - "The request was made without a browser engine and did not inspect rendered UI behavior."
+  - "No Provider, credential, API, workspace, session or task endpoint was exercised."
+  - "The service was stopped immediately after the probe; no long-running availability claim is made."
+affected_docs:
+  - "content/quickstart/web-ui.md"
+  - "labs/LAB-BOOT-001/README.md"
+  - "labs/manifest.yaml"

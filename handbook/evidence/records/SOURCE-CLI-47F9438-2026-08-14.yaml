@@ -1,0 +1,38 @@
+id: SOURCE-CLI-47F9438-2026-08-14
+claim: "固定官方源码 commit 的 CLI 参考定义了 profile 层叠、web/headless 参数边界、配置 dump、权限后备值和 Web/headless 的运行边界。"
+layer: F1
+status: pass
+provenance:
+  official_url: "https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/apps/cli/reference/README.zh.md"
+  source_commit: "47f943859bef60e4160492346772ded9b24f765a"
+  package_version: "0.1.0-rc.5 source checkout"
+  document_version: "source checkout inspected 2026-08-14"
+observed_at: "2026-08-14"
+observed_at_precision: "date-only"
+environment:
+  os: "not applicable"
+  architecture: "not applicable"
+  node: null
+  python: null
+  provider: null
+  permission_mode: null
+execution:
+  command: "read apps/cli/reference/README.zh.md at the pinned source commit"
+  input_ref: null
+  workspace_ref: "pinned official source checkout (local path omitted)"
+  session_ref: null
+result:
+  summary: >-
+    The pinned source reference describes profile/config layer order, the web
+    alias, headless positional task behavior, config dump boundaries, default
+    workspace and permission behavior, telemetry switches, and the fact that
+    headless does not mount the Web HTTP/browser runtime.
+  exit_code: null
+  artifacts: []
+limitations:
+  - "This is implementation documentation from rc.5 and must not be silently applied to npm rc.6 or future releases."
+  - "No claim here means that every described path has passed the handbook's F2 Lab."
+affected_docs:
+  - "content/quickstart/web-ui.md"
+  - "content/safety/permissions-and-data.md"
+  - "content/tasks/index.md"

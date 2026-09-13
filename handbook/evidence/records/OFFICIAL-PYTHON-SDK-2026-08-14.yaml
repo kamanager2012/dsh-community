@@ -1,0 +1,38 @@
+id: OFFICIAL-PYTHON-SDK-2026-08-14
+claim: "官方 Python SDK 指南定义了安装前置、JSON-RPC 运行时、workspace/session 参数和 SDK 生命周期的基础路径。"
+layer: F0
+status: pass
+provenance:
+  official_url: "https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/guide/python-sdk.zh.md"
+  source_commit: null
+  package_version: null
+  document_version: "master viewed 2026-08-14"
+observed_at: "2026-08-14"
+observed_at_precision: "date-only"
+environment:
+  os: "not applicable"
+  architecture: "not applicable"
+  node: null
+  python: null
+  provider: null
+  permission_mode: null
+execution:
+  command: null
+  input_ref: null
+  workspace_ref: null
+  session_ref: null
+result:
+  summary: >-
+    The official guide lists Python 3.10+, Git, supported Linux/macOS
+    platforms, a compatible endpoint and an isolated modifiable workspace. It
+    documents SDK installation, a JSON-RPC example, DeepSeekHarness lifecycle,
+    cwd/session_root/session_id separation and the fact that the installed
+    runtime does not require system Node.js.
+  exit_code: null
+  artifacts: []
+limitations:
+  - "This record captures the official guide, not an installed SDK or model run."
+  - "The example composition uses broad permissions and must be re-scoped before production use."
+affected_docs:
+  - "content/automation/python-sdk.md"
+  - "content/tasks/index.md"

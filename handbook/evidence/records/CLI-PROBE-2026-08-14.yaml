@@ -1,0 +1,40 @@
+id: CLI-PROBE-2026-08-14
+claim: "当前执行环境可以直接解析并运行发布版 @deepseek-ai/dsh CLI"
+layer: F2
+status: superseded
+provenance:
+  official_url: "https://github.com/deepseek-ai/deepseek-harness"
+  source_commit: "47f943859bef60e4160492346772ded9b24f765a"
+  package_version: "0.1.0-rc.6"
+  document_version: "2026-08-14 research snapshot"
+observed_at: "2026-08-14"
+observed_at_precision: "date-only; the original probe did not capture process start time"
+environment:
+  os: "Linux"
+  architecture: "x64"
+  node: "not captured"
+  python: null
+  provider: null
+  permission_mode: "sandboxed execution"
+execution:
+  command: "npx --yes @deepseek-ai/dsh --help"
+  input_ref: null
+  workspace_ref: null
+  session_ref: null
+result:
+  summary: >-
+    The command produced no output during the available probe window and was
+    terminated. This is a historical environment/package-resolution
+    observation, not a statement that the dsh CLI itself fails. A later pinned
+    probe completed successfully; see CLI-BASELINE-2026-08-14.
+  exit_code: null
+  artifacts: []
+superseded_by:
+  - "CLI-BASELINE-2026-08-14"
+limitations:
+  - "No live Web UI or model request was executed."
+  - "The package-resolution/network path was later re-run with a usable npm cache or network."
+  - "The timestamp is a session-level research timestamp; replace with the exact run timestamp when re-run."
+affected_docs:
+  - "labs/LAB-BOOT-001/README.md"
+  - "VERSION.md"

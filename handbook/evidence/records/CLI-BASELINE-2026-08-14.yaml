@@ -1,0 +1,53 @@
+id: CLI-BASELINE-2026-08-14
+claim: "固定发布包 @deepseek-ai/dsh@0.1.0-rc.6 可以完成版本、CLI/Web 帮助查询和默认配置导出。"
+layer: F2
+status: pass
+provenance:
+  official_url: "https://github.com/deepseek-ai/deepseek-harness"
+  source_commit: null
+  package_version: "0.1.0-rc.6"
+  document_version: "2026-08-14 research snapshot"
+observed_at: "2026-08-14T16:23:38+08:00"
+environment:
+  os: "Linux 6.18.33.1-microsoft-standard-WSL2"
+  architecture: "x64"
+  node: "v24.18.0"
+  python: null
+  provider: null
+  permission_mode: "help/config probes only; no workspace task"
+execution:
+  command: "npx --yes @deepseek-ai/dsh@0.1.0-rc.6 --help"
+  commands:
+    - "npx --yes @deepseek-ai/dsh@0.1.0-rc.6 --version"
+    - "npx --yes @deepseek-ai/dsh@0.1.0-rc.6 --help"
+    - "npx --yes @deepseek-ai/dsh@0.1.0-rc.6 web --help"
+    - "npx --yes @deepseek-ai/dsh@0.1.0-rc.6 headless --help"
+    - "npx --yes @deepseek-ai/dsh@0.1.0-rc.6 --profile headless --help"
+    - "DSH_HOME=/tmp/dsh-handbook-probe-rc6 npx --yes @deepseek-ai/dsh@0.1.0-rc.6 web --dump-default-config"
+  input_ref: null
+  workspace_ref: null
+  session_ref: null
+result:
+  summary: >-
+    All six probes exited 0. The version probe returned 0.1.0-rc.6;
+    launcher help exposed profile/patch/config options and web/plugin commands; web help exposed host, port and
+    trusted-host; the explicit headless profile help exposed a task argument;
+    default-config export completed and exposed the composed Web profile.
+  exit_code: 0
+  artifacts:
+    - "evidence/records/CLI-BASELINE-2026-08-14.md"
+observations:
+  - "Default agent model entry: provider deepseek-official, model deepseek-v4-flash."
+  - "Default telemetry mode expression is DSH_TELEMETRY_MODE or DISABLED; exporter URL defaults to https://harness-telemetry.deepseeksvc.com/v1/logs."
+  - "Default permission mode expression is DSH_PERMISSION_MODE or workspace-write; workspaceRoot is process.cwd()."
+  - "Approval policy is ask unless DSH_PERMISSION_MODE is danger-full-access; presets include read-only, workspace-write and danger-full-access."
+  - "The Web profile composes workspace, session trajectory, model settings and Web startup/runtime components; many interactive tools are disabled in the Web profile default patch."
+limitations:
+  - "This is a local observation of the published package, not a normative statement about every release."
+  - "The source checkout is 0.1.0-rc.5 while the published package is 0.1.0-rc.6; no package-to-commit mapping was assumed, and they must remain separate in the version matrix."
+  - "No model request, credential configuration, browser interaction, workspace task or clean-diff check was performed."
+  - "The timestamp is the evidence-record time; individual process start times were not emitted by the probe wrapper."
+affected_docs:
+  - "VERSION.md"
+  - "labs/LAB-BOOT-001/README.md"
+  - "labs/manifest.yaml"

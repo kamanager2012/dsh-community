@@ -1,0 +1,138 @@
+schema_version: "1.0"
+title: "DeepSeek Harness Handbook Source Matrix"
+snapshot: "2026-08-14"
+purpose: >-
+  Map each handbook topic to its official specification, pinned implementation,
+  local observation, analysis and affected content. M-method inspiration is
+  intentionally not allowed to close a product-fact row.
+
+rules:
+  - "F0, F1 and F2 are recorded independently; conflicts remain visible."
+  - "F3 is not complete until its dependent evidence is named."
+  - "M can create a question or experiment but cannot change a row to pass."
+  - "A topic with no F2 record remains unverified even when F0 is complete."
+
+topics:
+  - id: TOPIC-WEB-UI
+    topic: "Web UI first boot and task path"
+    official_records:
+      - "OFFICIAL-WEB-UI-2026-08-14"
+    implementation_records:
+      - "SOURCE-CLI-47F9438-2026-08-14"
+    observation_records:
+      - "CLI-BASELINE-2026-08-14"
+      - "WEB-BOOT-2026-08-14"
+      - "WEB-HTTP-2026-08-14"
+      - "WEB-BOOT-2026-08-15"
+      - "WEB-HTTP-2026-08-15"
+    analysis_docs:
+      - "content/quickstart/web-ui.md"
+      - "content/tasks/index.md"
+    status: "partial"
+    gap: "Browser interaction, Provider request, workspace task, Trajectory and clean diff are not run."
+
+  - id: TOPIC-AIOS-WORKSPACE
+    topic: "aios-core as the first real test workspace"
+    official_records: []
+    implementation_records: []
+    observation_records:
+      - "AIOS-WORKSPACE-BASELINE-2026-08-14"
+      - "AIOS-READONLY-REFERENCE-2026-08-14"
+      - "DSH-AIOS-MISSING-CREDENTIAL-2026-08-14"
+      - "DSH-AIOS-MISSING-CREDENTIAL-2026-08-15"
+      - "DSH-AIOS-WEB-BROWSER-BLOCKED-2026-08-14"
+    analysis_docs:
+      - "content/quickstart/web-ui.md"
+      - "content/automation/headless-cli.md"
+      - "content/tasks/aios-readonly.md"
+      - "labs/LAB-BOOT-001/README.md"
+      - "labs/LAB-BOOT-001/aios-readonly-task.md"
+    status: "workspace_and_task_contract_ready_browser_and_credential_blocked"
+    gap: "AIOS checks and static reference map pass, but dsh lacks a credential and the browser toolchain is unavailable; no model task or clean-diff assertion has run."
+
+  - id: TOPIC-SESSION-LIFECYCLE
+    topic: "Session history, resume, fork and entrypoint boundaries"
+    official_records:
+      - "OFFICIAL-CLI-2026-08-14"
+      - "OFFICIAL-PYTHON-SDK-2026-08-14"
+    implementation_records:
+      - "SOURCE-SESSION-47F9438-2026-08-14"
+    observation_records: []
+    analysis_docs:
+      - "content/core/session-lifecycle.md"
+      - "labs/LAB-SESSION-001/README.md"
+      - "content/tasks/index.md"
+    status: "f1_recorded_f2_planned"
+    gap: "Session source contracts are recorded, but no Web history/resume/fork, headless persistence, crash recovery or SDK session-reuse observation has run."
+
+  - id: TOPIC-PROVIDERS
+    topic: "DeepSeek, catalog and custom Provider configuration"
+    official_records:
+      - "OFFICIAL-PROVIDERS-2026-08-14"
+    implementation_records:
+      - "SOURCE-CLI-47F9438-2026-08-14"
+    observation_records: []
+    analysis_docs:
+      - "content/quickstart/providers.md"
+      - "content/safety/permissions-and-data.md"
+    status: "f0_only"
+    gap: "No real credential, model selection, endpoint, error or data-flow Lab has run."
+
+  - id: TOPIC-TASK-CONTRACT
+    topic: "Goal, scope, invariants, acceptance, stopping and recovery"
+    official_records: []
+    implementation_records: []
+    observation_records: []
+    analysis_docs:
+      - "content/core/task-contract.md"
+    status: "method"
+    gap: "This is our F3 engineering model; dsh does not expose this template as a claimed native schema."
+
+  - id: TOPIC-SAFETY
+    topic: "Permission, sandbox, credentials, telemetry and external data"
+    official_records: []
+    implementation_records:
+      - "SOURCE-CLI-47F9438-2026-08-14"
+    observation_records:
+      - "CLI-BASELINE-2026-08-14"
+    analysis_docs:
+      - "content/safety/permissions-and-data.md"
+    status: "partial"
+    gap: "The default configuration was dumped, but no destructive-operation, approval or data-flow Lab has run."
+
+  - id: TOPIC-PYTHON-SDK
+    topic: "Python SDK lifecycle, workspace and session reuse"
+    official_records:
+      - "OFFICIAL-PYTHON-SDK-2026-08-14"
+    implementation_records:
+      - "SOURCE-PYTHON-SDK-47F9438-2026-08-14"
+    observation_records: []
+    analysis_docs:
+      - "content/automation/python-sdk.md"
+    status: "f1_recorded_f2_planned"
+    gap: "SDK source contract is recorded, but no published SDK install, runtime request, RunResult, session reuse or clean-diff Lab has run."
+
+  - id: TOPIC-HEADLESS
+    topic: "Headless CLI task, result text and exit status"
+    official_records:
+      - "OFFICIAL-CLI-2026-08-14"
+    implementation_records:
+      - "SOURCE-CLI-47F9438-2026-08-14"
+    observation_records:
+      - "CLI-BASELINE-2026-08-14"
+      - "HEADLESS-MISSING-CREDENTIAL-2026-08-14"
+    analysis_docs:
+      - "content/automation/headless-cli.md"
+      - "content/tasks/index.md"
+    status: "preflight_only"
+    gap: "Help and missing-credential failure were observed; no credentialed task or success/failed-task exit-status matrix exists."
+
+  - id: TOPIC-PLUGINS
+    topic: "Profile, Bundle, Patch and Plugin lifecycle"
+    official_records: []
+    implementation_records:
+      - "SOURCE-CLI-47F9438-2026-08-14"
+    observation_records: []
+    analysis_docs: []
+    status: "planned"
+    gap: "Plugin install, dependency, load, tool exposure, removal and rollback require a separate Lab."

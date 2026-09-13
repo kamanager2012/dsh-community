@@ -1,0 +1,50 @@
+id: AIOS-READONLY-REFERENCE-2026-08-14
+claim: >-
+  在固定 AIOS commit 中，README、形式化 SPEC、runtime、schema 和状态迁移测试提供了可交叉验证的模块、执行和治理参考；当前仓库还可观察到 README 测试数量落后于实际检查基线，以及不同文件对 ROLLBACK 角色的表述差异。
+layer: F2
+status: pass
+provenance:
+  official_url: null
+  source_commit: "6af8968180eb9b14acd61c99d04253180d456303"
+  package_version: "aios-core@1.0.0"
+  document_version: "README.md, README.zh-CN.md, kernel/SPEC.md, kernel/runtime.ts, kernel/schema/index.ts, tests/kernel/state_transitions.test.ts; viewed 2026-08-14"
+observed_at: "2026-08-14T17:05:00+08:00"
+environment:
+  os: "Linux 6.18.33.1-microsoft-standard-WSL2"
+  architecture: "x64"
+  node: "v24.18.0"
+  python: null
+  provider: null
+  permission_mode: "read-only source inspection"
+execution:
+  command: >-
+    git rev-parse HEAD; git status --short --branch; rg -n
+    "244 个测试|IDLE → PLAN|ROLLBACK|VERIFY.*PLAN|not an independent"
+    README* kernel/SPEC.md kernel/runtime.ts kernel/schema/index.ts
+    tests/kernel/state_transitions.test.ts
+  input_ref: "AIOS module and state-model cross-check"
+  workspace_ref: "aios-core@6af8968; absolute path omitted"
+  session_ref: null
+result:
+  summary: >-
+    The repository exposes kernel, governor, memory, cli, tests and shadow
+    areas. README.zh-CN.md states 244 tests in 25 files, while the independent
+    workspace baseline recorded npm run check at 27 Vitest files and 265 tests.
+    kernel/SPEC.md and kernel/runtime.ts record ROLLBACK decisions or
+    transitions, while tests/kernel/state_transitions.test.ts describes
+    ROLLBACK as a path marker rather than an independent state and models
+    VERIFY failure as a return to PLAN. These are observations to preserve in
+    the dsh task output, not a preselected resolution.
+  exit_code: 0
+  artifacts:
+    - "AIOS-WORKSPACE-BASELINE-2026-08-14"
+    - "read-only path map (not copied into the handbook)"
+limitations:
+  - "This record is static inspection of the AIOS workspace, not a successful dsh model task."
+  - "No AIOS source file was changed; the pre-existing cc-switch.db was not opened or modified."
+  - "The record does not decide which AIOS document is authoritative; that distinction is the subject of the dsh task contract."
+affected_docs:
+  - "labs/LAB-BOOT-001/aios-readonly-task.md"
+  - "content/tasks/aios-readonly.md"
+  - "labs/LAB-BOOT-001/README.md"
+  - "labs/manifest.yaml"

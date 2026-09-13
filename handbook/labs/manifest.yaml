@@ -1,0 +1,159 @@
+schema_version: "1.0"
+title: "DeepSeek Harness Handbook Lab Manifest"
+status: "initial"
+evidence_schema: "../evidence/schema.yaml"
+version_matrix: "../VERSION.md"
+
+policy:
+  secrets: "Never put API keys, cookies, private paths, or raw private logs in the repository."
+  workspaces: "Use disposable or clean, committed workspaces."
+  permissions: "Start read-only or workspace-write; record any elevation."
+  results: "A Lab is not passed until its evidence record and expected artifacts exist."
+
+labs:
+  - id: LAB-BOOT-001
+    title: "Web UI first boot and read-only repository task"
+    status: "not_run"
+    priority: "P0"
+    objective: >-
+      Start a pinned dsh Web UI, configure a model, select an isolated workspace,
+      run a read-only repository summary, and prove that no workspace diff was produced.
+    prerequisites:
+      - "Published dsh package available from a usable npm cache or network"
+      - "Node satisfying the pinned version matrix"
+      - "A disposable or clean committed workspace"
+      - "A credential supplied outside the repository"
+    risk: "read-only task; model configuration still involves an external endpoint"
+    steps:
+      - id: "preflight"
+        action: "Record package version, Node version, OS, architecture, workspace fingerprint, and permission policy."
+        mutates_workspace: false
+      - id: "cli_help"
+        command: "npx --yes @deepseek-ai/dsh@0.1.0-rc.6 --help"
+        mutates_workspace: false
+      - id: "web_help"
+        command: "npx --yes @deepseek-ai/dsh@0.1.0-rc.6 web --help"
+        mutates_workspace: false
+      - id: "start"
+        command: "npx --yes @deepseek-ai/dsh@0.1.0-rc.6 web"
+        mutates_workspace: false
+      - id: "configure"
+        action: "Configure a model through the UI; do not record the credential value."
+        mutates_workspace: false
+      - id: "workspace"
+        action: "Select the isolated workspace and record only a sanitized fingerprint."
+        mutates_workspace: false
+      - id: "task"
+        action: "Run the pinned read-only task contract against the selected workspace without editing files."
+        mutates_workspace: false
+      - id: "verify"
+        action: "Capture Trajectory reference, final response, tool events summary, and clean diff result."
+        mutates_workspace: false
+    evidence:
+      required_layers: ["F0", "F1", "F2"]
+      prerequisite_records:
+        - "CLI-BASELINE-2026-08-14"
+        - "WEB-BOOT-2026-08-14"
+        - "WEB-HTTP-2026-08-14"
+        - "WEB-BOOT-2026-08-15"
+        - "WEB-HTTP-2026-08-15"
+      workspace_records:
+        - "AIOS-WORKSPACE-BASELINE-2026-08-14"
+        - "AIOS-READONLY-REFERENCE-2026-08-14"
+        - "DSH-AIOS-MISSING-CREDENTIAL-2026-08-14"
+        - "DSH-AIOS-MISSING-CREDENTIAL-2026-08-15"
+        - "DSH-AIOS-WEB-BROWSER-BLOCKED-2026-08-14"
+      task_contract: "labs/LAB-BOOT-001/aios-readonly-task.md"
+      affected_docs:
+        - "content/quickstart/web-ui.md"
+        - "content/quickstart/providers.md"
+        - "content/safety/permissions-and-data.md"
+        - "content/tasks/index.md"
+      expected_records:
+        - "LAB-BOOT-001"
+    expected_artifacts:
+      - "version and environment record"
+      - "sanitized Trajectory/session reference"
+      - "workspace diff check"
+      - "final response and tool-event summary"
+      - "evidence-backed conflict report for AIOS docs/source/tests"
+    current_blocker: >-
+      Interactive Web UI, Provider/model request, workspace selection, read-only
+      task, Trajectory/session capture and clean-diff verification are not run;
+      CLI-BASELINE-2026-08-14, WEB-BOOT-2026-08-14 and WEB-HTTP-2026-08-14 only
+      prove prerequisites. AIOS-WORKSPACE-BASELINE-2026-08-14 passed, but
+      DSH-AIOS-MISSING-CREDENTIAL-2026-08-14 and the clean-checkout rerun
+      DSH-AIOS-MISSING-CREDENTIAL-2026-08-15 show that a credential is still
+      required before the model path can run; DSH-AIOS-WEB-BROWSER-BLOCKED-2026-08-14
+      records the separate browser-toolchain block. The AIOS read-only task
+      contract is ready at labs/LAB-BOOT-001/aios-readonly-task.md, but no
+      credentialed dsh task has been run.
+
+  - id: LAB-SESSION-001
+    title: "Session, Resume and Fork behavior"
+    status: "planned"
+    priority: "P1"
+    objective: "Observe session persistence, interruption, resume and fork boundaries."
+    depends_on: ["LAB-BOOT-001"]
+    task_contract: "labs/LAB-SESSION-001/README.md"
+    evidence:
+      required_layers: ["F0", "F1", "F2"]
+      prerequisite_records:
+        - "AIOS-WORKSPACE-BASELINE-2026-08-14"
+        - "SOURCE-SESSION-47F9438-2026-08-14"
+      expected_records:
+        - "LAB-SESSION-001-S0"
+        - "LAB-SESSION-001-S1"
+        - "LAB-SESSION-001-S2"
+        - "LAB-SESSION-001-S3"
+        - "LAB-SESSION-001-S4"
+      affected_docs:
+        - "content/core/session-lifecycle.md"
+        - "content/tasks/index.md"
+    expected_artifacts:
+      - "sanitized parent and child session references"
+      - "event ranges and turn-end reasons"
+      - "resume/fork metadata summary"
+      - "parent and child workspace diff checks"
+
+  - id: LAB-AUTOMATION-001
+    title: "Headless and Python SDK task contract"
+    status: "planned"
+    priority: "P1"
+    objective: "Compare CLI and SDK lifecycle, exit status, result fields and session reuse."
+    depends_on: ["LAB-BOOT-001"]
+    prerequisites:
+      - "Pinned dsh package and Python SDK version"
+      - "Python 3.10+ and a supported platform"
+      - "Disposable workspace and separate session root"
+      - "Credential injected outside the repository"
+    evidence:
+      required_layers: ["F0", "F1", "F2"]
+      expected_records:
+        - "LAB-AUTOMATION-001"
+      task_contract: "labs/LAB-AUTOMATION-001/aios-cli-sdk-comparison.md"
+      affected_docs:
+        - "content/automation/headless-cli.md"
+        - "content/automation/python-sdk.md"
+        - "content/core/task-contract.md"
+        - "content/safety/permissions-and-data.md"
+    expected_artifacts:
+      - "CLI stdout, stderr and exit status summary"
+      - "SDK final result or exception summary"
+      - "sanitized session references"
+      - "workspace diff comparison"
+      - "separate A0/B0/B1/B2/F0 Evidence Records"
+
+  - id: LAB-PLUGIN-001
+    title: "Plugin load, capability registration and cleanup"
+    status: "planned"
+    priority: "P2"
+    objective: "Verify a minimal plugin lifecycle without copying any external example."
+    depends_on: ["LAB-BOOT-001"]
+
+  - id: LAB-SCALE-001
+    title: "Batch read-only throughput and recovery baseline"
+    status: "planned"
+    priority: "P2"
+    objective: "Measure task contract success, Token, latency, concurrency, retries and recovery."
+    depends_on: ["LAB-AUTOMATION-001"]

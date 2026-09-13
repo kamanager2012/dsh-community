@@ -1,0 +1,51 @@
+id: SOURCE-PYTHON-SDK-47F9438-2026-08-14
+claim: >-
+  固定官方源码 commit 的 Python SDK 声明 Python >=3.10，默认通过 bundled
+  runtime 的 stdio JSON-RPC 启动 dsh；DeepSeekHarnessConfig 将 session_root
+  注入为 DSH_SESSION_ROOT，RunResult 区分 final_response、finish_reason、根
+  session events、notifications 和 session_root。
+layer: F1
+status: pass
+provenance:
+  official_url: "https://github.com/deepseek-ai/deepseek-harness/blob/master/python/sdk/README.zh.md"
+  source_commit: "47f943859bef60e4160492346772ded9b24f765a"
+  package_version: "deepseek-harness-sdk@0.0.0.dev0 (source package)"
+  document_version: "python/sdk/README.zh.md and python/sdk/src/deepseek_harness; viewed 2026-08-14"
+observed_at: "2026-08-14T17:30:00+08:00"
+environment:
+  os: "Linux 6.18.33.1-microsoft-standard-WSL2"
+  architecture: "x64"
+  node: "v24.18.0"
+  python: null
+  provider: null
+  permission_mode: "read-only source inspection"
+execution:
+  command: >-
+    git -C /tmp/deepseek-harness-research rev-parse HEAD; sed/rg over
+    python/sdk/README.zh.md, python/sdk/pyproject.toml and
+    python/sdk/src/deepseek_harness/{api,client,models}.py
+  input_ref: "Python SDK lifecycle and result-contract cross-check"
+  workspace_ref: "official-source@47f9438; absolute path omitted"
+  session_ref: null
+result:
+  summary: >-
+    The source package requires Python >=3.10 and depends on the matching
+    deepseek-harness-runtime-bin development package. DeepSeekHarness keeps a
+    runtime subprocess across run calls and is intended to be closed through a
+    context manager or close(). The public RunResult contains session_id,
+    final_response, finish_reason, events, notifications and session_root;
+    source documentation defines events as root-session events and
+    notifications as root plus known descendant notifications. finish_reason
+    is derived from the last turn/end reason kind and malformed protocol data
+    raises SdkProtocolError.
+  exit_code: 0
+  artifacts:
+    - "fixed source paths and package metadata (not copied into the handbook)"
+limitations:
+  - "This is a fixed-source implementation record, not evidence that a published PyPI SDK was installed."
+  - "No Python SDK runtime was launched and no model request was made."
+  - "Source behavior may change in a later dsh release; the commit must remain paired with this record."
+affected_docs:
+  - "content/automation/python-sdk.md"
+  - "labs/LAB-AUTOMATION-001/README.md"
+  - "labs/LAB-AUTOMATION-001/aios-cli-sdk-comparison.md"

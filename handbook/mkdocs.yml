@@ -1,0 +1,204 @@
+site_name: DeepSeek Harness 中文使用手册
+site_description: DeepSeek Harness 的工程实施、验收与运维手册
+site_url: https://kamanager2012.github.io/deepseek-harness-handbook/
+repo_name: kamanager2012/dsh-community
+repo_url: https://github.com/kamanager2012/dsh-community
+edit_uri: edit/main/handbook/
+docs_dir: .mkdocs-docs
+site_dir: .mkdocs-site
+
+theme:
+  name: material
+  language: zh
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.path
+    - navigation.indexes
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: 切换到深色模式
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: 切换到浅色模式
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+nav:
+  - 首页: index.md
+  - AI 知识包: ai/README.md
+  - English edition:
+      - English home: en/index.md
+      - Translation status: en/translation-status.md
+      - What is dsh?: en/00-overview/what-is-dsh.md
+      - Five-layer model: en/00-overview/harness-five-layers.md
+      - Choosing Web, CLI, SDK, or plugins: en/00-overview/when-to-use.md
+      - Community ecosystem: en/00-overview/community-ecosystem.md
+      - Current release status: en/11-operations/community-release-status.md
+      - Community release runbook: en/11-operations/community-release-runbook.md
+      - Third-party documentation patterns: en/12-reference/third-party-doc-patterns.md
+      - Installation and first launch: en/01-installation/README.md
+      - First Web UI task: en/02-web-ui/first-run.md
+      - CLI commands: en/03-cli/commands.md
+      - DeepSeek Provider: en/04-providers/deepseek.md
+      - Provider troubleshooting: en/04-providers/troubleshooting.md
+      - Main workflow: en/05-workflows/from-blank-to-delivery.md
+      - Review and acceptance: en/05-workflows/review-and-acceptance.md
+      - Security: en/06-security/README.md
+      - Marketplace CLI: en/10-plugins/community-marketplace.md
+      - Community Labs handoff: en/11-operations/community-labs-handoff.md
+      - Session recovery: en/07-sessions/recovery.md
+      - FAQ: en/12-reference/faq.md
+      - Glossary: en/12-reference/glossary.md
+  - 书稿目录: BOOK.md
+  - 正文索引: content/README.md
+  - 序章：先把 dsh 想清楚:
+      - 总览入口: content/00-overview/README.md
+      - dsh 是什么: content/00-overview/what-is-dsh.md
+      - 五层模型: content/00-overview/harness-five-layers.md
+      - 心智模型: content/00-overview/mental-model.md
+      - 什么时候使用 dsh: content/00-overview/when-to-use.md
+      - 架构概览: content/00-overview/architecture.md
+      - Community 生态与产品入口: content/00-overview/community-ecosystem.md
+  - 第一部：第一次启动与第一次结果:
+      - 安装与首次启动: content/01-installation/README.md
+      - npm 包与源码运行: content/01-installation/npm-vs-source.md
+      - 源码开发: content/01-installation/source-development.md
+      - Windows 与 WSL: content/01-installation/windows-wsl.md
+      - DSH 社区发行版: content/01-installation/community-distribution.md
+      - 升级与回滚: content/01-installation/upgrades.md
+      - Web UI 总览: content/02-web-ui/README.md
+      - Web UI 首次任务: content/02-web-ui/first-run.md
+      - 工作区与 Session: content/02-web-ui/workspaces-and-sessions.md
+      - 审批与计划: content/02-web-ui/approvals-and-plans.md
+      - 远程与团队使用: content/02-web-ui/remote-and-team.md
+      - Web UI 排错: content/02-web-ui/troubleshooting.md
+      - Provider 与模型: content/04-providers/README.md
+      - DeepSeek Provider: content/04-providers/deepseek.md
+      - Provider 概念: content/04-providers/concepts.md
+      - Provider 目录: content/04-providers/catalog-providers.md
+      - 自定义端点: content/04-providers/custom-endpoints.md
+      - 高级设置: content/04-providers/advanced-settings.md
+      - 模型路由: content/04-providers/model-routing.md
+      - 图片与多模态: content/04-providers/multimodal.md
+      - Provider 迁移: content/04-providers/migration.md
+      - Provider 排错: content/04-providers/troubleshooting.md
+  - 第二部：把一次任务做成闭环:
+      - 主线实战: content/05-workflows/from-blank-to-delivery.md
+      - 任务工作流总览: content/05-workflows/README.md
+      - 只读分析: content/05-workflows/read-only.md
+      - 代码修改: content/05-workflows/code-change.md
+      - 测试与失败定位: content/05-workflows/testing.md
+      - 文档与重构: content/05-workflows/docs-and-refactor.md
+      - 长任务与阶段交付: content/05-workflows/long-tasks.md
+      - 工作流案例: content/05-workflows/case-studies.md
+      - 交付复核与验收原则: content/05-workflows/review-and-acceptance.md
+      - Web 结果复核: content/02-web-ui/result-review.md
+      - 任务契约: content/core/task-contract.md
+  - 第三部：安全边界与状态恢复:
+      - 安全使用总览: content/06-security/README.md
+      - 权限与审批: content/06-security/permissions.md
+      - 审批操作手册: content/06-security/approval-playbook.md
+      - 凭据与数据流: content/06-security/credentials.md
+      - 数据分类: content/06-security/data-classification.md
+      - 数据流: content/06-security/data-flow.md
+      - 威胁模型: content/06-security/threat-model.md
+      - 事故响应: content/06-security/incident-response.md
+      - Session 总览: content/07-sessions/README.md
+      - Session 模型: content/07-sessions/model.md
+      - Session 持久化与事件: content/07-sessions/persistence.md
+      - Session 事件阅读: content/07-sessions/event-reading.md
+      - 恢复与故障运行手册: content/07-sessions/recovery.md
+      - Session 运行手册: content/07-sessions/runbook.md
+  - 第四部：CLI、工具与自动化:
+      - CLI 总览: content/03-cli/README.md
+      - CLI 命令与参数: content/03-cli/commands.md
+      - Profile、Bundle 与 Patch: content/03-cli/profiles-and-config.md
+      - 配置层: content/03-cli/config-layers.md
+      - Headless 与脚本: content/03-cli/scripting.md
+      - CLI 排错: content/03-cli/troubleshooting.md
+      - 工具总览: content/09-tools/README.md
+      - 工具目录与能力边界: content/09-tools/catalog.md
+      - 工具执行流水线: content/09-tools/execution-pipeline.md
+      - 工具边界: content/09-tools/boundaries.md
+      - 文件与搜索: content/09-tools/files-and-search.md
+      - 计划与子 Agent: content/09-tools/plans-and-subagents.md
+      - Schema 阅读: content/09-tools/schema-reading.md
+      - Shell 与后台任务: content/09-tools/shell-and-jobs.md
+      - 工具逐项说明: content/09-tools/tool-by-tool.md
+      - 自动化总览: content/08-automation/README.md
+      - Python SDK 工程实践: content/08-automation/sdk-engineering.md
+      - 结果与错误: content/08-automation/results-and-errors.md
+      - 批处理与 workspace 隔离: content/08-automation/batch-and-isolation.md
+      - 队列、超时与重试: content/08-automation/queues-and-retries.md
+      - SDK 生命周期: content/08-automation/sdk-lifecycle.md
+      - 自动化安全: content/08-automation/security.md
+  - 第五部：插件、团队与长期维护:
+      - 插件总览: content/10-plugins/README.md
+      - 插件模型: content/10-plugins/plugin-model.md
+      - Cordis 入门: content/10-plugins/cordis-primer.md
+      - Cordis 实践教程: content/10-plugins/cordis-tutorial.md
+      - Profile、Bundle、Patch 与扩展: content/10-plugins/profiles-bundles-patches.md
+      - 添加能力: content/10-plugins/adding-capabilities.md
+      - 扩展 Cookbook: content/10-plugins/extension-cookbook.md
+      - 插件调试与发布: content/10-plugins/debugging-and-release.md
+      - MCP 集成指南: content/10-plugins/mcp-integration-guide.md
+      - 运维总览: content/11-operations/README.md
+      - 团队使用规范: content/11-operations/team.md
+      - CI 与发布: content/11-operations/ci.md
+      - 可观测性与故障分诊: content/11-operations/observability.md
+      - 成本与质量: content/11-operations/cost-and-quality.md
+      - 发布检查清单: content/11-operations/release-checklist.md
+      - Community 当前发行状态: content/11-operations/community-release-status.md
+      - Community 发布 Runbook: content/11-operations/community-release-runbook.md
+      - 安全评审: content/11-operations/security-review.md
+      - 运维排错: content/11-operations/troubleshooting.md
+      - Community Labs handoff: content/11-operations/community-labs-handoff.md
+  - 附录：速查、模板与来源:
+      - 参考总览: content/12-reference/README.md
+      - 命令速查: content/12-reference/cheatsheet.md
+      - 完整任务示例: content/12-reference/examples.md
+      - 任务模板: content/12-reference/templates.md
+      - 术语表: content/12-reference/glossary.md
+      - FAQ: content/12-reference/faq.md
+      - 事故模板: content/12-reference/incident-templates.md
+      - 阅读计划: content/12-reference/reading-plans.md
+      - 官方来源与阅读方法: content/12-reference/sources.md
+      - 第三方 Agent 文档对照: content/12-reference/third-party-doc-patterns.md
+  - 兼容入口:
+      - Headless CLI（旧路径）: content/automation/headless-cli.md
+      - Python SDK（旧路径）: content/automation/python-sdk.md
+      - Session 生命周期: content/core/session-lifecycle.md
+      - Provider 快速开始: content/quickstart/providers.md
+      - Web UI 快速开始: content/quickstart/web-ui.md
+      - 权限与数据边界: content/safety/permissions-and-data.md
+      - 任务入口: content/tasks/index.md
+      - AIOS 只读任务: content/tasks/aios-readonly.md

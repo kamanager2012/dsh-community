@@ -1,0 +1,38 @@
+id: OFFICIAL-WEB-UI-2026-08-14
+claim: "官方 Web UI 指南定义了启动后配置模型、选择 workspace、创建会话和按权限审批行动的基础路径。"
+layer: F0
+status: pass
+provenance:
+  official_url: "https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/guide/index.zh.md"
+  source_commit: null
+  package_version: null
+  document_version: "master viewed 2026-08-14"
+observed_at: "2026-08-14"
+observed_at_precision: "date-only"
+environment:
+  os: "not applicable"
+  architecture: "not applicable"
+  node: null
+  python: null
+  provider: null
+  permission_mode: null
+execution:
+  command: null
+  input_ref: null
+  workspace_ref: null
+  session_ref: null
+result:
+  summary: >-
+    The official guide says to start the Web UI first, configure a model under
+    Settings → Models, add and select a workspace, then start a session. It
+    also states that a fresh UI has no selected workspace and the composer is
+    unavailable until one is selected; operations requiring approval prompt in
+    the Web UI.
+  exit_code: null
+  artifacts: []
+limitations:
+  - "This record captures the official guide, not a local browser run."
+  - "The guide does not by itself prove model connectivity, task quality, clean diff or every permission edge case."
+affected_docs:
+  - "content/quickstart/web-ui.md"
+  - "content/tasks/index.md"

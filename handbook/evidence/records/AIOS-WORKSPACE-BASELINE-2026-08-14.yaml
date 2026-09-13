@@ -1,0 +1,48 @@
+id: AIOS-WORKSPACE-BASELINE-2026-08-14
+claim: "用户指定的 aios-core 测试 workspace 在固定 commit 下通过项目自身的 arch-guard、TypeScript 和 Vitest 检查。"
+layer: F2
+status: pass
+provenance:
+  official_url: null
+  source_commit: "6af8968180eb9b14acd61c99d04253180d456303"
+  package_version: "aios-core@1.0.0"
+  document_version: "README baseline viewed 2026-08-14"
+observed_at: "2026-08-14T16:40:59+08:00"
+environment:
+  os: "Linux 6.18.33.1-microsoft-standard-WSL2"
+  architecture: "x64"
+  node: "v24.18.0"
+  python: null
+  provider: null
+  permission_mode: "project tests only; no dsh task"
+execution:
+  command: "npm run check"
+  commands:
+    - "npm ci"
+    - "npm run check"
+  input_ref: null
+  workspace_ref: "aios-core@6af8968; absolute path omitted"
+  session_ref: null
+result:
+  summary: >-
+    npm run check exited 0. arch-guard passed, TypeScript compilation passed,
+    27 Vitest files passed and 265 tests passed. The full run reported a
+    57.49-second duration. npm ci reported 8 audit vulnerabilities; no audit
+    fix command was run.
+  exit_code: 0
+  artifacts:
+    - "aios-core project test output (not copied into the handbook)"
+workspace_state:
+  commit: "6af8968180eb9b14acd61c99d04253180d456303"
+  tracked_file_list_sha256: "4179c27b1b615e604da0ed837d2e0c706998312ab6e9a56325f2c7b1aec04155"
+  preexisting_untracked:
+    - "cc-switch.db (excluded from the dsh task; not opened or modified)"
+  tracked_diff: "empty before and after the project check"
+limitations:
+  - "This is the workspace baseline, not evidence that dsh successfully analyzed the project."
+  - "The project check does not validate dsh, model connectivity or AIOS behavior under an agent task."
+  - "The npm audit findings were observed but not investigated or changed in this run."
+affected_docs:
+  - "labs/LAB-BOOT-001/README.md"
+  - "labs/manifest.yaml"
+  - "content/quickstart/web-ui.md"

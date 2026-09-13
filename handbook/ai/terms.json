@@ -1,0 +1,387 @@
+{
+  "schema_version": "1.0",
+  "name": "DeepSeek Harness 术语索引",
+  "description": "从中文正文术语表逐行提取的机器可读定义，不替代当前版本官方字段说明。",
+  "language": "zh-CN",
+  "source": {
+    "path": "content/12-reference/glossary.md",
+    "repository": "https://github.com/kamanager2012/dsh-community/tree/main/handbook",
+    "branch": "main"
+  },
+  "terms": [
+    {
+      "term": "Agent",
+      "definition": "在 session 中接收输入、请求模型、调用工具并推进任务的执行主体",
+      "language": "zh-CN",
+      "source": {
+        "path": "content/12-reference/glossary.md",
+        "line_start": 5,
+        "line_end": 5,
+        "url": "https://github.com/kamanager2012/dsh-community/blob/main/handbook/content/12-reference/glossary.md#L5"
+      }
+    },
+    {
+      "term": "Agent loop",
+      "definition": "处理输入、模型响应、工具结果和下一步的循环",
+      "language": "zh-CN",
+      "source": {
+        "path": "content/12-reference/glossary.md",
+        "line_start": 6,
+        "line_end": 6,
+        "url": "https://github.com/kamanager2012/dsh-community/blob/main/handbook/content/12-reference/glossary.md#L6"
+      }
+    },
+    {
+      "term": "bundle",
+      "definition": "可分发的组合配置及其挂载代码",
+      "language": "zh-CN",
+      "source": {
+        "path": "content/12-reference/glossary.md",
+        "line_start": 7,
+        "line_end": 7,
+        "url": "https://github.com/kamanager2012/dsh-community/blob/main/handbook/content/12-reference/glossary.md#L7"
+      }
+    },
+    {
+      "term": "cwd",
+      "definition": "进程或 Agent 的当前工作目录",
+      "language": "zh-CN",
+      "source": {
+        "path": "content/12-reference/glossary.md",
+        "line_start": 8,
+        "line_end": 8,
+        "url": "https://github.com/kamanager2012/dsh-community/blob/main/handbook/content/12-reference/glossary.md#L8"
+      }
+    },
+    {
+      "term": "Cordis",
+      "definition": "dsh 底层的插件框架",
+      "language": "zh-CN",
+      "source": {
+        "path": "content/12-reference/glossary.md",
+        "line_start": 9,
+        "line_end": 9,
+        "url": "https://github.com/kamanager2012/dsh-community/blob/main/handbook/content/12-reference/glossary.md#L9"
+      }
+    },
+    {
+      "term": "DSH_HOME",
+      "definition": "保存 dsh 用户配置、凭据、profile 和状态的目录",
+      "language": "zh-CN",
+      "source": {
+        "path": "content/12-reference/glossary.md",
+        "line_start": 10,
+        "line_end": 10,
+        "url": "https://github.com/kamanager2012/dsh-community/blob/main/handbook/content/12-reference/glossary.md#L10"
+      }
+    },
+    {
+      "term": "Provider",
+      "definition": "把模型、协议、端点和凭据接起来的配置对象",
+      "language": "zh-CN",
+      "source": {
+        "path": "content/12-reference/glossary.md",
+        "line_start": 11,
+        "line_end": 11,
+        "url": "https://github.com/kamanager2012/dsh-community/blob/main/handbook/content/12-reference/glossary.md#L11"
+      }
+    },
+    {
+      "term": "profile",
+      "definition": "具名的运行时组合",
+      "language": "zh-CN",
+      "source": {
+        "path": "content/12-reference/glossary.md",
+        "line_start": 12,
+        "line_end": 12,
+        "url": "https://github.com/kamanager2012/dsh-community/blob/main/handbook/content/12-reference/glossary.md#L12"
+      }
+    },
+    {
+      "term": "patch",
+      "definition": "对插件配置树进行替换或插入的覆盖",
+      "language": "zh-CN",
+      "source": {
+        "path": "content/12-reference/glossary.md",
+        "line_start": 13,
+        "line_end": 13,
+        "url": "https://github.com/kamanager2012/dsh-community/blob/main/handbook/content/12-reference/glossary.md#L13"
+      }
+    },
+    {
+      "term": "workspace",
+      "definition": "Agent 任务使用的项目工作区",
+      "language": "zh-CN",
+      "source": {
+        "path": "content/12-reference/glossary.md",
+        "line_start": 14,
+        "line_end": 14,
+        "url": "https://github.com/kamanager2012/dsh-community/blob/main/handbook/content/12-reference/glossary.md#L14"
+      }
+    },
+    {
+      "term": "session",
+      "definition": "会话事件、历史、模型、状态和恢复边界",
+      "language": "zh-CN",
+      "source": {
+        "path": "content/12-reference/glossary.md",
+        "line_start": 15,
+        "line_end": 15,
+        "url": "https://github.com/kamanager2012/dsh-community/blob/main/handbook/content/12-reference/glossary.md#L15"
+      }
+    },
+    {
+      "term": "turn",
+      "definition": "从输入领取开始到没有待处理工作的一个轮次",
+      "language": "zh-CN",
+      "source": {
+        "path": "content/12-reference/glossary.md",
+        "line_start": 16,
+        "line_end": 16,
+        "url": "https://github.com/kamanager2012/dsh-community/blob/main/handbook/content/12-reference/glossary.md#L16"
+      }
+    },
+    {
+      "term": "step",
+      "definition": "一个模型请求及其工具调用链",
+      "language": "zh-CN",
+      "source": {
+        "path": "content/12-reference/glossary.md",
+        "line_start": 17,
+        "line_end": 17,
+        "url": "https://github.com/kamanager2012/dsh-community/blob/main/handbook/content/12-reference/glossary.md#L17"
+      }
+    },
+    {
+      "term": "tool schema",
+      "definition": "向模型声明工具名称、描述和参数的结构",
+      "language": "zh-CN",
+      "source": {
+        "path": "content/12-reference/glossary.md",
+        "line_start": 18,
+        "line_end": 18,
+        "url": "https://github.com/kamanager2012/dsh-community/blob/main/handbook/content/12-reference/glossary.md#L18"
+      }
+    },
+    {
+      "term": "headless",
+      "definition": "不启动 Web server、直接运行一次 Agent 任务的 CLI profile",
+      "language": "zh-CN",
+      "source": {
+        "path": "content/12-reference/glossary.md",
+        "line_start": 19,
+        "line_end": 19,
+        "url": "https://github.com/kamanager2012/dsh-community/blob/main/handbook/content/12-reference/glossary.md#L19"
+      }
+    },
+    {
+      "term": "history",
+      "definition": "从持久事件中读取的历史视图",
+      "language": "zh-CN",
+      "source": {
+        "path": "content/12-reference/glossary.md",
+        "line_start": 20,
+        "line_end": 20,
+        "url": "https://github.com/kamanager2012/dsh-community/blob/main/handbook/content/12-reference/glossary.md#L20"
+      }
+    },
+    {
+      "term": "resume",
+      "definition": "在同一 session 上恢复或继续运行",
+      "language": "zh-CN",
+      "source": {
+        "path": "content/12-reference/glossary.md",
+        "line_start": 21,
+        "line_end": 21,
+        "url": "https://github.com/kamanager2012/dsh-community/blob/main/handbook/content/12-reference/glossary.md#L21"
+      }
+    },
+    {
+      "term": "fork",
+      "definition": "从父 session 的完成边界创建 child session",
+      "language": "zh-CN",
+      "source": {
+        "path": "content/12-reference/glossary.md",
+        "line_start": 22,
+        "line_end": 22,
+        "url": "https://github.com/kamanager2012/dsh-community/blob/main/handbook/content/12-reference/glossary.md#L22"
+      }
+    },
+    {
+      "term": "MCP",
+      "definition": "一种向 Agent 提供外部工具或资源的协议/集成方式",
+      "language": "zh-CN",
+      "source": {
+        "path": "content/12-reference/glossary.md",
+        "line_start": 23,
+        "line_end": 23,
+        "url": "https://github.com/kamanager2012/dsh-community/blob/main/handbook/content/12-reference/glossary.md#L23"
+      }
+    },
+    {
+      "term": "PTY",
+      "definition": "伪终端，用于持久 Shell 或交互式进程",
+      "language": "zh-CN",
+      "source": {
+        "path": "content/12-reference/glossary.md",
+        "line_start": 24,
+        "line_end": 24,
+        "url": "https://github.com/kamanager2012/dsh-community/blob/main/handbook/content/12-reference/glossary.md#L24"
+      }
+    },
+    {
+      "term": "sandbox",
+      "definition": "限制进程访问、写入、网络或执行范围的机制",
+      "language": "zh-CN",
+      "source": {
+        "path": "content/12-reference/glossary.md",
+        "line_start": 25,
+        "line_end": 25,
+        "url": "https://github.com/kamanager2012/dsh-community/blob/main/handbook/content/12-reference/glossary.md#L25"
+      }
+    },
+    {
+      "term": "approval",
+      "definition": "在高影响动作前请求人的允许",
+      "language": "zh-CN",
+      "source": {
+        "path": "content/12-reference/glossary.md",
+        "line_start": 26,
+        "line_end": 26,
+        "url": "https://github.com/kamanager2012/dsh-community/blob/main/handbook/content/12-reference/glossary.md#L26"
+      }
+    },
+    {
+      "term": "DSH permission mode",
+      "definition": "dsh 对读写、命令和工具请求的权限预设或策略",
+      "language": "zh-CN",
+      "source": {
+        "path": "content/12-reference/glossary.md",
+        "line_start": 27,
+        "line_end": 27,
+        "url": "https://github.com/kamanager2012/dsh-community/blob/main/handbook/content/12-reference/glossary.md#L27"
+      }
+    },
+    {
+      "term": "finish_reason",
+      "definition": "一次 Agent 运行结束的原因",
+      "language": "zh-CN",
+      "source": {
+        "path": "content/12-reference/glossary.md",
+        "line_start": 28,
+        "line_end": 28,
+        "url": "https://github.com/kamanager2012/dsh-community/blob/main/handbook/content/12-reference/glossary.md#L28"
+      }
+    },
+    {
+      "term": "JSONL",
+      "definition": "每行一个 JSON 对象的日志格式",
+      "language": "zh-CN",
+      "source": {
+        "path": "content/12-reference/glossary.md",
+        "line_start": 29,
+        "line_end": 29,
+        "url": "https://github.com/kamanager2012/dsh-community/blob/main/handbook/content/12-reference/glossary.md#L29"
+      }
+    },
+    {
+      "term": "seam",
+      "definition": "可替换能力的接口、提供方和消费者组成的扩展边界",
+      "language": "zh-CN",
+      "source": {
+        "path": "content/12-reference/glossary.md",
+        "line_start": 30,
+        "line_end": 30,
+        "url": "https://github.com/kamanager2012/dsh-community/blob/main/handbook/content/12-reference/glossary.md#L30"
+      }
+    },
+    {
+      "term": "service",
+      "definition": "Cordis context 中可被其他插件使用的能力",
+      "language": "zh-CN",
+      "source": {
+        "path": "content/12-reference/glossary.md",
+        "line_start": 31,
+        "line_end": 31,
+        "url": "https://github.com/kamanager2012/dsh-community/blob/main/handbook/content/12-reference/glossary.md#L31"
+      }
+    },
+    {
+      "term": "disposer",
+      "definition": "在插件卸载时撤销注册、关闭资源的清理函数",
+      "language": "zh-CN",
+      "source": {
+        "path": "content/12-reference/glossary.md",
+        "line_start": 32,
+        "line_end": 32,
+        "url": "https://github.com/kamanager2012/dsh-community/blob/main/handbook/content/12-reference/glossary.md#L32"
+      }
+    },
+    {
+      "term": "Canonical Product",
+      "definition": "对用户公开的唯一正式产品；当前是 `dsh-community`",
+      "language": "zh-CN",
+      "source": {
+        "path": "content/12-reference/glossary.md",
+        "line_start": 33,
+        "line_end": 33,
+        "url": "https://github.com/kamanager2012/dsh-community/blob/main/handbook/content/12-reference/glossary.md#L33"
+      }
+    },
+    {
+      "term": "Community Labs",
+      "definition": "已归档实验区；历史仓是 `deepseek-harness-suite`，不要从那里安装",
+      "language": "zh-CN",
+      "source": {
+        "path": "content/12-reference/glossary.md",
+        "line_start": 34,
+        "line_end": 34,
+        "url": "https://github.com/kamanager2012/dsh-community/blob/main/handbook/content/12-reference/glossary.md#L34"
+      }
+    },
+    {
+      "term": "Compatibility Registry",
+      "definition": "记录插件版本、验证线和兼容状态的注册表；当前是 `dsh-community/packages/marketplace/catalog.json`",
+      "language": "zh-CN",
+      "source": {
+        "path": "content/12-reference/glossary.md",
+        "line_start": 35,
+        "line_end": 35,
+        "url": "https://github.com/kamanager2012/dsh-community/blob/main/handbook/content/12-reference/glossary.md#L35"
+      }
+    },
+    {
+      "term": "Discovery / Distribution UX",
+      "definition": "浏览、搜索和进入官方安装链的用户体验；当前是 `dsh-community/packages/marketplace`",
+      "language": "zh-CN",
+      "source": {
+        "path": "content/12-reference/glossary.md",
+        "line_start": 36,
+        "line_end": 36,
+        "url": "https://github.com/kamanager2012/dsh-community/blob/main/handbook/content/12-reference/glossary.md#L36"
+      }
+    },
+    {
+      "term": "Reality Gate",
+      "definition": "让 Labs 能力进入正式产品前必须通过的真实运行、契约、安全、E2E 和失败路径门禁",
+      "language": "zh-CN",
+      "source": {
+        "path": "content/12-reference/glossary.md",
+        "line_start": 37,
+        "line_end": 37,
+        "url": "https://github.com/kamanager2012/dsh-community/blob/main/handbook/content/12-reference/glossary.md#L37"
+      }
+    },
+    {
+      "term": "SessionEvent",
+      "definition": "官方 Runtime 用于表达 Session 生命周期和事件数据的结构；社区适配器应读取 `event.type` 与 `event.data`",
+      "language": "zh-CN",
+      "source": {
+        "path": "content/12-reference/glossary.md",
+        "line_start": 38,
+        "line_end": 38,
+        "url": "https://github.com/kamanager2012/dsh-community/blob/main/handbook/content/12-reference/glossary.md#L38"
+      }
+    }
+  ]
+}

@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kamanager2012.github.io/deepseek-harness-handbook/ai/schema.json",
+  "title": "DeepSeek Harness AI retrieval record",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "id",
+    "document_id",
+    "title",
+    "section_title",
+    "kind",
+    "language",
+    "summary",
+    "keywords",
+    "content",
+    "source"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "id": { "type": "string", "minLength": 1 },
+    "document_id": { "type": "string", "minLength": 1 },
+    "title": { "type": "string", "minLength": 1 },
+    "section_title": { "type": "string", "minLength": 1 },
+    "section_index": { "type": "integer", "minimum": 1 },
+    "part_index": { "type": "integer", "minimum": 1 },
+    "kind": { "type": "string", "minLength": 1 },
+    "language": { "enum": ["zh-CN", "en"] },
+    "summary": { "type": "string" },
+    "keywords": { "type": "array", "items": { "type": "string" } },
+    "content": { "type": "string", "minLength": 1 },
+    "source": {
+      "type": "object",
+      "required": ["path", "line_start", "line_end", "url"],
+      "properties": {
+        "path": { "type": "string", "pattern": "^(content|en)/" },
+        "line_start": { "type": "integer", "minimum": 1 },
+        "line_end": { "type": "integer", "minimum": 1 },
+        "url": { "type": "string", "format": "uri" },
+        "translation_of": { "type": "string", "pattern": "^(content/|index\\.md$|README\\.md$)" },
+        "translation_url": { "type": "string", "format": "uri" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

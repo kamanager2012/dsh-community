@@ -1,0 +1,37 @@
+id: OFFICIAL-PROVIDERS-2026-08-14
+claim: "官方 Provider 指南定义了 DeepSeek、目录 Provider、自定义 Provider、凭据引用、模型选择和输入模态配置的公开使用路径。"
+layer: F0
+status: pass
+provenance:
+  official_url: "https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/guide/providers.zh.md"
+  source_commit: null
+  package_version: null
+  document_version: "master viewed 2026-08-14"
+observed_at: "2026-08-14"
+observed_at_precision: "date-only"
+environment:
+  os: "not applicable"
+  architecture: "not applicable"
+  node: null
+  python: null
+  provider: null
+  permission_mode: null
+execution:
+  command: null
+  input_ref: null
+  workspace_ref: null
+  session_ref: null
+result:
+  summary: >-
+    The official guide documents write-only credential handling, the local
+    credential reference, catalog and custom providers, persistent Provider
+    IDs, model selection, image-input declarations and common errors including
+    MISSING_CREDENTIAL, UNKNOWN_MODEL and model-list 401 responses.
+  exit_code: null
+  artifacts: []
+limitations:
+  - "This record captures the official guide, not a local Provider interaction."
+  - "Actual endpoint support, credentials, model availability and network data flow require a separate Lab."
+affected_docs:
+  - "content/quickstart/providers.md"
+  - "content/safety/permissions-and-data.md"

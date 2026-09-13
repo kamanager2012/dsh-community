@@ -1,0 +1,77 @@
+name: Publish documentation site
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-docs.txt
+
+      - name: Install documentation tools
+        run: python -m pip install -r requirements-docs.txt
+
+      - name: Validate handbook
+        run: python scripts/validate_handbook.py
+
+      - name: Validate AI catalog freshness
+        run: python scripts/build_ai_catalog.py --check
+
+      - name: Validate AI catalog source ranges
+        run: python scripts/validate_ai_catalog.py
+
+      - name: Run bilingual retrieval regression
+        run: >-
+          python scripts/evaluate_retrieval.py
+          --min-recall-at-5 0.80
+          --min-mrr 0.65
+          --min-source-accuracy-at-1 0.70
+          --min-term-coverage 0.90
+
+      - name: Prepare reader source
+        run: python scripts/build_docs_source.py
+
+      - name: Build site
+        run: mkdocs build --site-dir .mkdocs-site
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: .mkdocs-site
+
+  deploy:
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
