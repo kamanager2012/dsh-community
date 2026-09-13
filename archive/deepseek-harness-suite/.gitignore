@@ -1,0 +1,39 @@
+# Node & Package Managers
+node_modules/
+.pnpm-store/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Build outputs & caches
+dist/
+build/
+release/
+*.tsbuildinfo
+
+# Test coverage & caches
+coverage/
+.vitest/
+.nyc_output/
+
+# OS & Editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment & credentials
+.env
+.env.local
+.env.*.local
+
+# Android
+apps/android/.gradle/
+apps/android/build/
+apps/android/app/build/
+apps/android/local.properties
+apps/android/keystore.jks
+apps/android/.kotlin/

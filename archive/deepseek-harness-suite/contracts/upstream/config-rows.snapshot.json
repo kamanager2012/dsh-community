@@ -1,0 +1,15 @@
+{
+  "targetVersion": "0.1.0-rc.6",
+  "allowedCustomRowInserts": [
+    "dsh-tui",
+    "tui-working-activity"
+  ],
+  "forbiddenOverrides": [
+    "llm-deepseek",
+    "agent-loop",
+    "sandbox-policy",
+    "session-persistence",
+    "approval-core",
+    "compaction"
+  ]
+}

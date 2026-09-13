@@ -1,0 +1,38 @@
+'use strict';
+
+/**
+ * Embedded runtime bootstrap for nodejs-mobile.
+ *
+ * Launches the official DeepSeek Harness CLI (`dsh web --port <port>`) from
+ * the bundled node_modules, mirroring the desktop thin-shell pattern:
+ * the official runtime owns the agent loop, this project only hosts it.
+ *
+ * Reality Gate note: no capability here is [REAL] until scripts/termux-verify.sh
+ * passes on a real device with the pinned @deepseek-ai/dsh version.
+ */
+
+const { spawn } = require('child_process');
+const path = require('path');
+
+const RUNTIME_PORT = Number(process.env.DSH_RUNTIME_PORT || 17890);
+const DSH_BIN = path.join(__dirname, '..', '..', 'node_modules', '.bin', 'dsh');
+
+const child = spawn(DSH_BIN, ['web', '--port', String(RUNTIME_PORT)], {
+  stdio: ['ignore', 'pipe', 'pipe'],
+  env: { ...process.env, HOST: '127.0.0.1' },
+});
+
+child.stdout.on('data', (d) => process.stdout.write(`[dsh] ${d}`));
+child.stderr.on('data', (d) => process.stderr.write(`[dsh] ${d}`));
+
+child.on('error', (err) => {
+  console.error('[dsh-android] failed to start official runtime:', err.message);
+  process.exitCode = 1;
+});
+
+child.on('exit', (code) => {
+  console.error(`[dsh-android] official runtime exited (code=${code})`);
+  process.exit(code ?? 1);
+});
+
+process.on('SIGTERM', () => child.kill('SIGTERM'));

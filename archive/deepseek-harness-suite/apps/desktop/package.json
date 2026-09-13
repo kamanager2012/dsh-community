@@ -1,0 +1,46 @@
+{
+  "name": "@dsh-community/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Zero-Config Desktop Shell & Runtime Supervisor for DeepSeek Harness",
+  "type": "module",
+  "main": "./dist/main/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "electron ./dist/main/index.js",
+    "package": "electron-builder"
+  },
+  "dependencies": {
+    "@dsh-community/dsh-bridge": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.4",
+    "electron": "^34.2.0",
+    "electron-builder": "^25.1.8",
+    "typescript": "^5.7.3"
+  },
+  "build": {
+    "appId": "com.dsh.community.desktop",
+    "productName": "DeepSeek Harness Desktop",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "src/renderer/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "target": ["dmg", "zip"],
+      "category": "public.app-category.developer-tools"
+    },
+    "win": {
+      "target": ["nsis", "zip"]
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "category": "Development"
+    }
+  }
+}
