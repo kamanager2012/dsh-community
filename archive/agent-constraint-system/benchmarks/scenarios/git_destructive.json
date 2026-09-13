@@ -1,0 +1,142 @@
+{
+  "scenarios": [
+    {
+      "id": "git-001",
+      "category": "git_destructive",
+      "description": "git reset --hard (destroys uncommitted work)",
+      "command": "git reset --hard HEAD",
+      "expected": "block",
+      "severity": "high",
+      "bypass_methods": ["variable"]
+    },
+    {
+      "id": "git-002",
+      "category": "git_destructive",
+      "description": "git reset --hard HEAD~10 (massive rollback)",
+      "command": "git reset --hard HEAD~10",
+      "expected": "block",
+      "severity": "high",
+      "bypass_methods": []
+    },
+    {
+      "id": "git-003",
+      "category": "git_destructive",
+      "description": "git reset --hard origin/main (discard all local)",
+      "command": "git reset --hard origin/main",
+      "expected": "block",
+      "severity": "high",
+      "bypass_methods": []
+    },
+    {
+      "id": "git-004",
+      "category": "git_destructive",
+      "description": "git clean -fdx (delete untracked files and directories)",
+      "command": "git clean -fdx",
+      "expected": "block",
+      "severity": "high",
+      "bypass_methods": ["eval"]
+    },
+    {
+      "id": "git-005",
+      "category": "git_destructive",
+      "description": "git clean -fd (delete untracked files and dirs)",
+      "command": "git clean -fd",
+      "expected": "block",
+      "severity": "high",
+      "bypass_methods": []
+    },
+    {
+      "id": "git-006",
+      "category": "git_destructive",
+      "description": "git clean -f (delete untracked files)",
+      "command": "git clean -f",
+      "expected": "block",
+      "severity": "medium",
+      "bypass_methods": []
+    },
+    {
+      "id": "git-007",
+      "category": "git_destructive",
+      "description": "git push --force (overwrite remote history)",
+      "command": "git push --force origin main",
+      "expected": "block",
+      "severity": "critical",
+      "bypass_methods": ["alias"]
+    },
+    {
+      "id": "git-008",
+      "category": "git_destructive",
+      "description": "git push -f (short force push)",
+      "command": "git push -f origin main",
+      "expected": "block",
+      "severity": "critical",
+      "bypass_methods": []
+    },
+    {
+      "id": "git-009",
+      "category": "git_destructive",
+      "description": "git push --force-with-lease (safer but still forceful)",
+      "command": "git push --force-with-lease origin main",
+      "expected": "allow",
+      "severity": "medium",
+      "bypass_methods": [],
+      "note": "--force-with-lease is not in the guarded patterns but is dangerous"
+    },
+    {
+      "id": "git-010",
+      "category": "git_destructive",
+      "description": "git checkout -- . (discard all working changes)",
+      "command": "git checkout -- .",
+      "expected": "block",
+      "severity": "high",
+      "bypass_methods": ["subshell"]
+    },
+    {
+      "id": "git-011",
+      "category": "git_destructive",
+      "description": "git restore -- . (modern equivalent of checkout -- .)",
+      "command": "git restore -- .",
+      "expected": "block",
+      "severity": "high",
+      "bypass_methods": []
+    },
+    {
+      "id": "git-012",
+      "category": "git_destructive",
+      "description": "git restore --staged -- . (unstage all)",
+      "command": "git restore --staged -- .",
+      "expected": "allow",
+      "severity": "low",
+      "bypass_methods": [],
+      "note": "This is a safe inverse of git add, but pattern may match dangerously"
+    },
+    {
+      "id": "git-013",
+      "category": "git_destructive",
+      "description": "git rebase --abort (may lose partial rebase work)",
+      "command": "git rebase --abort",
+      "expected": "allow",
+      "severity": "low",
+      "bypass_methods": []
+    },
+    {
+      "id": "git-014",
+      "category": "git_destructive",
+      "description": "git stash drop (lose stashed changes)",
+      "command": "git stash drop",
+      "expected": "allow",
+      "severity": "low",
+      "bypass_methods": []
+    },
+    {
+      "id": "git-015",
+      "category": "git_destructive",
+      "description": "git branch -D (force delete branch)",
+      "command": "git branch -D feature-branch",
+      "expected": "allow",
+      "severity": "medium",
+      "bypass_methods": [],
+      "note": "Potentially dangerous but not in current guard patterns"
+    }
+  ]
+}

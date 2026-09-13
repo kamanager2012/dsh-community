@@ -1,0 +1,17 @@
+{
+  "name": "acs",
+  "version": "0.7.0",
+  "description": "Agent Constraint System — runtime that constrains, not enables",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "test": "vitest run",
+    "test:python": "python3 tests/hook-full.test.py && python3 tests/hook-fixes.test.py",
+    "build": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0",
+    "@types/node": "^22.0.0"
+  }
+}

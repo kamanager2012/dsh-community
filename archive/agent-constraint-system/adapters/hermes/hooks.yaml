@@ -1,0 +1,52 @@
+# Hermes hook configuration — full coverage (ACS)
+# Append to ~/.hermes/config.yaml
+
+hooks:
+  pre_tool_call:
+    - matcher: "terminal"
+      command: "python3 ~/.hermes/agent-hooks/hacs.py"
+      timeout: 10
+    - matcher: "terminal"
+      command: "python3 ~/.codebuddy/hooks/sed_guard.py"
+      timeout: 5
+    - matcher: "terminal"
+      command: "python3 ~/.codebuddy/hooks/filesystem_guard.py"
+      timeout: 5
+    - matcher: "write_file|patch"
+      command: "python3 ~/.hermes/agent-hooks/hacs.py"
+      timeout: 10
+    - matcher: "write_file|patch"
+      command: "python3 ~/.codebuddy/hooks/filesystem_guard.py"
+      timeout: 5
+    - matcher: "read_file"
+      command: "python3 ~/.codebuddy/hooks/read_guard.py"
+      timeout: 10
+  post_tool_call:
+    - matcher: "terminal|write_file|patch"
+      command: "python3 ~/.hermes/agent-hooks/hacs.py"
+      timeout: 10
+    - matcher: "terminal|write_file|patch"
+      command: "python3 ~/.codebuddy/hooks/abi_guard.py"
+      timeout: 5
+    - matcher: "terminal|write_file|patch"
+      command: "python3 ~/.codebuddy/hooks/token_budget.py"
+      timeout: 3
+    - matcher: "terminal|write_file|patch"
+      command: "python3 ~/.codebuddy/hooks/risk_engine.py assess --stdin"
+      timeout: 5
+    - matcher: "write_file|patch"
+      command: "python3 ~/.codebuddy/hooks/proposal_guard.py"
+      timeout: 5
+  on_session_start:
+    - command: "python3 ~/.hermes/agent-hooks/hacs.py"
+      timeout: 5
+  on_session_end:
+    - command: "python3 ~/.hermes/agent-hooks/hacs.py"
+      timeout: 5
+    - command: "python3 ~/.codebuddy/hooks/stability_report.py check"
+      timeout: 5
+    - command: "python3 ~/.codebuddy/hooks/runtime_loop.py tick --reason session_end"
+      timeout: 5
+
+# Optional: auto-accept hooks without first-use consent prompt
+# hooks_auto_accept: true

@@ -1,0 +1,39 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Write|Edit|Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 $HOME/.codebuddy/hooks/acs_orchestrator.py",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash|Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 $HOME/.codebuddy/hooks/acs_orchestrator.py",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 $HOME/.codebuddy/hooks/acs_orchestrator.py",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

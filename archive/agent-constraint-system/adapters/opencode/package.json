@@ -1,0 +1,12 @@
+{
+  "name": "oacs",
+  "version": "1.0.0",
+  "description": "OpenCode Agent Constraint System — safety guard plugin for OpenCode CLI",
+  "main": "index.ts",
+  "author": "James Oldman",
+  "license": "MIT",
+  "dependencies": {
+    "@opencode-ai/plugin": ">=1.17.0",
+    "@opencode-ai/sdk": ">=1.0.0"
+  }
+}

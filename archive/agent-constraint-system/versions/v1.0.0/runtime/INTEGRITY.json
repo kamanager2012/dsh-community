@@ -1,0 +1,12 @@
+{
+  "/home/jamesoldman/agent-constraint-system/hooks/acs_lite.py": "1cc24cc8ec1e276037eed13c47427d1d230f4b4d469c780f94b09d2f1007ff5a",
+  "/home/jamesoldman/agent-constraint-system/hooks/acs_task.sh": "ccb021a0f6bcd582d7a2cfe610bc8a204d0245053ccc7faa03e804c490c1799b",
+  "/home/jamesoldman/agent-constraint-system/runtime/TASK_SCOPE.json": "6faa93de7ca58e8a1aba3c4d789a011f3bae829a313ca5e2f4cba548e3edbf54",
+  "/home/jamesoldman/agent-constraint-system/runtime/ACTIVE_TASK.json": "e8f24c1b91e802878abcbe9abed0a83510884fb6313858f89ce96553b84755e3",
+  "/home/jamesoldman/agent-constraint-system/runtime/MODE.json": "93ee0fefd20b193582a34cf418ddc85ec4f7ec09c97722fdc8d192ff1392993c",
+  "/home/jamesoldman/agent-constraint-system/runtime/VIOLATIONS.json": "7dda6c5d04cbe83d4ad240308d6c9579b1c9ec48d5b849e0b0c04a9f32def95e",
+  "/home/jamesoldman/agent-constraint-system/.claude/settings.json": "MISSING",
+  "/home/jamesoldman/agent-constraint-system/.claude/settings.local.json": "MISSING",
+  "_timestamp": 1780471268.553549,
+  "_version": "1.0"
+}
