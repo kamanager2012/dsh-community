@@ -5,7 +5,7 @@ export const COMMUNITY_PLUGIN_CATALOG_URL =
 export const COMMUNITY_PLUGIN_CATALOG_REPO =
   'https://github.com/kamanager2012/dsh-community/blob/main/packages/marketplace/catalog.json'
 
-export const HANDBOOK_REPO = 'https://github.com/kamanager2012/deepseek-harness-handbook'
+export const HANDBOOK_REPO = 'https://github.com/kamanager2012/dsh-community/tree/main/handbook'
 
 export interface CatalogPlugin {
   readonly name: string

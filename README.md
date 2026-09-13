@@ -80,7 +80,7 @@ session persistence, official UI, and core lifecycle.
 | Read operational guidance | [DeepSeek Harness Handbook](https://kamanager2012.github.io/dsh-community/) |
 | Verified community plugins | Desktop marketplace page, in-repo `pnpm marketplace`, and [`packages/marketplace/catalog.json`](packages/marketplace/catalog.json) — not an awesome list |
 
-Only this repository is the download entry. Handbook is the other live repo. Suite, the standalone marketplace, the standalone plugins registry, and Edition are archived.
+Only this repository is the download entry. Suite, the standalone marketplace, the standalone plugins registry, and Edition are archived; the handbook is now part of this repository under [`handbook/`](handbook/).
 
 ## Source and publication status
 
