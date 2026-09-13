@@ -1,8 +1,0 @@
-{
-  "version": "1.0",
-  "mode": "MAINTENANCE",
-  "task": "ACS System Baseline",
-  "task_id": "acs-cleanup-2026-05-30",
-  "actual_goal": "Remove gaokao project binding. Restore C-2 violation integrity. Establish clean ACS v0.3.x baseline ready for multi-project onboarding.",
-  "updated_at": "2026-05-30T20:30:00.000Z"
-}
