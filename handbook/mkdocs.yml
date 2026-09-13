@@ -1,9 +1,9 @@
 site_name: DeepSeek Harness 中文使用手册
 site_description: DeepSeek Harness 的工程实施、验收与运维手册
 site_url: https://kamanager2012.github.io/deepseek-harness-handbook/
-repo_name: kamanager2012/deepseek-harness-handbook
-repo_url: https://github.com/kamanager2012/deepseek-harness-handbook
-edit_uri: edit/main/
+repo_name: kamanager2012/dsh-community
+repo_url: https://github.com/kamanager2012/dsh-community
+edit_uri: edit/main/handbook/
 docs_dir: .mkdocs-docs
 site_dir: .mkdocs-site
 

@@ -51,7 +51,7 @@ on 2026-09-13. The plugin catalog lives in the product repo at
 | Repository | Role | Audience | Formal download entry? |
 |---|---|---|---|
 | [`dsh-community`](https://github.com/kamanager2012/dsh-community) | Canonical Product: Desktop, TUI, diagnostics, compatibility, and releases | All users and maintainers | **Yes; the only one** |
-| [`deepseek-harness-handbook`](https://github.com/kamanager2012/deepseek-harness-handbook) | Knowledge / Evidence: installation, operations, acceptance, and version facts | Users, maintainers, and Agents | No |
+| This repo `handbook/` (formerly `deepseek-harness-handbook`, merged in) | Knowledge / Evidence: installation, operations, acceptance, and version facts | Users, maintainers, and Agents | No |
 | [`dsh-community` packages/marketplace](https://github.com/kamanager2012/dsh-community/tree/main/packages/marketplace) | Discovery / Distribution UX + compatibility catalog `catalog.json` | Users and plugin authors | No; not a Runtime |
 | [`deepseek-harness-suite`](https://github.com/kamanager2012/deepseek-harness-suite) | Archived Labs; last Labs pin `0.1.0-rc.6`, not current Latest | Historical reference | No; do not install |
 
@@ -128,4 +128,4 @@ Do not use “production-ready”, “fully secure”, or “100% compatible” 
 - [Current release status](../11-operations/community-release-status.md)
 - [Community Labs handoff](../11-operations/community-labs-handoff.md)
 - [Release checklist](../../content/11-operations/release-checklist.md)
-- [Handbook repository guide](https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/README.en.md)
+- [Handbook repository guide](https://github.com/kamanager2012/dsh-community/blob/main/handbook/README.en.md)

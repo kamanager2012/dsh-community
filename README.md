@@ -148,7 +148,7 @@ Currently: 1, 3, and 5 hold by design; 2 community overlay touches official rows
 |---|---|---|
 | [`dsh-community`](https://github.com/kamanager2012/dsh-community) | Canonical Product | **唯一正式下载入口 / only official community download** |
 | [`deepseek-harness-suite`](https://github.com/kamanager2012/deepseek-harness-suite) | Archived Labs | Frozen; do not install |
-| [`deepseek-harness-handbook`](https://github.com/kamanager2012/deepseek-harness-handbook) | Knowledge / Evidence | Documentation and operational evidence |
+| This repo `handbook/` | Knowledge / Evidence | Documentation and operational evidence (merged from `deepseek-harness-handbook`) |
 | This repo `packages/marketplace` | Discovery / install CLI + catalog | `pnpm marketplace`; `catalog.json` lives in this package; install still goes through official `dsh plugin add` |
 
 The former standalone repositories `dsh-marketplace`, `dsh-community-plugins`,

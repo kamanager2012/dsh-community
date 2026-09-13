@@ -12,7 +12,7 @@
     "transformation": "deterministic section extraction; no model-generated claims"
   },
   "source": {
-    "repository": "https://github.com/kamanager2012/deepseek-harness-handbook",
+    "repository": "https://github.com/kamanager2012/dsh-community/tree/main/handbook",
     "branch": "main",
     "primary_root": "content/",
     "translation_root": "en/",

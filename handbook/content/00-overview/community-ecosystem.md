@@ -35,7 +35,7 @@
 | 仓库 | 定位 | 面向谁 | 是否是正式下载入口 |
 | --- | --- | --- | --- |
 | [`dsh-community`](https://github.com/kamanager2012/dsh-community) | Canonical Product：官方 Runtime 上的 Desktop、TUI、诊断、兼容和发行层 | 所有用户、维护者 | **是，唯一入口** |
-| [`deepseek-harness-handbook`](https://github.com/kamanager2012/deepseek-harness-handbook) | Knowledge / Evidence：工程实施、验收、运维和版本事实 | 用户、维护者、Agent | 否 |
+| 本仓 `handbook/`（原 `deepseek-harness-handbook`，已并入） | Knowledge / Evidence：工程实施、验收、运维和版本事实 | 用户、维护者、Agent | 否 |
 | [`dsh-community` packages/marketplace](https://github.com/kamanager2012/dsh-community/tree/main/packages/marketplace) | Discovery / Distribution UX + 兼容性目录 `catalog.json` | 用户、插件作者 | 否；不是 Runtime |
 | [`deepseek-harness-suite`](https://github.com/kamanager2012/deepseek-harness-suite) | 已归档 Labs；最后 Labs pin 是 `0.1.0-rc.6`，不是当前 Latest | 历史参考 | 否；不要安装 |
 

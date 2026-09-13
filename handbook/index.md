@@ -63,4 +63,4 @@ DeepSeek Harness Community 不是另一套 Runtime，而是围绕官方 Runtime 
 - AI 知识包是静态、可追溯的正文索引，不保证替代实时搜索；
 - `evidence/` 和 `labs/` 是维护者附录，普通读者不需要从那里开始。
 
-本网站由仓库中的 Markdown 源稿自动构建；需要查看版本、修改历史或编辑正文时，回到 [GitHub 仓库](https://github.com/kamanager2012/deepseek-harness-handbook)。
+本网站由仓库中的 Markdown 源稿自动构建；需要查看版本、修改历史或编辑正文时，回到 [GitHub 仓库](https://github.com/kamanager2012/dsh-community/tree/main/handbook)。

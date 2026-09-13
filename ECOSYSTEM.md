@@ -136,7 +136,8 @@ without retesting.
 
 - **dsh-community** — canonical Community product, releases, compatibility
   contracts, and plugin registry
-- **deepseek-harness-handbook** — operational documentation and evidence
+- **`handbook/`** (in this repository; merged from `deepseek-harness-handbook`) —
+  operational documentation and evidence
 
 ### Archived / historical
 

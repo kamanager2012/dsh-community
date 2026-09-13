@@ -24,32 +24,32 @@
 | [catalog.en.jsonl](catalog.en.jsonl) | English edition 的可检索主题记录 |
 | [terms.json](terms.json) | 从术语表提取的机器可读定义 |
 | [terms.en.json](terms.en.json) | English glossary 的机器可读定义 |
-| [query_ai_catalog.py](https://github.com/kamanager2012/deepseek-harness-handbook/blob/main/scripts/query_ai_catalog.py) | 本地查询示例 |
+| [query_ai_catalog.py](https://github.com/kamanager2012/dsh-community/blob/main/handbook/scripts/query_ai_catalog.py) | 本地查询示例 |
 
 ## 给 AI 工具的最小接入方式
 
 直接读取公开的 JSONL 地址：
 
 ```text
-https://raw.githubusercontent.com/kamanager2012/deepseek-harness-handbook/main/ai/catalog.jsonl
+https://raw.githubusercontent.com/kamanager2012/dsh-community/main/handbook/ai/catalog.jsonl
 ```
 
 English edition：
 
 ```text
-https://raw.githubusercontent.com/kamanager2012/deepseek-harness-handbook/main/ai/catalog.en.jsonl
+https://raw.githubusercontent.com/kamanager2012/dsh-community/main/handbook/ai/catalog.en.jsonl
 ```
 
 术语快速入口：
 
 ```text
-https://raw.githubusercontent.com/kamanager2012/deepseek-harness-handbook/main/ai/terms.json
+https://raw.githubusercontent.com/kamanager2012/dsh-community/main/handbook/ai/terms.json
 ```
 
 English glossary：
 
 ```text
-https://raw.githubusercontent.com/kamanager2012/deepseek-harness-handbook/main/ai/terms.en.json
+https://raw.githubusercontent.com/kamanager2012/dsh-community/main/handbook/ai/terms.en.json
 ```
 
 读取后按 `title`、`section_title`、`summary`、`keywords` 和 `content` 建立索引；回答时必须保留 `source.url`，并以当前版本官方资料和实际 `--help` 为最终依据。它的优势是把中文解释、工程路径和可追溯正文快速交给工具，不是保证静态记录永远比网上的新资料更新。

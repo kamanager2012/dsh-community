@@ -63,4 +63,4 @@ Stop: ask before writing, installing, using the network, or expanding permission
 - Check the installed version's `--help` output and upstream documentation when commands or fields may have changed.
 - Treat the AI knowledge package as a traceable static index, not as a replacement for live search.
 
-The source repository and the AI retrieval package are available from the [public GitHub project](https://github.com/kamanager2012/deepseek-harness-handbook).
+The source repository and the AI retrieval package are available from the [public GitHub project](https://github.com/kamanager2012/dsh-community/tree/main/handbook).

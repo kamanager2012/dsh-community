@@ -25,7 +25,9 @@ EN_CATALOG_PATH = AI_ROOT / "catalog.en.jsonl"
 MANIFEST_PATH = AI_ROOT / "manifest.json"
 EN_TERMS_PATH = AI_ROOT / "terms.en.json"
 MAX_CHUNK_CHARS = 7200
-REPOSITORY_URL = "https://github.com/kamanager2012/deepseek-harness-handbook"
+REPOSITORY_URL = "https://github.com/kamanager2012/dsh-community"
+REPOSITORY_SUBDIR = "handbook"
+BLOB_PREFIX = f"{REPOSITORY_URL}/blob/main/{REPOSITORY_SUBDIR}"
 
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
 INLINE_LINK_RE = re.compile(r"\[([^]]+)\]\([^)]*\)")
@@ -218,7 +220,7 @@ def build_records(root: Path, source_root: Path, language: str, id_namespace: st
                 record_id = f"{document_id}.{section_slug}{part_suffix}"
                 content = "".join(lines[part_start:part_end])
                 source_url = (
-                    f"{REPOSITORY_URL}/blob/main/{relative_path.as_posix()}"
+                    f"{BLOB_PREFIX}/{relative_path.as_posix()}"
                     f"#L{part_start + 1}-L{part_end}"
                 )
                 records.append(
@@ -256,7 +258,7 @@ def build_records(root: Path, source_root: Path, language: str, id_namespace: st
                         translated_path = Path("index.md")
                     if (root / translated_path).exists():
                         source_info["translation_of"] = translated_path.as_posix()
-                        source_info["translation_url"] = f"{REPOSITORY_URL}/blob/main/{translated_path.as_posix()}"
+                        source_info["translation_url"] = f"{BLOB_PREFIX}/{translated_path.as_posix()}"
                 records[-1]["source"] = source_info
 
         documents.append(
@@ -290,11 +292,11 @@ def build_terms(root: Path, source_relative_path: str, language: str) -> list[di
             "path": source_relative_path,
             "line_start": line_number,
             "line_end": line_number,
-            "url": f"{REPOSITORY_URL}/blob/main/{source_relative_path}#L{line_number}",
+            "url": f"{BLOB_PREFIX}/{source_relative_path}#L{line_number}",
         }
         if translation_of:
             source["translation_of"] = translation_of
-            source["translation_url"] = f"{REPOSITORY_URL}/blob/main/{translation_of}"
+            source["translation_url"] = f"{BLOB_PREFIX}/{translation_of}"
         terms.append(
             {
                 "term": term,
@@ -328,7 +330,7 @@ def render(
                 "language": language,
                 "source": {
                     "path": source_path,
-                    "repository": REPOSITORY_URL,
+                    "repository": f"{REPOSITORY_URL}/tree/main/{REPOSITORY_SUBDIR}",
                     "branch": "main",
                 },
                 "terms": values,
@@ -362,7 +364,7 @@ def render(
             "transformation": "deterministic section extraction; no model-generated claims",
         },
         "source": {
-            "repository": REPOSITORY_URL,
+            "repository": f"{REPOSITORY_URL}/tree/main/{REPOSITORY_SUBDIR}",
             "branch": "main",
             "primary_root": "content/",
             "translation_root": "en/",
