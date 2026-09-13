@@ -31,7 +31,7 @@
 | service | Cordis context 中可被其他插件使用的能力 |
 | disposer | 在插件卸载时撤销注册、关闭资源的清理函数 |
 | Canonical Product | 对用户公开的唯一正式产品；当前是 `dsh-community` |
-| Community Labs | 已归档实验区；历史仓是 `deepseek-harness-suite`，不要从那里安装 |
+| Community Labs | 已归档实验区；历史仓 `deepseek-harness-suite` 已并入本仓 `archive/deepseek-harness-suite/`，不要安装 |
 | Compatibility Registry | 记录插件版本、验证线和兼容状态的注册表；当前是 `dsh-community/packages/marketplace/catalog.json` |
 | Discovery / Distribution UX | 浏览、搜索和进入官方安装链的用户体验；当前是 `dsh-community/packages/marketplace` |
 | Reality Gate | 让 Labs 能力进入正式产品前必须通过的真实运行、契约、安全、E2E 和失败路径门禁 |

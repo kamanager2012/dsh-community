@@ -8,7 +8,7 @@
 
 1. **官方 Runtime 是发动机**：Agent loop、模型调用、工具执行、官方 session 持久化和核心生命周期由官方 Runtime 负责。
 2. **`dsh-community` 是唯一正式产品**：普通用户只需要下载、安装和使用它。
-3. **Suite 已归档**：`deepseek-harness-suite` 是冻结的 Labs，不是下载渠道。独立 Marketplace 仓和独立 Plugins 仓同样已归档。新工作只发生在 `dsh-community` 和本手册。
+3. **Suite 已并入本仓**：`deepseek-harness-suite` 是冻结的 Labs，代码与历史已并入本仓 `archive/deepseek-harness-suite/`，不是下载渠道。独立 Marketplace 仓和独立 Plugins 仓已删除。新工作只发生在 `dsh-community` 和本手册。
 
 ## 普通用户从哪里开始
 
@@ -37,9 +37,9 @@
 | [`dsh-community`](https://github.com/kamanager2012/dsh-community) | Canonical Product：官方 Runtime 上的 Desktop、TUI、诊断、兼容和发行层 | 所有用户、维护者 | **是，唯一入口** |
 | 本仓 `handbook/`（原 `deepseek-harness-handbook`，已并入） | Knowledge / Evidence：工程实施、验收、运维和版本事实 | 用户、维护者、Agent | 否 |
 | [`dsh-community` packages/marketplace](https://github.com/kamanager2012/dsh-community/tree/main/packages/marketplace) | Discovery / Distribution UX + 兼容性目录 `catalog.json` | 用户、插件作者 | 否；不是 Runtime |
-| [`deepseek-harness-suite`](https://github.com/kamanager2012/deepseek-harness-suite) | 已归档 Labs；最后 Labs pin 是 `0.1.0-rc.6`，不是当前 Latest | 历史参考 | 否；不要安装 |
+| 本仓 `archive/deepseek-harness-suite/`（原 `deepseek-harness-suite`，已并入） | 已归档 Labs；最后 Labs pin 是 `0.1.0-rc.6`，不是当前 Latest | 历史参考 | 否；不要安装 |
 
-独立仓 `dsh-marketplace`、`dsh-community-plugins`、`dsh-community-edition` 的内容已并入产品仓，三仓于 2026-09-13 删除。
+独立仓 `dsh-marketplace`、`dsh-community-plugins`、`dsh-community-edition` 的内容已并入产品仓，三仓于 2026-09-13 删除；`deepseek-harness-suite` 已连完整历史并入本仓 `archive/deepseek-harness-suite/`，原仓同期删除。
 
 关系可以简化为：
 
@@ -57,7 +57,7 @@
                     ▼                           ▼
              Handbook / Evidence        Plugins / Registry
 
-             deepseek-harness-suite → Archived Labs（不要安装）
+             本仓 archive/deepseek-harness-suite/ → Archived Labs（不要安装）
              独立 Marketplace / Plugins / Edition → 已删除（2026-09-13，内容并入产品仓）
 ```
 

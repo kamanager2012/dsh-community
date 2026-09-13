@@ -141,11 +141,12 @@ without retesting.
 
 ### Archived / historical
 
-- **deepseek-harness-suite** — archived Labs
+- **`archive/deepseek-harness-suite/`** (formerly the standalone `deepseek-harness-suite`) — archived Labs, merged with full history and deleted on 2026-09-13
 
 The former standalone repositories `dsh-marketplace`, `dsh-community-plugins`,
-and `dsh-community-edition` were merged into this repository and deleted on
-2026-09-13.
+`dsh-community-edition`, and `deepseek-harness-suite` were merged into this
+repository and deleted on 2026-09-13; `deepseek-harness-handbook` was merged the
+same day (its standalone repo is a read-only archive).
 
 Archived repositories are not current download channels.
 

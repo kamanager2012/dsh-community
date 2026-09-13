@@ -80,7 +80,7 @@ session persistence, official UI, and core lifecycle.
 | Read operational guidance | [DeepSeek Harness Handbook](https://kamanager2012.github.io/dsh-community/) |
 | Verified community plugins | Desktop marketplace page, in-repo `pnpm marketplace`, and [`packages/marketplace/catalog.json`](packages/marketplace/catalog.json) — not an awesome list |
 
-Only this repository is the download entry. Suite, the standalone marketplace, the standalone plugins registry, and Edition are archived; the handbook is now part of this repository under [`handbook/`](handbook/).
+Only this repository is the download entry. Suite, the standalone marketplace, the standalone plugins registry, and Edition were merged into this repository and their standalone repos were deleted on 2026-09-13; the handbook lives in [`handbook/`](handbook/) (formerly `deepseek-harness-handbook`) and the frozen Labs code in [`archive/`](archive/).
 
 ## Source and publication status
 
@@ -147,13 +147,13 @@ Currently: 1, 3, and 5 hold by design; 2 community overlay touches official rows
 | Repository | Role | User-facing status |
 |---|---|---|
 | [`dsh-community`](https://github.com/kamanager2012/dsh-community) | Canonical Product | **唯一正式下载入口 / only official community download** |
-| [`deepseek-harness-suite`](https://github.com/kamanager2012/deepseek-harness-suite) | Archived Labs | Frozen; do not install |
+| This repo [`archive/deepseek-harness-suite/`](archive/deepseek-harness-suite/) (formerly `deepseek-harness-suite`) | Archived Labs | Frozen; do not install |
 | This repo `handbook/` | Knowledge / Evidence | Documentation and operational evidence (merged from `deepseek-harness-handbook`) |
 | This repo `packages/marketplace` | Discovery / install CLI + catalog | `pnpm marketplace`; `catalog.json` lives in this package; install still goes through official `dsh plugin add` |
 
 The former standalone repositories `dsh-marketplace`, `dsh-community-plugins`,
-and `dsh-community-edition` were merged into this repository and deleted on
-2026-09-13.
+`dsh-community-edition`, and `deepseek-harness-suite` were merged into this
+repository and deleted on 2026-09-13.
 
 ## Layout and further reading
 

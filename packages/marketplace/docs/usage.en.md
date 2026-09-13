@@ -86,6 +86,6 @@ When catalog fields change, update this package's [`catalog.json`](../catalog.js
 
 - [Canonical Product: dsh-community](https://github.com/kamanager2012/dsh-community)
 - [Plugin catalog](../catalog.json)
-- [Archived Labs](https://github.com/kamanager2012/deepseek-harness-suite) (do not install from there)
+- [Archived Labs](https://github.com/kamanager2012/dsh-community/tree/main/archive/deepseek-harness-suite) (formerly the standalone repo; do not install from there)
 - [Handbook plugin section](https://kamanager2012.github.io/dsh-community/en/10-plugins/)
 - [Official Runtime](https://github.com/deepseek-ai/deepseek-harness)

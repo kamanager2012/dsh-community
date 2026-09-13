@@ -75,7 +75,7 @@ tag
 | Plugin / restart | `[待复核]` | 官方 `dsh plugin add` + `--dump-config` 已在 `0.1.1-rc.2` 上对 9 个目录插件通过；重启后仍可用、失败时有明确错误尚未单测 |
 | Lifecycle recovery | `[待复核]` | 卸载重装、升级、断网、缺少密钥、Runtime 解压中断后的行为 |
 | Official Runtime staging / installer | `[PARTIAL]` | 真实 Windows/macOS 资产首启 readiness 通过；不能据此宣称完整安装生命周期已验证 |
-| Android | `[UNVERIFIED]` | 已归档 Labs（`deepseek-harness-suite`），不在 Latest 下载清单 |
+| Android | `[UNVERIFIED]` | 已归档 Labs（现为本仓 `archive/deepseek-harness-suite/`），不在 Latest 下载清单 |
 
 这条门禁的结论必须来自 Release 页面真实下载的包，并且要结合安装、Runtime staging
 和用户闭环结果；main 源码 smoke、普通 CI 或 README 声明都不能代替它。
@@ -110,5 +110,5 @@ Historical independent numbers: v0.1.2–v0.1.6 (not a user download)
 - [`dsh-community` release workflow](https://github.com/kamanager2012/dsh-community/blob/main/.github/workflows/release.yml)
 - [`dsh-community` changelog](https://github.com/kamanager2012/dsh-community/blob/main/CHANGELOG.md)
 - [`dsh-community` contract snapshots](https://github.com/kamanager2012/dsh-community/tree/main/contracts)
-- [`deepseek-harness-suite` Actions](https://github.com/kamanager2012/deepseek-harness-suite/actions)
+- 本仓 [`archive/deepseek-harness-suite/`](https://github.com/kamanager2012/dsh-community/tree/main/archive/deepseek-harness-suite)（原独立仓已并入并删除，Actions 历史不再在线）
 - `dsh-community-edition` freeze commit `09eb1c0`（独立仓已删除，不再可链接）

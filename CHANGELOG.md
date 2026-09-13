@@ -67,6 +67,7 @@
 - Marketplace CLI 并入本仓 `packages/marketplace`（`pnpm marketplace`）。独立仓 `dsh-marketplace`、`dsh-community-plugins` 与 Community Labs `deepseek-harness-suite` 已归档。插件兼容性目录现为 `packages/marketplace/catalog.json`。
 - `DshMcpBridge` 从 `@dsh-community/dsh-bridge` 导出。Windows / macOS 发行任务在打包后同样跑 asar vendor=0 护栏。
 - 仓库收敛收尾：独立仓 `dsh-marketplace`、`dsh-community-plugins`、`dsh-community-edition` 在内容合流后于 2026-09-13 删除；README / ECOSYSTEM / SECURITY 与手册仓中的跳转说明同步更新。
+- 旧 Labs 仓 `deepseek-harness-suite` 的完整代码与提交历史并入本仓 `archive/deepseek-harness-suite/`（其 5 个未并入 main 的分支尖端保存为 `archive/suite/*` 标签），独立仓随后于 2026-09-13 删除；README / ECOSYSTEM / 手册与 marketplace 文档中的引用同步改指仓内路径。
 
 ## 0.1.2-alpha.4 — Candidate Source (2026-09-02)
 

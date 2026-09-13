@@ -18,7 +18,7 @@
 社区仓库用于说明发行层、兼容层和实验层的实际状态，不会改变官方 Runtime 的事实优先级：
 
 - [`dsh-community`](https://github.com/kamanager2012/dsh-community)：唯一正式用户产品的代码、Release 和兼容说明；
-- [`deepseek-harness-suite`](https://github.com/kamanager2012/deepseek-harness-suite)：已归档 Labs；不要从那里安装；
+- 本仓 [`archive/deepseek-harness-suite/`](https://github.com/kamanager2012/dsh-community/tree/main/archive/deepseek-harness-suite)：已归档 Labs（原独立仓已并入并删除）；不要安装；
 - [`dsh-community` packages/marketplace/catalog.json](https://github.com/kamanager2012/dsh-community/blob/main/packages/marketplace/catalog.json)：插件兼容性目录；独立仓 `dsh-community-plugins` 已删除；
 - [`dsh-community/packages/marketplace`](https://github.com/kamanager2012/dsh-community/tree/main/packages/marketplace)：插件发现与安装体验；
 - `dsh-community-edition`：合流归档的历史发行线（独立仓已删除，2026-09-13）。

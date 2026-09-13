@@ -1,7 +1,7 @@
 # Community Labs handoff
 
-> Maintainer snapshot for **archived** `deepseek-harness-suite`. Date: 2026-08-16.
-> The GitHub repository is frozen. Do not install from it. Do not open new work there.
+> Maintainer snapshot for **archived** `deepseek-harness-suite` (merged into this repository at `archive/deepseek-harness-suite/`). Date: 2026-08-16.
+> The standalone GitHub repository is frozen and deleted. Do not install from it. Do not open new work there.
 
 `deepseek-harness-suite` **was** Community Labs, not a second user distribution. Before
 the freeze it was used to validate official SDK transport, the Bridge, advanced TUI /

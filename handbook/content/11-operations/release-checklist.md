@@ -5,7 +5,7 @@
 发布 DeepSeek Harness Community 生态的文档或软件时，先检查产品入口没有漂移：
 
 - [ ] 普通用户的下载、安装和 Release 链接只指向 [`dsh-community/releases/latest`](https://github.com/kamanager2012/dsh-community/releases/latest)；
-- [ ] `deepseek-harness-suite` 明确标为已归档 Labs，不作为发行渠道；
+- [ ] `deepseek-harness-suite` 已并入本仓 `archive/` 并明确标为已归档 Labs，不作为发行渠道；
 - [ ] 不再有指向已删除独立仓（`dsh-marketplace` / `dsh-community-plugins` / `dsh-community-edition`）的链接或下载承诺；
 - [ ] 插件目录被描述为 `dsh-community/packages/marketplace/catalog.json`，而不是独立 Plugin Manager；
 - [ ] Marketplace CLI（`dsh-community/packages/marketplace`）被描述为 Discovery / Distribution UX，而不是 Runtime 或 Package Manager replacement；

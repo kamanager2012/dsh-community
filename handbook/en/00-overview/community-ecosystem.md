@@ -13,8 +13,8 @@ plugins, knowledge, diagnostics, and experiments around it.
    tool execution, official Session persistence, and core lifecycle.
 2. **`dsh-community` is the only canonical product.** Normal users download, install,
    and use it.
-3. **Suite is archived.** `deepseek-harness-suite` is frozen Labs, not a download
-   channel. The standalone Marketplace and Plugins repos are archived too. New
+3. **Suite is merged into this repository.** The former `deepseek-harness-suite` is frozen Labs, not a download
+   channel; its code and history now live under `archive/deepseek-harness-suite/`. The standalone Marketplace and Plugins repos are deleted. New
    work lives in `dsh-community` and this handbook.
 
 ## Where users start
@@ -53,11 +53,11 @@ on 2026-09-13. The plugin catalog lives in the product repo at
 | [`dsh-community`](https://github.com/kamanager2012/dsh-community) | Canonical Product: Desktop, TUI, diagnostics, compatibility, and releases | All users and maintainers | **Yes; the only one** |
 | This repo `handbook/` (formerly `deepseek-harness-handbook`, merged in) | Knowledge / Evidence: installation, operations, acceptance, and version facts | Users, maintainers, and Agents | No |
 | [`dsh-community` packages/marketplace](https://github.com/kamanager2012/dsh-community/tree/main/packages/marketplace) | Discovery / Distribution UX + compatibility catalog `catalog.json` | Users and plugin authors | No; not a Runtime |
-| [`deepseek-harness-suite`](https://github.com/kamanager2012/deepseek-harness-suite) | Archived Labs; last Labs pin `0.1.0-rc.6`, not current Latest | Historical reference | No; do not install |
+| This repo `archive/deepseek-harness-suite/` (formerly `deepseek-harness-suite`) | Archived Labs; last Labs pin `0.1.0-rc.6`, not current Latest | Historical reference | No; do not install |
 
 The former standalone repositories `dsh-marketplace`, `dsh-community-plugins`,
-and `dsh-community-edition` were merged into the product repo and deleted on
-2026-09-13.
+`dsh-community-edition`, and `deepseek-harness-suite` were merged into the
+product repo and deleted on 2026-09-13.
 
 ## Official and community boundaries
 

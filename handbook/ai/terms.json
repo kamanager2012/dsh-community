@@ -330,7 +330,7 @@
     },
     {
       "term": "Community Labs",
-      "definition": "已归档实验区；历史仓是 `deepseek-harness-suite`，不要从那里安装",
+      "definition": "已归档实验区；历史仓 `deepseek-harness-suite` 已并入本仓 `archive/deepseek-harness-suite/`，不要安装",
       "language": "zh-CN",
       "source": {
         "path": "content/12-reference/glossary.md",
