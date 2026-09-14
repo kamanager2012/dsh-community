@@ -32,7 +32,7 @@
     "@deepseek-ai/dsh-agent": "0.1.2-alpha.4"
   },
   "devDependencies": {
-    "@types/node": "^22.18.0",
+    "@types/node": "^22.20.2",
     "@types/react": "^18.3.18",
     "typescript": "^5.9.2"
   },
