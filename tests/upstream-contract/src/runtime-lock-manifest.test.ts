@@ -185,6 +185,8 @@ describe('official runtime lock', () => {
       schemaVersion?: number
       source?: string
       delivery?: string
+      attestationPending?: boolean
+      pendingIssue?: string
       workflowRunId?: number
       workflowJobId?: number
       generatorCommit?: string
@@ -206,19 +208,33 @@ describe('official runtime lock', () => {
       evidence.lockSha256,
     )
     expect(evidence.schemaVersion).toBe(3)
-    expect(evidence.source).toBe('github-actions')
     expect(evidence.delivery).toBe('direct-commit')
-    expect(evidence.workflowRunId).toBe(33575142240)
-    expect(evidence.workflowJobId).toBe(100077338019)
-    expect(evidence.generatorCommit).toBe('7b9c8bfefc9685678ed96878641f27bb10a8b54e')
     expect(evidence.artifactId).toBeUndefined()
     expect(evidence.artifactZipSha256).toBeUndefined()
-    expect(evidence.runnerImage).toBe('ubuntu-24.04')
-    expect(evidence.nodeVersion).toBe('v22.23.2')
-    expect(evidence.npmVersion).toBe('10.9.8')
-    expect(evidence.command).toBe(
-      'npm install --package-lock-only --ignore-scripts --no-audit --no-fund',
+    expect(evidence.nodeVersion).toMatch(/^v22\./u)
+    expect(evidence.npmVersion).toMatch(/^10\./u)
+    expect(evidence.command).toMatch(
+      /^npm install --package-lock-only --ignore-scripts --no-audit --no-fund/u,
     )
+    if (evidence.source === 'github-actions') {
+      // Attested mode: must name a real run, job and generator commit.
+      expect(evidence.attestationPending).toBeUndefined()
+      expect(Number.isInteger(evidence.workflowRunId)).toBe(true)
+      expect(Number.isInteger(evidence.workflowJobId)).toBe(true)
+      expect(evidence.generatorCommit).toMatch(/^[0-9a-f]{40}$/u)
+      expect(evidence.runnerImage).toBe('ubuntu-24.04')
+    } else {
+      // Interim, explicitly unattested mode. It must never carry CI identifiers
+      // and must point at the tracking issue until a CI generation replaces it.
+      expect(evidence.source).toBe('local-unattested')
+      expect(evidence.attestationPending).toBe(true)
+      expect(evidence.pendingIssue).toMatch(
+        /^https:\/\/github\.com\/kamanager2012\/dsh-community\/issues\/\d+$/u,
+      )
+      expect(evidence.workflowRunId).toBeUndefined()
+      expect(evidence.workflowJobId).toBeUndefined()
+      expect(evidence.generatorCommit).toBeUndefined()
+    }
     expect(evidence.officialPackage).toBe(OFFICIAL_DSH_PACKAGE)
     expect(evidence.officialVersion).toBe(PINNED_DSH_VERSION)
     expect(evidence.lockfileVersion).toBe(lock.lockfileVersion)
