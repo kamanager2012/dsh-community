@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)))
-const EXPECTED_DSH = '0.1.2-alpha.4'
+const EXPECTED_DSH = '0.2.2-rc.1'
 const EXPECTED_NODE = '22.19.0'
 const EXPECTED_NODE_TAG = 'v22.19.0'
 const EXPECTED_NODE_TAG_OBJECT = 'a9d4750074c7b5439c61daa28ea9afb5dc28e43e'

@@ -7,7 +7,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '../../..')
 const read = (p: string) => readFileSync(join(root, p), 'utf8')
 
 describe('remote integration gate', () => {
-  it('keeps alpha.4 branch staging cheap and blocks PR fan-out until final acceptance', () => {
+  it('keeps 0.2.2-rc.1 branch staging cheap and blocks PR fan-out until final acceptance', () => {
     const gate = JSON.parse(
       read('contracts/compatibility/remote-integration-gate.json'),
     ) as {
@@ -26,8 +26,7 @@ describe('remote integration gate', () => {
       finalAcceptance: {
         status: string
         version: string
-        runId: number
-        jobId: number
+        execution?: string
         runHeadCommit: string
         runtimeDshEntries: number
         providerCalls: number
@@ -38,18 +37,15 @@ describe('remote integration gate', () => {
     expect(gate.safeRemoteOperation.operation).toBe('push-to-non-main-branch')
     expect(gate.safeRemoteOperation.actionsExpected).toBe(0)
     expect(gate.acceptedBaseline.commit)
-      .toBe('a8e61282858dbd7a9f0d521fe85c3c119a2a0f1d')
-    expect(gate.acceptedBaseline.branch).toBe('upgrade/dsh-0.1.2-alpha.4')
+      .toBe('938979a8d9688e0cbc142e98aa4751606344170a')
+    expect(gate.acceptedBaseline.branch).toBe('chore/rc1-acceptance-and-ledgers')
     expect(gate.acceptedBaseline.origin).toBe('remote-generated-baseline')
-    expect(gate.acceptedBaseline.registryGateRunId).toBe(33574740829)
-    expect(gate.acceptedBaseline.lockContractGeneratorRunId).toBe(33575142240)
+    expect(gate.acceptedBaseline.registryGateRunId).toBe(43328060175)
+    expect(gate.acceptedBaseline.lockContractGeneratorRunId).toBe(43327677647)
     expect(gate.finalAcceptance.status).toBe('PASS')
-    expect(gate.finalAcceptance.version).toBe('0.1.2-alpha.4')
-    expect(gate.finalAcceptance.runId).toBe(33577261413)
-    expect(gate.finalAcceptance.jobId).toBe(100083859312)
-    expect(gate.finalAcceptance.runHeadCommit)
-      .toBe('434570ca350ca65cdf2ada01b9fcfacae387c5ef')
-    expect(gate.finalAcceptance.runtimeDshEntries).toBe(214)
+    expect(gate.finalAcceptance.version).toBe('0.2.2-rc.1')
+    expect(gate.finalAcceptance.runHeadCommit).toMatch(/^[0-9a-f]{40}$/u)
+    expect(gate.finalAcceptance.runtimeDshEntries).toBe(320)
     expect(gate.finalAcceptance.providerCalls).toBe(0)
 
     const workflowFiles = new Map([

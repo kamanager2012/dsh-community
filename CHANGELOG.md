@@ -71,6 +71,18 @@
 - 冻结的 Agent Governance Stack 三仓曾以完整代码与提交历史并入本仓 `archive/`，独立仓于 2026-09-13 删除；**2026-09-14 回退**：AIOS 是独立项目，与 dsh 无技术依赖——`aios-core` 已在独立仓 [`kamanager2012/aios-core`](https://github.com/kamanager2012/aios-core) 恢复（原始提交 SHA 与全部分支不变），`governor-core` 与 `agent-constraint-system` 的完整历史现保留为该仓 `legacy/governor-core`、`legacy/agent-constraint-system` 分支，本仓 `archive/` 中的三个副本已移除。手册实验固定的 workspace 版本 `aios-core@6af8968` 改从独立仓检出。
 - 安全修复：通过 `pnpm-workspace.yaml` 的 `overrides` 修补官方传递依赖新披露的高危漏洞——`@xmldom/xmldom` 0.8.14→0.8.15（electron 打包链，plist 现解析 0.9.12）、`js-yaml` 4.3.1→4.3.2（官方 cordis-plugin-include 传递依赖）、`sharp` 0.35.3→0.35.4（官方 dsh-attachment-local 传递依赖，与 Android 裁决同版本）。`pnpm audit --audit-level high` 恢复通过：8 high + 9 moderate → 0 high + 7 moderate。
 
+## 0.2.2-rc.1 — Candidate Source (2026-11-13)
+
+This is a reviewed **Candidate Source**, not GitHub Published Latest. Published Latest remains `v0.1.1-rc.2`; consolidated local acceptance passed on commit `9f4476d` (**96 test files / 468 tests passed, 1 skipped** unpackaged `asar-purity`, 320 exact `0.2.2-rc.1` DSH runtime entries, 0 high/critical advisories in `pnpm audit` and `npm audit`, Android closure/backing/portable audits PASS, 9-plugin offline marketplace PASS) and `latest-tested` advances to `0.2.2-rc.1`.
+
+- Exact npm registry existence (`@deepseek-ai/dsh@0.2.2-rc.1`, published `2026-11-04T09:20:32.310Z`, upstream tag `dsh-v0.2.2-rc.1`, merge commit `66491b05e3f05ad35bcdd4f6cd7ed26041d9e3db`) was verified.
+- Workspace product/core identity, direct official dependencies, TUI official peers, pnpm lock, Android closure manifests/scripts, and the complete Desktop DSH runtime closure (`apps/desktop/runtime-lock`) are aligned to `0.2.2-rc.1`.
+- Official contract snapshots refreshed: `config-rows` `145 -> 196` (`agent-presets` split into `agent-preset-registry` + `preset-standard|ptc|minimal|cordis`), `packages` `144 -> 192`, `domains` (`agent-preset-registry`), `exports` (adds `lib/types/*.d.ts`), and `cli` (`0.2.2-rc.1`).
+- Community adaptations adjusted for `0.2.2-rc.1`: `packages/tui/src/index.ts` updated for single-argument `installModelSelection(agentCtx)` and `packages/dsh-bridge/tests/official-web.smoke.test.ts` updated for relative `./` auth redirect.
+- Desktop runtime lock regenerated via GitHub Actions `runtime-lock-generate` (run `43327677647` / job `131564172521`): **668 entries** with **320 DSH-family entries**, exact `0.2.2-rc.1`, plus `zod@4.6.7` and `undici@^8.12.2` overrides so `npm audit --omit=dev --audit-level high` exits `0`.
+- Android manifests, scripts, Reality Gate specs, and substrate docs aligned to `0.2.2-rc.1` (`engines.node: >=24.9.0`, `@deepseek-ai/node-addon-system@0.1.2`, `koffi@3.1.1`, `sharp@0.35.5` / `@img/sharp-wasm32@0.35.5`, `search-core.ts` blob `794a5d43fe6026c34cb61d65133ee715ed08b2f0`), keeping status `[UNVERIFIED]` / `BLOCKED` / `NOT_RUN`.
+- Published Latest (`v0.1.1-rc.2`), published installer assets, plugin `testedDsh` (`0.1.1-rc.2`), and User-Loop evidence (`UNVERIFIED`) remain separate independent gates.
+
 ## 0.1.2-alpha.4 — Candidate Source (2026-09-02)
 
 This is a reviewed **Candidate Source**, not GitHub Published Latest. Published Latest remains `v0.1.1-rc.2`. Consolidated alpha.4 acceptance passed and `latest-tested` advances to alpha.4.

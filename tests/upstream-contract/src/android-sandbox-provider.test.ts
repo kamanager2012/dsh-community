@@ -101,8 +101,8 @@ describe('Android sandbox provider', () => {
     expect(syntax.stderr).toBe('')
 
     const probe = readFileSync(PROBE, 'utf8')
-    expect(probe).toContain('EXPECTED_PACKAGE="@deepseek-ai/node-addon-landlock-run"')
-    expect(probe).toContain('EXPECTED_VERSION="0.1.1"')
+    expect(probe).toContain('EXPECTED_PACKAGE="@deepseek-ai/node-addon-system"')
+    expect(probe).toContain('EXPECTED_VERSION="0.1.2"')
     expect(probe).toContain('src/main.c')
     expect(probe).toContain('-fPIE -pie')
     expect(probe).toContain('landlock: fully enforced')

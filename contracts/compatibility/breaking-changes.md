@@ -3,6 +3,14 @@
 Record the delta here when contract CI or a pin bump hits a public-surface move.
 Do not invent a compatibility shim in Desktop IPC.
 
+## 0.2.2-rc.1
+
+- `@deepseek-ai/dsh-tui`: `installModelSelection(agentCtx)` dropped its second parameter (`packages/tui/src/index.ts`).
+- Presets / domains split: `agent-presets` and `@deepseek-ai/dsh-agent-presets` were replaced by `agent-preset-registry` (`@deepseek-ai/dsh-agent-preset`, `@deepseek-ai/dsh-agent-preset-registry`) plus `preset-standard`, `preset-ptc`, `preset-minimal`, and `preset-cordis`.
+- Config / package / export surface (`contracts/upstream`): `web` config rows expanded `145 -> 196` (7 removed including `agent-presets`, `code-runtime`, `skill-badge`, `tool-ralph`, `tool-str-replace-editor`, `tool-subagent-list-agents`, `workflow-worker-thread`; 58 added) and packages expanded `144 -> 192`; root `@deepseek-ai/dsh` exports added `lib/types/*.d.ts` and moved `engines.node` from `^22.19.0 || >=24.0.0` to `>=24.9.0`.
+- Web auth token exchange redirect: official Web now redirects to relative `./` instead of `/` (`packages/dsh-bridge/tests/official-web.smoke.test.ts`).
+- Runtime / native closure shifts: `@deepseek-ai/node-addon-landlock-run@0.1.1` was replaced by `@deepseek-ai/node-addon-system@0.1.2` (keeping `src/main.c` and the `landlock-run` CLI contract), `koffi` resolved to `3.1.1` (was `3.1.6`), `sharp` / `@img/sharp-wasm32` moved to `0.35.5` (was `0.35.4`), and `tool-fs-search/src/search-core.ts` (Git blob `794a5d43fe6026c34cb61d65133ee715ed08b2f0`) added `.asar.unpacked` handling for Electron while `resolveRgPath()` still has no Android executable-path seam.
+
 ## 0.1.2-alpha.4
 
 - surface: package / config-row / profile composition / runtime closure

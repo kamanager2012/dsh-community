@@ -77,7 +77,7 @@ const result = {
   sandbox: {
     status: 'OFFICIAL_LANDLOCK_SOURCE_NDK_AND_APP_UID_PROBE_REQUIRED',
     package: {
-      name: '@deepseek-ai/node-addon-landlock-run',
+      name: '@deepseek-ai/node-addon-system',
       version: landlock.version,
       integrity: landlock.integrity,
     },
@@ -88,7 +88,7 @@ const result = {
     wrapperVersion: ripgrep.version,
     status: 'UPSTREAM_PATH_SEAM_OR_ANDROID_PACKAGE_REQUIRED',
     seamAudit: 'scripts/audit-android-ripgrep-seam.mjs',
-    officialSearchCoreGitBlob: '60ea042d4f31f0e9c856536b8b34e2687482eec7',
+    officialSearchCoreGitBlob: '794a5d43fe6026c34cb61d65133ee715ed08b2f0',
     androidPackagesPresent: presentAndroidRipgrepPackages,
     expectedRuntimePackageNames: androidRipgrepPackages,
     wrapperResolutionContract: '@vscode/ripgrep-${process.platform}-${arch}',

@@ -4,7 +4,7 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)))
-const EXPECTED_DSH = '0.1.2-alpha.4'
+const EXPECTED_DSH = '0.2.2-rc.1'
 const EXPECTED_NODE = {
   version: '22.19.0',
   sourceTag: 'v22.19.0',

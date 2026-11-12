@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '../../..')
 
 describe('frozen upstream candidate target', () => {
-  it('advances explicitly from accepted alpha.3 to frozen alpha.4 with measured source evidence', () => {
+  it('advances explicitly from accepted alpha.4 to frozen 0.2.2-rc.1 with measured source evidence', () => {
     const watch = JSON.parse(
       readFileSync(
         join(repoRoot, 'contracts/compatibility/upstream-candidate-watch.json'),
@@ -62,17 +62,17 @@ describe('frozen upstream candidate target', () => {
 
     expect(watch.schemaVersion).toBe(2)
     expect(watch.previousAccepted.package).toBe('@deepseek-ai/dsh')
-    expect(watch.previousAccepted.version).toBe('0.1.2-alpha.3')
+    expect(watch.previousAccepted.version).toBe('0.1.2-alpha.4')
     expect(watch.previousAccepted.disposition).toBe('PREVIOUS_ACCEPTED_BASELINE')
     expect(watch.previousAccepted.acceptedCommunityMain)
-      .toBe('4e30f8198b50a3ce88ff66fb39e848f3f05ade58')
+      .toBe('c8c2484c0ece2c2cbc506dbb116e97e807def6d8')
 
     expect(watch.frozenTarget.package).toBe('@deepseek-ai/dsh')
-    expect(watch.frozenTarget.version).toBe('0.1.2-alpha.4')
+    expect(watch.frozenTarget.version).toBe('0.2.2-rc.1')
     expect(watch.frozenTarget.registryGate.status).toBe('PASS')
     expect(watch.frozenTarget.registryGate.command)
-      .toBe('npm view @deepseek-ai/dsh@0.1.2-alpha.4 version')
-    expect(watch.frozenTarget.registryGate.runId).toBe(33574740829)
+      .toBe('npm view @deepseek-ai/dsh@0.2.2-rc.1 version --registry=https://registry.npmjs.org/')
+    expect(watch.frozenTarget.registryGate.runId).toBe(43327677647)
     expect(watch.policy.candidateAdvancement).toBe('EXPLICIT_ONLY')
 
     for (const sha of [
@@ -90,16 +90,16 @@ describe('frozen upstream candidate target', () => {
     )
 
     const comparison = watch.frozenTarget.comparisonFromPrevious
-    expect(comparison.commitsBetweenReleaseMerges).toBe(297)
-    expect(comparison.changedFiles).toBe(300)
+    expect(comparison.commitsBetweenReleaseMerges).toBe(10163)
+    expect(comparison.changedFiles).toBe(19767)
 
-    expect(comparison.readinessImplementation.verdict).toBe('IDENTICAL')
+    expect(comparison.readinessImplementation.verdict).toBe('CHANGED')
     expect(comparison.readinessImplementation.previousBlob)
-      .toBe(comparison.readinessImplementation.targetBlob)
+      .not.toBe(comparison.readinessImplementation.targetBlob)
 
-    expect(comparison.cliArgsImplementation.verdict).toBe('IDENTICAL')
+    expect(comparison.cliArgsImplementation.verdict).toBe('CHANGED')
     expect(comparison.cliArgsImplementation.previousBlob)
-      .toBe(comparison.cliArgsImplementation.targetBlob)
+      .not.toBe(comparison.cliArgsImplementation.targetBlob)
 
     expect(comparison.cliReference.verdict).toBe('CHANGED')
     expect(comparison.cliReference.previousBlob)

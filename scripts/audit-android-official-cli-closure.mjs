@@ -36,7 +36,7 @@ const blockers = readJson(BLOCKERS)
 const packages = lock.packages ?? {}
 
 if (android.dependencies?.['@deepseek-ai/dsh'] !== EXPECTED_DSH) {
-  throw new Error('android-cli-closure: Android target is not pinned to exact official DSH alpha.4')
+  throw new Error(`android-cli-closure: Android target is not pinned to exact official DSH ${EXPECTED_DSH}`)
 }
 const dsh = requireEntry(packages, '@deepseek-ai/dsh')
 if (dsh.version !== EXPECTED_DSH) {

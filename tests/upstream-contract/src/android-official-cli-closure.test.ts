@@ -6,7 +6,7 @@ const ROOT = resolve(import.meta.dirname, '../../..')
 const audit = resolve(ROOT, 'scripts/audit-android-official-cli-closure.mjs')
 
 describe('Android official CLI package closure', () => {
-  it('proves profile-only trimming cannot remove the current alpha.4 native install closure', () => {
+  it('proves profile-only trimming cannot remove the current 0.2.2-rc.1 native install closure', () => {
     const result = spawnSync(process.execPath, [audit], {
       cwd: ROOT,
       encoding: 'utf8',

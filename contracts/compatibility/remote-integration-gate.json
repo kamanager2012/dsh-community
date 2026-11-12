@@ -1,14 +1,14 @@
 {
   "schemaVersion": 3,
-  "purpose": "Prevent accidental GitHub Actions spend before the alpha.4 integration tree is final.",
+  "purpose": "Prevent accidental GitHub Actions spend before the 0.2.2-rc.1 integration tree is final.",
   "safeRemoteOperation": {
     "operation": "push-to-non-main-branch",
     "actionsExpected": 0,
-    "rationale": "Current push-triggered workflows are scoped to main/master or tags; the upgrade branch has no ordinary push-triggered workflow."
+    "rationale": "Current push-triggered workflows are scoped to main/master or tags; the integration branch has no ordinary push-triggered workflow."
   },
   "blockedUntilFinalAcceptance": {
     "operation": "open-pull-request",
-    "reason": "The alpha.4 integration diff fans out into multiple pull_request workflows; open the PR only after consolidated acceptance passes.",
+    "reason": "The 0.2.2-rc.1 integration diff fans out into multiple pull_request workflows; open the PR only after consolidated acceptance passes.",
     "workflows": [
       "ci",
       "dependency-audit",
@@ -27,24 +27,23 @@
     "release"
   ],
   "acceptedBaseline": {
-    "commit": "a8e61282858dbd7a9f0d521fe85c3c119a2a0f1d",
-    "branch": "upgrade/dsh-0.1.2-alpha.4",
+    "commit": "938979a8d9688e0cbc142e98aa4751606344170a",
+    "branch": "chore/rc1-acceptance-and-ledgers",
     "origin": "remote-generated-baseline",
-    "registryGateRunId": 33574740829,
-    "lockContractGeneratorRunId": 33575142240,
-    "note": "Exact alpha.4 Candidate Source manifests, pnpm lock, Desktop npm runtime lock, complete DSH-family overrides, reviewed lifecycle policy, and four upstream contract snapshots. Temporary registry/generator workflows and triggers were removed before this baseline was squashed."
+    "registryGateRunId": 43328060175,
+    "lockContractGeneratorRunId": 43327677647,
+    "note": "Exact 0.2.2-rc.1 Candidate Source merged atop PR #106 (b58b6e97e2050e645f18ee63f7900797f5a489ee) and PR #110 (938979a8d9688e0cbc142e98aa4751606344170a): CI-generated Desktop npm runtime lock (run 43327677647, verified in run 43328060175), complete DSH-family overrides, reviewed lifecycle policy, and official contract snapshots."
   },
   "finalAcceptance": {
     "status": "PASS",
-    "version": "0.1.2-alpha.4",
-    "runId": 33577261413,
-    "jobId": 100083859312,
-    "runHeadCommit": "434570ca350ca65cdf2ada01b9fcfacae387c5ef",
-    "testFiles": "79 passed, 1 skipped",
-    "tests": "323 passed, 1 skipped",
-    "runtimeDshEntries": 214,
+    "version": "0.2.2-rc.1",
+    "execution": "local-consolidated-acceptance",
+    "runHeadCommit": "9f4476d214fc17a341f896635ff2ab0bd9ad1959",
+    "testFiles": "96 passed, 1 skipped (97)",
+    "tests": "468 passed, 1 skipped (469)",
+    "runtimeDshEntries": 320,
     "marketplaceOffline": "9 plugins verified",
     "providerCalls": 0,
-    "disposition": "Promoted latest-tested final-tree replay passed. Temporary acceptance harness is removed. PR/CI may now open; release/tag remains blocked behind PR CI and release gates."
+    "disposition": "Promoted latest-tested 0.2.2-rc.1 consolidated local acceptance passed on commit 9f4476d214fc17a341f896635ff2ab0bd9ad1959; post-promotion replay verified before PR CI. Published Latest remains v0.1.1-rc.2."
   }
 }
