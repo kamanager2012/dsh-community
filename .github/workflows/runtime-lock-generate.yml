@@ -1,0 +1,63 @@
+name: runtime-lock-generate
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/runtime-lock-generate.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+
+      - name: Generate clean runtime-lock
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/rl-gen
+          cp apps/desktop/runtime-lock/package.json /tmp/rl-gen/package.json
+          cd /tmp/rl-gen
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          node -e '
+            const fs = require("fs");
+            const crypto = require("crypto");
+            const { execSync } = require("child_process");
+            const raw = fs.readFileSync("package-lock.json");
+            const lock = JSON.parse(raw.toString("utf8"));
+            const meta = {
+              lockSha256: crypto.createHash("sha256").update(raw).digest("hex"),
+              generatedAt: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
+              runnerImage: "ubuntu-24.04",
+              nodeVersion: process.version,
+              npmVersion: execSync("npm --version").toString().trim(),
+              generatorCommit: process.env.GITHUB_SHA,
+              workflowRunId: Number(process.env.GITHUB_RUN_ID),
+              lockfileVersion: lock.lockfileVersion,
+              packageEntries: Object.keys(lock.packages || {}).length,
+              dshFamilyEntries: Object.keys(lock.packages || {}).filter((k) => {
+                const name = k.split("node_modules/").pop() || "";
+                return name === "@deepseek-ai/dsh" || name.startsWith("@deepseek-ai/dsh-");
+              }).length
+            };
+            fs.writeFileSync("meta.json", JSON.stringify(meta, null, 2) + "\n");
+          '
+
+      - name: Upload generated lock and metadata
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: runtime-lock-generated-${{ github.run_id }}
+          path: |
+            /tmp/rl-gen/package-lock.json
+            /tmp/rl-gen/meta.json
+          if-no-files-found: error
+          retention-days: 1
