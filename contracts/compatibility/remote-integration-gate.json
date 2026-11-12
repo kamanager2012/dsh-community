@@ -35,15 +35,15 @@
     "note": "Exact 0.2.2-rc.1 Candidate Source merged atop PR #106 (b58b6e97e2050e645f18ee63f7900797f5a489ee) and PR #110 (938979a8d9688e0cbc142e98aa4751606344170a): CI-generated Desktop npm runtime lock (run 43327677647, verified in run 43328060175), complete DSH-family overrides, reviewed lifecycle policy, and official contract snapshots."
   },
   "finalAcceptance": {
-    "status": "PENDING",
+    "status": "PASS",
     "version": "0.2.2-rc.1",
     "execution": "local-consolidated-acceptance",
-    "runHeadCommit": "938979a8d9688e0cbc142e98aa4751606344170a",
-    "testFiles": "pending",
-    "tests": "pending",
+    "runHeadCommit": "9f4476d214fc17a341f896635ff2ab0bd9ad1959",
+    "testFiles": "96 passed, 1 skipped (97)",
+    "tests": "468 passed, 1 skipped (469)",
     "runtimeDshEntries": 320,
     "marketplaceOffline": "9 plugins verified",
     "providerCalls": 0,
-    "disposition": "Consolidated local acceptance for 0.2.2-rc.1 pending clean-tree execution before latest-tested promotion and PR CI verification."
+    "disposition": "Promoted latest-tested 0.2.2-rc.1 consolidated local acceptance passed on commit 9f4476d214fc17a341f896635ff2ab0bd9ad1959; post-promotion replay verified before PR CI. Published Latest remains v0.1.1-rc.2."
   }
 }

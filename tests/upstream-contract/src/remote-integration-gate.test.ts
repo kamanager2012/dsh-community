@@ -42,7 +42,7 @@ describe('remote integration gate', () => {
     expect(gate.acceptedBaseline.origin).toBe('remote-generated-baseline')
     expect(gate.acceptedBaseline.registryGateRunId).toBe(43328060175)
     expect(gate.acceptedBaseline.lockContractGeneratorRunId).toBe(43327677647)
-    expect(['PENDING', 'PASS']).toContain(gate.finalAcceptance.status)
+    expect(gate.finalAcceptance.status).toBe('PASS')
     expect(gate.finalAcceptance.version).toBe('0.2.2-rc.1')
     expect(gate.finalAcceptance.runHeadCommit).toMatch(/^[0-9a-f]{40}$/u)
     expect(gate.finalAcceptance.runtimeDshEntries).toBe(320)

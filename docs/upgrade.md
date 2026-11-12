@@ -77,9 +77,7 @@ An upstream prerelease discovered **after** an upgrade baseline has been frozen
 does not silently replace that baseline. The current cycle is pinned in
 `contracts/compatibility/upstream-candidate-watch.json`.
 
-For this cycle, `0.2.2-rc.1` is frozen after registry and CI runtime-lock verification.
-The previously accepted `0.1.2-alpha.4` line remains historical evidence
-and `latest-tested` until `0.2.2-rc.1` acceptance passes. `0.2.2-rc.1` retains the
+For this cycle, `0.2.2-rc.1` is frozen after registry, CI runtime-lock, and consolidated local acceptance verification, advancing `latest-tested` from `0.1.2-alpha.4` to `0.2.2-rc.1`. `0.2.2-rc.1` retains the
 loopback Web readiness line and one-time `?token=` bootstrap contract while raising
 official `engines.node` to `>=24.9.0`, updating Desktop `runtime-lock` to 320 DSH
 family entries, and switching sandbox launcher distribution to `@deepseek-ai/node-addon-system@0.1.2`.
