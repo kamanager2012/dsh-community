@@ -541,6 +541,8 @@
     "@deepseek-ai/dsh-win32-process": "0.2.2-rc.1",
     "@deepseek-ai/dsh-workflow": "0.2.2-rc.1",
     "@deepseek-ai/dsh-workflow-worker-thread": "0.2.2-rc.1",
-    "@deepseek-ai/dsh-workspace": "0.2.2-rc.1"
+    "@deepseek-ai/dsh-workspace": "0.2.2-rc.1",
+    "zod": "4.6.7",
+    "undici": "^8.12.2"
   }
 }

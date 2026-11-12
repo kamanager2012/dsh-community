@@ -75,7 +75,7 @@ describe('Android G2 native compatibility', () => {
       semanticBlockers?: Array<{ id?: string; status?: string; severity?: string }>
     }
 
-    expect(state.officialDsh).toBe('0.1.2-alpha.4')
+    expect(state.officialDsh).toBe('0.2.2-rc.1')
     expect(state.nativeProbe).toBe('scripts/android-native-addon-probe.sh')
     expect(state.portableDependencyAudit).toBe('scripts/audit-android-portable-deps.mjs')
     expect(state.sandboxProbe).toBe('scripts/android-sandbox-landlock-probe.sh')
@@ -130,16 +130,16 @@ describe('Android G2 native compatibility', () => {
       sourceMutationAllowed: false,
     })
     expect(components.get('koffi')).toMatchObject({
-      version: '3.1.6',
+      version: '3.1.1',
       status: 'CROSS_BUILD_PROBE_REQUIRED',
       sourceMutationAllowed: false,
     })
     expect(components.get('sharp')).toMatchObject({
-      version: '0.35.4',
+      version: '0.35.5',
       status: 'LOCKED_WASM_FALLBACK_MATERIALIZATION_AND_DEVICE_PROBE_REQUIRED',
       fallback: {
         package: '@img/sharp-wasm32',
-        version: '0.35.4',
+        version: '0.35.5',
         emnapiVersion: '1.11.3',
       },
     })
@@ -238,11 +238,11 @@ describe('Android G2 native compatibility', () => {
 
     expect(audit.sourceLock).toBe('apps/desktop/runtime-lock/package-lock.json')
     expect(audit.sharp).toMatchObject({
-      version: '0.35.4',
+      version: '0.35.5',
       status: 'LOCKED_WASM_FALLBACK_MATERIALIZATION_AND_DEVICE_PROBE_REQUIRED',
       wasmPackage: {
         name: '@img/sharp-wasm32',
-        version: '0.35.4',
+        version: '0.35.5',
         optionalInLock: true,
       },
       emnapi: { version: '1.11.3' },
@@ -251,8 +251,8 @@ describe('Android G2 native compatibility', () => {
       status: 'OFFICIAL_LANDLOCK_SOURCE_NDK_AND_APP_UID_PROBE_REQUIRED',
       package: {
         name: '@deepseek-ai/node-addon-landlock-run',
-        version: '0.1.1',
-        integrity: 'sha512-aHGhlQJEutfobKM/4K59SERbT7RmQdD2oMKzD8Bne/Ps7TeT8AweCN+dpdfuxQhMNbFcJMymrgPnID0WYQ30Tw==',
+        version: '0.1.2',
+        integrity: 'sha512-EFn8K+mXIXiw6s3rxX+cgp2hZTEAQdVIsURhrXnBxycSXvtQ1EQpsSVzoNKtKAQI0I0VqkEcVEjHzS/PeaGsvw==',
       },
       sourcePathInPackage: 'src/main.c',
     })

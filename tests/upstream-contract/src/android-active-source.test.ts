@@ -9,10 +9,10 @@ describe('active Android endpoint source contract', () => {
     const pkg = JSON.parse(
       readFileSync(resolve(ROOT, 'apps/android/nodejs-project/package.json'), 'utf8'),
     ) as { dependencies?: Record<string, string> }
-    expect(pkg.dependencies?.['@deepseek-ai/dsh']).toBe('0.1.2-alpha.4')
-    expect(pkg.dependencies?.['@deepseek-ai/dsh-sandbox']).toBe('0.1.2-alpha.4')
-    expect(pkg.dependencies?.['@deepseek-ai/dsh-subprocess']).toBe('0.1.2-alpha.4')
-    expect(pkg.dependencies?.['@deepseek-ai/dsh-subprocess-local']).toBe('0.1.2-alpha.4')
+    expect(pkg.dependencies?.['@deepseek-ai/dsh']).toBe('0.2.2-rc.1')
+    expect(pkg.dependencies?.['@deepseek-ai/dsh-sandbox']).toBe('0.2.2-rc.1')
+    expect(pkg.dependencies?.['@deepseek-ai/dsh-subprocess']).toBe('0.2.2-rc.1')
+    expect(pkg.dependencies?.['@deepseek-ai/dsh-subprocess-local']).toBe('0.2.2-rc.1')
     expect(pkg.dependencies?.['node-pty']).toBeUndefined()
 
     const bootstrap = readFileSync(

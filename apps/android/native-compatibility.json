@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "asOf": "2026-09-02",
-  "officialDsh": "0.1.2-alpha.4",
+  "officialDsh": "0.2.2-rc.1",
   "sourceOfTruth": {
     "runtimeLock": "apps/desktop/runtime-lock/package-lock.json",
     "lifecyclePolicy": "apps/desktop/runtime-lock/lifecycle-scripts.json"
@@ -25,7 +25,7 @@
     {
       "id": "koffi",
       "package": "koffi",
-      "version": "3.1.6",
+      "version": "3.1.1",
       "status": "CROSS_BUILD_PROBE_REQUIRED",
       "sourceMutationAllowed": false,
       "facts": [
@@ -37,7 +37,7 @@
     {
       "id": "sharp",
       "package": "sharp",
-      "version": "0.35.4",
+      "version": "0.35.5",
       "status": "LOCKED_WASM_FALLBACK_MATERIALIZATION_AND_DEVICE_PROBE_REQUIRED",
       "sourceMutationAllowed": false,
       "facts": [
@@ -48,7 +48,7 @@
       ],
       "fallback": {
         "package": "@img/sharp-wasm32",
-        "version": "0.35.4",
+        "version": "0.35.5",
         "integrity": "sha512-zQnl4Kwp7Q6NHsENtU2T/00Zi+w3AQNwz3+UaTyVBy2FpXrzXzGjndpK61onhZjRtRpQXxCTeqw19bVyXOh7jA==",
         "emnapiVersion": "1.11.3",
         "loaderBehavior": "sharp 0.35.4 falls through to @img/sharp-wasm32/sharp.node when no native runtimePlatform case loads."

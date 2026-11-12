@@ -6,7 +6,7 @@ const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)))
 const LOCK = 'apps/desktop/runtime-lock/package-lock.json'
 const ANDROID_PACKAGE = 'apps/android/nodejs-project/package.json'
 const BLOCKERS = 'apps/android/native-blockers.json'
-const EXPECTED_DSH = '0.1.2-alpha.4'
+const EXPECTED_DSH = '0.2.2-rc.1'
 
 function readJson(rel) {
   return JSON.parse(readFileSync(resolve(ROOT, rel), 'utf8'))
@@ -54,7 +54,7 @@ const edges = [
   ['@deepseek-ai/dsh-subprocess-local', 'node-pty'],
   ['@deepseek-ai/dsh-subprocess-local', 'koffi'],
   ['@deepseek-ai/dsh-attachment-local', 'sharp'],
-  ['@deepseek-ai/dsh-sandbox-local', '@deepseek-ai/node-addon-landlock-run'],
+  ['@deepseek-ai/dsh-sandbox-local', '@deepseek-ai/node-addon-system'],
   ['@deepseek-ai/dsh-sandbox-local', '@deepseek-ai/dsh-sandbox-windows-acl'],
   ['@deepseek-ai/dsh-sandbox-windows-acl', 'koffi'],
   ['@deepseek-ai/dsh-tool-fs-search', '@vscode/ripgrep'],
@@ -69,7 +69,7 @@ const blockerPackages = [
   '@deepseek-ai/dsh-attachment-local',
   'sharp',
   '@deepseek-ai/dsh-sandbox-local',
-  '@deepseek-ai/node-addon-landlock-run',
+  '@deepseek-ai/node-addon-system',
   '@deepseek-ai/dsh-sandbox-windows-acl',
   '@deepseek-ai/dsh-tool-fs-search',
   '@vscode/ripgrep',

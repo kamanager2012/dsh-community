@@ -24,7 +24,7 @@ describe('Android official CLI package closure', () => {
       verifiedEdges?: Array<{ from?: string; to?: string }>
     }
 
-    expect(report.officialDsh).toBe('0.1.2-alpha.4')
+    expect(report.officialDsh).toBe('0.2.2-rc.1')
     expect(report.status).toBe('BLOCKED_BY_NATIVE_CLOSURE')
     expect(report.profileOnlyMitigation).toBe('INEFFECTIVE')
     expect(report.unresolvedBlockers).toEqual([
@@ -36,8 +36,8 @@ describe('Android official CLI package closure', () => {
 
     const packages = new Map((report.blockerPackages ?? []).map(item => [item.name, item.version]))
     expect(packages.get('node-pty')).toBe('1.2.0-beta.15')
-    expect(packages.get('koffi')).toBe('3.1.6')
-    expect(packages.get('sharp')).toBe('0.35.4')
+    expect(packages.get('koffi')).toBe('3.1.1')
+    expect(packages.get('sharp')).toBe('0.35.5')
     expect(packages.get('@vscode/ripgrep')).toBe('1.18.0')
 
     const edges = new Set((report.verifiedEdges ?? []).map(edge => `${edge.from} -> ${edge.to}`))
