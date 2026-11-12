@@ -213,28 +213,15 @@ describe('official runtime lock', () => {
     expect(evidence.artifactZipSha256).toBeUndefined()
     expect(evidence.nodeVersion).toMatch(/^v22\./u)
     expect(evidence.npmVersion).toMatch(/^10\./u)
-    expect(evidence.command).toMatch(
-      /^npm install --package-lock-only --ignore-scripts --no-audit --no-fund/u,
+    expect(evidence.command).toBe(
+      'npm install --package-lock-only --ignore-scripts --no-audit --no-fund',
     )
-    if (evidence.source === 'github-actions') {
-      // Attested mode: must name a real run, job and generator commit.
-      expect(evidence.attestationPending).toBeUndefined()
-      expect(Number.isInteger(evidence.workflowRunId)).toBe(true)
-      expect(Number.isInteger(evidence.workflowJobId)).toBe(true)
-      expect(evidence.generatorCommit).toMatch(/^[0-9a-f]{40}$/u)
-      expect(evidence.runnerImage).toBe('ubuntu-24.04')
-    } else {
-      // Interim, explicitly unattested mode. It must never carry CI identifiers
-      // and must point at the tracking issue until a CI generation replaces it.
-      expect(evidence.source).toBe('local-unattested')
-      expect(evidence.attestationPending).toBe(true)
-      expect(evidence.pendingIssue).toMatch(
-        /^https:\/\/github\.com\/kamanager2012\/dsh-community\/issues\/\d+$/u,
-      )
-      expect(evidence.workflowRunId).toBeUndefined()
-      expect(evidence.workflowJobId).toBeUndefined()
-      expect(evidence.generatorCommit).toBeUndefined()
-    }
+    expect(evidence.source).toBe('github-actions')
+    expect(evidence.attestationPending).toBeUndefined()
+    expect(Number.isInteger(evidence.workflowRunId)).toBe(true)
+    expect(Number.isInteger(evidence.workflowJobId)).toBe(true)
+    expect(evidence.generatorCommit).toMatch(/^[0-9a-f]{40}$/u)
+    expect(evidence.runnerImage).toBe('ubuntu-24.04')
     expect(evidence.officialPackage).toBe(OFFICIAL_DSH_PACKAGE)
     expect(evidence.officialVersion).toBe(PINNED_DSH_VERSION)
     expect(evidence.lockfileVersion).toBe(lock.lockfileVersion)
