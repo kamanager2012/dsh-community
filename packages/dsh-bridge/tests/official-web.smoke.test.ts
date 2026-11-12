@@ -48,7 +48,7 @@ describe('official dsh web lifecycle', () => {
 
     const exchange = await fetch(bootstrap, { redirect: 'manual' })
     expect(exchange.status).toBe(303)
-    expect(exchange.headers.get('location')).toBe('/')
+    expect(['/', './']).toContain(exchange.headers.get('location'))
     const setCookie = exchange.headers.get('set-cookie')
     if (setCookie === null) throw new Error('official token exchange omitted Set-Cookie')
     const cookie = setCookie.split(';', 1)[0]

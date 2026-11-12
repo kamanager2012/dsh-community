@@ -89,7 +89,7 @@ export function apply(ctx: CordisContext): (() => void) | void {
         resumeSessionId: resumeId,
         agentOptions: { provider: selection.provider, model: selection.model },
         setup: (agentCtx: unknown) => {
-          installModelSelection(agentCtx as never, { current: selection, assembled: undefined })
+          installModelSelection(agentCtx as never)
         },
       })
     } else {
@@ -98,7 +98,7 @@ export function apply(ctx: CordisContext): (() => void) | void {
         meta: { cwd: process.cwd() },
         agentOptions: { provider: selection.provider, model: selection.model },
         setup: (agentCtx: unknown) => {
-          installModelSelection(agentCtx as never, { current: selection, assembled: undefined })
+          installModelSelection(agentCtx as never)
         },
       })
     }

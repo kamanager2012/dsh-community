@@ -32,11 +32,11 @@ function requireVersion(packages, name, version) {
 const lock = readJson(LOCK)
 const packages = lock.packages ?? {}
 
-const sharp = requireVersion(packages, 'sharp', '0.35.4')
-const sharpWasm = requireVersion(packages, '@img/sharp-wasm32', '0.35.4')
+const sharp = requireVersion(packages, 'sharp', '0.35.5')
+const sharpWasm = requireVersion(packages, '@img/sharp-wasm32', '0.35.5')
 const emnapi = requireVersion(packages, '@emnapi/runtime', '1.11.3')
 const ripgrep = requireVersion(packages, '@vscode/ripgrep', '1.18.0')
-const landlock = requireVersion(packages, '@deepseek-ai/node-addon-landlock-run', '0.1.1')
+const landlock = requireVersion(packages, '@deepseek-ai/node-addon-system', '0.1.2')
 
 if (sharpWasm.dependencies?.['@emnapi/runtime'] === undefined) {
   throw new Error('android-portable-deps: sharp-wasm32 lost @emnapi/runtime dependency')

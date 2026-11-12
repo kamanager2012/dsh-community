@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "asOf": "2026-09-02",
-  "officialDsh": "0.1.2-alpha.4",
+  "officialDsh": "0.2.2-rc.1",
   "fullWebProfile": "BLOCKED",
   "standaloneSdkMinimal": "BLOCKED",
   "blockers": [
@@ -31,7 +31,7 @@
       ],
       "lockedNativeDependencies": [
         "node-pty@1.2.0-beta.15",
-        "koffi@3.1.6"
+        "koffi@3.1.1"
       ],
       "nextProbe": "Run scripts/android-native-addon-probe.sh verify on the exact Node 22.19 Android carrier. If its provider-level adb-shell smoke passes, continue with the real Android Web/minimal persistent-terminal Reality Gate under the APK app UID before changing status."
     },
@@ -46,7 +46,7 @@
         "image attachments"
       ],
       "severity": "HARD",
-      "evidence": "Official attachment-local depends on sharp. The frozen runtime lock already records sharp@0.35.4 plus exact @img/sharp-wasm32@0.35.4 and @emnapi/runtime@1.11.3; sharp's loader has a generic WASM fallback after platform-native resolution. Remaining gaps are optional-byte materialization and a real Android carrier image smoke.",
+      "evidence": "Official attachment-local depends on sharp. The frozen runtime lock already records sharp@0.35.5 plus exact @img/sharp-wasm32@0.35.4 and @emnapi/runtime@1.11.3; sharp's loader has a generic WASM fallback after platform-native resolution. Remaining gaps are optional-byte materialization and a real Android carrier image smoke.",
       "status": "OPEN",
       "rowDisableRemovesInstallDependency": false,
       "failurePhase": "LOAD_OR_IMAGE_USE",
@@ -62,7 +62,7 @@
       "id": "sandbox-local",
       "package": "@deepseek-ai/dsh-sandbox-local",
       "nativeDependencies": [
-        "@deepseek-ai/node-addon-landlock-run",
+        "@deepseek-ai/node-addon-system",
         "@deepseek-ai/dsh-sandbox-windows-acl"
       ],
       "affects": [
@@ -71,7 +71,7 @@
         "local shell confinement"
       ],
       "severity": "HARD",
-      "evidence": "The built-in sandbox-local platform chain has no Android entry, but official @deepseek-ai/dsh-sandbox exposes a public provider seam. Android wires a first-party Community provider through the official dsh --patch layer. It maps official writableRoots(policy) to frozen @deepseek-ai/node-addon-landlock-run@0.1.1, requires full enforcement, and preserves exit-125/signature classification. The embedded Node bootstrap is additionally wired to repeat full allow/deny confinement under the APK app UID before official DSH spawn. NDK build and real APK execution remain unproven.",
+      "evidence": "The built-in sandbox-local platform chain has no Android entry, but official @deepseek-ai/dsh-sandbox exposes a public provider seam. Android wires a first-party Community provider through the official dsh --patch layer. It maps official writableRoots(policy) to frozen @deepseek-ai/node-addon-system@0.1.1, requires full enforcement, and preserves exit-125/signature classification. The embedded Node bootstrap is additionally wired to repeat full allow/deny confinement under the APK app UID before official DSH spawn. NDK build and real APK execution remain unproven.",
       "status": "OPEN",
       "rowDisableRemovesInstallDependency": false,
       "failurePhase": "LOAD_OR_CONFINE",

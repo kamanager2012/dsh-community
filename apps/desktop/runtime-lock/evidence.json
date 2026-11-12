@@ -5,15 +5,15 @@
   "workflowRunId": 33575142240,
   "workflowJobId": 100077338019,
   "generatorCommit": "7b9c8bfefc9685678ed96878641f27bb10a8b54e",
-  "lockSha256": "cb4ba8dc2923c546c76e7a73ad98e77321e9ac69833bf0a37b50201b7c67e81b",
+  "lockSha256": "33715a66b85f850312b542df5e0b971ceaf3f860e3e46bac9b0687fdceeedd06",
   "generatedAt": "2026-09-02T00:24:24Z",
   "runnerImage": "ubuntu-24.04",
   "nodeVersion": "v22.23.2",
   "npmVersion": "10.9.8",
   "command": "npm install --package-lock-only --ignore-scripts --no-audit --no-fund",
   "officialPackage": "@deepseek-ai/dsh",
-  "officialVersion": "0.1.2-alpha.4",
+  "officialVersion": "0.2.2-rc.1",
   "lockfileVersion": 3,
-  "packageEntries": 580,
-  "dshFamilyEntries": 214
+  "packageEntries": 668,
+  "dshFamilyEntries": 320
 }

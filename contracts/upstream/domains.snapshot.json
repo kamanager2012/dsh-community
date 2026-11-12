@@ -13,7 +13,7 @@
     "mustExist": [
       "agent",
       "agent-loop",
-      "agent-presets",
+      "agent-preset-registry",
       "subagent"
     ]
   },
