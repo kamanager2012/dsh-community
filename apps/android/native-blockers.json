@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "asOf": "2026-09-02",
+  "asOf": "2026-11-13",
   "officialDsh": "0.2.2-rc.1",
   "fullWebProfile": "BLOCKED",
   "standaloneSdkMinimal": "BLOCKED",
@@ -46,7 +46,7 @@
         "image attachments"
       ],
       "severity": "HARD",
-      "evidence": "Official attachment-local depends on sharp. The frozen runtime lock already records sharp@0.35.5 plus exact @img/sharp-wasm32@0.35.4 and @emnapi/runtime@1.11.3; sharp's loader has a generic WASM fallback after platform-native resolution. Remaining gaps are optional-byte materialization and a real Android carrier image smoke.",
+      "evidence": "Official attachment-local depends on sharp. The frozen runtime lock already records sharp@0.35.5 plus exact @img/sharp-wasm32@0.35.5 and @emnapi/runtime@1.11.3; sharp's loader has a generic WASM fallback after platform-native resolution. Remaining gaps are optional-byte materialization and a real Android carrier image smoke.",
       "status": "OPEN",
       "rowDisableRemovesInstallDependency": false,
       "failurePhase": "LOAD_OR_IMAGE_USE",
@@ -71,7 +71,7 @@
         "local shell confinement"
       ],
       "severity": "HARD",
-      "evidence": "The built-in sandbox-local platform chain has no Android entry, but official @deepseek-ai/dsh-sandbox exposes a public provider seam. Android wires a first-party Community provider through the official dsh --patch layer. It maps official writableRoots(policy) to frozen @deepseek-ai/node-addon-system@0.1.1, requires full enforcement, and preserves exit-125/signature classification. The embedded Node bootstrap is additionally wired to repeat full allow/deny confinement under the APK app UID before official DSH spawn. NDK build and real APK execution remain unproven.",
+      "evidence": "The built-in sandbox-local platform chain has no Android entry, but official @deepseek-ai/dsh-sandbox exposes a public provider seam. Android wires a first-party Community provider through the official dsh --patch layer. It maps official writableRoots(policy) to frozen @deepseek-ai/node-addon-system@0.1.2 (which ships the same landlock-run C source src/main.c), requires full enforcement, and preserves exit-125/signature classification. The embedded Node bootstrap is additionally wired to repeat full allow/deny confinement under the APK app UID before official DSH spawn. NDK build and real APK execution remain unproven.",
       "status": "OPEN",
       "rowDisableRemovesInstallDependency": false,
       "failurePhase": "LOAD_OR_CONFINE",
@@ -94,7 +94,7 @@
         "glob/grep search"
       ],
       "severity": "FEATURE_BLOCKER",
-      "evidence": "Official alpha.4 tool-fs-search owns glob/grep semantics and resolveRgPath(). The audited search-core.ts has resolveRgPath() with zero parameters, no rgPath/ripgrepPath config/environment seam, direct Node-mode import('@vscode/ripgrep').rgPath, and a sidecar path gated only by 'pkg' in process. @vscode/ripgrep@1.18.0 has no Android platform package in the frozen lock.",
+      "evidence": "Official 0.2.2-rc.1 tool-fs-search owns glob/grep semantics and resolveRgPath(). The audited search-core.ts has resolveRgPath() with zero parameters, no rgPath/ripgrepPath config/environment seam, direct Node-mode import('@vscode/ripgrep').rgPath, and a sidecar path gated only by 'pkg' in process. @vscode/ripgrep@1.18.0 has no Android platform package in the frozen lock.",
       "status": "OPEN",
       "rowDisableRemovesInstallDependency": false,
       "failurePhase": "LOAD_OR_SEARCH_USE",

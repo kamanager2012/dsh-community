@@ -28,7 +28,7 @@ Host 是唯一执行与状态中心；Android 是轻量交互终端。旧 Node/s
 
 | 项 | 事实 | 处置 |
 | --- | --- | --- |
-| Node 引擎要求 | 官方要求 `^22.19.0 \|\| >=24.0.0`；截至 2026-09-02，stock nodejs-mobile 最新 Android release 为 Node 18.20.4 | **硬阻断**：不能用 stock nodejs-mobile 冒充兼容 substrate；先解决 Node 22.19+ Android runtime |
+| Node 引擎要求 | 官方 `0.2.2-rc.1` 要求 `>=24.9.0`；截至 2026-09-02，stock nodejs-mobile 最新 Android release 为 Node 18.20.4 | **硬阻断**：不能用 stock nodejs-mobile 冒充兼容 substrate；需先解决 Node `>=24.9.0` Android runtime（历史 `v22.19.0` 交叉编译 probe 也已低于该要求） |
 | 原生模块 `sharp` | 仅 `attachment-local` 插件使用,无安卓预编译二进制 | 移动端禁用附件/图像插件,或用 NDK 交叉编译后列入验证注册表 |
 | Gradle 接线 | 历史 Labs 使用 `com.github.nodejs-mobile` 插件声明，但当前未建立可验证的现代 Gradle 集成证据 | 已从活跃 Gradle 配置移除；不把未验证插件当成可构建证据 |
 | 后台保活 | 系统会杀后台进程 | Foreground Service + 常驻通知(兼任审批入口) |
@@ -37,9 +37,9 @@ Host 是唯一执行与状态中心；Android 是轻量交互终端。旧 Node/s
 ## Reality Gate 门禁(Android 专属)
 
 ```text
-兼容 Node 22.19+ Android substrate 有可复现来源/构建
+兼容 Node >=24.9.0 Android substrate 有可复现来源/构建
   → Termux 真机验证(scripts/termux-verify.sh 通过)
-  → official @deepseek-ai/dsh@0.1.2-alpha.4 在 Android substrate 启动
+  → official @deepseek-ai/dsh@0.2.2-rc.1 在 Android substrate 启动
   → embedded runtime E2E
   → APK 契约测试
   → arm64 真机 + x86_64 模拟器 smoke

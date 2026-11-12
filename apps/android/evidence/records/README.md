@@ -23,7 +23,7 @@ Common mandatory fields:
 - `schemaVersion: 1`
 - `kind`
 - `status: "PASS"`
-- `officialDsh: "0.1.2-alpha.4"`
+- `officialDsh: "0.2.2-rc.1"`
 - offset-aware RFC3339 `capturedAt`
 - full 40-hex `communityCommit`
 - non-empty `producer`

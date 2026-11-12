@@ -20,7 +20,7 @@ function runWithSource(source: string) {
 }
 
 describe('Android ripgrep seam audit', () => {
-  it('keeps alpha4-shaped packaged resolution blocked', () => {
+  it('keeps 0.2.2-rc.1-shaped packaged resolution blocked', () => {
     const result = runWithSource([
       "export function resolveRgPath(): Promise<string> {",
       "  if ('pkg' in process) return Promise.resolve(process.execPath + '-rg')",

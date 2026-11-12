@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "asOf": "2026-09-02",
+  "asOf": "2026-11-13",
   "status": "NOT_RUN",
-  "officialDsh": "0.1.2-alpha.4",
+  "officialDsh": "0.2.2-rc.1",
   "gates": {
     "carrier": "NOT_RUN",
     "nativeClosure": "BLOCKED",

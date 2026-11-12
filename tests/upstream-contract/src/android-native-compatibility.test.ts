@@ -103,8 +103,8 @@ describe('Android G2 native compatibility', () => {
       appUidMinimalPresetEvidence: 'NOT_RUN',
     })
     expect(state.providerSeams?.fsSearch).toMatchObject({
-      status: 'NO_EXPLICIT_RG_PATH_SEAM_ALPHA4',
-      searchCoreGitBlob: '60ea042d4f31f0e9c856536b8b34e2687482eec7',
+      status: 'NO_EXPLICIT_RG_PATH_SEAM',
+      searchCoreGitBlob: '794a5d43fe6026c34cb61d65133ee715ed08b2f0',
       resolverSignature: 'resolveRgPath()',
       communityAdapterDecision: 'REJECTED_TO_PRESERVE_OFFICIAL_TOOL_AUTHORITY',
       allowedUnlockConditions: [
@@ -115,7 +115,8 @@ describe('Android G2 native compatibility', () => {
     expect(state.providerSeams?.sandbox).toMatchObject({
       status: 'COMMUNITY_PROVIDER_WIRED_NDK_AND_APP_UID_PROBE_REQUIRED',
       providerModule: 'apps/android/nodejs-project/src/main/js/android-sandbox-provider.mjs',
-      officialLauncherVersion: '0.1.1',
+      officialLauncherPackage: '@deepseek-ai/node-addon-system',
+      officialLauncherVersion: '0.1.2',
       enforcementRequirement: 'full',
       sourceMutationAllowed: false,
       appUidPreflight: 'apps/android/nodejs-project/src/main/js/android-app-uid-preflight.cjs',
@@ -179,10 +180,10 @@ describe('Android G2 native compatibility', () => {
 
     const probe = readFileSync(probePath, 'utf8')
 
-    expect(probe).toContain('EXPECTED_DSH="0.1.2-alpha.4"')
+    expect(probe).toContain('EXPECTED_DSH="0.2.2-rc.1"')
     expect(probe).toContain('EXPECTED_NODE_PTY="1.2.0-beta.15"')
-    expect(probe).toContain('EXPECTED_KOFFI="3.1.6"')
-    expect(probe).toContain('EXPECTED_SHARP_WASM="0.35.4"')
+    expect(probe).toContain('EXPECTED_KOFFI="3.1.1"')
+    expect(probe).toContain('EXPECTED_SHARP_WASM="0.35.5"')
     expect(probe).toContain('EXPECTED_EMNAPI="1.11.3"')
     expect(probe).toContain('EXPECTED_NODE_COMMIT="f8fe6858549f75a4b4e9633abf39dd2038dbf496"')
     expect(probe).toContain('npm rebuild node-pty --build-from-source')
@@ -250,7 +251,7 @@ describe('Android G2 native compatibility', () => {
     expect(audit.sandbox).toMatchObject({
       status: 'OFFICIAL_LANDLOCK_SOURCE_NDK_AND_APP_UID_PROBE_REQUIRED',
       package: {
-        name: '@deepseek-ai/node-addon-landlock-run',
+        name: '@deepseek-ai/node-addon-system',
         version: '0.1.2',
         integrity: 'sha512-EFn8K+mXIXiw6s3rxX+cgp2hZTEAQdVIsURhrXnBxycSXvtQ1EQpsSVzoNKtKAQI0I0VqkEcVEjHzS/PeaGsvw==',
       },
@@ -261,7 +262,7 @@ describe('Android G2 native compatibility', () => {
       status: 'UPSTREAM_PATH_SEAM_OR_ANDROID_PACKAGE_REQUIRED',
       androidPackagesPresent: [],
       seamAudit: 'scripts/audit-android-ripgrep-seam.mjs',
-      officialSearchCoreGitBlob: '60ea042d4f31f0e9c856536b8b34e2687482eec7',
+      officialSearchCoreGitBlob: '794a5d43fe6026c34cb61d65133ee715ed08b2f0',
       wrapperResolutionContract: '@vscode/ripgrep-${process.platform}-${arch}',
       upstreamBinaryProvenance: {
         microsoftPrebuiltTag: 'v15.0.1',

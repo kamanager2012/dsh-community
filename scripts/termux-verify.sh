@@ -17,9 +17,9 @@
 set -euo pipefail
 
 REPORT="$HOME/.dsh/termux-verify.log"
-REQUIRED_NODE_MAJOR=22
+REQUIRED_NODE_MAJOR=24
 DASH_PKG="@deepseek-ai/dsh"
-PINNED_DSH_VERSION="0.1.2-alpha.4"
+PINNED_DSH_VERSION="0.2.2-rc.1"
 VERIFY_PORT=17890
 
 mkdir -p "$HOME/.dsh"
@@ -48,7 +48,7 @@ NODE_FULL=$(node -v)
 say "node: $NODE_FULL (major=$NODE_MAJOR)"
 
 if [ "$NODE_MAJOR" -lt "$REQUIRED_NODE_MAJOR" ]; then
-  fail "Node $REQUIRED_NODE_MAJOR+ required by official runtime (engines: ^22.19.0 || >=24.0.0); got $NODE_FULL"
+  fail "Node $REQUIRED_NODE_MAJOR+ required by official runtime (engines: >=24.9.0); got $NODE_FULL"
   exit 1
 fi
 pass "node engine requirement met"

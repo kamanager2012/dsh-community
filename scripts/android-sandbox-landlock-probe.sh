@@ -4,7 +4,7 @@ set -euo pipefail
 # G2 sandbox substrate probe.
 #
 # Builds the unmodified C source shipped inside the frozen
-# @deepseek-ai/node-addon-landlock-run@0.1.1 npm package with the Android NDK.
+# @deepseek-ai/node-addon-system@0.1.2 npm package with the Android NDK.
 # No network access, no upstream patching, no second source checkout.
 #
 # Device mode runs under adb shell ONLY and is preliminary kernel evidence.
@@ -21,8 +21,8 @@ set -euo pipefail
 # Modes: preflight | build | device | verify
 
 MODE="${1:-preflight}"
-EXPECTED_PACKAGE="@deepseek-ai/node-addon-landlock-run"
-EXPECTED_VERSION="0.1.1"
+EXPECTED_PACKAGE="@deepseek-ai/node-addon-system"
+EXPECTED_VERSION="0.1.2"
 ANDROID_API="${ANDROID_API:-26}"
 ANDROID_ARCH="${ANDROID_ARCH:-arm64}"
 WORK_ROOT="${ANDROID_SANDBOX_WORK_ROOT:-${TMPDIR:-/tmp}/dsh-android-sandbox}"
@@ -92,7 +92,7 @@ preflight() {
   need cp
   configure_arch
 
-  local pkg="$runtime/node_modules/@deepseek-ai/node-addon-landlock-run"
+  local pkg="$runtime/node_modules/@deepseek-ai/node-addon-system"
   [[ -f "$pkg/package.json" ]] || fail "frozen runtime is missing $EXPECTED_PACKAGE"
   [[ "$(json_version "$pkg/package.json")" == "$EXPECTED_VERSION" ]]     || fail "$EXPECTED_PACKAGE version mismatch"
   [[ -f "$pkg/src/main.c" ]]     || fail "$EXPECTED_PACKAGE npm payload is missing src/main.c"
@@ -108,7 +108,7 @@ build() {
   preflight
   local runtime="$RUNTIME_DIR"
   local ndk="${ANDROID_NDK_HOME:-${ANDROID_NDK_ROOT:-}}"
-  local source="$runtime/node_modules/@deepseek-ai/node-addon-landlock-run/src/main.c"
+  local source="$runtime/node_modules/@deepseek-ai/node-addon-system/src/main.c"
   local toolbin
   toolbin="$(ndk_toolchain_bin "$ndk")"
   local cc="$toolbin/${NDK_TRIPLET}${ANDROID_API}-clang"

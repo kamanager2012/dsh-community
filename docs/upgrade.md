@@ -28,20 +28,21 @@ Official Harness is in developer preview and **will break**. This repo is design
 
 ## Consolidated local acceptance
 
-After the exact alpha.4 upgrade baseline is an ancestor of the integration branch and all candidate-specific contract updates are resolved, run exactly one consolidated local gate:
+After the exact `0.2.2-rc.1` upgrade baseline is an ancestor of the integration branch and all candidate-specific contract updates are resolved, run exactly one consolidated local gate:
 
 ```sh
-node scripts/accept-alpha4-integration.mjs
+node scripts/accept-0.2.2-rc.1-integration.mjs
 ```
 
 The runner requires a clean non-main branch and verifies that the accepted
 reconstructed baseline recorded in `remote-integration-gate.json` is an ancestor
 of HEAD. It then verifies Candidate/Published identities, realizes the frozen pnpm
-lock once, re-extracts contracts with zero drift, mirrors the runtime-lock install/audit
-contract, and rejects any mixed-version `@deepseek-ai/dsh*` entry in the committed
-runtime closure before running typecheck and the full Vitest
-suite, and the offline marketplace check. It does not create a tag, open a PR,
-dispatch Actions, or invoke a model/provider.
+lock once and runs the workspace high-severity security audit, re-extracts
+contracts with zero drift, mirrors the runtime-lock install/audit contract,
+rejects any mixed-version `@deepseek-ai/dsh*` entry in the committed runtime
+closure, runs the Android provenance/closure/evidence-backing audits, and runs
+typecheck, the full Vitest suite, and the offline marketplace check. It does not
+create a tag, open a PR, dispatch Actions, or invoke a model/provider.
 
 Do not use the old fixed `73 files / 290 tests` count as the final pass
 criterion: hardening adds contract tests. The final criterion is the discovered
@@ -49,10 +50,10 @@ post-integration suite completing green in this single run.
 
 ## Remote integration gate
 
-Do not open the alpha.4 pull request until the accepted alpha.4 baseline is integrated with the current compatibility/security hardening and the consolidated local acceptance suite has passed on the final tree.
+Do not open the `0.2.2-rc.1` pull request until the accepted `0.2.2-rc.1` baseline is integrated with the current compatibility/security hardening and the consolidated local acceptance suite has passed on the final tree.
 
 A push to a non-main integration branch is the no-Actions staging path under the
-current workflow triggers. Opening a pull request is not: the alpha.4 diff fans
+current workflow triggers. Opening a pull request is not: the `0.2.2-rc.1` diff fans
 out into CI, dependency audit, Linux/macOS package smoke, Windows package smoke,
 runtime-lock verification, runtime-SBOM smoke, and artifact-action smoke.
 Machine-readable state: `contracts/compatibility/remote-integration-gate.json`.
@@ -76,13 +77,13 @@ An upstream prerelease discovered **after** an upgrade baseline has been frozen
 does not silently replace that baseline. The current cycle is pinned in
 `contracts/compatibility/upstream-candidate-watch.json`.
 
-For this cycle, `0.1.2-alpha.4` is frozen after an exact npm registry gate.
-The previously accepted `0.1.2-alpha.3` main commit remains historical evidence
-and `latest-tested` until alpha.4 acceptance passes. Alpha.4 keeps the Web
-readiness implementation and CLI argument parser unchanged from alpha.3, while
-the release interval contains substantive profile/tool composition changes and
-removes `tool-subagent-report` from the extracted config/package surface.
-Advancing beyond alpha.4 requires another explicit upgrade cycle, registry gate,
+For this cycle, `0.2.2-rc.1` is frozen after registry and CI runtime-lock verification.
+The previously accepted `0.1.2-alpha.4` line remains historical evidence
+and `latest-tested` until `0.2.2-rc.1` acceptance passes. `0.2.2-rc.1` retains the
+loopback Web readiness line and one-time `?token=` bootstrap contract while raising
+official `engines.node` to `>=24.9.0`, updating Desktop `runtime-lock` to 320 DSH
+family entries, and switching sandbox launcher distribution to `@deepseek-ai/node-addon-system@0.1.2`.
+Advancing beyond `0.2.2-rc.1` requires another explicit upgrade cycle, registry gate,
 fresh locks, fresh snapshots, and a new consolidated acceptance.
 
 ## What a failure means

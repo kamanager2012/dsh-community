@@ -19,7 +19,7 @@ Source can move to a reviewed candidate before GitHub Latest moves. These are se
 
 Candidate Source and Published Latest may coincide after publication, but they are not required to. On the current line Candidate Source is official 0.2.2-rc.1 (acceptance pending), latest-tested remains alpha.4, and Published Latest remains v0.1.1-rc.2.
 
-## Current line (2026-09-02)
+## Current line (2026-11-13)
 
 | Fact | Value |
 |---|---|

@@ -37,7 +37,7 @@ function baseRecord(kind: string) {
     schemaVersion: 1,
     kind,
     status: 'PASS',
-    officialDsh: '0.1.2-alpha.4',
+    officialDsh: '0.2.2-rc.1',
     capturedAt: '2026-09-02T22:45:00+08:00',
     communityCommit: '1'.repeat(40),
     producer: 'manual-real-device-gate',
