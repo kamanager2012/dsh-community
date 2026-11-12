@@ -116,12 +116,12 @@ describe('official runtime lock', () => {
     expect(policy.schemaVersion).toBe(1)
     expect(policy.allowed?.map(({ name, version }) => `${name}@${version}`).sort()).toEqual([
       `@deepseek-ai/dsh-subprocess-local@${PINNED_DSH_VERSION}`,
-      'koffi@3.1.6',
+      'koffi@3.1.1',
       'node-pty@1.2.0-beta.15',
       'protobufjs@7.6.6',
     ])
     expect(policy.denied?.map(({ name, version }) => `${name}@${version}`).sort()).toEqual([
-      '@google/genai@1.52.0',
+      '@google/genai@2.21.0',
     ])
     for (const entry of [...(policy.allowed ?? []), ...(policy.denied ?? [])]) {
       expect(entry.reason.length, entry.name + ' review reason').toBeGreaterThan(20)

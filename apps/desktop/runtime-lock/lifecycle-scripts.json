@@ -3,12 +3,12 @@
   "allowed": [
     {
       "name": "@deepseek-ai/dsh-subprocess-local",
-      "version": "0.1.2-alpha.4",
+      "version": "0.2.2-rc.1",
       "reason": "Official DSH local subprocess package; its install step is part of the reviewed runtime surface."
     },
     {
       "name": "koffi",
-      "version": "3.1.6",
+      "version": "3.1.1",
       "reason": "Native FFI package used by the official runtime; platform materialization is required."
     },
     {
@@ -25,7 +25,7 @@
   "denied": [
     {
       "name": "@google/genai",
-      "version": "1.52.0",
+      "version": "2.21.0",
       "reason": "The repository build policy explicitly denies this consumer lifecycle script; the locked package remains installed with scripts suppressed."
     }
   ]
