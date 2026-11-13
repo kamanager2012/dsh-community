@@ -32,15 +32,16 @@ class ChatAndQrUnitTest {
         assertEquals("model.list", RemoteProtocol.METHOD_MODEL_LIST)
         assertEquals("model.select", RemoteProtocol.METHOD_MODEL_SELECT)
 
-        val sessionObj = JsonObject.of(
-            "session" to JsonObject.of(
-                "id" to JsonString("sess-new-42"),
-                "title" to JsonString("Mobile Chat"),
-            ),
+        val flatSessionObj = JsonObject.of(
+            "id" to JsonString("sess-new-42"),
+            "title" to JsonString("Mobile Chat"),
         )
-        val parsedRef = RemoteFrameCodec.parseSessionRef(sessionObj)
+        val parsedRef = RemoteFrameCodec.parseSessionRef(flatSessionObj)
         assertEquals("sess-new-42", parsedRef.id)
         assertEquals("Mobile Chat", parsedRef.title)
+
+        val wrappedSessionObj = JsonObject.of("session" to flatSessionObj)
+        assertEquals(parsedRef, RemoteFrameCodec.parseSessionRef(wrappedSessionObj))
 
         val catalogObj = JsonObject.of(
             "current" to JsonObject.of(

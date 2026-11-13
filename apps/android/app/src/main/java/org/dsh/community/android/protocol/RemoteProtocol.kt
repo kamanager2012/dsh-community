@@ -201,8 +201,9 @@ object RemoteFrameCodec {
     }
 
     fun parseSessionRef(result: JsonValue): SessionRef {
-        val obj = result as? JsonObject
+        val rawObj = result as? JsonObject
             ?: throw IllegalArgumentException("session item must be JSON object")
+        val obj = rawObj.obj("session") ?: rawObj
         return SessionRef(
             id = obj.str("id") ?: throw IllegalArgumentException("session item missing id"),
             title = obj.str("title"),
