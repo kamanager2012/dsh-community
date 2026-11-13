@@ -634,7 +634,11 @@ class RemoteClientInstrumentationTest {
                     liveRevokeSession.connect()
                 }
                 assertEquals(RemoteConnectionPhase.REVOKED, liveRevokeSession.phase)
-                assertEquals(1, liveRevokeSession.attemptErrors.size)
+                assertEquals(
+                    "Expected 1 attemptError without Relay fallback, got: ${liveRevokeSession.attemptErrors}",
+                    1,
+                    liveRevokeSession.attemptErrors.size,
+                )
             } finally {
                 liveRevokeSession.close("revoke check done")
             }

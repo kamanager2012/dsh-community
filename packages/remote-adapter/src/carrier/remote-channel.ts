@@ -180,11 +180,11 @@ export class RemoteServerChannel {
 
     let queued = false
     if (canSendNotice) {
-      // Reserve fallback close before queuing write so synchronous transport flushes shrink delay cleanly.
-      scheduleDelayedClose(80)
+      // Reserve fallback close before queuing write so slow carriers / adb reverse still drain peer.revoked cleanly.
+      scheduleDelayedClose(120)
       queued = this.sendEncrypted(
         textEncoder.encode(JSON.stringify({ type: 'peer.revoked', reason })),
-        () => scheduleDelayedClose(15),
+        () => scheduleDelayedClose(50),
       )
     }
 

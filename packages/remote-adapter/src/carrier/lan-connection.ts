@@ -71,15 +71,18 @@ export class LanConnection {
           this.closed = true
           try {
             if (this.socket.writable) {
-              this.socket.write(encodeCloseFrame(code, reason))
+              this.socket.end(encodeCloseFrame(code, reason))
             }
           } catch {}
         }
-        try {
-          if (!this.socket.destroyed) {
-            this.socket.destroy()
-          }
-        } catch {}
+        const destroyTimer = setTimeout(() => {
+          try {
+            if (!this.socket.destroyed) {
+              this.socket.destroy()
+            }
+          } catch {}
+        }, 50)
+        destroyTimer.unref?.()
       },
       setHandlers: (handlers) => {
         this.handlers = handlers
