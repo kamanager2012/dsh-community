@@ -16,6 +16,8 @@ import { fileURLToPath } from 'node:url'
 import {
   BlindRelayServer,
   OfficialHostCordisBridge,
+  SelfHostedSignalingServer,
+  SelfHostedStunServer,
   createBridgeControlServer,
 } from '../packages/remote-adapter/dist/index.js'
 
@@ -490,6 +492,25 @@ async function main() {
   await relayServer.start()
   const relayUrl = relayServer.getEndpointUrl()
 
+  const signalingServer = new SelfHostedSignalingServer({
+    enabled: true,
+    host: '127.0.0.1',
+    port: 0,
+  })
+  await signalingServer.start()
+  const signalingUrl = signalingServer.getEndpointUrl()
+
+  const stunServer = new SelfHostedStunServer({
+    enabled: true,
+    host: '127.0.0.1',
+    port: 0,
+  })
+  await stunServer.start()
+  const hostStunUrl = stunServer.getStunUrl()
+  const stunPort = stunServer.getBoundAddress()?.port
+  const emulatedStunUrl =
+    deviceInfo.isEmulator && stunPort ? `stun:10.0.2.2:${stunPort}` : hostStunUrl
+
   const bridge = new OfficialHostCordisBridge({
     ctx,
     dshHome,
@@ -500,6 +521,20 @@ async function main() {
       host: '127.0.0.1',
       port: 0,
     },
+    ...(signalingUrl
+      ? {
+          webrtc: {
+            enabled: true,
+            signalingUrl,
+            ice: {
+              ...(hostStunUrl ? { stunUrls: [hostStunUrl] } : {}),
+              iceAdditionalHostAddresses: ['127.0.0.1'],
+              iceStunGatherTimeoutSec: 2,
+            },
+            iceConnectTimeoutMs: 12_000,
+          },
+        }
+      : {}),
     ...(relayUrl ? { relay: { enabled: true, relayUrl } } : {}),
   })
 
@@ -507,7 +542,7 @@ async function main() {
   let controlServer
 
   try {
-    logStep('Starting OfficialHostCordisBridge + BlindRelayServer')
+    logStep('Starting OfficialHostCordisBridge + SelfHostedSignaling/STUN + BlindRelayServer')
     await bridge.start()
     const sess = await bridge.createSession({ sessionId: 'r6-accept-session', cwd: ROOT })
     const pairing = await bridge.issuePairingDescriptor()
@@ -518,6 +553,9 @@ async function main() {
     const ports = new Set([lanPort, controlPort])
     if (relayUrl) {
       ports.add(new URL(relayUrl).port)
+    }
+    if (signalingUrl) {
+      ports.add(new URL(signalingUrl).port)
     }
 
     logStep(`Setting up adb reverse for ports: ${[...ports].join(', ')}`)
@@ -558,6 +596,7 @@ async function main() {
       '-e',
       'dshControlToken',
       shQuote(controlServer.controlToken),
+      ...(emulatedStunUrl ? ['-e', 'dshEmulatedStunUrl', shQuote(emulatedStunUrl)] : []),
       shQuote(TEST_RUNNER),
     ]
 
@@ -645,6 +684,7 @@ async function main() {
         streamReset: 'PASS',
         trustedHostStoreReconnect: 'PASS',
         livePeerRevoked: 'PASS',
+        deadLanToWebRtcP2p: 'PASS',
         deadLanToRelayFailover: 'PASS',
         carrierFailover: 'PASS',
         backgroundBattery: 'PASS',
@@ -679,6 +719,8 @@ async function main() {
     }
     await controlServer?.close().catch(() => {})
     await bridge.stop().catch(() => {})
+    await signalingServer.stop().catch(() => {})
+    await stunServer.stop().catch(() => {})
     await relayServer.stop().catch(() => {})
     rmSync(tempRoot, { recursive: true, force: true })
     logStep('Cleanup complete')

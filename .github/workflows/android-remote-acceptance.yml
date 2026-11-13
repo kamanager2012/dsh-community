@@ -51,28 +51,34 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm --filter @dsh-community/shared-types --filter @dsh-community/dsh-bridge --filter @dsh-community/remote-adapter build
 
-      - name: Run Android JVM unit tests, assemble debug APK and androidTest APK
+      - name: Run Android JVM unit tests and assemble debug, release, and androidTest APKs
         env:
           DSH_ANDROID_REQUIRE_LIVE_INTEROP: '1'
           DSH_ANDROID_INTEROP_HOST_SCRIPT: ${{ github.workspace }}/scripts/r5-android-interop-host.mjs
         run: |
           cd apps/android
-          gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest --info
+          gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest --info
 
-      - name: Prove zero embedded Node or official DSH in assembled APKs
+      - name: Prove zero embedded Node or official DSH and verify WebRTC native libs in assembled APKs
         run: |
           cd apps/android
           APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
+          RELEASE_APK_PATH="$(find app/build/outputs/apk/release -maxdepth 2 -name '*.apk' | head -n 1)"
           TEST_APK_PATH="app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
           test -f "$APK_PATH"
+          test -n "$RELEASE_APK_PATH"
+          test -f "$RELEASE_APK_PATH"
           test -f "$TEST_APK_PATH"
           unzip -l "$APK_PATH" | tee /tmp/android-apk-entries.txt
+          unzip -l "$RELEASE_APK_PATH" | tee /tmp/android-release-apk-entries.txt
           unzip -l "$TEST_APK_PATH" | tee /tmp/android-test-apk-entries.txt
-          if grep -iE 'libnode\.so|nodejs-mobile|nodejs-project|@deepseek-ai/dsh|deepseek-ai' /tmp/android-apk-entries.txt /tmp/android-test-apk-entries.txt; then
-            echo "ERROR: APK contains forbidden embedded Node or official DSH runtime entry" >&2
+          if grep -iE 'libnode\.so|nodejs-mobile|nodejs-project|@deepseek-ai/dsh|deepseek-ai|webkit' /tmp/android-apk-entries.txt /tmp/android-release-apk-entries.txt /tmp/android-test-apk-entries.txt; then
+            echo "ERROR: APK contains forbidden embedded Node, WebView, or official DSH runtime entry" >&2
             exit 1
           fi
-          sha256sum "$APK_PATH" "$TEST_APK_PATH" | tee /tmp/android-apk-sha256.txt
+          grep -q 'libjingle_peerconnection_so.so' /tmp/android-apk-entries.txt
+          grep -q 'libjingle_peerconnection_so.so' /tmp/android-release-apk-entries.txt
+          sha256sum "$APK_PATH" "$RELEASE_APK_PATH" "$TEST_APK_PATH" | tee /tmp/android-apk-sha256.txt
           cd "${{ github.workspace }}"
           if node scripts/verify-android-release-ready.mjs; then
             echo "ERROR: verify-android-release-ready must stay fail-closed prior to physical arm64 R6 acceptance" >&2
