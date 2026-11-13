@@ -376,8 +376,10 @@ It is a secure, minimal remote projection of the official Host runtime.
 ## 15. R6 Official Host Bridge & Android Instrumentation
 
 - **Official Host Cordis Bridge (`@dsh-community/remote-adapter`)**: `OfficialHostCordisBridge` and `@dsh-community/remote-adapter/cordis-plugin` attach directly inside official `@deepseek-ai/dsh --profile headless --patch ...` via Cordis events (`session/event`, `agent/assistant-stream`, `agent/error`, `approval/request`, `user-questions/request`) while keeping `DSH_REMOTE_CONFIG_DIR` strictly outside `DSH_HOME` (`~/.dsh`), emitting encrypted `peer.revoked` prior to channel teardown and `stream.reset` on replay window invalidation.
-- **Host CLI (`dsh-community remote`)**:
-  - `dsh-community remote start [--host <ip>] [--port <n>] [--mdns] [--relay-url <url>] [--session <id>] [--json]`
+- **Host & Ops CLI (`dsh-community remote`)**:
+  - `dsh-community remote start [--host <ip>] [--port <n>] [--mdns] [--relay-url <url>] [--signaling-url <url>] [--signaling-room <id>] [--stun <urls>] [--session <id>] [--json]`
+  - `dsh-community remote relay [--host <ip>] [--port <n>] [--allow-wildcard] [--host-secret <secret>] [--json]`
+  - `dsh-community remote signaling [--host <ip>] [--port <n>] [--stun-port <n>] [--allow-wildcard] [--host-secret <secret>] [--json]`
   - `dsh-community remote devices [--json]`
   - `dsh-community remote revoke <deviceId>`
   - `dsh-community remote status [--json]`
