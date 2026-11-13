@@ -12,6 +12,10 @@
     "./cordis-plugin": {
       "types": "./dist/cordis-plugin.d.ts",
       "import": "./dist/cordis-plugin.js"
+    },
+    "./stores": {
+      "types": "./dist/stores.d.ts",
+      "import": "./dist/stores.js"
     }
   },
   "scripts": {

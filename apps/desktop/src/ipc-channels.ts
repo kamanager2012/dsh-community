@@ -25,6 +25,13 @@ export const DESKTOP_IPC = {
   showRuntime: 'dsh:desktop:show-runtime',
   showAbout: 'dsh:desktop:show-about',
   pluginAction: 'dsh:desktop:plugin-action',
+  showRemote: 'dsh:desktop:show-remote',
+  remoteStart: 'dsh:desktop:remote-start',
+  remoteStop: 'dsh:desktop:remote-stop',
+  remoteRefresh: 'dsh:desktop:remote-refresh',
+  remoteNewPairing: 'dsh:desktop:remote-new-pairing',
+  remoteConfirmPairing: 'dsh:desktop:remote-confirm-pairing',
+  remoteRevokeDevice: 'dsh:desktop:remote-revoke-device',
 } as const
 
 export const IPC = { ...LIFECYCLE_IPC, ...DESKTOP_IPC }
@@ -47,4 +54,11 @@ export const DESKTOP_IPC_KEYS = [
   'dsh:desktop:show-runtime',
   'dsh:desktop:show-about',
   'dsh:desktop:plugin-action',
+  'dsh:desktop:show-remote',
+  'dsh:desktop:remote-start',
+  'dsh:desktop:remote-stop',
+  'dsh:desktop:remote-refresh',
+  'dsh:desktop:remote-new-pairing',
+  'dsh:desktop:remote-confirm-pairing',
+  'dsh:desktop:remote-revoke-device',
 ] as const

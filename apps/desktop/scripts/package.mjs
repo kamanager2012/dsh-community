@@ -142,6 +142,10 @@ const packManifest = {
         to: 'host/official-dsh.tar',
       },
       {
+        from: join(desktop, 'remote-bundle'),
+        to: 'remote',
+      },
+      {
         from: join(workspace, 'contracts/compatibility/latest-tested.json'),
         to: 'contracts/latest-tested.json',
       },

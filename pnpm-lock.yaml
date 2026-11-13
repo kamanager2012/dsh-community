@@ -50,6 +50,9 @@ importers:
       '@dsh-community/dsh-bridge':
         specifier: workspace:*
         version: link:../../packages/dsh-bridge
+      '@dsh-community/remote-adapter':
+        specifier: workspace:*
+        version: link:../../packages/remote-adapter
       '@dsh-community/shared-types':
         specifier: workspace:*
         version: link:../../packages/shared-types

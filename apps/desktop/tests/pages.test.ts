@@ -5,6 +5,7 @@ import {
   renderErrorPage,
   renderLoadingPage,
   renderOfficialSessionsPage,
+  renderRemotePage,
   renderRuntimePage,
   renderSettingsPage,
 } from '../src/pages.ts'
@@ -144,5 +145,122 @@ describe('shell pages', () => {
     const cspMatch = /content="[^"]*script-src 'nonce-([^']+)'/.exec(html)
     expect(cspMatch?.[1]).toBeTruthy()
     expect(html).toContain(`<script nonce="${cspMatch?.[1] ?? ''}">`)
+  })
+
+  it('renders remote pairing QR, pending approvals, devices, and escapes untrusted fields under strict CSP', () => {
+    const html = renderRemotePage({
+      product: 'DSH Community',
+      phase: 'running',
+      pid: '43210',
+      configDir: '/tmp/remote-cfg',
+      dshHome: '/tmp/dsh-home',
+      isolated: true,
+      apiKeyPresent: true,
+      hostFingerprint: 'fp-host-1234',
+      lanCandidates: ['192.168.1.50', '100.64.0.9'],
+      effectiveListenHost: '192.168.1.50',
+      settings: {
+        listenHost: '',
+        port: 9443,
+        enableMdns: true,
+        relayUrl: 'wss://relay.example.com',
+        signalingUrl: 'wss://signal.example.com',
+        stunUrls: 'stun:stun.l.google.com:19302',
+      },
+      lanUrl: 'ws://192.168.1.50:9443/remote',
+      relayUrl: 'wss://relay.example.com',
+      relayRoomId: 'room-relay',
+      signalingUrl: 'wss://signal.example.com',
+      signalingRoomId: 'room-rtc',
+      stunUrls: ['stun:stun.l.google.com:19302'],
+      activeConnections: 1,
+      pairing: {
+        deepLink: 'dshremote://pair?v=1&data=abc',
+        pairingJson: '{"v":1,"host":"192.168.1.50"}',
+        expiresAt: 1_760_000_000_000,
+        qrSvg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 29 29" shape-rendering="crispEdges"><rect width="29" height="29" fill="#ffffff"/><path d="M4 4h7v1h-7z" fill="#101218"/></svg>',
+      },
+      pendingCandidates: [
+        {
+          candidateId: 'cand-1',
+          deviceId: 'dev-pending',
+          displayName: '</script><img src=x onerror=alert(9)>Pixel 9',
+          maxAllowedCapabilities: ['observe', 'prompt', 'approve'],
+          expiresAt: 1_760_000_100_000,
+          state: 'pending',
+        },
+      ],
+      devices: [
+        {
+          deviceId: 'dev-trusted-1',
+          displayName: 'Xiaomi 15',
+          capabilities: ['observe', 'prompt'],
+          pairedAt: 1_759_999_000_000,
+          lastSeenAt: 1_759_999_500_000,
+        },
+      ],
+      logs: '</script><script>alert(1)</script>',
+      notice: 'Remote Host 已就绪',
+    })
+
+    expect(html).toContain('data-go="remote"')
+    expect(html).toContain('<svg xmlns="http://www.w3.org/2000/svg"')
+    expect(html).toContain('data-confirm-candidate="cand-1"')
+    expect(html).toContain('data-allow-approve="cand-1"')
+    expect(html).toContain('data-revoke-device="dev-trusted-1"')
+    expect(html).toContain('192.168.1.50')
+    expect(html).toContain('100.64.0.9')
+    expect(html).not.toContain('</script><img')
+    expect(html).not.toContain('</script><script>alert(1)')
+    expect(html).toContain('&lt;/script&gt;&lt;img src=x onerror=alert(9)&gt;Pixel 9')
+    const cspMatch = /content="[^"]*script-src 'nonce-([^']+)'/.exec(html)
+    expect(cspMatch?.[1]).toBeTruthy()
+    expect(html).not.toMatch(/style="/i)
+  })
+
+  it('rejects malicious QR SVG markup and shows loopback warning when needed', () => {
+    const html = renderRemotePage({
+      product: 'DSH Community',
+      phase: 'running',
+      pid: '99',
+      configDir: '/tmp/cfg',
+      dshHome: '/tmp/dsh',
+      isolated: false,
+      apiKeyPresent: false,
+      hostFingerprint: 'fp-2',
+      lanCandidates: ['192.168.0.10'],
+      effectiveListenHost: '127.0.0.1',
+      settings: {
+        listenHost: '127.0.0.1',
+        port: 0,
+        enableMdns: false,
+        relayUrl: '',
+        signalingUrl: '',
+        stunUrls: '',
+      },
+      lanUrl: 'ws://127.0.0.1:45123',
+      relayUrl: '',
+      relayRoomId: '',
+      signalingUrl: '',
+      signalingRoomId: '',
+      stunUrls: [],
+      activeConnections: 0,
+      pairing: {
+        deepLink: 'dshremote://pair?loopback=1',
+        pairingJson: '{}',
+        qrSvg: '<svg onload="alert(1)"><script>alert(1)</script></svg>',
+        loopbackWarning: '提示: 当前仅监听 loopback',
+      },
+      pendingCandidates: [],
+      devices: [],
+      logs: '',
+      error: 'Test failure banner',
+    })
+
+    expect(html).not.toContain('onload="alert(1)"')
+    expect(html).toContain('无效二维码载荷')
+    expect(html).toContain('提示: 当前仅监听 loopback')
+    expect(html).toContain('缺少 DEEPSEEK_API_KEY')
+    expect(html).toContain('Test failure banner')
   })
 })

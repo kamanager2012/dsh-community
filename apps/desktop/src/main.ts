@@ -14,6 +14,7 @@ import {
   ipcMain,
   Menu,
   nativeImage,
+  Notification,
   session,
   Tray,
   type BrowserWindow,
@@ -65,9 +66,15 @@ import {
   renderLoadingPage,
   renderMarketplacePage,
   renderOfficialSessionsPage,
+  renderRemotePage,
   renderRuntimePage,
   renderSettingsPage,
 } from './pages.ts'
+import {
+  DesktopRemoteController,
+  parseConfirmPairingInput,
+  parseRevokeDeviceInput,
+} from './remote.ts'
 import { formatSessionMtime } from './session-view.ts'
 import {
   ensureOfficialHostExtracted,
@@ -102,13 +109,20 @@ import {
 const MAIN_DIR = dirname(fileURLToPath(import.meta.url))
 const WORKSPACE_ROOT = resolve(MAIN_DIR, '../../..')
 
+type ShellPage = ChromeActive | 'loading' | 'error'
+
 let host: OfficialHost | undefined
+let remoteController: DesktopRemoteController | undefined
+let remotePollTimer: ReturnType<typeof setInterval> | undefined
+let lastRemoteUiKey = ''
+let lastPendingPairingCount = 0
 let window: BrowserWindow | undefined
 let officialView: WebContentsView | undefined
 let tray: Tray | undefined
 let origin = ''
 let officialBootstrapUrl: string | undefined
 let showingOfficial = false
+let currentShellPage: ShellPage = 'loading'
 let quitting = false
 let settings = DEFAULT_DESKTOP_SETTINGS
 let catalog: RuntimeCatalog | undefined
@@ -254,8 +268,9 @@ async function waitForOfficialWeb(url: string, timeoutMs: number): Promise<void>
   }
 }
 
-async function showHtml(html: string): Promise<void> {
+async function showHtml(html: string, page: ShellPage = currentShellPage): Promise<void> {
   if (window === undefined || window.isDestroyed()) return
+  currentShellPage = page
   showingOfficial = false
   layoutOfficial()
   await loadWindowSafely(dataUrl(html))
@@ -265,6 +280,7 @@ async function showHtml(html: string): Promise<void> {
 async function showOfficial(nextOrigin: string): Promise<void> {
   if (window === undefined || window.isDestroyed() || officialView === undefined) return
   origin = nextOrigin
+  currentShellPage = 'official'
   showingOfficial = true
   await loadWindowSafely(dataUrl(renderChromePage(chromeModel('official'))))
   const bootstrap = officialBootstrapUrl
@@ -359,7 +375,7 @@ function diagnosticsModel() {
 }
 
 async function showAbout(): Promise<void> {
-  await showHtml(renderAboutPage(aboutModel()))
+  await showHtml(renderAboutPage(aboutModel()), 'about')
 }
 
 function marketplaceCachePath(): string {
@@ -395,7 +411,7 @@ async function runPluginAction(request: { name: string; action: PluginAction }):
   if (!known) return
   pluginTask = { plugin: request.name, action: request.action }
   pluginResult = undefined
-  await showHtml(renderMarketplacePage(marketplaceModel()))
+  await showHtml(renderMarketplacePage(marketplaceModel()), 'marketplace')
   const paths = launchPaths()
   const install = resolveOfficialDsh({ from: import.meta.url })
   const env = paths.electronRunAsNode
@@ -460,7 +476,7 @@ async function runPluginAction(request: { name: string; action: PluginAction }):
     pluginResult = { plugin: request.name, action: request.action, ok, log: fullLog }
     pluginTask = undefined
     pluginChild = undefined
-    if (!quitting) void showHtml(renderMarketplacePage(marketplaceModel()))
+    if (!quitting) void showHtml(renderMarketplacePage(marketplaceModel()), 'marketplace')
   }
 
   child.on('error', (error) => finish(false, error.message))
@@ -528,23 +544,140 @@ async function refreshMarketplaceCatalog(force: boolean): Promise<void> {
 
 async function showMarketplace(force = false): Promise<void> {
   await refreshMarketplaceCatalog(force)
-  await showHtml(renderMarketplacePage(marketplaceModel()))
+  await showHtml(renderMarketplacePage(marketplaceModel()), 'marketplace')
+}
+
+function ensureRemoteController(): DesktopRemoteController {
+  if (remoteController !== undefined) return remoteController
+  remoteController = new DesktopRemoteController({
+    getContext: () => ({
+      env: process.env,
+      home: app.getPath('home'),
+      desktopRoot: desktopLayout().root,
+      dshHome: officialHome(),
+      isolated: isolatedNow(),
+      isPackaged: app.isPackaged,
+      mainDir: MAIN_DIR,
+      resourcesPath: process.resourcesPath,
+      workspaceRoot: WORKSPACE_ROOT,
+      launchPaths,
+    }),
+    onChange: () => {
+      syncRemotePollTimer()
+      updateTrayMenu()
+      void refreshRemoteViewFromController()
+    },
+  })
+  return remoteController
+}
+
+function remoteUiKey(snap: Awaited<ReturnType<DesktopRemoteController['snapshot']>>): string {
+  return [
+    snap.phase,
+    snap.pid,
+    String(snap.activeConnections),
+    snap.pairing?.deepLink ?? '',
+    String(snap.pendingCandidates.length),
+    snap.pendingCandidates.map((c) => `${c.candidateId}:${c.state}`).join(','),
+    snap.devices.map((d) => `${d.deviceId}:${String(d.revokedAt ?? '')}`).join(','),
+    snap.notice ?? '',
+    snap.error ?? '',
+  ].join('|')
+}
+
+function notifyPendingPairingIfIncreased(pending: number): void {
+  if (pending > lastPendingPairingCount) {
+    try {
+      if (Notification.isSupported()) {
+        const note = new Notification({
+          title: `${COMMUNITY_PRODUCT_NAME} · 手机配对请求`,
+          body: `收到 ${String(pending)} 个待确认配对请求，点击打开“远程”页面核对授权。`,
+        })
+        note.on('click', () => {
+          revealWindow()
+          void showRemote({ refreshLive: false })
+        })
+        note.show()
+      }
+    } catch {
+      // Desktop notification service may be absent in headless environments.
+    }
+  }
+  lastPendingPairingCount = pending
+}
+
+function syncRemotePollTimer(): void {
+  const running = remoteController?.isRunning() ?? false
+  if (running && remotePollTimer === undefined && !quitting) {
+    remotePollTimer = setInterval(() => {
+      void pollRemoteRuntime()
+    }, 2_500)
+    remotePollTimer.unref()
+  } else if ((!running || quitting) && remotePollTimer !== undefined) {
+    clearInterval(remotePollTimer)
+    remotePollTimer = undefined
+  }
+}
+
+async function applyRemoteSnapshotSideEffects(
+  snap: Awaited<ReturnType<DesktopRemoteController['snapshot']>>,
+  forceRender: boolean,
+): Promise<void> {
+  syncRemotePollTimer()
+  notifyPendingPairingIfIncreased(snap.pendingCandidates.length)
+  updateTrayMenu()
+  if (!showingOfficial && currentShellPage === 'remote') {
+    const key = remoteUiKey(snap)
+    if (forceRender || key !== lastRemoteUiKey) {
+      lastRemoteUiKey = key
+      await showHtml(renderRemotePage({ product: COMMUNITY_PRODUCT_NAME, ...snap }), 'remote')
+    }
+  }
+}
+
+async function refreshRemoteViewFromController(): Promise<void> {
+  if (quitting) return
+  const snap = await ensureRemoteController().snapshot({ refreshLive: false })
+  await applyRemoteSnapshotSideEffects(snap, false)
+}
+
+async function pollRemoteRuntime(): Promise<void> {
+  if (quitting || remoteController === undefined) return
+  if (!remoteController.isRunning()) {
+    syncRemotePollTimer()
+    return
+  }
+  const snap = await remoteController.snapshot({ refreshLive: true })
+  await applyRemoteSnapshotSideEffects(snap, false)
+}
+
+async function showRemote(options?: { readonly refreshLive?: boolean | undefined }): Promise<void> {
+  currentShellPage = 'remote'
+  showingOfficial = false
+  layoutOfficial()
+  const snap = await ensureRemoteController().snapshot({ refreshLive: options?.refreshLive !== false })
+  if (currentShellPage !== 'remote' || showingOfficial) return
+  lastRemoteUiKey = remoteUiKey(snap)
+  notifyPendingPairingIfIncreased(snap.pendingCandidates.length)
+  syncRemotePollTimer()
+  updateTrayMenu()
+  await showHtml(renderRemotePage({ product: COMMUNITY_PRODUCT_NAME, ...snap }), 'remote')
 }
 
 async function showOfficialSessions(): Promise<void> {
-  await showHtml(renderOfficialSessionsPage(officialSessionsModel()))
+  await showHtml(renderOfficialSessionsPage(officialSessionsModel()), 'sessions')
 }
 
 async function showRuntime(): Promise<void> {
-  await showHtml(renderRuntimePage(runtimeModel()))
+  await showHtml(renderRuntimePage(runtimeModel()), 'runtime')
 }
 
 async function showSettings(): Promise<void> {
-  await showHtml(renderSettingsPage(settingsModel()))
+  await showHtml(renderSettingsPage(settingsModel()), 'settings')
 }
 
 async function showDiagnostics(): Promise<void> {
-  await showHtml(renderDiagnosticsPage(diagnosticsModel()))
+  await showHtml(renderDiagnosticsPage(diagnosticsModel()), 'diagnostics')
 }
 
 function pinLatestTested(): void {
@@ -556,7 +689,7 @@ function pinLatestTested(): void {
 
 async function startOfficial(): Promise<void> {
   if (host === undefined) throw new Error('official host is not created')
-  await showHtml(renderLoadingPage())
+  await showHtml(renderLoadingPage(), 'loading')
   const next = await host.start()
   officialBootstrapUrl = host.takeBrowserBootstrapUrl()
   await waitForOfficialWeb(next, 8_000)
@@ -565,7 +698,7 @@ async function startOfficial(): Promise<void> {
 
 async function restartOfficial(then: 'official' | 'settings' = 'official'): Promise<void> {
   if (host === undefined) throw new Error('official host is not created')
-  await showHtml(renderLoadingPage())
+  await showHtml(renderLoadingPage(), 'loading')
   const next = await host.restart()
   origin = next
   officialBootstrapUrl = host.takeBrowserBootstrapUrl()
@@ -583,6 +716,7 @@ async function applySettings(raw: unknown): Promise<void> {
   settings = applyDesktopSettingsPatch(settings, readSettingsPatch(raw))
   persistSettings()
   if (isolatedNow() !== previousIsolated) {
+    await remoteController?.stopIfOwned()
     await restartOfficial('settings')
     return
   }
@@ -602,6 +736,33 @@ function revealWindow(): void {
   window.focus()
 }
 
+function trayMenuTemplate(): Electron.MenuItemConstructorOptions[] {
+  const pending = remoteController?.pendingCount() ?? 0
+  const remoteLabel = pending > 0
+    ? `远程控制 · 待授权 (${String(pending)})`
+    : remoteController?.isRunning()
+      ? '远程控制 · 运行中'
+      : '远程控制与手机配对'
+  return [
+    { label: '显示窗口', click: () => revealWindow() },
+    { label: '重新启动官方运行时', click: () => void restartOfficial().catch(showStartFailure) },
+    { label: '运行时 / Version Manager', click: () => void showRuntime() },
+    { label: '官方 Session', click: () => void showOfficialSessions() },
+    { label: remoteLabel, click: () => void showRemote() },
+    { label: '社区市场', click: () => void showMarketplace() },
+    { label: '设置', click: () => void showSettings() },
+    { label: 'Host 诊断', click: () => void showDiagnostics() },
+    { label: '关于社区壳', click: () => void showAbout() },
+    { type: 'separator' },
+    { label: '退出', click: () => app.quit() },
+  ]
+}
+
+function updateTrayMenu(): void {
+  if (!trayAvailable() || tray === undefined) return
+  tray.setContextMenu(Menu.buildFromTemplate(trayMenuTemplate()))
+}
+
 function createTray(): Tray | undefined {
   const iconPath = join(MAIN_DIR, '../resources/tray.png')
   const image = nativeImage.createFromPath(iconPath)
@@ -611,18 +772,7 @@ function createTray(): Tray | undefined {
   try {
     const next = new Tray(icon)
     next.setToolTip(COMMUNITY_PRODUCT_NAME)
-    next.setContextMenu(Menu.buildFromTemplate([
-      { label: '显示窗口', click: () => revealWindow() },
-      { label: '重新启动官方运行时', click: () => void restartOfficial().catch(showStartFailure) },
-      { label: '运行时 / Version Manager', click: () => void showRuntime() },
-      { label: '官方 Session', click: () => void showOfficialSessions() },
-      { label: '社区市场', click: () => void showMarketplace() },
-      { label: '设置', click: () => void showSettings() },
-      { label: 'Host 诊断', click: () => void showDiagnostics() },
-      { label: '关于社区壳', click: () => void showAbout() },
-      { type: 'separator' },
-      { label: '退出', click: () => app.quit() },
-    ]))
+    next.setContextMenu(Menu.buildFromTemplate(trayMenuTemplate()))
     next.on('click', () => revealWindow())
     return next
   } catch {
@@ -632,7 +782,7 @@ function createTray(): Tray | undefined {
 
 function showStartFailure(error: unknown): void {
   const message = error instanceof Error ? error.message : String(error)
-  void showHtml(renderErrorPage(message))
+  void showHtml(renderErrorPage(message), 'error')
 }
 
 function installMenu(): void {
@@ -664,6 +814,7 @@ function installMenu(): void {
           if (origin !== '') void showOfficial(origin)
         } },
         { label: 'Official sessions', accelerator: 'CmdOrCtrl+Shift+S', click: () => void showOfficialSessions() },
+        { label: 'Remote control & phone pairing', accelerator: 'CmdOrCtrl+Shift+P', click: () => void showRemote() },
         { label: 'Community marketplace', accelerator: 'CmdOrCtrl+Shift+M', click: () => void showMarketplace() },
         { label: 'Host log', accelerator: 'CmdOrCtrl+Shift+L', click: () => void showDiagnostics() },
         { type: 'separator' },
@@ -763,6 +914,43 @@ function bindIpc(): void {
     assertAuthorizedSender(event)
     await showAbout()
   })
+  ipcMain.handle(DESKTOP_IPC.showRemote, async (event) => {
+    assertAuthorizedSender(event)
+    await showRemote()
+  })
+  ipcMain.handle(DESKTOP_IPC.remoteStart, async (event, config: unknown) => {
+    assertAuthorizedSender(event)
+    await ensureRemoteController().start(config)
+    await showRemote()
+  })
+  ipcMain.handle(DESKTOP_IPC.remoteStop, async (event) => {
+    assertAuthorizedSender(event)
+    await ensureRemoteController().stop()
+    await showRemote({ refreshLive: false })
+  })
+  ipcMain.handle(DESKTOP_IPC.remoteRefresh, async (event) => {
+    assertAuthorizedSender(event)
+    await showRemote({ refreshLive: true })
+  })
+  ipcMain.handle(DESKTOP_IPC.remoteNewPairing, async (event) => {
+    assertAuthorizedSender(event)
+    await ensureRemoteController().refreshPairingQr()
+    await showRemote()
+  })
+  ipcMain.handle(DESKTOP_IPC.remoteConfirmPairing, async (event, raw: unknown) => {
+    assertAuthorizedSender(event)
+    const req = parseConfirmPairingInput(raw)
+    if (req === undefined) return
+    await ensureRemoteController().confirmPairing(req.candidateId, req.allowApprove)
+    await showRemote()
+  })
+  ipcMain.handle(DESKTOP_IPC.remoteRevokeDevice, async (event, raw: unknown) => {
+    assertAuthorizedSender(event)
+    const deviceId = parseRevokeDeviceInput(raw)
+    if (deviceId === undefined) return
+    await ensureRemoteController().revokeDevice(deviceId)
+    await showRemote()
+  })
 }
 
 async function preparePackagedRuntime(): Promise<void> {
@@ -772,7 +960,7 @@ async function preparePackagedRuntime(): Promise<void> {
     process.env.DSH_COMMUNITY_BIN = officialHostBin(dest)
     return
   }
-  await showHtml(renderLoadingPage('第一次启动，正在解开官方 Runtime，只做一次。'))
+  await showHtml(renderLoadingPage('第一次启动，正在解开官方 Runtime，只做一次。'), 'loading')
   process.env.DSH_COMMUNITY_BIN = ensureOfficialHostExtracted({
     archivePath: officialHostArchive(process.resourcesPath),
     destRoot: dest,
@@ -787,6 +975,7 @@ async function boot(): Promise<void> {
   writeJsonFile(desktopLayout().desktopSettings, settings)
 
   tray = createTray()
+  ensureRemoteController()
   window = createDesktopWindow({
     preloadPath: preloadPathFromMain(MAIN_DIR),
     getOrigin: () => origin,
@@ -802,13 +991,13 @@ async function boot(): Promise<void> {
   window.webContents.on('render-process-gone', (_event, details) => {
     process.stderr.write(`desktop renderer exited: ${details.reason}\n`)
     if (!quitting && details.reason !== 'clean-exit') {
-      void showHtml(renderErrorPage(`桌面壳渲染进程异常退出（${details.reason}）。点击下方按钮或菜单可重新恢复。`))
+      void showHtml(renderErrorPage(`桌面壳渲染进程异常退出（${details.reason}）。点击下方按钮或菜单可重新恢复。`), 'error')
     }
   })
   officialView.webContents.on('render-process-gone', (_event, details) => {
     process.stderr.write(`official view renderer exited: ${details.reason}\n`)
     if (!quitting && details.reason !== 'clean-exit') {
-      void showHtml(renderErrorPage(`官方 Web 视图渲染进程异常退出（${details.reason}），可重新启动官方运行时。`))
+      void showHtml(renderErrorPage(`官方 Web 视图渲染进程异常退出（${details.reason}），可重新启动官方运行时。`), 'error')
     }
   })
   window.on('resize', () => {
@@ -905,13 +1094,17 @@ if (!gotLock) {
   app.on('before-quit', (event) => {
     persistWindowState()
     pluginChild?.kill('SIGTERM')
-    if (quitting || host === undefined) {
+    if (quitting || (host === undefined && remoteController === undefined)) {
       quitting = true
       return
     }
     event.preventDefault()
     quitting = true
-    void host.shutdown().finally(() => {
+    syncRemotePollTimer()
+    void Promise.allSettled([
+      host?.shutdown() ?? Promise.resolve(),
+      remoteController?.shutdown() ?? Promise.resolve(),
+    ]).finally(() => {
       app.quit()
     })
   })

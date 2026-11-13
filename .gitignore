@@ -8,6 +8,7 @@ coverage
 apps/desktop/release
 apps/desktop/runtime-stage
 apps/desktop/runtime-host
+apps/desktop/remote-bundle
 apps/desktop/.pack-root
 .idea
 .vscode

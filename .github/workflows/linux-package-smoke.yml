@@ -7,6 +7,7 @@ on:
       - '.github/workflows/linux-package-smoke.yml'
       - 'apps/desktop/**'
       - 'packages/dsh-bridge/**'
+      - 'packages/remote-adapter/**'
       - 'packages/shared-types/**'
       - 'package.json'
       - 'pnpm-lock.yaml'
@@ -100,4 +101,7 @@ jobs:
           test -n "$app_asar"
           host_tar=$(find squashfs-root -type f -name official-dsh.tar -print -quit)
           test -n "$host_tar"
+          remote_plugin=$(find squashfs-root -path '*/resources/remote/cordis-plugin.mjs' -print -quit)
+          test -n "$remote_plugin"
+          node -e "import(process.argv[1]).then((m) => { if (m.name !== 'dsh-community-remote' || typeof m.apply !== 'function') process.exit(1); })" "$remote_plugin"
           echo "AppImage extract OK: $app_asar ($host_tar)"

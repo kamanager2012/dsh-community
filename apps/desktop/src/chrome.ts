@@ -5,6 +5,7 @@ export const CHROME_HEIGHT = 48
 export type ChromeActive =
   | 'official'
   | 'sessions'
+  | 'remote'
   | 'marketplace'
   | 'runtime'
   | 'settings'
@@ -87,6 +88,7 @@ export function renderChromePage(model: ChromeBarModel): string {
       <nav>
         <button data-go="official" data-active="${String(model.active === 'official')}">官方 Web</button>
         <button data-go="sessions" data-active="${String(model.active === 'sessions')}">Session</button>
+        <button data-go="remote" data-active="${String(model.active === 'remote')}">远程</button>
         <button data-go="marketplace" data-active="${String(model.active === 'marketplace')}">市场</button>
         <button data-go="runtime" data-active="${String(model.active === 'runtime')}">运行时</button>
         <button data-go="settings" data-active="${String(model.active === 'settings')}">设置</button>
@@ -97,6 +99,7 @@ export function renderChromePage(model: ChromeBarModel): string {
       const go = {
         official: () => window.dshCommunity?.openOfficial(),
         sessions: () => window.dshCommunity?.showSessions(),
+        remote: () => window.dshCommunity?.showRemote(),
         marketplace: () => window.dshCommunity?.showMarketplace(),
         runtime: () => window.dshCommunity?.showRuntime(),
         settings: () => window.dshCommunity?.showSettings(),
