@@ -19,10 +19,14 @@ import {
   type RemoteRequest,
   type RenameSessionParams,
   type SessionAttachParams,
+  type SessionForkParams,
+  type SessionHistoryParams,
+  type SessionSearchParams,
   type StreamAckParams,
   type TurnAbortParams,
 } from './protocol.js'
 import { BoundedReplayBuffer } from './replay.js'
+import { isSafeSessionId } from './session-transcript.js'
 
 export interface RemoteAdapterOptions {
   readonly replayCapacity?: number
@@ -50,6 +54,17 @@ function requiredString(
   const value = object[key]
   if (typeof value !== 'string' || value.length === 0) {
     throw new RemoteProtocolError('INVALID_REQUEST', `${key} must be a non-empty string`)
+  }
+  return value
+}
+
+function requiredSafeSessionId(
+  object: Record<string, unknown>,
+  key: string,
+): string {
+  const value = requiredString(object, key)
+  if (!isSafeSessionId(value)) {
+    throw new RemoteProtocolError('INVALID_REQUEST', `${key} contains invalid path segments or characters`)
   }
   return value
 }
@@ -135,7 +150,7 @@ function parsePrompt(value: unknown): PromptSubmitParams {
     throw new RemoteProtocolError('INVALID_REQUEST', 'prompt must be a non-empty string')
   }
   return {
-    sessionId: requiredString(object, 'sessionId'),
+    sessionId: requiredSafeSessionId(object, 'sessionId'),
     prompt: rawPrompt,
     ...(rawMode !== undefined ? { mode: rawMode } : {}),
     ...(attachments !== undefined ? { attachments } : {}),
@@ -149,7 +164,7 @@ function parseRenameSession(value: unknown): RenameSessionParams {
     throw new RemoteProtocolError('INVALID_REQUEST', 'title must be a 1..120 character string')
   }
   return {
-    sessionId: requiredString(object, 'sessionId'),
+    sessionId: requiredSafeSessionId(object, 'sessionId'),
     title,
   }
 }
@@ -183,7 +198,7 @@ function parseTurnAbort(value: unknown): TurnAbortParams {
     throw new RemoteProtocolError('INVALID_REQUEST', 'keepInbox must be a boolean')
   }
   return {
-    sessionId: requiredString(object, 'sessionId'),
+    sessionId: requiredSafeSessionId(object, 'sessionId'),
     ...(object.keepInbox !== undefined ? { keepInbox: object.keepInbox } : {}),
   }
 }
@@ -192,7 +207,7 @@ function parseModelList(value: unknown): string | undefined {
   if (value === undefined) return undefined
   const object = asObject(value)
   if (object.sessionId === undefined) return undefined
-  return requiredString(object, 'sessionId')
+  return requiredSafeSessionId(object, 'sessionId')
 }
 
 function parseModelSelect(value: unknown): { readonly sessionId: string; readonly selection: ModelSelectionParams } {
@@ -202,7 +217,7 @@ function parseModelSelect(value: unknown): { readonly sessionId: string; readonl
     reasoningEffort = requiredString(object, 'reasoningEffort')
   }
   return {
-    sessionId: requiredString(object, 'sessionId'),
+    sessionId: requiredSafeSessionId(object, 'sessionId'),
     selection: {
       provider: requiredString(object, 'provider'),
       model: requiredString(object, 'model'),
@@ -243,7 +258,7 @@ function parseAttach(value: unknown): SessionAttachParams {
   ) {
     throw new RemoteProtocolError('INVALID_REQUEST', 'afterSeq must be a non-negative integer')
   }
-  const sessionId = requiredString(object, 'sessionId')
+  const sessionId = requiredSafeSessionId(object, 'sessionId')
   if (afterSeq === undefined) return { sessionId }
   return { sessionId, afterSeq: afterSeq as number }
 }
@@ -255,9 +270,100 @@ function parseAck(value: unknown): StreamAckParams {
     throw new RemoteProtocolError('INVALID_REQUEST', 'seq must be a non-negative integer')
   }
   return {
-    sessionId: requiredString(object, 'sessionId'),
+    sessionId: requiredSafeSessionId(object, 'sessionId'),
     seq: seq as number,
   }
+}
+
+function parseSessionHistory(value: unknown): SessionHistoryParams {
+  const object = asObject(value)
+  const sessionId = requiredSafeSessionId(object, 'sessionId')
+  let beforeSeq: number | undefined
+  if (object.beforeSeq !== undefined) {
+    if (!Number.isSafeInteger(object.beforeSeq) || (object.beforeSeq as number) < 1) {
+      throw new RemoteProtocolError('INVALID_REQUEST', 'beforeSeq must be a positive integer')
+    }
+    beforeSeq = object.beforeSeq as number
+  }
+  let limit: number | undefined
+  if (object.limit !== undefined) {
+    if (!Number.isSafeInteger(object.limit) || (object.limit as number) < 1 || (object.limit as number) > 200) {
+      throw new RemoteProtocolError('INVALID_REQUEST', 'limit must be an integer between 1 and 200')
+    }
+    limit = object.limit as number
+  }
+  let minTurns: number | undefined
+  if (object.minTurns !== undefined) {
+    if (!Number.isSafeInteger(object.minTurns) || (object.minTurns as number) < 0 || (object.minTurns as number) > 20) {
+      throw new RemoteProtocolError('INVALID_REQUEST', 'minTurns must be an integer between 0 and 20')
+    }
+    minTurns = object.minTurns as number
+  }
+  return {
+    sessionId,
+    ...(beforeSeq !== undefined ? { beforeSeq } : {}),
+    ...(limit !== undefined ? { limit } : {}),
+    ...(minTurns !== undefined ? { minTurns } : {}),
+  }
+}
+
+function parseSessionFork(value: unknown): SessionForkParams {
+  const object = asObject(value)
+  const sessionId = requiredSafeSessionId(object, 'sessionId')
+  let atSeq: number | undefined
+  if (object.atSeq !== undefined) {
+    if (!Number.isSafeInteger(object.atSeq) || (object.atSeq as number) < 0) {
+      throw new RemoteProtocolError('INVALID_REQUEST', 'atSeq must be a non-negative integer')
+    }
+    atSeq = object.atSeq as number
+  }
+  let title: string | undefined
+  if (object.title !== undefined) {
+    const trimmed = requiredString(object, 'title').trim()
+    if (trimmed.length === 0 || trimmed.length > 200) {
+      throw new RemoteProtocolError('INVALID_REQUEST', 'title must be a 1..200 character string')
+    }
+    title = trimmed
+  }
+  return {
+    sessionId,
+    ...(atSeq !== undefined ? { atSeq } : {}),
+    ...(title !== undefined ? { title } : {}),
+  }
+}
+
+function parseSessionSearch(value: unknown): SessionSearchParams {
+  const object = asObject(value)
+  const query = requiredString(object, 'query').trim()
+  if (query.length === 0 || query.length > 256) {
+    throw new RemoteProtocolError('INVALID_REQUEST', 'query must be a 1..256 character string')
+  }
+  let sessionId: string | undefined
+  if (object.sessionId !== undefined) {
+    sessionId = requiredSafeSessionId(object, 'sessionId')
+  }
+  let limit: number | undefined
+  if (object.limit !== undefined) {
+    if (!Number.isSafeInteger(object.limit) || (object.limit as number) < 1 || (object.limit as number) > 50) {
+      throw new RemoteProtocolError('INVALID_REQUEST', 'limit must be an integer between 1 and 50')
+    }
+    limit = object.limit as number
+  }
+  return {
+    query,
+    ...(sessionId !== undefined ? { sessionId } : {}),
+    ...(limit !== undefined ? { limit } : {}),
+  }
+}
+
+function parseCommandExecute(value: unknown): { readonly sessionId: string; readonly command: string } {
+  const object = asObject(value)
+  const sessionId = requiredSafeSessionId(object, 'sessionId')
+  const command = requiredString(object, 'command').trim()
+  if (command.length === 0 || command.length > 2048 || /[\u0000-\u0008\u000b-\u001f]/u.test(command)) {
+    throw new RemoteProtocolError('INVALID_REQUEST', 'command must be a valid 1..2048 character command line')
+  }
+  return { sessionId, command }
 }
 
 export class RemoteAdapterCore {
@@ -317,6 +423,18 @@ export class RemoteAdapterCore {
 
   forgetSession(sessionId: string): void {
     this.replayBySession.delete(sessionId)
+  }
+
+  getReplayWindowInfo(
+    sessionId: string,
+  ): { readonly oldestSeq: number | null; readonly latestSeq: number | null; readonly size: number } | undefined {
+    const buffer = this.replayBySession.get(sessionId)
+    if (!buffer) return undefined
+    return {
+      oldestSeq: buffer.getOldestSeq() ?? null,
+      latestSeq: buffer.getLatestSeq() ?? null,
+      size: buffer.size(),
+    }
   }
 
   closeConnection(peer: AuthenticatedPeer): void {
@@ -429,6 +547,78 @@ export class RemoteAdapterCore {
             return this.seams.selectModel(params.sessionId, params.selection)
           },
         )
+      case 'session.history': {
+        const params = parseSessionHistory(request.params)
+        await this.seams.assertSession(params.sessionId)
+        if (!this.seams.getSessionHistory) {
+          throw new RemoteProtocolError(
+            'INVALID_REQUEST',
+            'session.history is not supported by this host',
+          )
+        }
+        return this.seams.getSessionHistory(params)
+      }
+      case 'session.search': {
+        const params = parseSessionSearch(request.params)
+        if (params.sessionId !== undefined) {
+          await this.seams.assertSession(params.sessionId)
+        }
+        if (!this.seams.searchSessions) {
+          throw new RemoteProtocolError(
+            'INVALID_REQUEST',
+            'session.search is not supported by this host',
+          )
+        }
+        return this.seams.searchSessions(params)
+      }
+      case 'session.fork':
+        return this.mutate(
+          peer,
+          request,
+          parseSessionFork(request.params),
+          async (params) => {
+            await this.seams.assertSession(params.sessionId)
+            if (!this.seams.forkSession) {
+              throw new RemoteProtocolError(
+                'INVALID_REQUEST',
+                'session.fork is not supported by this host',
+              )
+            }
+            return this.seams.forkSession(params)
+          },
+        )
+      case 'command.list': {
+        const sessionId = parseModelList(request.params)
+        if (sessionId !== undefined) {
+          await this.seams.assertSession(sessionId)
+        }
+        const commands = this.seams.listCommands ? await this.seams.listCommands(sessionId) : []
+        return { commands }
+      }
+      case 'command.execute':
+        return this.mutate(
+          peer,
+          request,
+          parseCommandExecute(request.params),
+          async (params) => {
+            await this.seams.assertSession(params.sessionId)
+            if (!this.seams.executeCommand) {
+              throw new RemoteProtocolError(
+                'INVALID_REQUEST',
+                'command.execute is not supported by this host',
+              )
+            }
+            return this.seams.executeCommand(params.sessionId, params.command)
+          },
+        )
+      case 'skill.list': {
+        const sessionId = parseModelList(request.params)
+        if (sessionId !== undefined) {
+          await this.seams.assertSession(sessionId)
+        }
+        const skills = this.seams.listSkills ? await this.seams.listSkills(sessionId) : []
+        return { skills }
+      }
       case 'approval.respond':
         return this.mutate(
           peer,
@@ -482,18 +672,63 @@ export class RemoteAdapterCore {
 
   private async attach(params: SessionAttachParams): Promise<unknown> {
     await this.seams.assertSession(params.sessionId)
+    const liveState = await this.seams.getSessionLiveState?.(params.sessionId)
     const buffer = this.replayBySession.get(params.sessionId)
     if (!buffer) {
       if (params.afterSeq !== undefined) {
-        return { kind: 'reset', reason: 'window-unavailable' }
+        return {
+          kind: 'reset',
+          reason: 'window-unavailable',
+          ...(liveState !== undefined ? { liveState } : {}),
+        }
       }
-      return { kind: 'events', events: [] }
+      return {
+        kind: 'events',
+        events: [],
+        ...(liveState !== undefined ? { liveState } : {}),
+      }
     }
 
     // Refresh insertion order on attach as well as on event receipt.
     this.replayBySession.delete(params.sessionId)
     this.replayBySession.set(params.sessionId, buffer)
-    return buffer.resume(params.afterSeq)
+    const resumed = buffer.resume(params.afterSeq)
+    const maxAttachEventBytes = 40 * 1024
+    if (resumed.kind === 'events' && params.afterSeq !== undefined && resumed.events.length > 0) {
+      if (Buffer.byteLength(JSON.stringify(resumed.events), 'utf8') > maxAttachEventBytes) {
+        return {
+          kind: 'reset',
+          reason: 'window-exceeded',
+          oldestSeq: buffer.getOldestSeq() ?? buffer.getLatestSeq(),
+          latestSeq: buffer.getLatestSeq(),
+          ...(liveState !== undefined ? { liveState } : {}),
+        }
+      }
+    }
+    if (resumed.kind === 'events' && params.afterSeq === undefined && resumed.events.length > 0) {
+      let trimmed = resumed.events
+      let truncatedHead = false
+      while (trimmed.length > 1 && Buffer.byteLength(JSON.stringify(trimmed), 'utf8') > maxAttachEventBytes) {
+        const dropCount = Math.max(1, Math.floor(trimmed.length / 4))
+        trimmed = trimmed.slice(dropCount)
+        truncatedHead = true
+      }
+      if (trimmed.length === 1 && Buffer.byteLength(JSON.stringify(trimmed), 'utf8') > maxAttachEventBytes) {
+        trimmed = []
+        truncatedHead = true
+      }
+      if (truncatedHead) {
+        const adjustedLiveState = liveState
+          ? { ...liveState, hasMoreHistory: true }
+          : undefined
+        return {
+          kind: 'events',
+          events: trimmed,
+          ...(adjustedLiveState !== undefined ? { liveState: adjustedLiveState } : {}),
+        }
+      }
+    }
+    return liveState !== undefined ? { ...resumed, liveState } : resumed
   }
 
   private async mutate<TParams, TResult>(

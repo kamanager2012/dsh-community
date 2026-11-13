@@ -393,6 +393,30 @@ describe('Real Official @deepseek-ai/dsh Live Subprocess Host Acceptance (R6)', 
     // Verify client streamed assistant chunks / completion and monotonic seq >= 1
     expect(observedEvents.every((e, i) => e.seq >= 1 && (i === 0 || e.seq > observedEvents[i - 1]!.seq))).toBe(true)
 
+    // Verify real Cordis @deepseek-ai/dsh subprocess supports rich parity RPCs before shutdown
+    const rttSample = await client.pingWithLatency()
+    expect(rttSample.rttMs).toBeGreaterThanOrEqual(0)
+    const diagBeforeClose = client.getConnectionDiagnostics()
+    expect(diagBeforeClose.connected).toBe(true)
+    expect(diagBeforeClose.activeTransport).toBe('lan')
+    expect(diagBeforeClose.lastRttMs).toBeGreaterThanOrEqual(0)
+
+    const liveCommands = await client.request('command.list', { sessionId: 'session-r6-live-e2e' })
+    expect(Array.isArray(liveCommands.commands)).toBe(true)
+    const goalCmd = liveCommands.commands.find((c: any) => c.name === 'goal')
+    if (goalCmd) {
+      expect(typeof goalCmd.inputHint).toBe('string')
+      const goalExec = await client.request(
+        'command.execute',
+        { sessionId: 'session-r6-live-e2e', command: '/goal' },
+        { idempotencyKey: 'live-dsh-goal-view-1' },
+      )
+      expect(goalExec.ok).toBe(true)
+    }
+
+    const liveSkills = await client.request('skill.list', { sessionId: 'session-r6-live-e2e' })
+    expect(Array.isArray(liveSkills.skills)).toBe(true)
+
     // Graceful shutdown triggers handle.dispose() -> durable session log flush to DSH_HOME/sessions/
     const shutRes = await fetch(`${ready.controlUrl}/shutdown`, {
       method: 'POST',
@@ -469,9 +493,36 @@ describe('Real Official @deepseek-ai/dsh Live Subprocess Host Acceptance (R6)', 
     })
     await phoneAfterRestart.connect()
     const list2 = await phoneAfterRestart.request('session.list')
-    expect(list2.some((s: any) => s.id === 'session-r6-live-e2e')).toBe(true)
+    const restartedEntry = list2.find((s: any) => s.id === 'session-r6-live-e2e')
+    expect(restartedEntry).toBeDefined()
+    expect(JSON.stringify(restartedEntry)).toContain('R6_LIVE_HOST_COMPLETE')
+
     const resumed = await phoneAfterRestart.resumeSession('session-r6-live-e2e')
     expect(JSON.stringify(resumed.events)).toContain('R6_LIVE_HOST_COMPLETE')
+    expect(resumed.liveState).toBeDefined()
+    expect(resumed.liveState?.status).toBe('idle')
+
+    const historyRes = await phoneAfterRestart.request('session.history', {
+      sessionId: 'session-r6-live-e2e',
+      limit: 20,
+    })
+    expect(historyRes.events.length).toBeGreaterThan(0)
+    expect(JSON.stringify(historyRes.events)).toContain('R6_LIVE_HOST_COMPLETE')
+
+    const searchRes = await phoneAfterRestart.request('session.search', {
+      query: 'R6_LIVE_HOST_COMPLETE',
+    })
+    expect(searchRes.hits.some((h: any) => h.sessionId === 'session-r6-live-e2e')).toBe(true)
+
+    const forkedLive = await phoneAfterRestart.request(
+      'session.fork',
+      { sessionId: 'session-r6-live-e2e', title: 'R6 Live Real Fork' },
+      { idempotencyKey: 'live-dsh-fork-1' },
+    )
+    expect(forkedLive.title).toBe('R6 Live Real Fork')
+    expect(forkedLive.id).not.toBe('session-r6-live-e2e')
+    const forkedResume = await phoneAfterRestart.resumeSession(forkedLive.id)
+    expect(JSON.stringify(forkedResume.events)).toContain('R6_LIVE_HOST_COMPLETE')
 
     // Verify real Cordis @deepseek-ai/dsh subprocess supports model.list, session.create, and turn.abort
     const liveModels = await phoneAfterRestart.request('model.list', {

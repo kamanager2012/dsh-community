@@ -231,6 +231,44 @@ export class FailoverRemoteClient {
     return this.session.isRevoked()
   }
 
+  async pingWithLatency(): Promise<{ readonly ok: true; readonly rttMs: number }> {
+    return this.session.pingWithLatency()
+  }
+
+  getConnectionDiagnostics(): {
+    readonly connected: boolean
+    readonly revoked: boolean
+    readonly activeTransport: RemoteTransportKind | undefined
+    readonly lastTransport: RemoteTransportKind | undefined
+    readonly availableTransports: readonly RemoteTransportKind[]
+    readonly connectionEpoch: number
+    readonly failoverAttempts: readonly FailoverAttemptRecord[]
+    readonly ice?:
+      | {
+          readonly connectionState: string
+          readonly iceConnectionState: string
+          readonly selectedPair: SelectedIceCandidatePairInfo | undefined
+        }
+      | undefined
+    readonly relayConnIdHex?: string | undefined
+    readonly lastRttMs?: number | undefined
+  } {
+    const ice = this.getIceDiagnostics()
+    const lastRttMs = this.session.getLastRttMs()
+    return {
+      connected: this.isOpen(),
+      revoked: this.isRevoked(),
+      activeTransport: this.getActiveTransportKind(),
+      lastTransport: this.getLastConnectedTransportKind(),
+      availableTransports: this.getAvailableTransports(),
+      connectionEpoch: this.getConnectionEpoch(),
+      failoverAttempts: this.getFailoverHistory(),
+      ...(ice !== undefined ? { ice } : {}),
+      ...(this.relayConnIdHex !== undefined ? { relayConnIdHex: this.relayConnIdHex } : {}),
+      ...(lastRttMs !== undefined ? { lastRttMs } : {}),
+    }
+  }
+
   private async connectSingleOrderedPass(): Promise<void> {
     if (this.session.isOpen()) return
     let lastError: Error | undefined

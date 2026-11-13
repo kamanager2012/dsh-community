@@ -60,7 +60,11 @@ export class OfficialSessionEventBridge {
     private readonly onResetSession?: (sessionId: string, reason: string) => void,
   ) {}
 
-  ingest(sessionId: string, payload: unknown): number {
+  ingest(
+    sessionId: string,
+    payload: unknown,
+    options?: { readonly broadcast?: boolean | undefined },
+  ): number {
     if (typeof sessionId !== 'string' || sessionId.length === 0) {
       throw new Error('official session id must be a non-empty string')
     }
@@ -87,7 +91,9 @@ export class OfficialSessionEventBridge {
         ? { seq, type: event.type, data: event.data }
         : { seq, type: event.type }
       this.core.onOfficialEvent(sessionId, normalized)
-      this.onAcceptedEvent?.(sessionId, normalized)
+      if (options?.broadcast !== false) {
+        this.onAcceptedEvent?.(sessionId, normalized)
+      }
       lastSeq = seq
       accepted += 1
     }
@@ -192,12 +198,22 @@ export class RemoteHostRuntime {
     ])
   }
 
-  ingestSessionEventBatch(sessionId: string, payload: unknown): number {
-    return this.events.ingest(sessionId, payload)
+  ingestSessionEventBatch(
+    sessionId: string,
+    payload: unknown,
+    options?: { readonly broadcast?: boolean | undefined },
+  ): number {
+    return this.events.ingest(sessionId, payload, options)
   }
 
   forgetSession(sessionId: string, reason = 'window-unavailable'): void {
     this.events.forget(sessionId, reason)
+  }
+
+  getReplayWindowInfo(
+    sessionId: string,
+  ): { readonly oldestSeq: number | null; readonly latestSeq: number | null; readonly size: number } | undefined {
+    return this.core.getReplayWindowInfo(sessionId)
   }
 
   /**

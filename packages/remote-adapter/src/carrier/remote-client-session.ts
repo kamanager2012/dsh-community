@@ -52,6 +52,7 @@ export class RemoteClientSession {
   >()
   private readonly eventListeners = new Set<(event: unknown) => void>()
   private readonly lastConfirmedSeqBySession = new Map<string, number>()
+  private lastRttMs: number | undefined
 
   constructor(options: RemoteClientSessionOptions) {
     this.options = options
@@ -88,6 +89,18 @@ export class RemoteClientSession {
 
   getRevokedReason(): string | undefined {
     return this.revokedReason
+  }
+
+  getLastRttMs(): number | undefined {
+    return this.lastRttMs
+  }
+
+  async pingWithLatency(): Promise<{ readonly ok: true; readonly rttMs: number }> {
+    const start = performance.now()
+    await this.request('ping')
+    const rttMs = Math.max(0, Math.round((performance.now() - start) * 100) / 100)
+    this.lastRttMs = rttMs
+    return { ok: true, rttMs }
   }
 
   async connectWithTransport(
