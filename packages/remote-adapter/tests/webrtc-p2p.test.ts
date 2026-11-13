@@ -21,6 +21,7 @@ import {
   parsePairingBootstrapDescriptor,
   parseStunPacket,
   parseStunXorMappedAddress,
+  RemoteClientSession,
   RemoteHostRuntime,
   SelfHostedSignalingServer,
   SelfHostedStunServer,
@@ -433,6 +434,95 @@ describe('R3 STUN, Signaling, and WebRTC P2P carrier', () => {
       await runtime.stop()
       await sig.stop()
       await stun.stop()
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('separates ICE dial timeout from post-DataChannel Noise handshakeTimeoutMs', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'dsh-r3-phase-timer-'))
+    const hostStore = new FileHostIdentityStore(join(dir, 'host.json'))
+    const trustStore = new InMemoryDeviceTrustStore()
+    const sig = new SelfHostedSignalingServer({ enabled: true, host: '127.0.0.1', port: 0 })
+    await sig.start()
+
+    const runtime = new RemoteHostRuntime({
+      seams: {
+        async listSessions() {
+          return [{ id: 's-timer', title: 'Phase Timer Probe' }]
+        },
+        async assertSession() {},
+        async followup() {
+          return {}
+        },
+        async respondApproval() {
+          return {}
+        },
+        async respondQuestion() {
+          return {}
+        },
+      },
+      trustStore,
+      hostIdentityStore: hostStore,
+      carrier: { enabled: false },
+      webrtc: {
+        enabled: true,
+        signalingUrl: sig.getEndpointUrl()!,
+        ice: { iceInterfaceAddresses: { udp4: '127.0.0.1' } },
+      },
+    })
+    await runtime.start()
+
+    try {
+      const host = await hostStore.loadOrCreate()
+      const keys = clientKeyPair()
+      trustStore.trustSync({
+        staticPublicKey: keys.publicKey,
+        displayName: 'Timer Probe',
+        grantedCapabilities: ['observe'],
+        trustDomainId: host.identity.trustDomainId,
+      })
+
+      const client = new WebRtcClientCarrier({
+        clientKeyPair: keys,
+        hostPublicKey: host.identity.publicKey,
+        signalingUrl: sig.getEndpointUrl()!,
+        iceConnectTimeoutMs: 5_000,
+        handshakeTimeoutMs: 400,
+        ice: { iceInterfaceAddresses: { udp4: '127.0.0.1' } },
+      })
+      await client.connect()
+      expect(await client.request('session.list')).toEqual([{ id: 's-timer', title: 'Phase Timer Probe' }])
+      client.close()
+
+      // Verify dial phase delay (> handshakeTimeoutMs) does not trip pre-Noise timeout,
+      // while post-open Noise stall still fails closed at handshakeTimeoutMs
+      let transportClosed = false
+      const session = new RemoteClientSession({
+        clientKeyPair: keys,
+        hostPublicKey: host.identity.publicKey,
+        handshakeTimeoutMs: 60,
+      })
+      const startedAt = Date.now()
+      await expect(
+        session.connectWithTransport(() => ({
+          kind: 'webrtc',
+          isOpen: () => !transportClosed,
+          connect: async () => {
+            await new Promise((r) => setTimeout(r, 90))
+          },
+          send: () => {
+            // Silently drop Noise msg1 after DataChannel opens
+          },
+          close: () => {
+            transportClosed = true
+          },
+        })),
+      ).rejects.toThrow('client connection timeout')
+      expect(Date.now() - startedAt).toBeGreaterThanOrEqual(130)
+      expect(transportClosed).toBe(true)
+    } finally {
+      await runtime.stop()
+      await sig.stop()
       rmSync(dir, { recursive: true, force: true })
     }
   })

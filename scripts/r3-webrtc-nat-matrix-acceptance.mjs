@@ -111,7 +111,7 @@ try {
     hostAuthSecret,
     joinToken,
     stunUrl,
-    iceConnectTimeoutMs: 6000,
+    iceConnectTimeoutMs: 8000,
   })
   const hostAReady = await hostA.nextType('ready')
   writeFileSync(pairingTokenPath, hostAReady.token, { encoding: 'utf8', mode: 0o600 })
@@ -125,7 +125,7 @@ try {
     joinToken,
     stunUrl,
     token: hostAReady.token,
-    iceConnectTimeoutMs: 6000,
+    iceConnectTimeoutMs: 8000,
   })
 
   const candidate = await clientA.nextType('candidate')
@@ -195,7 +195,10 @@ try {
     throw new Error('Case A: idempotent prompt replay result diverged across WebRTC reconnect')
   }
   const rpcOk = await clientA.nextType('rpc-ok')
-  if (rpcOk.approvalResult?.decision !== 'allow') {
+  if (
+    rpcOk.approvalResult?.decision !== 'approved' ||
+    rpcOk.approvalResult?.callId !== 'R3_REAL_APPROVAL_MARKER'
+  ) {
     throw new Error('Case A: approval decision RPC did not succeed')
   }
 

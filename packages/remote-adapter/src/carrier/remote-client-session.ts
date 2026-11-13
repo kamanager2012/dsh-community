@@ -97,10 +97,24 @@ export class RemoteClientSession {
       let settled = false
       let stage: 'WAIT_MSG2' | 'WAIT_COMPLETE' | 'ACTIVE' = 'WAIT_MSG2'
 
+      let timeout: NodeJS.Timeout | undefined = undefined
+      const clearHandshakeTimer = (): void => {
+        if (timeout !== undefined) {
+          clearTimeout(timeout)
+          timeout = undefined
+        }
+      }
+      const startHandshakeTimer = (): void => {
+        if (settled || timeout !== undefined) return
+        timeout = setTimeout(() => {
+          finishFailure(new RemoteCryptoError('HANDSHAKE_FAILED', 'client connection timeout'))
+        }, this.options.handshakeTimeoutMs ?? 5000)
+      }
+
       const finishFailure = (error: Error): void => {
         if (settled) return
         settled = true
-        clearTimeout(timeout)
+        clearHandshakeTimer()
         if (this.transport === transport) {
           this.isConnected = false
           this.transport = undefined
@@ -117,9 +131,10 @@ export class RemoteClientSession {
         reject(error)
       }
 
-      const timeout = setTimeout(() => {
-        finishFailure(new RemoteCryptoError('HANDSHAKE_FAILED', 'client connection timeout'))
-      }, this.options.handshakeTimeoutMs ?? 5000)
+      if (transport.kind === 'lan') {
+        // LAN upgrade has no separate pre-Noise ICE negotiation budget
+        startHandshakeTimer()
+      }
 
       transport
         .connect({
@@ -137,7 +152,7 @@ export class RemoteClientSession {
 
             if (stage === 'WAIT_COMPLETE') {
               if (settled) return
-              clearTimeout(timeout)
+              clearHandshakeTimer()
               try {
                 const compPt = noise.decrypt(raw)
                 const compParsed = JSON.parse(textDecoder.decode(compPt)) as {
@@ -188,6 +203,7 @@ export class RemoteClientSession {
         })
         .then(() => {
           if (settled || this.transport !== transport) return
+          startHandshakeTimer()
           try {
             const msg1 = noise.writeMessage1()
             transport.send(msg1)

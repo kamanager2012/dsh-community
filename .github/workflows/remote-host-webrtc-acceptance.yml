@@ -42,9 +42,16 @@ jobs:
 
           ALL_NS=(dsh-r3-wan dsh-r3-nata dsh-r3-natb dsh-r3-natc dsh-r3-host dsh-r3-client dsh-r3-sym)
           cleanup() {
+            rc=$?
             if [ -n "${TCPDUMP_PID:-}" ]; then
               sudo kill -TERM "${TCPDUMP_PID}" 2>/dev/null || true
               wait "${TCPDUMP_PID}" 2>/dev/null || true
+            fi
+            sudo chmod 0644 /tmp/r3-wan.pcap /tmp/r3-webrtc-evidence.json /tmp/r3-tcpdump.log 2>/dev/null || true
+            cp /tmp/r3-webrtc-evidence.json /tmp/r3-wan.pcap /tmp/r3-tcpdump.log /tmp/r3-artifacts/ 2>/dev/null || true
+            if [ "$rc" -ne 0 ] && [ -s /tmp/r3-wan.pcap ]; then
+              echo "--- WAN pcap summary on failure ---"
+              tcpdump -nn -c 80 -r /tmp/r3-wan.pcap 2>/dev/null || true
             fi
             for ns in "${ALL_NS[@]}"; do
               sudo ip netns del "$ns" 2>/dev/null || true
@@ -78,6 +85,7 @@ jobs:
 
           sudo ip netns exec dsh-r3-nata sysctl -q -w net.ipv4.ip_forward=1
           sudo ip netns exec dsh-r3-nata iptables -t nat -A POSTROUTING -s 10.210.1.0/24 -o veth-nata-wan -j MASQUERADE
+          sudo ip netns exec dsh-r3-nata iptables -A INPUT -i veth-nata-wan -p udp -j DROP
           sudo ip netns exec dsh-r3-nata iptables -A FORWARD -d 10.210.2.0/24 -j DROP
           sudo ip netns exec dsh-r3-nata iptables -A FORWARD -d 10.210.3.0/24 -j DROP
 
@@ -96,6 +104,7 @@ jobs:
 
           sudo ip netns exec dsh-r3-natb sysctl -q -w net.ipv4.ip_forward=1
           sudo ip netns exec dsh-r3-natb iptables -t nat -A POSTROUTING -s 10.210.2.0/24 -o veth-natb-wan -j MASQUERADE
+          sudo ip netns exec dsh-r3-natb iptables -A INPUT -i veth-natb-wan -p udp -j DROP
           sudo ip netns exec dsh-r3-natb iptables -A FORWARD -d 10.210.1.0/24 -j DROP
           sudo ip netns exec dsh-r3-natb iptables -A FORWARD -d 10.210.3.0/24 -j DROP
 
@@ -114,6 +123,7 @@ jobs:
 
           sudo ip netns exec dsh-r3-natc sysctl -q -w net.ipv4.ip_forward=1
           sudo ip netns exec dsh-r3-natc iptables -t nat -A POSTROUTING -s 10.210.3.0/24 -o veth-natc-wan -j MASQUERADE
+          sudo ip netns exec dsh-r3-natc iptables -A INPUT -i veth-natc-wan -p udp -j DROP
           sudo ip netns exec dsh-r3-natc iptables -A FORWARD -d 10.210.1.0/24 -j DROP
           sudo ip netns exec dsh-r3-natc iptables -A FORWARD -d 10.210.2.0/24 -j DROP
           sudo ip netns exec dsh-r3-natc iptables -A FORWARD -p udp -d 10.210.0.1 -j ACCEPT

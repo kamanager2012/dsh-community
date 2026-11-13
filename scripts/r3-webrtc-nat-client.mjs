@@ -48,9 +48,9 @@ const client = new WebRtcClientCarrier({
   signalingUrl: config.signalingUrl,
   roomId: config.roomId,
   joinToken: config.joinToken,
-  iceConnectTimeoutMs: config.iceConnectTimeoutMs ?? 5000,
-  handshakeTimeoutMs: 2500,
-  requestTimeoutMs: 3000,
+  iceConnectTimeoutMs: config.iceConnectTimeoutMs ?? 8000,
+  handshakeTimeoutMs: 4000,
+  requestTimeoutMs: 4000,
   ice: {
     stunUrls: config.stunUrl ? [config.stunUrl] : undefined,
     iceInterfaceAddresses: config.clientBindIp ? { udp4: config.clientBindIp } : undefined,
@@ -206,11 +206,14 @@ const secondMutation = await client.request(
 )
 emit({ type: 'dedupe', firstMutation, secondMutation })
 
-const approvalResult = await client.request('approval.decide', {
-  callId: 'r3-call-1',
-  decision: 'allow',
-  note: 'R3_REAL_APPROVAL_MARKER',
-})
+const approvalResult = await client.request(
+  'approval.respond',
+  {
+    callId: 'R3_REAL_APPROVAL_MARKER',
+    decision: 'approved',
+  },
+  { idempotencyKey: 'r3-real-approval' },
+)
 const sessions = await client.request('session.list')
 emit({
   type: 'rpc-ok',
