@@ -38,6 +38,7 @@ Stock Qualcomm Snapdragon Android phones refuse to sideload `app-release-unsigne
    ```
 
    - Partial signing configuration or `DSH_ANDROID_SIGNING_REQUIRED=true` without all four inputs fails Gradle configuration immediately.
+   - For PKCS12 (`.p12`/`.pfx`) keystores, set `DSH_ANDROID_KEY_PASSWORD` equal to `DSH_ANDROID_KEYSTORE_PASSWORD` (PKCS12 stores share one password across store and key); `.jks` keystores may use distinct passwords.
    - Verify signature before sideloading (`apksigner verify --verbose app/build/outputs/apk/release/app-release.apk`).
 
 2. **Run R6 hardware acceptance on a connected Qualcomm (`arm64-v8a`) phone and combine with CI `x86_64` emulator evidence**:

@@ -91,9 +91,10 @@ jobs:
           set -euo pipefail
           cd apps/android
           BACKUP_DIR="$(mktemp -d /tmp/dsh-orig-release-apks.XXXXXX)"
-          KEYSTORE_FILE="$(mktemp -u /tmp/dsh-ci-ephemeral.XXXXXX).p12"
+          KS_DIR="$(mktemp -d /tmp/dsh-ci-ks.XXXXXX)"
+          KEYSTORE_FILE="$KS_DIR/ci-ephemeral.jks"
           cleanup() {
-            rm -f "$KEYSTORE_FILE" /tmp/android-arm64-release-apk-entries.txt
+            rm -rf "$KS_DIR" /tmp/android-arm64-release-apk-entries.txt
             if [[ -d "$BACKUP_DIR/release" ]]; then
               rm -rf app/build/outputs/apk/release
               mv "$BACKUP_DIR/release" app/build/outputs/apk/release
@@ -106,7 +107,7 @@ jobs:
 
           keytool -genkeypair -noprompt \
             -keystore "$KEYSTORE_FILE" \
-            -storetype PKCS12 \
+            -storetype JKS \
             -alias dshci \
             -keyalg RSA \
             -keysize 2048 \
