@@ -18,4 +18,13 @@ contextBridge.exposeInMainWorld('dshCommunity', {
   showDiagnostics: () => ipcRenderer.invoke(DESKTOP_IPC.showDiagnostics),
   showRuntime: () => ipcRenderer.invoke(DESKTOP_IPC.showRuntime),
   showAbout: () => ipcRenderer.invoke(DESKTOP_IPC.showAbout),
+  showRemote: () => ipcRenderer.invoke(DESKTOP_IPC.showRemote),
+  remoteStart: (config: unknown) => ipcRenderer.invoke(DESKTOP_IPC.remoteStart, config),
+  remoteStop: () => ipcRenderer.invoke(DESKTOP_IPC.remoteStop),
+  remoteRefresh: () => ipcRenderer.invoke(DESKTOP_IPC.remoteRefresh),
+  remoteNewPairing: () => ipcRenderer.invoke(DESKTOP_IPC.remoteNewPairing),
+  remoteConfirmPairing: (payload: { candidateId: string; allowApprove?: boolean }) =>
+    ipcRenderer.invoke(DESKTOP_IPC.remoteConfirmPairing, payload),
+  remoteRevokeDevice: (deviceId: string) =>
+    ipcRenderer.invoke(DESKTOP_IPC.remoteRevokeDevice, deviceId),
 })

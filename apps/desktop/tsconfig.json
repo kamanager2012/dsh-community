@@ -10,6 +10,7 @@
     "types": ["node"],
     "paths": {
       "@dsh-community/dsh-bridge": ["../../packages/dsh-bridge/src/index.ts"],
+      "@dsh-community/remote-adapter/stores": ["../../packages/remote-adapter/src/stores.ts"],
       "@dsh-community/shared-types": ["../../packages/shared-types/src/index.ts"]
     }
   },

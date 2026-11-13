@@ -105,3 +105,27 @@ export {
   type McpBridgeStatus,
   type McpServerTarget,
 } from './mcp-support.js'
+export {
+  encodeFormatBits,
+  encodeQrMatrix,
+  encodeVersionBits,
+  gfMul,
+  renderQrSvg,
+  renderTerminalQr,
+  type QrErrorCorrectionLevel,
+  type QrMatrix,
+  type QrSvgRenderOptions,
+  type TerminalQrRenderOptions,
+} from './qr.js'
+export {
+  buildLoopbackPairingWarning,
+  composeRemoteHostPatchYaml,
+  detectLanIpv4Candidates,
+  isPrivateOrTailscaleIpv4,
+  liveControlFilePath,
+  readLiveControlEndpoint,
+  removeOwnLiveControlEndpoint,
+  waitForReadyFile,
+  writeLiveControlEndpoint,
+  type LiveControlEndpoint,
+} from './remote-host.js'

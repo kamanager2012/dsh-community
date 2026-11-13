@@ -17,6 +17,7 @@
   "dependencies": {
     "@deepseek-ai/dsh": "0.2.2-rc.2",
     "@dsh-community/dsh-bridge": "workspace:*",
+    "@dsh-community/remote-adapter": "workspace:*",
     "@dsh-community/shared-types": "workspace:*"
   },
   "devDependencies": {

@@ -7,6 +7,7 @@ import {
   type MarketplaceSource,
   type PluginAction,
 } from './marketplace.ts'
+import type { DesktopRemotePhase, DesktopRemoteSnapshot } from './remote.ts'
 
 export interface AboutPageModel {
   readonly product: string
@@ -89,6 +90,10 @@ export interface MarketplacePageModel {
   }
 }
 
+export type RemotePageModel = DesktopRemoteSnapshot & {
+  readonly product: string
+}
+
 function escapeHtml(value: string): string {
   return value
     .replaceAll('&', '&amp;')
@@ -163,6 +168,26 @@ function shellDocument(title: string, bodyOrRender: string | ((nonce: string) =>
       .plugin-actions { display: flex; align-items: center; gap: 12px; margin-top: 6px; flex-wrap: wrap; }
       a { color: #6ea8fe; }
       .meta { color: #6d7686; font-size: 12px; }
+      button.danger { background: #8f2626; }
+      .panel { border: 1px solid #2a303b; border-radius: 8px; padding: 14px; margin: 14px 0; background: #141822; }
+      .panel.pending { border-color: #2f6fed; background: #0e172a; }
+      .panel.warn { border-color: #7c5816; background: #1d170c; color: #f5c26b; }
+      .panel.warn p { color: #f5c26b; margin: 0; }
+      .pair-grid { display: flex; gap: 18px; align-items: flex-start; flex-wrap: wrap; margin-top: 10px; }
+      .qr-wrap { background: #ffffff; border-radius: 10px; padding: 10px; width: 220px; height: 220px;
+        flex: 0 0 auto; box-sizing: border-box; display: flex; align-items: center; justify-content: center; }
+      .qr-wrap svg { width: 100%; height: 100%; display: block; }
+      .pair-info { flex: 1 1 240px; min-width: 0; }
+      .field-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+      .field label { display: block; color: #9aa3b2; font-size: 12px; margin-bottom: 4px; }
+      .field input[type="text"], .field input[type="number"], .field select {
+        width: 100%; box-sizing: border-box; background: #0b0d12; color: #d9dee8;
+        border: 1px solid #2a303b; border-radius: 6px; padding: 7px 10px;
+        font: 12px/1.4 ui-monospace, SFMono-Regular, monospace;
+      }
+      .custom-host-input { margin-top: 6px; }
+      .pending-item { border: 1px solid #2f6fed; border-radius: 8px; padding: 12px; margin-top: 10px; background: #0b1120; }
+      .status-line { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 8px 0; }
     </style>
   </head>
   <body>
@@ -170,6 +195,7 @@ function shellDocument(title: string, bodyOrRender: string | ((nonce: string) =>
       <nav class="nav">
         <button class="secondary" data-go="official">官方 Web</button>
         <button class="secondary" data-go="sessions">Session</button>
+        <button class="secondary" data-go="remote">远程</button>
         <button class="secondary" data-go="marketplace">市场</button>
         <button class="secondary" data-go="runtime">运行时</button>
         <button class="secondary" data-go="settings">设置</button>
@@ -181,6 +207,7 @@ function shellDocument(title: string, bodyOrRender: string | ((nonce: string) =>
       const go = {
         official: () => window.dshCommunity?.openOfficial(),
         sessions: () => window.dshCommunity?.showSessions(),
+        remote: () => window.dshCommunity?.showRemote(),
         marketplace: () => window.dshCommunity?.showMarketplace(),
         runtime: () => window.dshCommunity?.showRuntime(),
         settings: () => window.dshCommunity?.showSettings(),
@@ -480,6 +507,303 @@ export function renderDiagnosticsPage(model: DiagnosticsPageModel): string {
          const el = document.getElementById('copy-logs-data')
          const text = el && 'content' in el ? (el.content.textContent ?? '') : (el?.textContent ?? '')
          window.dshCommunity?.copyText(text)
+       })
+     </script>`,
+  )
+}
+
+function formatRemoteTime(ts: number | undefined): string {
+  if (ts === undefined || !Number.isFinite(ts) || ts <= 0) return '—'
+  return `${new Date(ts).toISOString().replace('T', ' ').slice(0, 19)}Z`
+}
+
+function remotePhaseBadge(phase: DesktopRemotePhase): string {
+  switch (phase) {
+    case 'running':
+      return '<span class="chip ok">运行中（Desktop 托管）</span>'
+    case 'external':
+      return '<span class="chip ok">运行中（外部 CLI 宿主）</span>'
+    case 'starting':
+      return '<span class="chip risk-med">正在启动…</span>'
+    case 'error':
+      return '<span class="chip risk-high">启动失败 / 异常</span>'
+    case 'stopped':
+      return '<span class="chip">已停止</span>'
+  }
+}
+
+function renderSafeQrSvg(svg: string): string {
+  const trimmed = svg.trim()
+  if (
+    trimmed.startsWith('<svg')
+    && trimmed.endsWith('</svg>')
+    && !/<script|<foreignObject|javascript:|on[a-z]+\s*=/iu.test(trimmed)
+  ) {
+    return trimmed
+  }
+  return `<p class="meta">无效二维码载荷</p>`
+}
+
+export function renderRemotePage(model: RemotePageModel): string {
+  const presetHosts = new Set<string>(['', ...model.lanCandidates, '0.0.0.0', '127.0.0.1'])
+  const isCustomHost = !presetHosts.has(model.settings.listenHost)
+  const selectedHost = isCustomHost ? '__custom__' : model.settings.listenHost
+  const customHostValue = isCustomHost ? model.settings.listenHost : ''
+
+  const hostOptions = [
+    `<option value=""${selectedHost === '' ? ' selected' : ''}>自动选择局域网 IP（当前：${escapeHtml(model.effectiveListenHost)}）</option>`,
+    ...model.lanCandidates.map(
+      (ip) => `<option value="${escapeHtml(ip)}"${selectedHost === ip ? ' selected' : ''}>${escapeHtml(ip)}（本机网卡）</option>`,
+    ),
+    `<option value="0.0.0.0"${selectedHost === '0.0.0.0' ? ' selected' : ''}>0.0.0.0（绑定全部网卡）</option>`,
+    `<option value="127.0.0.1"${selectedHost === '127.0.0.1' ? ' selected' : ''}>127.0.0.1（仅本机回环 / ADB 转发）</option>`,
+    `<option value="__custom__"${selectedHost === '__custom__' ? ' selected' : ''}>自定义监听地址…</option>`,
+  ].join('')
+
+  const statusLine = `<div class="status-line">
+    ${remotePhaseBadge(model.phase)}
+    ${model.apiKeyPresent
+      ? '<span class="chip ok">DEEPSEEK_API_KEY 已配置</span>'
+      : '<span class="chip risk-high">缺少 DEEPSEEK_API_KEY</span>'}
+    <span class="chip">在线连接 ${String(model.activeConnections)}</span>
+    ${model.isolated ? '<span class="chip">独立数据目录</span>' : ''}
+  </div>`
+
+  const errorBanner = model.error === undefined
+    ? ''
+    : `<pre>${escapeHtml(model.error)}</pre>`
+  const noticeBanner = model.notice === undefined
+    ? ''
+    : `<pre class="ok">${escapeHtml(model.notice)}</pre>`
+
+  const primaryControls = (() => {
+    switch (model.phase) {
+      case 'starting':
+        return `<button id="remote-start" disabled>正在启动…</button>
+          <button class="danger" id="remote-stop">取消启动</button>`
+      case 'running':
+        return `<button class="secondary" id="remote-start">应用配置并重启</button>
+          <button class="danger" id="remote-stop">停止 Remote Host</button>
+          <button id="remote-new-pairing">刷新配对二维码</button>`
+      case 'external':
+        return `<button class="danger" id="remote-stop">停止外部 Host</button>
+          <button id="remote-new-pairing">刷新配对二维码</button>`
+      case 'stopped':
+      case 'error':
+        return `<button id="remote-start">启动 Remote Host</button>`
+    }
+  })()
+
+  const pendingBlock = model.pendingCandidates.length === 0
+    ? ''
+    : `<section class="panel pending">
+        <h2>待授权配对请求（${String(model.pendingCandidates.length)}）</h2>
+        <p>请核对手机端显示的设备名与请求标识，确认后再授予能力。</p>
+        ${model.pendingCandidates.map((c) => {
+          const canApprove = c.maxAllowedCapabilities.includes('approve')
+          const caps = c.maxAllowedCapabilities.map(escapeHtml).join(', ') || 'observe'
+          const approveToggle = canApprove
+            ? `<label class="opt">
+                <input type="checkbox" checked data-allow-approve="${escapeHtml(c.candidateId)}" />
+                <span>允许手机远程审批工具调用（<code>approve</code>）</span>
+              </label>`
+            : `<p class="meta">该请求未包含远程审批（<code>approve</code>）权限。</p>`
+          return `<div class="pending-item">
+            <div><strong>${escapeHtml(c.displayName || '未命名设备')}</strong> · <code>${escapeHtml(c.deviceId)}</code></div>
+            <p class="meta">请求 ID: <code>${escapeHtml(c.candidateId)}</code> · 状态: ${escapeHtml(c.state)} · 过期: ${escapeHtml(formatRemoteTime(c.expiresAt))} · 上限能力: <code>${caps}</code></p>
+            ${approveToggle}
+            <div class="row">
+              <button class="small" data-confirm-candidate="${escapeHtml(c.candidateId)}">确认授权此设备</button>
+            </div>
+          </div>`
+        }).join('')}
+      </section>`
+
+  const pairingBlock = model.pairing === undefined
+    ? ''
+    : `<section class="panel">
+        <h2>扫码配对手机客户端</h2>
+        ${model.pairing.loopbackWarning
+          ? `<div class="panel warn"><p>${escapeHtml(model.pairing.loopbackWarning)}</p></div>`
+          : ''}
+        <div class="pair-grid">
+          <div class="qr-wrap" aria-label="Remote Pairing QR">${renderSafeQrSvg(model.pairing.qrSvg)}</div>
+          <div class="pair-info">
+            <dl>
+              <dt>Host 指纹</dt><dd><code>${escapeHtml(model.hostFingerprint || '—')}</code></dd>
+              <dt>局域网 WebSocket</dt><dd><code>${escapeHtml(model.lanUrl || '—')}</code></dd>
+              ${model.relayUrl
+                ? `<dt>盲中继 Relay</dt><dd><code>${escapeHtml(model.relayUrl)}</code>${model.relayRoomId ? ` · room <code>${escapeHtml(model.relayRoomId)}</code>` : ''}</dd>`
+                : ''}
+              ${model.signalingUrl
+                ? `<dt>WebRTC 信令</dt><dd><code>${escapeHtml(model.signalingUrl)}</code>${model.signalingRoomId ? ` · room <code>${escapeHtml(model.signalingRoomId)}</code>` : ''}</dd>`
+                : ''}
+              ${model.stunUrls.length > 0
+                ? `<dt>STUN</dt><dd><code>${escapeHtml(model.stunUrls.join(', '))}</code></dd>`
+                : ''}
+              <dt>配对码过期时间</dt><dd><code>${escapeHtml(formatRemoteTime(model.pairing.expiresAt))}</code></dd>
+            </dl>
+            <template id="copy-pairing-json">${escapeHtml(model.pairing.pairingJson)}</template>
+            <template id="copy-deeplink">${escapeHtml(model.pairing.deepLink)}</template>
+            <div class="row">
+              <button class="secondary small" id="copy-pairing-json-btn">复制配对 JSON</button>
+              <button class="secondary small" id="copy-deeplink-btn">复制 Deep Link</button>
+            </div>
+          </div>
+        </div>
+      </section>`
+
+  const devicesRows = model.devices.map((d) => {
+    const isRevoked = d.revokedAt !== undefined
+    const statusChip = isRevoked
+      ? `<span class="chip risk-high">已吊销 (${escapeHtml(formatRemoteTime(d.revokedAt))})</span>`
+      : '<span class="chip ok">有效</span>'
+    const actionBtn = isRevoked
+      ? '<span class="meta">—</span>'
+      : `<button class="danger small" data-revoke-device="${escapeHtml(d.deviceId)}">吊销</button>`
+    return `<tr>
+      <td><div>${escapeHtml(d.displayName || '未命名设备')}</div><code>${escapeHtml(d.deviceId)}</code></td>
+      <td><code>${escapeHtml(d.capabilities.join(', ') || '—')}</code></td>
+      <td>配对: ${escapeHtml(formatRemoteTime(d.pairedAt))}<br/>最近: ${escapeHtml(formatRemoteTime(d.lastSeenAt))}</td>
+      <td>${statusChip}</td>
+      <td>${actionBtn}</td>
+    </tr>`
+  }).join('')
+
+  const devicesBlock = `<section class="panel">
+    <h2>已信任设备（${String(model.devices.length)}）</h2>
+    ${model.devices.length === 0
+      ? '<p class="meta">暂无已配对设备。启动 Remote Host 后用手机扫描上方二维码，或在此管理离线吊销。</p>'
+      : `<table>
+          <thead><tr><th>设备</th><th>授权能力</th><th>时间</th><th>状态</th><th>操作</th></tr></thead>
+          <tbody>${devicesRows}</tbody>
+        </table>`}
+  </section>`
+
+  const configBlock = `<section class="panel">
+    <h2>宿主机与网络配置</h2>
+    ${model.phase === 'external'
+      ? '<p class="meta">当前附着到外部 CLI 托管的 Remote Host；若要改用下方配置，请先停止外部 Host 再点启动。</p>'
+      : ''}
+    <dl>
+      <dt>PID / 实际监听地址</dt><dd><code>${escapeHtml(model.pid)}</code> · <code>${escapeHtml(model.effectiveListenHost)}</code></dd>
+      <dt>官方数据目录（Session 真源）</dt><dd><code>${escapeHtml(model.dshHome)}</code>${model.isolated ? '（隔离）' : ''}</dd>
+      <dt>远程设备信任库目录</dt><dd><code>${escapeHtml(model.configDir)}</code></dd>
+    </dl>
+    <div class="field-grid">
+      <div class="field">
+        <label for="listen-host-select">监听地址 (listenHost)</label>
+        <select id="listen-host-select">${hostOptions}</select>
+        <input type="text" class="custom-host-input" id="listen-host-custom" value="${escapeHtml(customHostValue)}" placeholder="自定义 IP / 主机名（选自定义时生效）"${isCustomHost ? '' : ' disabled'} />
+      </div>
+      <div class="field">
+        <label for="remote-port">监听端口（0 = 自动分配）</label>
+        <input type="number" id="remote-port" min="0" max="65535" value="${escapeHtml(String(model.settings.port))}" />
+      </div>
+      <div class="field">
+        <label for="remote-relay">盲中继 WebSocket (relayUrl)</label>
+        <input type="text" id="remote-relay" value="${escapeHtml(model.settings.relayUrl)}" placeholder="可选，如 wss://relay.example.com" />
+      </div>
+      <div class="field">
+        <label for="remote-signaling">WebRTC 信令 (signalingUrl)</label>
+        <input type="text" id="remote-signaling" value="${escapeHtml(model.settings.signalingUrl)}" placeholder="可选，如 wss://signal.example.com" />
+      </div>
+      <div class="field">
+        <label for="remote-stun">STUN 地址（逗号分隔）</label>
+        <input type="text" id="remote-stun" value="${escapeHtml(model.settings.stunUrls)}" placeholder="可选，如 stun:stun.l.google.com:19302" />
+      </div>
+    </div>
+    <label class="opt">
+      <input type="checkbox" id="remote-mdns"${model.settings.enableMdns ? ' checked' : ''} />
+      <span>开启 mDNS 局域网广播发现</span>
+    </label>
+  </section>`
+
+  const logsBlock = `<section class="panel">
+    <h2>宿主机日志</h2>
+    <pre>${escapeHtml(model.logs || '(no remote host log yet)')}</pre>
+    <template id="copy-remote-logs">${escapeHtml(model.logs || '')}</template>
+    <div class="row">
+      <button class="secondary small" id="copy-remote-logs-btn">复制日志</button>
+    </div>
+  </section>`
+
+  return shellDocument(
+    `${model.product} · 远程控制`,
+    (nonce) => `<h1>远程控制与手机配对</h1>
+     <p>拉起官方 <code>@deepseek-ai/dsh</code> headless + Cordis 远程插件宿主，供移动端扫码直连或经盲中继端到端加密访问。不解析 stdout 伪造协议。</p>
+     ${statusLine}
+     ${errorBanner}
+     ${noticeBanner}
+     <div class="row">
+       ${primaryControls}
+       <button class="secondary" id="remote-refresh">刷新状态</button>
+       <button class="secondary" data-go="official">返回会话</button>
+     </div>
+     ${pendingBlock}
+     ${pairingBlock}
+     ${devicesBlock}
+     ${configBlock}
+     ${logsBlock}
+     <script nonce="${nonce}">
+       const readTpl = (id) => {
+         const el = document.getElementById(id)
+         if (!el) return ''
+         return 'content' in el ? (el.content.textContent ?? '') : (el.textContent ?? '')
+       }
+       const hostSelect = document.getElementById('listen-host-select')
+       const hostCustom = document.getElementById('listen-host-custom')
+       hostSelect?.addEventListener('change', () => {
+         if (hostCustom) hostCustom.disabled = hostSelect.value !== '__custom__'
+       })
+       document.getElementById('remote-start')?.addEventListener('click', () => {
+         const listenHost = hostSelect?.value === '__custom__'
+           ? (hostCustom?.value ?? '')
+           : (hostSelect?.value ?? '')
+         window.dshCommunity?.remoteStart({
+           listenHost,
+           port: Number(document.getElementById('remote-port')?.value ?? 0),
+           enableMdns: document.getElementById('remote-mdns')?.checked !== false,
+           relayUrl: document.getElementById('remote-relay')?.value ?? '',
+           signalingUrl: document.getElementById('remote-signaling')?.value ?? '',
+           stunUrls: document.getElementById('remote-stun')?.value ?? '',
+         })
+       })
+       document.getElementById('remote-stop')?.addEventListener('click', () => {
+         window.dshCommunity?.remoteStop()
+       })
+       document.getElementById('remote-refresh')?.addEventListener('click', () => {
+         window.dshCommunity?.remoteRefresh()
+       })
+       document.getElementById('remote-new-pairing')?.addEventListener('click', () => {
+         window.dshCommunity?.remoteNewPairing()
+       })
+       document.getElementById('copy-pairing-json-btn')?.addEventListener('click', () => {
+         window.dshCommunity?.copyText(readTpl('copy-pairing-json'))
+       })
+       document.getElementById('copy-deeplink-btn')?.addEventListener('click', () => {
+         window.dshCommunity?.copyText(readTpl('copy-deeplink'))
+       })
+       document.getElementById('copy-remote-logs-btn')?.addEventListener('click', () => {
+         window.dshCommunity?.copyText(readTpl('copy-remote-logs'))
+       })
+       document.querySelectorAll('[data-confirm-candidate]').forEach((btn) => {
+         btn.addEventListener('click', () => {
+           const candidateId = btn.getAttribute('data-confirm-candidate') ?? ''
+           let allowApprove = true
+           document.querySelectorAll('[data-allow-approve]').forEach((cb) => {
+             if (cb.getAttribute('data-allow-approve') === candidateId) {
+               allowApprove = cb.checked === true
+             }
+           })
+           window.dshCommunity?.remoteConfirmPairing({ candidateId, allowApprove })
+         })
+       })
+       document.querySelectorAll('[data-revoke-device]').forEach((btn) => {
+         btn.addEventListener('click', () => {
+           const deviceId = btn.getAttribute('data-revoke-device') ?? ''
+           if (deviceId) window.dshCommunity?.remoteRevokeDevice(deviceId)
+         })
        })
      </script>`,
   )
