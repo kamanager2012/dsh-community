@@ -27,6 +27,7 @@ import org.dsh.community.android.protocol.JsonObject
 import org.dsh.community.android.protocol.JsonString
 import org.dsh.community.android.protocol.OfficialSessionEvent
 import org.dsh.community.android.protocol.SessionRef
+import org.dsh.community.android.transport.AndroidWebRtcPeerEngine
 import org.dsh.community.android.transport.DiscoveredLanHost
 import org.dsh.community.android.transport.FailoverRemoteSession
 import org.dsh.community.android.transport.PairingQrParser
@@ -483,7 +484,11 @@ class RemoteSessionService : Service() {
         notifyTrustedHosts()
 
         val identity = ensureDeviceIdentity()
-        val session = FailoverRemoteSession(identity, profile)
+        val session = FailoverRemoteSession(
+            identity,
+            profile,
+            webRtcPeerEngine = AndroidWebRtcPeerEngine(applicationContext),
+        )
         session.addListener(
             object : FailoverRemoteSession.Listener {
                 override fun onPhaseChanged(phase: RemoteConnectionPhase, carrier: TransportKind?, epoch: Int) {

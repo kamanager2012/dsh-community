@@ -26,6 +26,7 @@ import org.dsh.community.android.protocol.JsonObject
 import org.dsh.community.android.protocol.JsonString
 import org.dsh.community.android.protocol.OfficialSessionEvent
 import org.dsh.community.android.service.RemoteSessionService
+import org.dsh.community.android.transport.AndroidWebRtcPeerEngine
 import org.dsh.community.android.transport.DiscoveredLanHost
 import org.dsh.community.android.transport.FailoverRemoteSession
 import org.dsh.community.android.transport.PairingQrParser
@@ -380,6 +381,7 @@ class RemoteClientInstrumentationTest {
 
         val controlUrl = args.getString("dshControlUrl")?.trim().orEmpty()
         val controlToken = args.getString("dshControlToken")?.trim().orEmpty()
+        val emulatedStunUrl = args.getString("dshEmulatedStunUrl")?.trim().orEmpty()
         val explicitSessionId = args.getString("dshSessionId")?.trim().orEmpty().ifEmpty { "r6-accept-session" }
         assertFalse("dshControlUrl required", controlUrl.isEmpty())
         assertFalse("dshControlToken required", controlToken.isEmpty())
@@ -576,6 +578,75 @@ class RemoteClientInstrumentationTest {
             )
         } finally {
             relayOnlySession.close("stage2 dead-lan relay check done")
+        }
+
+        // 2b) Real Dead-LAN -> AndroidWebRtcPeerEngine DataChannel P2P <-> Host werift Noise IK E2EE
+        assertFalse("descriptor.signalingUrl required for WebRTC P2P acceptance", descriptor.signalingUrl.isNullOrBlank())
+        val webrtcStunUrls = emulatedStunUrl.takeIf { it.isNotEmpty() }?.let { listOf(it) }
+            ?: descriptor.stunUrls.orEmpty()
+        val deadLanToWebRtcProfile = RemoteEndpointProfile(
+            hostPublicKey = descriptor.hostPublicKeyBytes,
+            hostFingerprint = descriptor.hostFingerprint,
+            lanUrl = "ws://127.0.0.1:1",
+            signalingUrl = descriptor.signalingUrl,
+            signalingRoomId = descriptor.signalingRoomId ?: descriptor.hostFingerprint,
+            stunUrls = webrtcStunUrls,
+            relayUrl = null,
+            bootstrapToken = null,
+        )
+        val webRtcEngine = AndroidWebRtcPeerEngine(context, connectTimeoutMs = 12_000L)
+        val webrtcSession = FailoverRemoteSession(
+            primaryIdentity,
+            deadLanToWebRtcProfile,
+            webRtcPeerEngine = webRtcEngine,
+        )
+        try {
+            assertEquals(RemoteConnectionPhase.ACTIVE, webrtcSession.connect())
+            assertEquals(TransportKind.WEBRTC, webrtcSession.activeCarrier)
+            assertTrue(
+                "Expected recorded LAN failure before WebRTC P2P takeover",
+                webrtcSession.attemptErrors.any { it.kind == TransportKind.LAN },
+            )
+            assertTrue("WebRTC DataChannel E2EE ping must succeed", webrtcSession.ping())
+            assertTrue(
+                "WebRTC DataChannel attachSession must succeed",
+                webrtcSession.attachSession(explicitSessionId) is AttachResumeResult.Events,
+            )
+        } finally {
+            webrtcSession.close("stage2 dead-lan webrtc p2p check done")
+        }
+
+        // 2c) Dead-LAN + Dead-Signaling (AndroidWebRtcPeerEngine fail-closed) -> BlindRelayServer Failover
+        val deadLanDeadSigToRelayProfile = RemoteEndpointProfile(
+            hostPublicKey = descriptor.hostPublicKeyBytes,
+            hostFingerprint = descriptor.hostFingerprint,
+            lanUrl = "ws://127.0.0.1:1",
+            signalingUrl = "ws://127.0.0.1:2",
+            signalingRoomId = descriptor.signalingRoomId ?: descriptor.hostFingerprint,
+            stunUrls = emptyList(),
+            relayUrl = descriptor.relayUrl,
+            relayRoomId = descriptor.relayRoomId ?: descriptor.hostFingerprint,
+            bootstrapToken = null,
+        )
+        val multiHopFallbackSession = FailoverRemoteSession(
+            primaryIdentity,
+            deadLanDeadSigToRelayProfile,
+            webRtcPeerEngine = AndroidWebRtcPeerEngine(context, connectTimeoutMs = 4_000L),
+        )
+        try {
+            assertEquals(RemoteConnectionPhase.ACTIVE, multiHopFallbackSession.connect())
+            assertEquals(TransportKind.RELAY, multiHopFallbackSession.activeCarrier)
+            assertTrue(
+                "Expected recorded LAN failure",
+                multiHopFallbackSession.attemptErrors.any { it.kind == TransportKind.LAN },
+            )
+            assertTrue(
+                "Expected recorded WEBRTC failure before Relay fallback",
+                multiHopFallbackSession.attemptErrors.any { it.kind == TransportKind.WEBRTC },
+            )
+            assertTrue("Fallback Relay E2EE ping must succeed", multiHopFallbackSession.ping())
+        } finally {
+            multiHopFallbackSession.close("stage2 dead-lan + dead-webrtc relay fallback check done")
         }
 
         // 3) Isolated live peer.revoked notification & retry halt (keeps primaryIdentity unrevoked for host harness)

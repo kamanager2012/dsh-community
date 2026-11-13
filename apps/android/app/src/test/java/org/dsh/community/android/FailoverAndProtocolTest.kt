@@ -3,8 +3,10 @@ package org.dsh.community.android
 import org.dsh.community.android.protocol.InboundHostFrame
 import org.dsh.community.android.protocol.RemoteFrameCodec
 import org.dsh.community.android.service.BackoffPolicy
+import org.dsh.community.android.transport.AndroidWebRtcPeerEngine
 import org.dsh.community.android.transport.DataChannelChunkCodec
 import org.dsh.community.android.transport.PeerRevokedException
+import org.dsh.community.android.transport.TransportUnavailableException
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -70,5 +72,23 @@ class FailoverAndProtocolTest {
 
         val ex = PeerRevokedException(revoked.reason)
         assertTrue(ex.message!!.contains("admin revoked tablet"))
+    }
+
+    @Test
+    fun androidWebRtcConfigValidatorsFailClosedWithoutThirdPartyFallbacks() {
+        assertEquals(emptyList<String>(), AndroidWebRtcPeerEngine.validateSelfOwnedStunUrls(emptyList()))
+        assertEquals(
+            listOf("stun:10.0.2.2:3478"),
+            AndroidWebRtcPeerEngine.validateSelfOwnedStunUrls(listOf(" stun:10.0.2.2:3478 ")),
+        )
+        assertThrows(TransportUnavailableException::class.java) {
+            AndroidWebRtcPeerEngine.validateSelfOwnedStunUrls(listOf("turn:turn.example.org:3478"))
+        }
+        assertThrows(TransportUnavailableException::class.java) {
+            AndroidWebRtcPeerEngine.validateSignalingUrl("http://127.0.0.1:8788")
+        }
+        assertThrows(TransportUnavailableException::class.java) {
+            AndroidWebRtcPeerEngine.validateRoomId("   ")
+        }
     }
 }
