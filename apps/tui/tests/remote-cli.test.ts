@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve, sep } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -184,6 +184,13 @@ describe('dsh-community remote CLI routing and subcommands', () => {
     const dshHome = join(root, 'official-dsh-home')
     const configDir = join(root, 'community-remote-config')
     const binPath = resolve(import.meta.dirname, '..', 'dist', 'bin.js')
+    if (!existsSync(binPath)) {
+      const buildRes = spawnSync('pnpm', ['build'], {
+        cwd: resolve(import.meta.dirname, '..'),
+        encoding: 'utf8',
+      })
+      expect(buildRes.status, buildRes.stderr).toBe(0)
+    }
     const childEnv: NodeJS.ProcessEnv = {
       ...process.env,
       DSH_HOME: dshHome,
@@ -195,7 +202,7 @@ describe('dsh-community remote CLI routing and subcommands', () => {
       env: childEnv,
       encoding: 'utf8',
     })
-    expect(helpRes.status).toBe(0)
+    expect(helpRes.status, helpRes.stderr).toBe(0)
     expect(helpRes.stdout).toBe(COMMUNITY_REMOTE_HELP)
 
     const statusRes = spawnSync(process.execPath, [binPath, 'remote', 'status', '--json'], {
