@@ -24,6 +24,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
@@ -320,16 +321,42 @@ class FailoverRemoteSession(
     }
 
     private fun closeCurrentTransportOnly(reason: String) {
+        closeMatchingTransport(expectedTransport = null, expectedNoise = null, reason = reason)
+    }
+
+    private fun closeMatchingTransport(
+        expectedTransport: RemoteClientTransport?,
+        expectedNoise: NoiseIkClient?,
+        reason: String,
+        failureError: Throwable? = null,
+    ) {
+        val transportToClose: RemoteClientTransport?
+        val noiseToClose: NoiseIkClient?
+        val failPending: Boolean
         synchronized(sessionLock) {
-            activeTransport?.close(reason)
-            activeTransport = null
-            noiseSession?.close()
-            noiseSession = null
-            activeCarrier = null
-            val err = IOException("transport closed: $reason")
-            for ((id, future) in pendingRpc.entries) {
-                if (pendingRpc.remove(id, future)) {
-                    future.completeExceptionally(err)
+            val matchesTransport = expectedTransport == null || activeTransport === expectedTransport
+            val matchesNoise = expectedNoise == null || noiseSession === expectedNoise
+            transportToClose = expectedTransport ?: activeTransport
+            noiseToClose = expectedNoise ?: noiseSession
+            if (matchesTransport) {
+                activeTransport = null
+                activeCarrier = null
+            }
+            if (matchesNoise) {
+                noiseSession = null
+            }
+            failPending = matchesTransport
+        }
+        try {
+            transportToClose?.close(reason)
+        } finally {
+            noiseToClose?.close()
+            if (failPending) {
+                val err = failureError ?: IOException("transport closed: $reason")
+                for ((id, future) in pendingRpc.entries) {
+                    if (pendingRpc.remove(id, future)) {
+                        future.completeExceptionally(err)
+                    }
                 }
             }
         }
@@ -381,24 +408,24 @@ class FailoverRemoteSession(
 
     private fun connectSingleTransport(transport: RemoteClientTransport) {
         closeCurrentTransportOnly("switching transport")
-        synchronized(sessionLock) {
-            phase = RemoteConnectionPhase.CONNECTING
-            activeCarrier = transport.kind
-        }
-        notifyPhase()
-
         val noise = NoiseIkClient(
             localStaticKeyPair = identity.keyPair,
             remoteHostStaticPublicKey = profile.hostPublicKey,
         )
-        noiseSession = noise
-        activeTransport = transport
+        synchronized(sessionLock) {
+            phase = RemoteConnectionPhase.CONNECTING
+            activeCarrier = transport.kind
+            noiseSession = noise
+            activeTransport = transport
+        }
         requestSeq.set(0)
+        notifyPhase()
 
         val stage = AtomicReference(HandshakeStage.WAIT_MSG2)
         val latch = CountDownLatch(1)
         val handshakeError = AtomicReference<Throwable?>(null)
         val initialPhase = AtomicReference(RemoteConnectionPhase.CONNECTING)
+        val revokedThisAttempt = AtomicBoolean(false)
 
         val callbacks = object : RemoteTransportCallbacks {
             override fun onBinaryFrame(frame: ByteArray) {
@@ -417,9 +444,16 @@ class FailoverRemoteSession(
                             val pt = noise.decrypt(frame)
                             val parsed = RemoteFrameCodec.decodeHostFrame(String(pt, StandardCharsets.UTF_8))
                             if (parsed is InboundHostFrame.PeerRevoked) {
-                                applyPeerRevoked(parsed.reason)
+                                revokedThisAttempt.set(true)
                                 val err = PeerRevokedException(parsed.reason)
                                 handshakeError.compareAndSet(null, err)
+                                closeMatchingTransport(
+                                    expectedTransport = transport,
+                                    expectedNoise = noise,
+                                    reason = "peer revoked",
+                                    failureError = err,
+                                )
+                                applyPeerRevoked(parsed.reason)
                                 latch.countDown()
                                 return
                             }
@@ -451,14 +485,15 @@ class FailoverRemoteSession(
                         }
                     }
                     HandshakeStage.READY -> {
-                        handleActiveBinaryFrame(noise, frame)
+                        handleActiveBinaryFrame(transport, noise, frame, revokedThisAttempt)
                     }
                 }
             }
 
             override fun onClosed(reason: String) {
                 if (stage.get() != HandshakeStage.READY) {
-                    val err = if (reason.contains("revoked", ignoreCase = true)) {
+                    val err = if (revokedThisAttempt.get() || reason.contains("revoked", ignoreCase = true)) {
+                        revokedThisAttempt.set(true)
                         if (!revokedByHost) {
                             applyPeerRevoked(reason)
                         }
@@ -468,7 +503,7 @@ class FailoverRemoteSession(
                     }
                     handshakeError.compareAndSet(null, err)
                     latch.countDown()
-                } else if (!revokedByHost) {
+                } else if (!revokedThisAttempt.get() && !revokedByHost && activeTransport === transport) {
                     val err = IOException("remote channel closed: $reason")
                     for ((id, future) in pendingRpc.entries) {
                         if (pendingRpc.remove(id, future)) {
@@ -483,7 +518,7 @@ class FailoverRemoteSession(
                 if (stage.get() != HandshakeStage.READY) {
                     handshakeError.compareAndSet(null, error)
                     latch.countDown()
-                } else {
+                } else if (!revokedThisAttempt.get() && activeTransport === transport) {
                     for ((id, future) in pendingRpc.entries) {
                         if (pendingRpc.remove(id, future)) {
                             future.completeExceptionally(error)
@@ -504,19 +539,28 @@ class FailoverRemoteSession(
             handshakeError.get()?.let { throw it }
             notifyPhase()
         } catch (t: Throwable) {
-            transport.close("handshake failure")
-            noise.close()
-            if (activeTransport === transport) activeTransport = null
-            if (noiseSession === noise) noiseSession = null
+            closeMatchingTransport(
+                expectedTransport = transport,
+                expectedNoise = noise,
+                reason = "handshake failure",
+                failureError = t,
+            )
             throw t
         }
     }
 
-    private fun handleActiveBinaryFrame(noise: NoiseIkClient, frame: ByteArray) {
+    private fun handleActiveBinaryFrame(
+        transport: RemoteClientTransport,
+        noise: NoiseIkClient,
+        frame: ByteArray,
+        revokedThisAttempt: AtomicBoolean,
+    ) {
         val pt = try {
             noise.decrypt(frame)
         } catch (t: Throwable) {
-            close("ciphertext verification failed: ${t.message}")
+            if (!revokedThisAttempt.get() && activeTransport === transport) {
+                close("ciphertext verification failed: ${t.message}")
+            }
             return
         }
         val decoded = try {
@@ -536,8 +580,7 @@ class FailoverRemoteSession(
                     if (id != null) {
                         pendingRpc.remove(id)?.completeExceptionally(err)
                     }
-                    applyPeerRevoked(decoded.error.message)
-                    closeCurrentTransportOnly("peer revoked")
+                    handleRevokedInActiveFrame(transport, noise, decoded.error.message, revokedThisAttempt)
                 } else if (id != null) {
                     pendingRpc.remove(id)?.completeExceptionally(decoded.error)
                 }
@@ -551,17 +594,36 @@ class FailoverRemoteSession(
                 listeners.forEach { it.onStreamReset(decoded.sessionId, decoded.reason) }
             }
             is InboundHostFrame.PeerRevoked -> {
-                val err = PeerRevokedException(decoded.reason)
-                for ((id, future) in pendingRpc.entries) {
-                    if (pendingRpc.remove(id, future)) {
-                        future.completeExceptionally(err)
-                    }
-                }
-                applyPeerRevoked(decoded.reason)
-                closeCurrentTransportOnly("peer revoked")
+                handleRevokedInActiveFrame(transport, noise, decoded.reason, revokedThisAttempt)
             }
             is InboundHostFrame.HandshakeComplete -> Unit
         }
+    }
+
+    private fun handleRevokedInActiveFrame(
+        transport: RemoteClientTransport,
+        noise: NoiseIkClient,
+        reason: String,
+        revokedThisAttempt: AtomicBoolean,
+    ) {
+        val resolved = reason.ifBlank { "device revoked by host" }
+        val err = PeerRevokedException(resolved)
+        revokedThisAttempt.set(true)
+        synchronized(sessionLock) {
+            revokedByHost = true
+            revokedReason = resolved
+            phase = RemoteConnectionPhase.REVOKED
+        }
+        // Tear down this transport and Noise session BEFORE notifying listeners so an immediate
+        // reconnect triggered by onPeerRevoked cannot have its fresh session closed by cleanup.
+        closeMatchingTransport(
+            expectedTransport = transport,
+            expectedNoise = noise,
+            reason = "peer revoked",
+            failureError = err,
+        )
+        notifyPhase()
+        listeners.forEach { it.onPeerRevoked(resolved) }
     }
 
     private fun applyPeerRevoked(reason: String) {
