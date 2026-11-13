@@ -4,7 +4,7 @@ import { spawn } from 'node:child_process'
 import { existsSync, mkdtempSync, mkdirSync, rmSync } from 'node:fs'
 import { createConnection } from 'node:net'
 import { tmpdir } from 'node:os'
-import { resolve } from 'node:path'
+import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const DEVTOOLS_RE = /DevTools listening on (ws:\/\/[^\s]+)/u
@@ -151,7 +151,7 @@ async function assertTcpRefused(urlString, timeoutMs = 10_000) {
   throw new Error(`Expected TCP endpoint to be stopped/refused, but ${urlString} still accepted connections`)
 }
 
-async function connectCdp(wsUrl, { onRuntimeError } = {}) {
+async function connectCdp(wsUrl, { onRuntimeError = undefined } = {}) {
   const ws = new WebSocket(wsUrl)
   await new Promise((resolveOpen, rejectOpen) => {
     const timer = setTimeout(() => rejectOpen(new Error(`CDP WebSocket open timeout: ${wsUrl}`)), 10_000)
@@ -161,7 +161,8 @@ async function connectCdp(wsUrl, { onRuntimeError } = {}) {
     }, { once: true })
     ws.addEventListener('error', (ev) => {
       clearTimeout(timer)
-      rejectOpen(new Error(`CDP WebSocket open error: ${String(ev?.message ?? ev)}`))
+      const detail = ev && typeof ev === 'object' && 'message' in ev ? ev.message : ev
+      rejectOpen(new Error(`CDP WebSocket open error: ${String(detail)}`))
     }, { once: true })
   })
 
@@ -586,6 +587,9 @@ export async function runAppImageGuiSmoke({ executable, timeoutMs = 90_000 }) {
     if (stdoutLines.length > 0) {
       process.stderr.write(`--- Electron stdout tail ---\n${stdoutLines.join('')}\n`)
     }
+    if (error && typeof error === 'object') {
+      Object.assign(error, { loggedBySmoke: true })
+    }
     throw error
   } finally {
     pageCdp?.close()
@@ -601,7 +605,10 @@ export async function runAppImageGuiSmoke({ executable, timeoutMs = 90_000 }) {
 const isEntrypoint = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 if (isEntrypoint) {
   const args = parseSmokeArgs(process.argv.slice(2))
-  runAppImageGuiSmoke(args).catch(() => {
+  runAppImageGuiSmoke(args).catch((error) => {
+    if (!error || typeof error !== 'object' || !('loggedBySmoke' in error)) {
+      process.stderr.write(`[gui-smoke] FAIL: ${error instanceof Error ? error.stack ?? error.message : String(error)}\n`)
+    }
     process.exitCode = 1
   })
 }

@@ -1,7 +1,11 @@
 import { Buffer } from 'node:buffer'
+import { execFile } from 'node:child_process'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { promisify } from 'node:util'
 import { describe, expect, it } from 'vitest'
+
+const execFileAsync = promisify(execFile)
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..')
 const SMOKE_SCRIPT_PATH = resolve(ROOT, 'scripts/linux-appimage-gui-smoke.mjs')
@@ -10,12 +14,14 @@ const {
   findOfficialWebOrigin,
   parseDevToolsWsUrl,
   parseSmokeArgs,
+  runAppImageGuiSmoke,
   selectMainShellTarget,
   validateRemotePairingDeepLink,
 } = (await import(pathToFileURL(SMOKE_SCRIPT_PATH).href)) as {
   findOfficialWebOrigin: (targets: unknown) => string | undefined
   parseDevToolsWsUrl: (text: string) => string | undefined
   parseSmokeArgs: (argv: string[]) => { executable: string; timeoutMs: number }
+  runAppImageGuiSmoke: (opts: { executable: string; timeoutMs?: number }) => Promise<void>
   selectMainShellTarget: (targets: unknown) => { webSocketDebuggerUrl?: string } | undefined
   validateRemotePairingDeepLink: (
     deepLink: string,
@@ -73,5 +79,27 @@ describe('linux-appimage-gui-smoke helpers', () => {
         JSON.stringify({ ...payload, token: 'different-token-value' }),
       ),
     ).toThrow(/Mismatch/)
+  })
+
+  it('reports pre-launch and early-exit failures with diagnostics rather than failing silently', async () => {
+    await expect(runAppImageGuiSmoke({ executable: '/nonexistent/dsh-community' })).rejects.toThrow(
+      /Packaged executable not found/,
+    )
+    // Passing node as a dummy executable exercises sandbox/env setup, spawn, early-exit capture, and cleanup.
+    await expect(runAppImageGuiSmoke({ executable: process.execPath, timeoutMs: 5_000 })).rejects.toThrow(
+      /AppImage binary exited early/,
+    )
+
+    let stderr = ''
+    try {
+      await execFileAsync(process.execPath, [SMOKE_SCRIPT_PATH, '--executable', '/nonexistent/dsh-community'])
+      throw new Error('Expected CLI invocation with missing executable to exit non-zero')
+    } catch (error) {
+      const err = error as { code?: number; stderr?: string }
+      expect(err.code).toBe(1)
+      stderr = String(err.stderr ?? '')
+    }
+    expect(stderr).toContain('[gui-smoke] FAIL:')
+    expect(stderr).toContain('Packaged executable not found')
   })
 })
