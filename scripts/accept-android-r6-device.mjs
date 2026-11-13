@@ -398,6 +398,7 @@ async function main() {
     configDir,
     cwd: ROOT,
     carrier: {
+      enabled: true,
       host: '127.0.0.1',
       port: 0,
     },

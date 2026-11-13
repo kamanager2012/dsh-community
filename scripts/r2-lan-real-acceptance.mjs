@@ -61,7 +61,7 @@ const runtime = new RemoteHostRuntime({
       maxFrameBytes: 64 * 1024,
       maxHandshakeBytes: 1024,
       maxBufferedEventBytes: 256 * 1024,
-      handshakeTimeoutMs: 300,
+      handshakeTimeoutMs: 500,
       idleTimeoutMs: 5_000,
     },
   },
@@ -92,7 +92,7 @@ const child = spawn(
     'netns',
     'exec',
     clientNetns,
-    'node',
+    process.execPath,
     'scripts/r2-lan-real-client.mjs',
   ],
   {
