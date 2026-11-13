@@ -24,6 +24,33 @@ const common = {
   alias,
 }
 
+// Keep prebuilds/ without any directory named `node_modules` so electron-builder
+// extraResources never drops runtime files via its top-level node_modules filter.
+const sodiumBindingPlugin = {
+  name: 'sodium-native-prebuild',
+  setup(build) {
+    build.onLoad({ filter: /[/\\]sodium-native[/\\]binding\.js$/ }, () => ({
+      contents:
+        "module.exports = __dshLoadAddon('./prebuilds/' + process.platform + '-' + process.arch + '/sodium-native.node');",
+      loader: 'js',
+    }))
+  },
+}
+
+const mainBannerJs = [
+  "import { createRequire as __dshCreateRequire } from 'node:module';",
+  "import { existsSync as __dshExistsSync } from 'node:fs';",
+  "import { dirname as __dshDirname, join as __dshJoin } from 'node:path';",
+  "import { fileURLToPath as __dshFileURLToPath } from 'node:url';",
+  'const require = __dshCreateRequire(import.meta.url);',
+  'const __dshMainDir = __dshDirname(__dshFileURLToPath(import.meta.url));',
+  'const __dshLoadAddon = (relPath) => {',
+  "  const candidates = [process.resourcesPath ? __dshJoin(process.resourcesPath, 'remote', relPath) : '', __dshJoin(__dshMainDir, '..', 'remote-bundle', relPath)].filter(Boolean);",
+  '  for (const candidate of candidates) { if (__dshExistsSync(candidate)) return require(candidate); }',
+  '  throw new Error(`Missing sodium-native.node for desktop main (checked: ${candidates.join(", ")})`);',
+  '};',
+].join(' ')
+
 function resolvePackageDir(startDir, packageName) {
   let cur = realpathSync(startDir)
   for (;;) {
@@ -37,14 +64,14 @@ function resolvePackageDir(startDir, packageName) {
   }
 }
 
-async function stageRemoteBundle() {
-  const remoteOut = join(appRoot, 'remote-bundle')
+async function stageRemoteBundle(outputRoot = appRoot) {
+  const remoteOut = join(outputRoot, 'remote-bundle')
   await rm(remoteOut, { recursive: true, force: true })
   await mkdir(remoteOut, { recursive: true })
 
   // Remove stale legacy output if present from earlier builds.
-  await rm(join(appRoot, 'dist', 'remote-cordis-plugin.mjs'), { force: true })
-  await rm(join(appRoot, 'dist', 'remote-cordis-plugin.mjs.map'), { force: true })
+  await rm(join(outputRoot, 'dist', 'remote-cordis-plugin.mjs'), { force: true })
+  await rm(join(outputRoot, 'dist', 'remote-cordis-plugin.mjs.map'), { force: true })
 
   const targetPrebuild = `${process.platform}-${process.arch}`
   const remoteAdapterDir = resolve(workspace, 'packages/remote-adapter')
@@ -54,19 +81,6 @@ async function stageRemoteBundle() {
   const addonSource = join(sodiumNativeDir, 'prebuilds', targetPrebuild, 'sodium-native.node')
   if (!existsSync(addonSource)) {
     throw new Error(`Missing sodium-native prebuild at ${addonSource}`)
-  }
-
-  // Keep prebuilds/ without any directory named `node_modules` so electron-builder
-  // extraResources never drops runtime files via its top-level node_modules filter.
-  const sodiumBindingPlugin = {
-    name: 'sodium-native-prebuild',
-    setup(build) {
-      build.onLoad({ filter: /[/\\]sodium-native[/\\]binding\.js$/ }, () => ({
-        contents:
-          "module.exports = __dshLoadAddon('./prebuilds/' + process.platform + '-' + process.arch + '/sodium-native.node');",
-        loader: 'js',
-      }))
-    },
   }
 
   await esbuild.build({
@@ -88,16 +102,30 @@ async function stageRemoteBundle() {
   await cp(addonSource, join(prebuildDest, 'sodium-native.node'))
 }
 
-await Promise.all([
-  esbuild.build({
-    ...common,
-    entryPoints: ['src/main.ts'],
-    outfile: 'dist/main.js',
-  }),
-  esbuild.build({
-    ...common,
-    entryPoints: ['src/preload.ts'],
-    outfile: 'dist/preload.js',
-  }),
-  stageRemoteBundle(),
-])
+export async function buildDesktopBundles(outputRoot = appRoot) {
+  const distDir = join(outputRoot, 'dist')
+  await mkdir(distDir, { recursive: true })
+  await Promise.all([
+    esbuild.build({
+      ...common,
+      entryPoints: ['src/main.ts'],
+      outfile: join(distDir, 'main.js'),
+      plugins: [sodiumBindingPlugin],
+      banner: {
+        js: mainBannerJs,
+      },
+    }),
+    esbuild.build({
+      ...common,
+      entryPoints: ['src/preload.ts'],
+      outfile: join(distDir, 'preload.js'),
+    }),
+    stageRemoteBundle(outputRoot),
+  ])
+}
+
+const isEntrypoint =
+  process.argv[1] && realpathSync(resolve(process.argv[1])) === realpathSync(fileURLToPath(import.meta.url))
+if (isEntrypoint) {
+  await buildDesktopBundles()
+}
