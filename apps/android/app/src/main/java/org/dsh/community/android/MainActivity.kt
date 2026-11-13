@@ -50,6 +50,8 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
     private var pendingCallId: String? = null
     private var pendingQuestionId: String? = null
     private var pendingDeepLinkInput: String? = null
+    private var stickyStatusError: String? = null
+    private var lastHandledIntentRef: Intent? = null
     private var attachedSessionId: String? = null
     private var lastSessions: List<SessionRef> = emptyList()
     private val streamBuffer = StringBuilder()
@@ -104,7 +106,8 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
         findViewById<Button>(R.id.btn_connect).setOnClickListener {
             val raw = pairingInput.text.toString().trim()
             if (raw.isNotEmpty()) {
-                service?.connectWithPairingJson(raw)
+                stickyStatusError = null
+                service?.connectWithPairingInput(raw)
             }
         }
 
@@ -197,7 +200,15 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
         message: String,
     ) {
         runOnUiThread {
-            statusView.text = "[$phase] carrier=${carrier?.wireName ?: "-"} epoch=$epoch — $message"
+            if (phase != RemoteConnectionPhase.DISCONNECTED) {
+                stickyStatusError = null
+            }
+            val sticky = stickyStatusError
+            statusView.text = if (phase == RemoteConnectionPhase.DISCONNECTED && sticky != null) {
+                sticky
+            } else {
+                "[$phase] carrier=${carrier?.wireName ?: "-"} epoch=$epoch — $message"
+            }
             val backingLabel = lastIdentity?.backing ?: "Keystore-wrapped"
             deviceIdView.text = "Device ID ($backingLabel): $deviceId"
         }
@@ -289,12 +300,15 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
     }
 
     private fun handleIncomingIntent(incoming: Intent?) {
-        if (incoming?.action != Intent.ACTION_VIEW) return
+        if (incoming == null || incoming === lastHandledIntentRef) return
+        if (incoming.action != Intent.ACTION_VIEW) return
         val uri = incoming.data ?: return
         if (!"dsh-remote".equals(uri.scheme, ignoreCase = true)) return
+        lastHandledIntentRef = incoming
         val uriString = uri.toString()
         try {
             val descriptor = PairingQrParser.parseInput(uriString)
+            stickyStatusError = null
             pairingInput.setText(uriString)
             appendLog("Deep-link validated (fp=${descriptor.hostFingerprint.take(12)}..., endpoint=${descriptor.endpointUrl})")
             val svc = service
@@ -304,9 +318,10 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
             } else {
                 pendingDeepLinkInput = uriString
             }
-            setIntent(Intent(this, MainActivity::class.java))
         } catch (t: Throwable) {
-            statusView.text = "[REJECTED] Invalid dsh-remote link: ${t.message}"
+            val rejectedBanner = "[REJECTED] Invalid dsh-remote link: ${t.message}"
+            stickyStatusError = rejectedBanner
+            statusView.text = rejectedBanner
             appendLog("Rejected dsh-remote link: ${t.message}")
         }
     }
