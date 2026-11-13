@@ -20,3 +20,40 @@ This is the first-party Android endpoint source for DSH Community.
   ```
 - Gradle JVM tests + `androidTest` APK + `x86_64` KVM emulator instrumentation: `.github/workflows/android-remote-acceptance.yml`
 - Boundary rules: [Remote Host-Client Architecture](../../docs/remote-host-client.md), [Android Endpoint (EN)](../../docs/android-endpoint.en.md), [中文](../../docs/android-endpoint.md)
+
+## Qualcomm (`arm64-v8a`) Sideload Signing & R6 Evidence Merge
+
+Stock Qualcomm Snapdragon Android phones refuse to sideload `app-release-unsigned.apk` unless signed with an APK v2/v3 release key. To keep all secrets outside Git while supporting slim sideload APKs:
+
+1. **Build a slim signed `arm64-v8a` Release APK** (cuts native WebRTC `.so` payload from 4 ABIs down to `arm64-v8a`):
+
+   ```bash
+   cd apps/android
+   export DSH_ANDROID_SIGNING_REQUIRED=true
+   export DSH_ANDROID_KEYSTORE_PATH=/secure/path/to/dsh-release.p12
+   export DSH_ANDROID_KEYSTORE_PASSWORD='***'
+   export DSH_ANDROID_KEY_ALIAS='dsh-release'
+   export DSH_ANDROID_KEY_PASSWORD='***'
+   gradle --no-daemon -PdshAbiFilters=arm64-v8a :app:assembleRelease
+   ```
+
+   - Partial signing configuration or `DSH_ANDROID_SIGNING_REQUIRED=true` without all four inputs fails Gradle configuration immediately.
+   - Verify signature before sideloading (`apksigner verify --verbose app/build/outputs/apk/release/app-release.apk`).
+
+2. **Run R6 hardware acceptance on a connected Qualcomm (`arm64-v8a`) phone and combine with CI `x86_64` emulator evidence**:
+
+   ```bash
+   node scripts/accept-android-r6-device.mjs \
+     --serial <adb-serial> \
+     --emulator-report /path/to/r6-emulator-acceptance.json \
+     --output apps/android/evidence/reality-gate.json
+   ```
+
+   Or merge two separately captured reports via:
+
+   ```bash
+   node scripts/merge-android-r6-evidence.mjs \
+     --arm64 /path/to/r6-arm64.json \
+     --emulator /path/to/r6-emulator-acceptance.json \
+     --out apps/android/evidence/reality-gate.json
+   ```

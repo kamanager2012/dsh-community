@@ -20,6 +20,10 @@ import {
   SelfHostedStunServer,
   createBridgeControlServer,
 } from '../packages/remote-adapter/dist/index.js'
+import {
+  mergeAndroidR6Evidence,
+  validateX86_64EmulatorReport,
+} from './merge-android-r6-evidence.mjs'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const DEFAULT_APK = resolve(ROOT, 'apps/android/app/build/outputs/apk/debug/app-debug.apk')
@@ -39,11 +43,12 @@ function printHelp() {
       'Usage: node scripts/accept-android-r6-device.mjs [options]',
       '',
       'Options:',
-      '  --serial <id>      Target ADB device serial (defaults to $ANDROID_SERIAL or sole connected device)',
-      '  --apk <path>       Debug APK path (default: apps/android/app/build/outputs/apk/debug/app-debug.apk)',
-      '  --test-apk <path>  androidTest APK path',
-      '  --output <path>    JSON acceptance report path (default: apps/android/app/build/r6-device-acceptance.json)',
-      '  -h, --help         Show help',
+      '  --serial <id>           Target ADB device serial (defaults to $ANDROID_SERIAL or sole connected device)',
+      '  --apk <path>            Debug APK path (default: apps/android/app/build/outputs/apk/debug/app-debug.apk)',
+      '  --test-apk <path>       androidTest APK path',
+      '  --output <path>         JSON acceptance report path (default: apps/android/app/build/r6-device-acceptance.json)',
+      '  --emulator-report <path> Verified CI x86_64 emulator JSON report to merge on physical arm64-v8a hardware',
+      '  -h, --help              Show help',
       '',
     ].join('\n'),
   )
@@ -54,6 +59,7 @@ function parseArgs(argv) {
   let apk = DEFAULT_APK
   let testApk = DEFAULT_TEST_APK
   let output = DEFAULT_OUTPUT
+  let emulatorReportPath
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]
@@ -80,11 +86,18 @@ function parseArgs(argv) {
       testApk = next()
     } else if (arg === '--output') {
       output = next()
+    } else if (arg === '--emulator-report') {
+      emulatorReportPath = next()
     } else {
       throw new Error(`Unknown option: ${arg}`)
     }
   }
-  return { serial, apk, testApk, output }
+  let emulatorReport
+  if (emulatorReportPath) {
+    emulatorReport = JSON.parse(readFileSync(emulatorReportPath, 'utf8'))
+    validateX86_64EmulatorReport(emulatorReport)
+  }
+  return { serial, apk, testApk, output, emulatorReport }
 }
 
 function shQuote(value) {
@@ -498,6 +511,11 @@ async function main() {
   logStep(
     `Connected target=${serial} abi=${deviceInfo.abi} sdk=${deviceInfo.sdk} isEmulator=${deviceInfo.isEmulator} physicalArm64=${deviceInfo.isPhysicalArm64}`,
   )
+  if (opts.emulatorReport && !deviceInfo.isPhysicalArm64) {
+    throw new Error(
+      `--emulator-report may only be merged when running against physical arm64-v8a hardware (got abi=${deviceInfo.abi}, isEmulator=${deviceInfo.isEmulator})`,
+    )
+  }
 
   const tempRoot = mkdtempSync(join(tmpdir(), 'dsh-android-r6-'))
   const dshHome = join(tempRoot, 'official-dsh-home')
@@ -730,9 +748,13 @@ async function main() {
         : 'Executed on Android emulator / non-arm64 target; arm64RealDeviceSmoke remains false and release gate stays blocked until physical arm64 hardware acceptance runs.',
     }
 
+    const finalReport = opts.emulatorReport
+      ? mergeAndroidR6Evidence(report, opts.emulatorReport)
+      : report
+
     mkdirSync(dirname(opts.output), { recursive: true })
-    writeFileSync(opts.output, `${JSON.stringify(report, null, 2)}\n`, 'utf8')
-    process.stdout.write(`${JSON.stringify(report, null, 2)}\n`)
+    writeFileSync(opts.output, `${JSON.stringify(finalReport, null, 2)}\n`, 'utf8')
+    process.stdout.write(`${JSON.stringify(finalReport, null, 2)}\n`)
     logStep(`Report written cleanly to ${opts.output}`)
   } catch (err) {
     try {
