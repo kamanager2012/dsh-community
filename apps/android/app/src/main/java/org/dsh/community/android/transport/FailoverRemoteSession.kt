@@ -85,7 +85,7 @@ enum class RemoteConnectionPhase {
 }
 
 class PeerRevokedException(val reason: String) :
-    SecurityException("device revoked by host: $reason")
+    IOException("device revoked by host: $reason")
 
 data class TransportFailureRecord(
     val kind: TransportKind,

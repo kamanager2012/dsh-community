@@ -25,6 +25,7 @@ import org.dsh.community.android.protocol.JsonCodec
 import org.dsh.community.android.protocol.JsonObject
 import org.dsh.community.android.protocol.JsonString
 import org.dsh.community.android.protocol.OfficialSessionEvent
+import org.dsh.community.android.service.RemoteSessionService
 import org.dsh.community.android.transport.DiscoveredLanHost
 import org.dsh.community.android.transport.FailoverRemoteSession
 import org.dsh.community.android.transport.PairingQrParser
