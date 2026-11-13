@@ -1,5 +1,6 @@
+import { createServer } from 'node:http'
 import { spawn, spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, rmSync, statSync } from 'node:fs'
+import { chmodSync, existsSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve, sep } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -414,5 +415,63 @@ async function spawnCliUntilReadyJson<T>(
     const missingKeyCode = await runRemoteCommand(['start', '--qr'], {})
     expect(missingKeyCode).toBe(2)
     expect(io.stderr()).not.toContain('未知参数')
+  })
+
+  it('routes remote revoke through live .control.json endpoint when running host control server answers', async () => {
+    const root = makeTempDir('dsh-remote-cli-live-revoke-')
+    const dshHome = join(root, 'official-dsh-home')
+    const configDir = join(root, 'community-remote-config')
+    const stores = openPersistentRemoteStores({ configDir, dshHome })
+    const hostPub = await stores.hostIdentityStore.getPublicIdentity()
+    const record = stores.trustStore.trustSync({
+      staticPublicKey: new Uint8Array(32).fill(12),
+      displayName: 'Live Revoke Phone',
+      grantedCapabilities: ['observe'],
+      trustDomainId: hostPub.trustDomainId,
+    })
+
+    const revokedIds: string[] = []
+    const token = 'test-live-control-token'
+    const server = createServer(async (req, res) => {
+      if (req.method === 'POST' && req.url === '/devices/revoke' && req.headers.authorization === `Bearer ${token}`) {
+        const chunks: Buffer[] = []
+        for await (const chunk of req) chunks.push(Buffer.from(chunk))
+        const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as { deviceId: string }
+        const ok = await stores.trustStore.revoke(body.deviceId)
+        revokedIds.push(body.deviceId)
+        res.writeHead(200, { 'content-type': 'application/json' })
+        res.end(JSON.stringify({ ok: true, revoked: ok, deviceId: body.deviceId }))
+        return
+      }
+      res.writeHead(404).end()
+    })
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()))
+
+    try {
+      const addr = server.address() as { port: number }
+      const controlPath = join(stores.configDir, '.control.json')
+      writeFileSync(
+        controlPath,
+        JSON.stringify({
+          pid: process.pid,
+          controlUrl: `http://127.0.0.1:${addr.port}`,
+          controlToken: token,
+        }),
+        { mode: 0o600 },
+      )
+      if (process.platform !== 'win32') chmodSync(controlPath, 0o600)
+
+      const io = captureOutputs()
+      const code = await runRemoteCommand(
+        ['revoke', record.deviceId],
+        { DSH_HOME: dshHome, DSH_REMOTE_CONFIG_DIR: configDir },
+        dshHome,
+      )
+      expect(code).toBe(0)
+      expect(revokedIds).toEqual([record.deviceId])
+      expect(io.stdout()).toContain('在线会话已断开')
+    } finally {
+      await new Promise<void>((r) => server.close(() => r()))
+    }
   })
 })

@@ -1,4 +1,6 @@
-import { chmodSync, writeFileSync } from 'node:fs'
+import { randomBytes } from 'node:crypto'
+import { chmodSync, renameSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import type { Capability } from './protocol.js'
 import type { HostLanCarrierOptions } from './carrier/lan-host.js'
 import type { HostRelayCarrierOptions } from './carrier/relay-host.js'
@@ -235,8 +237,10 @@ export function apply(ctx: OfficialCordisContextLike): () => void {
     }
 
     if (readyFile !== undefined) {
-      writeFileSync(readyFile, `${JSON.stringify(readyPayload)}\n`, { mode: 0o600 })
-      if (process.platform !== 'win32') chmodSync(readyFile, 0o600)
+      const readyTmp = join(dirname(readyFile), `.ready.${randomBytes(6).toString('hex')}.tmp`)
+      writeFileSync(readyTmp, `${JSON.stringify(readyPayload)}\n`, { mode: 0o600 })
+      if (process.platform !== 'win32') chmodSync(readyTmp, 0o600)
+      renameSync(readyTmp, readyFile)
     }
     if (emitReadyStdout) {
       process.stdout.write(`DSH_REMOTE_READY ${JSON.stringify(readyPayload)}\n`)

@@ -163,7 +163,6 @@ export class LanConnection {
   private setupSocketListeners(): void {
     this.socket.on('data', (chunk: Buffer) => {
       try {
-        this.channel.resetIdleTimeout()
         this.parser.push(chunk)
       } catch {
         this.terminate(1008, 'internal socket processing error')
@@ -194,6 +193,7 @@ export class LanConnection {
         if (!this.channel.canWriteControlBytes(frame.payload.byteLength)) {
           return
         }
+        this.channel.resetIdleTimeout()
         const pong = encodeWebSocketFrame(frame.payload, WebSocketOpcode.PONG)
         const done = this.channel.trackControlSend()
         this.socket.write(pong, () => done())
@@ -201,10 +201,12 @@ export class LanConnection {
       }
 
       case WebSocketOpcode.PONG: {
+        this.channel.resetIdleTimeout()
         return
       }
 
       case WebSocketOpcode.BINARY: {
+        this.channel.resetIdleTimeout()
         this.handlers?.onMessage(frame.payload)
         return
       }

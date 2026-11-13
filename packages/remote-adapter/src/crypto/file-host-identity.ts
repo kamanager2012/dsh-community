@@ -2,7 +2,6 @@ import {
   chmodSync,
   closeSync,
   constants,
-  copyFileSync,
   existsSync,
   fstatSync,
   fsyncSync,
@@ -348,6 +347,7 @@ export class FileHostIdentityStore implements HostIdentityStore {
     const journalPath = join(dir, '.' + base + '.journal')
     const backupPath = join(dir, '.' + base + '.committed')
     const targetTmp = join(dir, '.' + base + '.tmp.' + randomBytes(8).toString('hex'))
+    const backupTmp = join(dir, '.' + base + '.backup.tmp.' + randomBytes(8).toString('hex'))
     const committedJournalTmp = join(
       dir,
       '.' + base + '.journal.committed.' + randomBytes(8).toString('hex'),
@@ -360,14 +360,9 @@ export class FileHostIdentityStore implements HostIdentityStore {
       hasPriorCommit = existsSync(this.filePath)
 
       if (hasPriorCommit) {
-        copyFileSync(this.filePath, backupPath)
+        writeFileDurably(backupTmp, readFileSync(this.filePath, 'utf8'))
+        renameSync(backupTmp, backupPath)
         if (process.platform !== 'win32') chmodSync(backupPath, 0o600)
-        const backupFd = openSync(backupPath, 'r')
-        try {
-          fsyncSync(backupFd)
-        } finally {
-          closeSync(backupFd)
-        }
         fsyncDirectory(dir)
       }
 
@@ -391,7 +386,7 @@ export class FileHostIdentityStore implements HostIdentityStore {
       committed = true
     } catch (error) {
       if (!committed) {
-        for (const path of [targetTmp, committedJournalTmp]) {
+        for (const path of [backupTmp, targetTmp, committedJournalTmp]) {
           try {
             if (existsSync(path)) unlinkSync(path)
           } catch {}

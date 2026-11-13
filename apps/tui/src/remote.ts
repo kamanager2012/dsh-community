@@ -1,10 +1,11 @@
-import { spawn } from 'node:child_process'
+import { spawn, type ChildProcess } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { homedir, networkInterfaces, tmpdir, type NetworkInterfaceInfo } from 'node:os'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
+import { StringDecoder } from 'node:string_decoder'
 import { pathToFileURL } from 'node:url'
 import { officialApiKeyPresent, resolveOfficialDsh } from '@dsh-community/dsh-bridge'
 import { renderTerminalQr } from './terminal-qr.js'
@@ -324,16 +325,107 @@ async function waitForShutdownSignal(stopFn: () => Promise<void>): Promise<void>
   })
 }
 
-async function waitForReadyFile(filePath: string, timeoutMs = 25_000): Promise<Record<string, unknown>> {
-  const deadline = Date.now() + timeoutMs
-  while (Date.now() < deadline) {
-    if (existsSync(filePath)) {
-      const raw = readFileSync(filePath, 'utf8').trim()
-      if (raw.length > 0) return JSON.parse(raw) as Record<string, unknown>
+interface LiveControlEndpoint {
+  readonly pid: number
+  readonly controlUrl: string
+  readonly controlToken: string
+}
+
+function liveControlFilePath(configDir: string): string {
+  return join(configDir, '.control.json')
+}
+
+function writeLiveControlEndpoint(configDir: string, endpoint: LiveControlEndpoint): void {
+  const target = liveControlFilePath(configDir)
+  const tmp = join(configDir, `.control.${randomBytes(6).toString('hex')}.tmp`)
+  writeFileSync(tmp, `${JSON.stringify(endpoint)}\n`, { mode: 0o600 })
+  if (process.platform !== 'win32') chmodSync(tmp, 0o600)
+  renameSync(tmp, target)
+}
+
+function removeOwnLiveControlEndpoint(configDir: string): void {
+  const target = liveControlFilePath(configDir)
+  try {
+    if (!existsSync(target)) return
+    const parsed = JSON.parse(readFileSync(target, 'utf8')) as Partial<LiveControlEndpoint>
+    if (parsed.pid === process.pid) {
+      rmSync(target, { force: true })
     }
-    await new Promise((r) => setTimeout(r, 100))
+  } catch {}
+}
+
+function readLiveControlEndpoint(configDir: string): LiveControlEndpoint | undefined {
+  const target = liveControlFilePath(configDir)
+  try {
+    if (!existsSync(target)) return undefined
+    const parsed = JSON.parse(readFileSync(target, 'utf8')) as Partial<LiveControlEndpoint>
+    if (
+      typeof parsed.pid !== 'number' ||
+      !Number.isInteger(parsed.pid) ||
+      typeof parsed.controlUrl !== 'string' ||
+      typeof parsed.controlToken !== 'string' ||
+      !/^http:\/\/127\.0\.0\.1:\d+$/u.test(parsed.controlUrl)
+    ) {
+      return undefined
+    }
+    try {
+      process.kill(parsed.pid, 0)
+    } catch {
+      return undefined
+    }
+    return {
+      pid: parsed.pid,
+      controlUrl: parsed.controlUrl,
+      controlToken: parsed.controlToken,
+    }
+  } catch {
+    return undefined
   }
-  throw new Error('等待官方 DSH 远程宿主就绪超时')
+}
+
+async function fetchControl(url: string, init?: RequestInit): Promise<Response> {
+  return fetch(url, {
+    ...init,
+    signal: AbortSignal.timeout(10_000),
+  })
+}
+
+async function waitForReadyFile(
+  filePath: string,
+  child: ChildProcess,
+  timeoutMs = 25_000,
+): Promise<Record<string, unknown>> {
+  const deadline = Date.now() + timeoutMs
+  let earlyFailure: Error | undefined
+  const onExit = (code: number | null, signal: NodeJS.Signals | null): void => {
+    earlyFailure = new Error(
+      `官方 DSH 远程宿主在就绪前退出 (code=${String(code)}, signal=${String(signal)})`,
+    )
+  }
+  const onError = (err: Error): void => {
+    earlyFailure = err
+  }
+  child.once('exit', onExit)
+  child.once('error', onError)
+  try {
+    while (Date.now() < deadline) {
+      if (earlyFailure) throw earlyFailure
+      if (existsSync(filePath)) {
+        const raw = readFileSync(filePath, 'utf8').trim()
+        if (raw.length > 0) {
+          try {
+            return JSON.parse(raw) as Record<string, unknown>
+          } catch {}
+        }
+      }
+      await new Promise((r) => setTimeout(r, 100))
+    }
+    if (earlyFailure) throw earlyFailure
+    throw new Error('等待官方 DSH 远程宿主就绪超时')
+  } finally {
+    child.off('exit', onExit)
+    child.off('error', onError)
+  }
 }
 
 export async function runRemoteCommand(
@@ -384,6 +476,30 @@ export async function runRemoteCommand(
       return 2
     }
     const stores = openPersistentRemoteStores({ configDir, dshHome })
+    const live = readLiveControlEndpoint(stores.configDir)
+    if (live) {
+      try {
+        const res = await fetchControl(`${live.controlUrl}/devices/revoke`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            authorization: `Bearer ${live.controlToken}`,
+          },
+          body: JSON.stringify({ deviceId: targetId }),
+        })
+        if (res.ok) {
+          const body = (await res.json()) as { revoked?: boolean }
+          if (!body.revoked) {
+            process.stderr.write(`未找到可吊销设备：${targetId}\n`)
+            return 1
+          }
+          process.stdout.write(`已吊销设备：${targetId}（在线会话已断开）\n`)
+          return 0
+        }
+      } catch {
+        // Fallback to offline durable trust store below when live control is unreachable
+      }
+    }
     const revoked = await stores.trustStore.revoke(targetId)
     if (!revoked) {
       process.stderr.write(`未找到可吊销设备：${targetId}\n`)
@@ -482,30 +598,59 @@ export async function runRemoteCommand(
       },
     )
 
-    child.stderr.on('data', (chunk) => {
-      const text = chunk.toString()
-      for (const line of text.split('\n')) {
-        if (line.startsWith('DSH_REMOTE_PAIRING_REQUEST ')) {
-          try {
-            const reqInfo = JSON.parse(line.slice('DSH_REMOTE_PAIRING_REQUEST '.length)) as {
-              candidateId: string
-              displayName: string
-              deviceId: string
-            }
-            process.stdout.write(
-              `\n收到配对请求：${reqInfo.displayName} (${reqInfo.deviceId})\n输入 confirm ${reqInfo.candidateId} 授权此设备。\n`,
-            )
-          } catch {}
-        } else if (line.trim().length > 0 && !flags.json) {
-          process.stderr.write(`${line}\n`)
-        }
+    child.stdout.resume()
+
+    const stderrDecoder = new StringDecoder('utf8')
+    let stderrLineBuffer = ''
+    const handleStderrLine = (line: string): void => {
+      if (line.startsWith('DSH_REMOTE_PAIRING_REQUEST ')) {
+        try {
+          const reqInfo = JSON.parse(line.slice('DSH_REMOTE_PAIRING_REQUEST '.length)) as {
+            candidateId: string
+            displayName: string
+            deviceId: string
+          }
+          process.stdout.write(
+            `\n收到配对请求：${reqInfo.displayName} (${reqInfo.deviceId})\n输入 confirm ${reqInfo.candidateId} 授权此设备。\n`,
+          )
+        } catch {}
+      } else if (line.trim().length > 0 && !flags.json) {
+        process.stderr.write(`${line}\n`)
       }
+    }
+
+    child.stderr.on('data', (chunk: Buffer | string) => {
+      stderrLineBuffer += typeof chunk === 'string' ? chunk : stderrDecoder.write(chunk)
+      for (;;) {
+        const nl = stderrLineBuffer.indexOf('\n')
+        if (nl === -1) break
+        const line = stderrLineBuffer.slice(0, nl).replace(/\r$/u, '')
+        stderrLineBuffer = stderrLineBuffer.slice(nl + 1)
+        handleStderrLine(line)
+      }
+    })
+    child.stderr.on('close', () => {
+      stderrLineBuffer += stderrDecoder.end()
+      const trailing = stderrLineBuffer.replace(/\r$/u, '')
+      stderrLineBuffer = ''
+      if (trailing.length > 0) handleStderrLine(trailing)
     })
 
     let controlUrl = ''
+    let resolvedConfigDir = ''
     try {
-      const ready = await waitForReadyFile(readyFile)
+      const ready = await waitForReadyFile(readyFile, child)
       controlUrl = String(ready.controlUrl ?? '')
+      resolvedConfigDir = typeof ready.configDir === 'string' ? ready.configDir : ''
+      if (controlUrl && resolvedConfigDir) {
+        try {
+          writeLiveControlEndpoint(resolvedConfigDir, {
+            pid: process.pid,
+            controlUrl,
+            controlToken,
+          })
+        } catch {}
+      }
       if (flags.json) {
         process.stdout.write(`${JSON.stringify(ready)}\n`)
       } else {
@@ -543,7 +688,7 @@ export async function runRemoteCommand(
 
     const requestShutdown = async (): Promise<void> => {
       if (controlUrl) {
-        await fetch(`${controlUrl}/shutdown`, {
+        await fetchControl(`${controlUrl}/shutdown`, {
           method: 'POST',
           headers: { authorization: `Bearer ${controlToken}` },
         }).catch(() => {})
@@ -567,7 +712,7 @@ export async function runRemoteCommand(
         const [cmd, arg] = trimmed.split(/\s+/, 2)
         try {
           if (cmd === 'confirm' && arg) {
-            const res = await fetch(`${controlUrl}/pairing/confirm`, {
+            const res = await fetchControl(`${controlUrl}/pairing/confirm`, {
               method: 'POST',
               headers: {
                 'content-type': 'application/json',
@@ -577,12 +722,12 @@ export async function runRemoteCommand(
             })
             process.stdout.write(`${await res.text()}\n`)
           } else if (cmd === 'devices') {
-            const res = await fetch(`${controlUrl}/devices`, {
+            const res = await fetchControl(`${controlUrl}/devices`, {
               headers: { authorization: `Bearer ${controlToken}` },
             })
             process.stdout.write(`${await res.text()}\n`)
           } else if (cmd === 'revoke' && arg) {
-            const res = await fetch(`${controlUrl}/devices/revoke`, {
+            const res = await fetchControl(`${controlUrl}/devices/revoke`, {
               method: 'POST',
               headers: {
                 'content-type': 'application/json',
@@ -592,7 +737,7 @@ export async function runRemoteCommand(
             })
             process.stdout.write(`${await res.text()}\n`)
           } else if (cmd === 'qr') {
-            const res = await fetch(`${controlUrl}/pairing-token`, {
+            const res = await fetchControl(`${controlUrl}/pairing-token`, {
               method: 'POST',
               headers: {
                 'content-type': 'application/json',
@@ -622,6 +767,9 @@ export async function runRemoteCommand(
     rl?.close()
     process.off('SIGINT', onSignal)
     process.off('SIGTERM', onSignal)
+    if (resolvedConfigDir) {
+      removeOwnLiveControlEndpoint(resolvedConfigDir)
+    }
     rmSync(tmpDir, { recursive: true, force: true })
     return exitCode
   }

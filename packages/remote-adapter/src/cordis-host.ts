@@ -1,9 +1,12 @@
 import { timingSafeEqual, randomBytes, randomUUID } from 'node:crypto'
 import {
+  chmodSync,
+  closeSync,
   existsSync,
   mkdirSync,
+  openSync,
   readdirSync,
-  readFileSync,
+  readSync,
   realpathSync,
   statSync,
 } from 'node:fs'
@@ -236,6 +239,9 @@ export function openPersistentRemoteStores(options: {
   const rawConfigDir = options.configDir ?? defaultRemoteConfigDir()
   const configDir = assertOutsideOfficialDshHome(rawConfigDir, dshHome)
   mkdirSync(configDir, { recursive: true, mode: 0o700 })
+  if (process.platform !== 'win32') {
+    chmodSync(configDir, 0o700)
+  }
 
   const hostIdentityPath = join(configDir, 'host-identity.json')
   const trustedDevicesPath = join(configDir, 'trusted-devices.json')
@@ -309,10 +315,21 @@ export class ObservablePairingCoordinator extends PairingCoordinator {
 
 function readHeaderTitleFromJsonl(filePath: string): string | undefined {
   if (filePath.endsWith('.zstd')) return undefined
+  let fd: number | undefined
   try {
-    const raw = readFileSync(filePath, 'utf8')
-    const nl = raw.indexOf('\n')
-    const firstLine = (nl >= 0 ? raw.slice(0, nl) : raw).trim()
+    fd = openSync(filePath, 'r')
+    const buf = Buffer.allocUnsafe(16 * 1024)
+    const bytesRead = readSync(fd, buf, 0, buf.byteLength, 0)
+    if (bytesRead <= 0) return undefined
+    const slice = buf.subarray(0, bytesRead)
+    const nlIndex = slice.indexOf(0x0a)
+    if (nlIndex === -1 && bytesRead === buf.byteLength) {
+      return undefined
+    }
+    const firstLine = slice
+      .subarray(0, nlIndex >= 0 ? nlIndex : bytesRead)
+      .toString('utf8')
+      .trim()
     if (!firstLine) return undefined
     const parsed = JSON.parse(firstLine) as Record<string, unknown>
     const meta = (typeof parsed.meta === 'object' && parsed.meta !== null)
@@ -324,6 +341,12 @@ function readHeaderTitleFromJsonl(filePath: string): string | undefined {
     return id
   } catch {
     return undefined
+  } finally {
+    if (fd !== undefined) {
+      try {
+        closeSync(fd)
+      } catch {}
+    }
   }
 }
 
@@ -1173,8 +1196,21 @@ async function readJsonBody(req: IncomingMessage): Promise<Record<string, unknow
 }
 
 function sendJson(res: ServerResponse, statusCode: number, body: unknown): void {
-  res.writeHead(statusCode, { 'content-type': 'application/json' })
+  res.writeHead(statusCode, {
+    'content-type': 'application/json',
+    'cache-control': 'no-store',
+  })
   res.end(JSON.stringify(body))
+}
+
+function isLoopbackHostHeader(hostHeader: string | undefined): boolean {
+  if (!hostHeader) return true
+  const trimmed = hostHeader.trim().toLowerCase()
+  return (
+    /^127\.0\.0\.1(?::\d+)?$/u.test(trimmed) ||
+    /^localhost(?::\d+)?$/u.test(trimmed) ||
+    /^\[::1\](?::\d+)?$/u.test(trimmed)
+  )
 }
 
 function hasValidBearerToken(req: IncomingMessage, expectedToken: string): boolean {
@@ -1199,6 +1235,10 @@ export async function createBridgeControlServer(
 
   const server: Server = createServer(async (req, res) => {
     try {
+      if (!isLoopbackHostHeader(req.headers.host)) {
+        sendJson(res, 403, { error: 'non-loopback Host header rejected' })
+        return
+      }
       const reqUrl = new URL(req.url ?? '/', 'http://127.0.0.1')
       if (req.method === 'GET' && reqUrl.pathname === '/status') {
         sendJson(res, 200, await bridge.getStatus())
@@ -1318,6 +1358,9 @@ export async function createBridgeControlServer(
       sendJson(res, status, { error: err instanceof Error ? err.message : String(err) })
     }
   })
+
+  server.headersTimeout = 10_000
+  server.requestTimeout = 15_000
 
   await new Promise<void>((resolveListen, rejectListen) => {
     server.once('error', rejectListen)

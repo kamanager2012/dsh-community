@@ -1,5 +1,6 @@
 import { mkdtempSync, rmSync } from 'node:fs'
-import { createServer } from 'node:net'
+import { createServer } from 'node:http'
+import { createServer as createNetServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -11,11 +12,16 @@ import {
   FailoverRemoteClient,
   FileHostIdentityStore,
   HostRelayCarrier,
+  HostWebRtcCarrier,
   InMemoryDeviceTrustStore,
+  InMemoryHostIdentityStore,
+  NoiseInitiatorSession,
+  NoiseResponderSession,
   PairingCoordinator,
   PairingTokenRegistry,
   parsePairingBootstrapDescriptor,
   RelayClientCarrier,
+  RemoteAdapterCore,
   RemoteHostRuntime,
   SelfHostedSignalingServer,
   SelfHostedStunServer,
@@ -64,7 +70,7 @@ function fakeSeams() {
 }
 
 async function allocateClosedPort(): Promise<number> {
-  const srv = createServer()
+  const srv = createNetServer()
   await new Promise<void>((resolve) => srv.listen(0, '127.0.0.1', () => resolve()))
   const addr = srv.address()
   const port = typeof addr === 'object' && addr ? addr.port : 0
@@ -758,5 +764,135 @@ describe('R4 Blind Relay Server, HostRelayCarrier, and Multi-Path Failover', () 
       await stun.stop()
       rmSync(dir, { recursive: true, force: true })
     }
+  })
+
+  it('keeps HostRelayCarrier & HostWebRtcCarrier alive across idleTimeoutMs via keepalive pings and auto-reconnects after server restart', async () => {
+    const relay = new BlindRelayServer({
+      enabled: true,
+      host: '127.0.0.1',
+      port: 0,
+      idleTimeoutMs: 220,
+    })
+    await relay.start()
+    const relayPort = relay.getBoundAddress()!.port
+    const relayUrl = `ws://127.0.0.1:${relayPort}`
+
+    const sig = new SelfHostedSignalingServer({
+      enabled: true,
+      host: '127.0.0.1',
+      port: 0,
+      idleTimeoutMs: 220,
+    })
+    await sig.start()
+    const sigPort = sig.getBoundAddress()!.port
+    const sigUrl = `ws://127.0.0.1:${sigPort}`
+
+    const hostStore = new InMemoryHostIdentityStore()
+    await hostStore.loadOrCreate()
+    const trustStore = new InMemoryDeviceTrustStore()
+    const { seams } = fakeSeams()
+    const core = new RemoteAdapterCore(seams)
+
+    const relayCarrier = new HostRelayCarrier({
+      enabled: true,
+      relayUrl,
+      roomId: 'keepalive-relay-room',
+      keepaliveIntervalMs: 70,
+      reconnectMinDelayMs: 40,
+      reconnectMaxDelayMs: 120,
+      core,
+      trustStore,
+      hostIdentityStore: hostStore,
+    })
+    const webrtcCarrier = new HostWebRtcCarrier({
+      enabled: true,
+      signalingUrl: sigUrl,
+      roomId: 'keepalive-webrtc-room',
+      keepaliveIntervalMs: 70,
+      reconnectMinDelayMs: 40,
+      reconnectMaxDelayMs: 120,
+      core,
+      trustStore,
+      hostIdentityStore: hostStore,
+    })
+
+    let relayRestarted: BlindRelayServer | undefined
+    let sigRestarted: SelfHostedSignalingServer | undefined
+    try {
+      await relayCarrier.start()
+      await webrtcCarrier.start()
+
+      // Wait well past 220ms idleTimeoutMs -> keepalive heartbeats keep both carriers connected
+      await new Promise((r) => setTimeout(r, 420))
+      expect(relayCarrier.isListening()).toBe(true)
+      expect(webrtcCarrier.isListening()).toBe(true)
+      expect(relay.getStats().activeHostPeers).toBe(1)
+      expect(sig.getStats().activeRooms).toBe(1)
+
+      // Drop both servers briefly, then bring new instances back on the same ports -> hosts auto-reconnect
+      await relay.stop()
+      await sig.stop()
+      await new Promise((r) => setTimeout(r, 60))
+      expect(relayCarrier.isListening()).toBe(false)
+      expect(webrtcCarrier.isListening()).toBe(false)
+
+      relayRestarted = new BlindRelayServer({
+        enabled: true,
+        host: '127.0.0.1',
+        port: relayPort,
+        idleTimeoutMs: 220,
+      })
+      await relayRestarted.start()
+      sigRestarted = new SelfHostedSignalingServer({
+        enabled: true,
+        host: '127.0.0.1',
+        port: sigPort,
+        idleTimeoutMs: 220,
+      })
+      await sigRestarted.start()
+
+      const deadline = Date.now() + 3_000
+      while (Date.now() < deadline && (!relayCarrier.isListening() || !webrtcCarrier.isListening())) {
+        await new Promise((r) => setTimeout(r, 30))
+      }
+      expect(relayCarrier.isListening()).toBe(true)
+      expect(webrtcCarrier.isListening()).toBe(true)
+    } finally {
+      await Promise.allSettled([
+        relayCarrier.stop(),
+        webrtcCarrier.stop(),
+        relay.stop(),
+        sig.stop(),
+        relayRestarted?.stop(),
+        sigRestarted?.stop(),
+      ])
+    }
+  })
+
+  it('zeroizes internal Noise cipher keys when close() is invoked', async () => {
+    const host = await new InMemoryHostIdentityStore().loadOrCreate()
+    const kp = clientKeyPair()
+    const init = new NoiseInitiatorSession(
+      { publicKey: kp.publicKey, secretKey: kp.secretKey },
+      host.identity.publicKey,
+    )
+    const resp = new NoiseResponderSession(host)
+    const m1 = init.writeMessage1()
+    resp.readMessage1(m1)
+    const m2 = resp.writeMessage2()
+    init.readMessage2(m2)
+
+    const initNoise = (init as unknown as { noise: { tx: Buffer; rx: Buffer; hash: Buffer | null } }).noise
+    const respNoise = (resp as unknown as { noise: { tx: Buffer; rx: Buffer; hash: Buffer | null } }).noise
+    expect(initNoise.tx.some((b) => b !== 0)).toBe(true)
+    expect(respNoise.rx.some((b) => b !== 0)).toBe(true)
+
+    init.close()
+    resp.close()
+
+    expect(initNoise.tx.every((b) => b === 0)).toBe(true)
+    expect(initNoise.rx.every((b) => b === 0)).toBe(true)
+    expect(respNoise.tx.every((b) => b === 0)).toBe(true)
+    expect(respNoise.rx.every((b) => b === 0)).toBe(true)
   })
 })

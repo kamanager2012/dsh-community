@@ -300,10 +300,14 @@ export class BlindRelayServer {
       this.handleUpgrade(req, socket as Socket, head)
     })
 
+    server.headersTimeout = Math.min(server.headersTimeout, Math.max(this.registerTimeoutMs, 5_000))
+    server.requestTimeout = Math.max(this.registerTimeoutMs, 10_000)
+
     await new Promise<void>((resolve, reject) => {
       server.once('error', reject)
       server.listen(bindPort, bindHost, () => {
         server.removeListener('error', reject)
+        server.on('error', () => {})
         resolve()
       })
     })
@@ -375,10 +379,20 @@ export class BlindRelayServer {
       onFrame: (frame) => {
         if (peer.closed) return
         if (frame.opcode === WebSocketOpcode.PING) {
+          if (!this.consumeConnectionBudget(peer, frame.payload.byteLength)) {
+            return
+          }
+          this.resetIdleTimer(peer)
           this.sendRawWs(peer, WebSocketOpcode.PONG, frame.payload)
           return
         }
-        if (frame.opcode === WebSocketOpcode.PONG) return
+        if (frame.opcode === WebSocketOpcode.PONG) {
+          if (!this.consumeConnectionBudget(peer, frame.payload.byteLength)) {
+            return
+          }
+          this.resetIdleTimer(peer)
+          return
+        }
         if (frame.opcode === WebSocketOpcode.CLOSE) {
           const parsedClose = parseClosePayload(frame.payload)
           this.terminatePeer(peer, parsedClose.code, parsedClose.reason)
@@ -801,8 +815,22 @@ export class BlindRelayServer {
       return
     }
 
+    if (msg.v !== 1) return
+
+    if (msg.type === 'relay.ping') {
+      this.sendJsonControl(
+        host,
+        {
+          v: 1,
+          type: 'relay.pong',
+          ...(typeof msg.ts === 'number' && Number.isFinite(msg.ts) ? { ts: msg.ts } : {}),
+        },
+        true,
+      )
+      return
+    }
+
     if (
-      msg.v === 1 &&
       msg.type === 'relay.peer.kick' &&
       typeof msg.connIdHex === 'string' &&
       CONN_ID_HEX_RE.test(msg.connIdHex)
@@ -856,9 +884,21 @@ export class BlindRelayServer {
     const wasClosed = peer.closed
     this.cleanupPeer(peer)
     if (!wasClosed && !peer.socket.destroyed) {
+      const closeFrame = encodeCloseFrame(code, reason)
+      const forceTimer = setTimeout(() => {
+        if (!peer.socket.destroyed) peer.socket.destroy()
+      }, 100)
+      forceTimer.unref?.()
       try {
-        peer.socket.write(encodeCloseFrame(code, reason))
+        if (peer.socket.writable) {
+          peer.socket.end(closeFrame, () => {
+            clearTimeout(forceTimer)
+            if (!peer.socket.destroyed) peer.socket.destroy()
+          })
+          return
+        }
       } catch {}
+      clearTimeout(forceTimer)
       peer.socket.destroy()
     }
   }

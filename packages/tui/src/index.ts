@@ -72,7 +72,14 @@ export function apply(ctx: CordisContext): (() => void) | void {
     const approval = request as ApprovalRequestLike
     if (current === undefined || approval.agent?.id !== current.agent.id) return next()
     if (approval.signal?.aborted) return 'cancelled'
-    return store.askApproval({ toolName: approval.toolName, ...(approval.callId === undefined ? {} : { callId: approval.callId }), ...(approval.reason === undefined ? {} : { reason: approval.reason }) })
+    return store.askApproval(
+      {
+        toolName: approval.toolName,
+        ...(approval.callId === undefined ? {} : { callId: approval.callId }),
+        ...(approval.reason === undefined ? {} : { reason: approval.reason }),
+      },
+      approval.signal,
+    )
   })
 
   const run = async (): Promise<void> => {
@@ -135,14 +142,19 @@ export function apply(ctx: CordisContext): (() => void) | void {
       store.setStatus(payload.status ?? 'idle')
     })
 
+    let exiting = false
     const ui = render(createElement(App, {
       store,
       dualBadge: formatDualBadge(),
       onSend: enqueueUserInput,
       onCancel: () => agent.cancel('user-interrupt'),
       onExit: () => {
-        void handle.dispose()
-        process.exit(0)
+        if (exiting) return
+        exiting = true
+        unmount?.()
+        void handle.dispose().catch(() => {}).finally(() => {
+          process.exit(0)
+        })
       },
     }))
     unmount = () => ui.unmount()

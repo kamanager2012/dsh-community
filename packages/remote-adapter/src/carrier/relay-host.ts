@@ -38,6 +38,14 @@ export interface HostRelayCarrierOptions {
   readonly clientToken?: string | undefined
   /** Relay room registration timeout in ms (default: handshakeTimeoutMs). */
   readonly registerTimeoutMs?: number | undefined
+  /** Periodic host relay keepalive interval in ms (default: 20_000; 0 disables). */
+  readonly keepaliveIntervalMs?: number | undefined
+  /** Automatically reconnect to the relay server after unexpected disconnect (default: true). */
+  readonly reconnect?: boolean | undefined
+  /** Initial reconnect backoff delay in ms (default: 500). */
+  readonly reconnectMinDelayMs?: number | undefined
+  /** Maximum reconnect backoff delay in ms (default: 15_000). */
+  readonly reconnectMaxDelayMs?: number | undefined
   readonly core: RemoteAdapterCore
   readonly trustStore: DeviceTrustStore
   readonly hostIdentityStore: HostIdentityStore
@@ -134,6 +142,11 @@ export class HostRelayCarrier {
   private ws: WebSocket | undefined = undefined
   private roomId: string | undefined = undefined
   private isRunning = false
+  private shouldRun = false
+  private lifecycleGeneration = 0
+  private reconnectAttempt = 0
+  private keepaliveTimer: NodeJS.Timeout | undefined = undefined
+  private reconnectTimer: NodeJS.Timeout | undefined = undefined
   private unsubscribeRevocations: (() => void) | undefined = undefined
   private readonly peersByConnId = new Map<string, RelayPeerEntry>()
   private readonly activeChannels = new Map<string, RemoteServerChannel>()
@@ -163,7 +176,7 @@ export class HostRelayCarrier {
   }
 
   async start(): Promise<void> {
-    if (this.isRunning) return
+    if (this.shouldRun || this.isRunning) return
 
     if (!this.isEnabled()) {
       throw new RemoteCryptoError(
@@ -178,6 +191,10 @@ export class HostRelayCarrier {
         `invalid relayUrl '${String(this.options.relayUrl)}'`,
       )
     }
+
+    const gen = ++this.lifecycleGeneration
+    this.shouldRun = true
+    this.reconnectAttempt = 0
 
     try {
       this.hostKeyPair = await this.options.hostIdentityStore.loadOrCreate()
@@ -194,8 +211,16 @@ export class HostRelayCarrier {
       const timeoutMs = this.options.registerTimeoutMs ?? this.bounds.handshakeTimeoutMs
       await this.registerHostSocket(ws, roomId, timeoutMs)
 
+      if (!this.shouldRun || gen !== this.lifecycleGeneration) {
+        try {
+          ws.close()
+        } catch {}
+        return
+      }
+
       this.isRunning = true
       this.installActiveHandlers(ws)
+      this.startKeepalive()
       this.unsubscribeRevocations = this.options.trustStore.subscribeRevocations((event) => {
         this.handleRevocation(event.deviceId)
       })
@@ -341,6 +366,7 @@ export class HostRelayCarrier {
 
     ws.onclose = () => {
       if (this.ws !== ws) return
+      this.clearKeepalive()
       this.ws = undefined
       this.isRunning = false
       for (const entry of Array.from(this.peersByConnId.values())) {
@@ -350,7 +376,84 @@ export class HostRelayCarrier {
       this.activeChannels.clear()
       this.deviceChannels.clear()
       this.channelToConnId.clear()
+
+      if (this.shouldRun && (this.options.reconnect ?? true)) {
+        this.scheduleReconnect(this.lifecycleGeneration)
+      }
     }
+  }
+
+  private clearKeepalive(): void {
+    if (this.keepaliveTimer) {
+      clearInterval(this.keepaliveTimer)
+      this.keepaliveTimer = undefined
+    }
+  }
+
+  private clearReconnect(): void {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer)
+      this.reconnectTimer = undefined
+    }
+  }
+
+  private startKeepalive(): void {
+    this.clearKeepalive()
+    const intervalMs = this.options.keepaliveIntervalMs ?? 20_000
+    if (intervalMs <= 0 || !Number.isFinite(intervalMs)) return
+    this.keepaliveTimer = setInterval(() => {
+      if (!this.shouldRun || !this.isRunning || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
+        return
+      }
+      this.sendControlFrame({ v: 1, type: 'relay.ping', ts: Date.now() })
+    }, intervalMs)
+    this.keepaliveTimer.unref?.()
+  }
+
+  private scheduleReconnect(gen: number): void {
+    this.clearReconnect()
+    if (!this.shouldRun || gen !== this.lifecycleGeneration) return
+    const minDelayMs = Math.max(25, this.options.reconnectMinDelayMs ?? 500)
+    const maxDelayMs = Math.max(minDelayMs, this.options.reconnectMaxDelayMs ?? 15_000)
+    const delayMs = Math.min(maxDelayMs, minDelayMs * 2 ** Math.min(this.reconnectAttempt, 6))
+    this.reconnectAttempt += 1
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = undefined
+      void this.attemptReconnect(gen)
+    }, delayMs)
+    this.reconnectTimer.unref?.()
+  }
+
+  private async attemptReconnect(gen: number): Promise<void> {
+    if (!this.shouldRun || gen !== this.lifecycleGeneration || !this.roomId) return
+    const ws = new WebSocket(this.options.relayUrl)
+    ws.binaryType = 'arraybuffer'
+    this.ws = ws
+
+    const timeoutMs = this.options.registerTimeoutMs ?? this.bounds.handshakeTimeoutMs
+    try {
+      await this.registerHostSocket(ws, this.roomId, timeoutMs)
+    } catch {
+      if (this.ws === ws) {
+        this.ws = undefined
+      }
+      if (this.shouldRun && gen === this.lifecycleGeneration) {
+        this.scheduleReconnect(gen)
+      }
+      return
+    }
+
+    if (!this.shouldRun || gen !== this.lifecycleGeneration || this.ws !== ws) {
+      try {
+        ws.close()
+      } catch {}
+      return
+    }
+
+    this.reconnectAttempt = 0
+    this.isRunning = true
+    this.installActiveHandlers(ws)
+    this.startKeepalive()
   }
 
   private handleRelayControl(msg: Record<string, unknown>): void {
@@ -484,7 +587,11 @@ export class HostRelayCarrier {
   }
 
   async stop(): Promise<void> {
+    this.lifecycleGeneration += 1
+    this.shouldRun = false
     this.isRunning = false
+    this.clearKeepalive()
+    this.clearReconnect()
 
     if (this.unsubscribeRevocations) {
       try {

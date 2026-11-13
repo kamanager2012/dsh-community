@@ -2,7 +2,6 @@ import {
   chmodSync,
   closeSync,
   constants,
-  copyFileSync,
   existsSync,
   fstatSync,
   fsyncSync,
@@ -528,16 +527,29 @@ export class FileDeviceTrustStore extends InMemoryDeviceTrustStore {
 
     const hasPriorCommit = existsSync(this.filePath)
     if (hasPriorCommit) {
+      const backupTmp = join(dir, `.${base}.backup.tmp.${randomBytes(8).toString('hex')}`)
       try {
-        copyFileSync(this.filePath, backupPath)
-        chmodSync(backupPath, 0o600)
-        const backupFd = openSync(backupPath, 'r')
+        const priorBytes = readFileSync(this.filePath)
+        const backupFlags =
+          constants.O_WRONLY |
+          constants.O_CREAT |
+          constants.O_EXCL |
+          ((constants as { O_NOFOLLOW?: number }).O_NOFOLLOW ?? 0)
+        const backupFd = openSync(backupTmp, backupFlags, 0o600)
         try {
+          writeFileSync(backupFd, priorBytes)
           fsyncSync(backupFd)
         } finally {
           closeSync(backupFd)
         }
+        if (process.platform !== 'win32') chmodSync(backupTmp, 0o600)
+        renameSync(backupTmp, backupPath)
+        if (process.platform !== 'win32') chmodSync(backupPath, 0o600)
+        fsyncDirectory(dir)
       } catch (err) {
+        try {
+          if (existsSync(backupTmp)) unlinkSync(backupTmp)
+        } catch {}
         throw new RemoteCryptoError(
           'HANDSHAKE_FAILED',
           `failed to create committed backup before transaction: ${(err as Error).message}`,
