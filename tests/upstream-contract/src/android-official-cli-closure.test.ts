@@ -6,7 +6,7 @@ const ROOT = resolve(import.meta.dirname, '../../..')
 const audit = resolve(ROOT, 'scripts/audit-android-official-cli-closure.mjs')
 
 describe('Android official CLI package closure', () => {
-  it('proves profile-only trimming cannot remove the current 0.2.2-rc.1 native install closure', () => {
+  it('proves profile-only trimming cannot remove the current 0.2.2-rc.2 native install closure', () => {
     const result = spawnSync(process.execPath, [audit], {
       cwd: ROOT,
       encoding: 'utf8',
@@ -24,7 +24,7 @@ describe('Android official CLI package closure', () => {
       verifiedEdges?: Array<{ from?: string; to?: string }>
     }
 
-    expect(report.officialDsh).toBe('0.2.2-rc.1')
+    expect(report.officialDsh).toBe('0.2.2-rc.2')
     expect(report.status).toBe('BLOCKED_BY_NATIVE_CLOSURE')
     expect(report.profileOnlyMitigation).toBe('INEFFECTIVE')
     expect(report.unresolvedBlockers).toEqual([

@@ -3,14 +3,14 @@
   "asOf": "2026-11-13",
   "officialKernel": {
     "package": "@deepseek-ai/dsh",
-    "version": "0.2.2-rc.1"
+    "version": "0.2.2-rc.2"
   },
   "communityProduct": {
-    "version": "0.2.2-rc.1",
+    "version": "0.2.2-rc.2",
     "githubLatestTag": "v0.1.1-rc.2",
     "download": "https://github.com/kamanager2012/dsh-community/releases/latest"
   },
-  "dualBadge": "DeepSeek Harness Community v0.2.2-rc.1 [Official Core: @deepseek-ai/dsh@0.2.2-rc.1]",
+  "dualBadge": "DeepSeek Harness Community v0.2.2-rc.2 [Official Core: @deepseek-ai/dsh@0.2.2-rc.2]",
   "endpoints": [
     {
       "id": "linux-terminal",
@@ -101,7 +101,7 @@
       "note": "Promoted alpha.4 latest-tested final-tree replay passed. Temporary acceptance workflow/trigger were removed afterward; Published Latest and published installer evidence remain v0.1.1-rc.2."
     }
   },
-  "candidateTag": "v0.2.2-rc.1",
+  "candidateTag": "v0.2.2-rc.2",
   "publishedAssets": {
     "linuxAppImage": "dsh-community-0.1.1-rc.2.AppImage",
     "macosDmg": "dsh-community-0.1.1-rc.2.dmg",

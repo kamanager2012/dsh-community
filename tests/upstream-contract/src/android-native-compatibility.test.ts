@@ -75,7 +75,7 @@ describe('Android G2 native compatibility', () => {
       semanticBlockers?: Array<{ id?: string; status?: string; severity?: string }>
     }
 
-    expect(state.officialDsh).toBe('0.2.2-rc.1')
+    expect(state.officialDsh).toBe('0.2.2-rc.2')
     expect(state.nativeProbe).toBe('scripts/android-native-addon-probe.sh')
     expect(state.portableDependencyAudit).toBe('scripts/audit-android-portable-deps.mjs')
     expect(state.sandboxProbe).toBe('scripts/android-sandbox-landlock-probe.sh')
@@ -104,7 +104,8 @@ describe('Android G2 native compatibility', () => {
     })
     expect(state.providerSeams?.fsSearch).toMatchObject({
       status: 'NO_EXPLICIT_RG_PATH_SEAM',
-      searchCoreGitBlob: '794a5d43fe6026c34cb61d65133ee715ed08b2f0',
+      searchCoreGitBlob: '970846b99a6d00d1a2f1fa259d0250f6e7fab64f',
+      utilRipgrepGitBlob: 'e9ca71e63618acc75b8cd3308d38c42e423354f8',
       resolverSignature: 'resolveRgPath()',
       communityAdapterDecision: 'REJECTED_TO_PRESERVE_OFFICIAL_TOOL_AUTHORITY',
       allowedUnlockConditions: [
@@ -180,7 +181,7 @@ describe('Android G2 native compatibility', () => {
 
     const probe = readFileSync(probePath, 'utf8')
 
-    expect(probe).toContain('EXPECTED_DSH="0.2.2-rc.1"')
+    expect(probe).toContain('EXPECTED_DSH="0.2.2-rc.2"')
     expect(probe).toContain('EXPECTED_NODE_PTY="1.2.0-beta.15"')
     expect(probe).toContain('EXPECTED_KOFFI="3.1.1"')
     expect(probe).toContain('EXPECTED_SHARP_WASM="0.35.5"')

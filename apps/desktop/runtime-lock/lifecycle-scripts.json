@@ -3,7 +3,7 @@
   "allowed": [
     {
       "name": "@deepseek-ai/dsh-subprocess-local",
-      "version": "0.2.2-rc.1",
+      "version": "0.2.2-rc.2",
       "reason": "Official DSH local subprocess package; its install step is part of the reviewed runtime surface."
     },
     {

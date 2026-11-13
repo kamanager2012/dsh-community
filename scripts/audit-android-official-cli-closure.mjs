@@ -6,7 +6,7 @@ const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)))
 const LOCK = 'apps/desktop/runtime-lock/package-lock.json'
 const ANDROID_PACKAGE = 'apps/android/nodejs-project/package.json'
 const BLOCKERS = 'apps/android/native-blockers.json'
-const EXPECTED_DSH = '0.2.2-rc.1'
+const EXPECTED_DSH = '0.2.2-rc.2'
 
 function readJson(rel) {
   return JSON.parse(readFileSync(resolve(ROOT, rel), 'utf8'))
@@ -57,7 +57,8 @@ const edges = [
   ['@deepseek-ai/dsh-sandbox-local', '@deepseek-ai/node-addon-system'],
   ['@deepseek-ai/dsh-sandbox-local', '@deepseek-ai/dsh-sandbox-windows-acl'],
   ['@deepseek-ai/dsh-sandbox-windows-acl', 'koffi'],
-  ['@deepseek-ai/dsh-tool-fs-search', '@vscode/ripgrep'],
+  ['@deepseek-ai/dsh-tool-fs-search', '@deepseek-ai/dsh-util-ripgrep'],
+  ['@deepseek-ai/dsh-util-ripgrep', '@vscode/ripgrep'],
 ]
 
 for (const [from, to] of edges) requireEdge(packages, from, to)
@@ -72,6 +73,7 @@ const blockerPackages = [
   '@deepseek-ai/node-addon-system',
   '@deepseek-ai/dsh-sandbox-windows-acl',
   '@deepseek-ai/dsh-tool-fs-search',
+  '@deepseek-ai/dsh-util-ripgrep',
   '@vscode/ripgrep',
 ]
 for (const name of blockerPackages) requireEntry(packages, name)

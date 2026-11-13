@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "asOf": "2026-11-13",
-  "officialDsh": "0.2.2-rc.1",
+  "officialDsh": "0.2.2-rc.2",
   "sourceOfTruth": {
     "runtimeLock": "apps/desktop/runtime-lock/package-lock.json",
     "lifecyclePolicy": "apps/desktop/runtime-lock/lifecycle-scripts.json"
@@ -30,7 +30,7 @@
       "sourceMutationAllowed": false,
       "facts": [
         "Koffi does not list Android in its official support matrix.",
-        "The frozen 3.1.1 release sits in the 3.x family without bumping further in 0.2.2-rc.1, and requires CMake/NDK source build verification.",
+        "The frozen 3.1.1 release sits in the 3.x family without bumping further in 0.2.2-rc.2, and requires CMake/NDK source build verification.",
         "Android/Termux source-build success is useful evidence but is not accepted as APK/NDK carrier evidence."
       ]
     },
@@ -62,9 +62,9 @@
       "sourceMutationAllowed": false,
       "facts": [
         "@vscode/ripgrep@1.18.0 constructs @vscode/ripgrep-${process.platform}-${arch}; Android therefore asks for an unpublished Android package.",
-        "Official 0.2.2-rc.1 tool-fs-search resolveRgPath() accepts no parameter and has no rgPath/ripgrepPath config or environment seam; Node mode directly imports @vscode/ripgrep.",
+        "Official 0.2.2-rc.2 tool-fs-search re-exports resolveRgPath() from @deepseek-ai/dsh-util-ripgrep, which accepts no parameter and has no rgPath/ripgrepPath config or environment seam; Node mode directly imports @vscode/ripgrep.",
         "The only official executable sidecar path is gated by 'pkg' in process; the Android Node carrier is not a pkg single-file runtime.",
-        "Official 0.2.2-rc.1 search-core.ts was audited at Git blob 794a5d43fe6026c34cb61d65133ee715ed08b2f0.",
+        "Official 0.2.2-rc.2 packages/util/ripgrep/src/index.ts was audited at Git blob e9ca71e63618acc75b8cd3308d38c42e423354f8 (tool-fs-search/src/search-core.ts at 970846b99a6d00d1a2f1fa259d0250f6e7fab64f).",
         "Community will not copy/fork the official glob/grep implementation solely to replace binary resolution; doing so would create a second tool authority.",
         "A future unlock requires either a real upstream Android @vscode/ripgrep platform package or an explicit official tool-fs-search executable-path seam."
       ],
@@ -138,8 +138,8 @@
       "status": "APP_UID_PREFLIGHT_WIRED_REAL_DEVICE_REQUIRED",
       "severity": "HARD",
       "facts": [
-        "0.2.2-rc.1 session materialization uses link()+unlink() on every non-win32 platform.",
-        "0.2.2-rc.1 attachment publication also uses link() before removing the staging name.",
+        "0.2.2-rc.2 session materialization uses link()+unlink() on every non-win32 platform.",
+        "0.2.2-rc.2 attachment publication also uses link() before removing the staging name.",
         "The embedded Node bootstrap now performs an actual fs.linkSync() inode/link-count/content probe inside the Android app data directory before official DSH starts.",
         "Only execution under the APK app UID can promote evidence; source presence and Linux CI execution cannot."
       ],
@@ -193,9 +193,11 @@
     },
     "fsSearch": {
       "servicePackage": "@deepseek-ai/dsh-tool-fs-search",
+      "resolverPackage": "@deepseek-ai/dsh-util-ripgrep",
       "status": "NO_EXPLICIT_RG_PATH_SEAM",
-      "sourceAuditCommit": "66491b05e3f05ad35bcdd4f6cd7ed26041d9e3db",
-      "searchCoreGitBlob": "794a5d43fe6026c34cb61d65133ee715ed08b2f0",
+      "sourceAuditCommit": "ddac96760b6edf8fa0fe17cbdcf0b512f4c12b2c",
+      "searchCoreGitBlob": "970846b99a6d00d1a2f1fa259d0250f6e7fab64f",
+      "utilRipgrepGitBlob": "e9ca71e63618acc75b8cd3308d38c42e423354f8",
       "resolverSignature": "resolveRgPath()",
       "nodeResolution": "import('@vscode/ripgrep').rgPath",
       "pkgSidecarGate": true,
@@ -211,17 +213,18 @@
   "officialSourceAudit": {
     "repository": "deepseek-ai/deepseek-harness",
     "observedAt": "2026-11-13",
-    "commit": "66491b05e3f05ad35bcdd4f6cd7ed26041d9e3db",
+    "commit": "ddac96760b6edf8fa0fe17cbdcf0b512f4c12b2c",
     "releaseProvenance": true,
-    "note": "Official Git tag dsh-v0.2.2-rc.1 resolves to commit 66491b05e3f05ad35bcdd4f6cd7ed26041d9e3db. This commit/blob record documents the official source surfaces audited for Android seam behavior; npm package-lock integrity remains the release dependency provenance.",
+    "note": "Official Git tag dsh-v0.2.2-rc.2 resolves to commit ddac96760b6edf8fa0fe17cbdcf0b512f4c12b2c. This commit/blob record documents the official source surfaces audited for Android seam behavior; npm package-lock integrity remains the release dependency provenance.",
     "blobs": {
       "landlockMainC": "7857030291c5a3a93a73d89dd23bbac6dcebc5dd",
-      "sandboxLocalPackage": "007e4df73bf62f284eb17f89071c4a113f06c592",
-      "subprocessLocalPackage": "1d542da1a81cc6b9b915e267083145db5fe67db5",
-      "webBundlePatch": "d751fcc46286ce101da2a26d782bbff7d7de6aa8",
-      "standardPreset": "e2e619fddd8794a75072e1da8926495d200c6be9",
+      "sandboxLocalPackage": "4d0c662cc389992cc68fae413e9da2a7cc8574f2",
+      "subprocessLocalPackage": "ed28472c726b79d090bd219c6e68bd010128db6a",
+      "webBundlePatch": "e842d8e3e1a5c5d4399d85aefc045531ac39c88b",
+      "standardPreset": "a3532d0f3af691e89bdea49643fe9dd72f074a32",
       "minimalPreset": "043e34cb01c2d6b11f3009991c76492da3cfdd0c",
-      "fsSearchCore": "794a5d43fe6026c34cb61d65133ee715ed08b2f0"
+      "fsSearchCore": "970846b99a6d00d1a2f1fa259d0250f6e7fab64f",
+      "utilRipgrep": "e9ca71e63618acc75b8cd3308d38c42e423354f8"
     }
   },
   "appUidPreflight": "apps/android/nodejs-project/src/main/js/android-app-uid-preflight.cjs",

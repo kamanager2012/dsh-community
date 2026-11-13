@@ -19,7 +19,7 @@ set -euo pipefail
 REPORT="$HOME/.dsh/termux-verify.log"
 REQUIRED_NODE_MAJOR=24
 DASH_PKG="@deepseek-ai/dsh"
-PINNED_DSH_VERSION="0.2.2-rc.1"
+PINNED_DSH_VERSION="0.2.2-rc.2"
 VERIFY_PORT=17890
 
 mkdir -p "$HOME/.dsh"

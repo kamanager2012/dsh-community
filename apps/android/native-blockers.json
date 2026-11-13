@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "asOf": "2026-11-13",
-  "officialDsh": "0.2.2-rc.1",
+  "officialDsh": "0.2.2-rc.2",
   "fullWebProfile": "BLOCKED",
   "standaloneSdkMinimal": "BLOCKED",
   "blockers": [
@@ -94,7 +94,7 @@
         "glob/grep search"
       ],
       "severity": "FEATURE_BLOCKER",
-      "evidence": "Official 0.2.2-rc.1 tool-fs-search owns glob/grep semantics and resolveRgPath(). The audited search-core.ts has resolveRgPath() with zero parameters, no rgPath/ripgrepPath config/environment seam, direct Node-mode import('@vscode/ripgrep').rgPath, and a sidecar path gated only by 'pkg' in process. @vscode/ripgrep@1.18.0 has no Android platform package in the frozen lock.",
+      "evidence": "Official 0.2.2-rc.2 tool-fs-search owns glob/grep semantics and re-exports resolveRgPath() from @deepseek-ai/dsh-util-ripgrep. The audited packages/util/ripgrep/src/index.ts (blob e9ca71e63618acc75b8cd3308d38c42e423354f8; search-core.ts blob 970846b99a6d00d1a2f1fa259d0250f6e7fab64f) has resolveRgPath() with zero parameters, no rgPath/ripgrepPath config/environment seam, direct Node-mode import('@vscode/ripgrep').rgPath, and a sidecar path gated only by 'pkg' in process. @vscode/ripgrep@1.18.0 has no Android platform package in the frozen lock.",
       "status": "OPEN",
       "rowDisableRemovesInstallDependency": false,
       "failurePhase": "LOAD_OR_SEARCH_USE",

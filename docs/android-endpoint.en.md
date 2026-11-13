@@ -29,7 +29,7 @@ The Host is the sole execution and durable-state center. The old Node/substrate/
 
 | Item | Fact | Handling |
 | --- | --- | --- |
-| Node engine | official `0.2.2-rc.1` requires `>=24.9.0`; as observed on 2026-09-02, the latest stock nodejs-mobile Android release is Node 18.20.4 | **Hard blocker**: stock nodejs-mobile cannot be treated as a compatible substrate; prove a Node `>=24.9.0` Android runtime first (the historical `v22.19.0` cross-build probe is also below the new floor) |
+| Node engine | official `0.2.2-rc.2` requires `>=24.9.0`; as observed on 2026-09-02, the latest stock nodejs-mobile Android release is Node 18.20.4 | **Hard blocker**: stock nodejs-mobile cannot be treated as a compatible substrate; prove a Node `>=24.9.0` Android runtime first (the historical `v22.19.0` cross-build probe is also below the new floor) |
 | Native `sharp` | used only by `attachment-local`, no Android prebuilt | disable attachment/image plugin on mobile, or NDK cross-compile + registry entry |
 | Gradle integration | restored Labs source declared `com.github.nodejs-mobile`, but no verified current integration evidence exists | removed from the active Gradle configuration rather than claiming a working Node 22 integration |
 | Background keep-alive | OS kills background processes | Foreground Service + persistent notification (also serves as approval entry) |
@@ -40,7 +40,7 @@ The Host is the sole execution and durable-state center. The old Node/substrate/
 ```text
 reproducible compatible Node >=24.9.0 Android substrate
   → Termux on-device verification (scripts/termux-verify.sh green)
-  → official @deepseek-ai/dsh@0.2.2-rc.1 starts on that substrate
+  → official @deepseek-ai/dsh@0.2.2-rc.2 starts on that substrate
   → embedded-runtime E2E
   → APK contract tests
   → arm64 real-device + x86_64 emulator smoke

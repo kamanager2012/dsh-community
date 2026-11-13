@@ -12,7 +12,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = 1
-        versionName = "0.2.2-rc.1"
+        versionName = "0.2.2-rc.2"
 
         ndk {
             // arm64-v8a for real devices; x86_64 for emulator smoke tests

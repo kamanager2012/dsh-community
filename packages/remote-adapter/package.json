@@ -1,6 +1,6 @@
 {
   "name": "@dsh-community/remote-adapter",
-  "version": "0.2.2-rc.1",
+  "version": "0.2.2-rc.2",
   "private": true,
   "type": "module",
   "description": "[LABS] Transport-free Remote Host Adapter core over verified official DSH seams.",

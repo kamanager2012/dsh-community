@@ -231,8 +231,8 @@ describe('Android subprocess provider', () => {
     const pkg = JSON.parse(
       readFileSync(resolve(ROOT, 'apps/android/nodejs-project/package.json'), 'utf8'),
     ) as { dependencies?: Record<string, string> }
-    expect(pkg.dependencies?.['@deepseek-ai/dsh-subprocess']).toBe('0.2.2-rc.1')
-    expect(pkg.dependencies?.['@deepseek-ai/dsh-subprocess-local']).toBe('0.2.2-rc.1')
+    expect(pkg.dependencies?.['@deepseek-ai/dsh-subprocess']).toBe('0.2.2-rc.2')
+    expect(pkg.dependencies?.['@deepseek-ai/dsh-subprocess-local']).toBe('0.2.2-rc.2')
     expect(pkg.dependencies?.['node-pty']).toBeUndefined()
     for (const name of Object.keys(pkg.dependencies ?? {})) {
       expect(name).toMatch(/^@deepseek-ai\//u)

@@ -8,10 +8,10 @@
 
 原因是版本约束直接冲突：
 
-- official `@deepseek-ai/dsh@0.2.2-rc.1`：Node `>=24.9.0`
+- official `@deepseek-ai/dsh@0.2.2-rc.2`：Node `>=24.9.0`
 - stock nodejs-mobile 最新 Android release（2026-09-02 核验）：Node `18.20.4`
 
-历史首选交叉编译候选仍固定了 Git 对象基线，后续推进 `0.2.2-rc.1` 前需同步升级为已验证的 Node `>=24.9.0` tag：
+历史首选交叉编译候选仍固定了 Git 对象基线，后续推进 `0.2.2-rc.2` 前需同步升级为已验证的 Node `>=24.9.0` tag：
 
 > **从官方 Node.js `v22.19.0` 源码使用其自带 Android NDK 交叉编译入口构建 Android carrier。**
 
@@ -61,7 +61,7 @@ node scripts/validate-android-evidence-backing.mjs
 
 每个被提升的 PASS 必须在 `apps/android/evidence/records/` 中有对应记录。记录至少绑定：
 
-- exact official DSH `0.2.2-rc.1`
+- exact official DSH `0.2.2-rc.2`
 - full Community Git SHA
 - offset-aware RFC3339 capture time
 - artifact SHA-256
@@ -93,7 +93,7 @@ profileOnlyMitigation = INEFFECTIVE
 ```
 
 原因不是某个 profile 配置写错，而是当前发布的顶层
-`@deepseek-ai/dsh@0.2.2-rc.1` **在 npm 包依赖层就直接携带**
+`@deepseek-ai/dsh@0.2.2-rc.2` **在 npm 包依赖层就直接携带**
 `dsh-base`、`sdk-minimal`、`tool-fs-search` 等；其中 `dsh-base` 又依赖
 `subprocess-local`、`attachment-local`、`sandbox-local`、`tool-fs-search`。
 因此把 Cordis row 设成 `disabled` 只能改变运行期 composition，不能从安装闭包中删除
@@ -177,7 +177,7 @@ G2 现在拆成两层，不能再用一个“native build 成功”概括。
 
 调用方先通过 G1，然后提供：
 
-- committed 0.2.2-rc.1 runtime lock 生成的 classic `node_modules` staging tree
+- committed 0.2.2-rc.2 runtime lock 生成的 classic `node_modules` staging tree
 - 精确 Node `v22.19.0` source/build
 - Android NDK
 - 真机 adb（device/verify 模式）
@@ -206,9 +206,9 @@ probe 不下载依赖，也不修改上游源码：
 
 1. **Terminal / PTY**：这条已经从“没有生产 provider”推进到 first-party Android provider。Android overlay 现在只禁用官方 `subprocess-local` row，并插入 `AndroidSubprocessRuntime`；该 provider **继承官方 `LocalSubprocessRuntime`**，所以 `resolveExecutable()`、普通 `spawn()`、非 PTY 进程树和退出治理仍是官方实现，只覆写 `spawnTerminal()`。Android terminal backend 增加 `/proc/<pid>/stat` starttime 身份栅栏、foreground PGID signalling、POSIX session member 跟踪和 TERM→KILL quiescence；`node-pty` 也不提升为 Community 直依赖，而是从 frozen 官方 `dsh-subprocess-local` 的依赖闭包解析。Android app sandbox 可能看不到 `/proc/<pid>/syscall` / `mem`，因此 `inputWaiting` 在无法证明时保守返回 false，和官方 E2B provider 的 seam 语义一致。**但 provider 接线仍不等于 PASS**：`scripts/android-native-addon-probe.sh` 的 device/verify 阶段现在会在 raw node-pty smoke 之后继续推送并执行 `android-pty-provider-device-probe.mjs`，直接复用 `AndroidProcessInspector` 与 `AndroidTerminalHandle`，验证 provider 写入、foreground `SIGINT`、signal 后恢复写入以及整 POSIX session cleanup。该输出明确为 `ANDROID_PTY_PROVIDER_ADB_SHELL_OK_NOT_APP_UID_ACCEPTANCE`，只算 adb-shell preliminary evidence。最终仍必须在 exact Node 22.19 carrier + APK app UID 下，以官方 Web 的 `minimal` preset 验证完整 persistent-terminal 行为后才能 PASS。
 2. **Sandbox**：这里已经不再是“没有路线”。官方 `@deepseek-ai/dsh-sandbox` 提供正式 `ctx.sandbox` provider seam；Android overlay 只禁用官方 `sandbox-local` row，并经官方 `dsh web --patch` 插入 Community `AndroidLandlockSandboxProvider`，不修改官方 bundle。provider 使用官方 `writableRoots(policy)`，只调用 frozen `@deepseek-ai/node-addon-system@0.1.2` 内随附的 `src/main.c` 所对应的 `landlock-run` CLI 协议，并保留 `exit 125 + landlock-run:` runner-failure 分类。它只有在 `--probe` 精确返回 `landlock: fully enforced` 时才声明 `enforcement=full`；partial 直接 fail-closed。frozen npm 包本身发布 `src/main.c`，`scripts/android-sandbox-landlock-probe.sh` 用 Android NDK 原样构建该源码，不下载、不 patch。嵌入 Node 的 `android-app-uid-preflight.cjs` 会在官方 DSH spawn **之前**再次运行 full probe，并在同一个 APK UID 下证明“授权目录可写、同 UID 的兄弟目录被拒绝”。源码接线仍不等于真机 PASS。
-3. **POSIX hard-link durable publish**：0.2.2-rc.1 session persistence 和 attachment store 在非 win32 路径仍使用 `link()`。嵌入 Node 现在会在 app data 目录用真实 `fs.linkSync()` 校验 inode、link count 与内容一致性，再允许启动官方 DSH；但只有 APK app UID 的真实执行结果才能把 `appPrivateHardlinks` 升级为 PASS，Linux CI、`/data/local/tmp` 或 Termux 都不能代替。
+3. **POSIX hard-link durable publish**：0.2.2-rc.2 session persistence 和 attachment store 在非 win32 路径仍使用 `link()`。嵌入 Node 现在会在 app data 目录用真实 `fs.linkSync()` 校验 inode、link count 与内容一致性，再允许启动官方 DSH；但只有 APK app UID 的真实执行结果才能把 `appPrivateHardlinks` 升级为 PASS，Linux CI、`/data/local/tmp` 或 Termux 都不能代替。
 4. **sharp**：frozen lock 已精确包含 `sharp@0.35.5`、`@img/sharp-wasm32@0.35.5` 与 `@emnapi/runtime@1.11.3`，都有 registry provenance + SHA-512；sharp loader 在 Android native platform miss 后会尝试 WASM fallback。当前剩余门是 optional bytes 是否被实际 materialize，以及 Android carrier 上真实 PNG smoke 是否 PASS。
-5. **ripgrep / fs-search**：0.2.2-rc.1 官方 `search-core.ts` 已按 Git blob `794a5d43fe6026c34cb61d65133ee715ed08b2f0` 审计。`resolveRgPath()` 无参数、没有 `rgPath/ripgrepPath` config/env seam，Node 模式直接 `import('@vscode/ripgrep').rgPath`；唯一 sidecar 路径只在 `'pkg' in process` 时启用，而 Android carrier 不是 pkg runtime。与此同时 frozen lock 中不存在 `@vscode/ripgrep-android-*`。因此当前合法解锁条件只有两个：**上游真实 Android platform package**，或 **官方 tool-fs-search 显式 executable-path seam**。Community 不伪造 `@vscode` scope、不 spoof `process.pkg`、不依赖 Termux/system `rg`，也不复制/分叉官方 glob/grep 仅为了换 binary 路径。
+5. **ripgrep / fs-search**：0.2.2-rc.2 官方 `packages/util/ripgrep/src/index.ts` 已按 Git blob `e9ca71e63618acc75b8cd3308d38c42e423354f8` 审计（`search-core.ts` blob `970846b99a6d00d1a2f1fa259d0250f6e7fab64f` 仅重导出 `resolveRgPath`）。`resolveRgPath()` 无参数、没有 `rgPath/ripgrepPath` config/env seam，Node 模式直接 `import('@vscode/ripgrep').rgPath`；唯一 sidecar 路径只在 `'pkg' in process` 时启用，而 Android carrier 不是 pkg runtime。与此同时 frozen lock 中不存在 `@vscode/ripgrep-android-*`。因此当前合法解锁条件只有两个：**上游真实 Android platform package**，或 **官方 tool-fs-search/util-ripgrep 显式 executable-path seam**。Community 不伪造 `@vscode` scope、不 spoof `process.pkg`、不依赖 Termux/system `rg`，也不复制/分叉官方 glob/grep 仅为了换 binary 路径。
 6. **ripgrep provenance**：wrapper 1.18.0 对应 Microsoft `ripgrep-prebuilt v15.0.1`；其配置固定 BurntSushi/ripgrep `15.0.0` + Microsoft patch。任何未来 Android binary 必须保持这一 provenance 或经新的上游版本评审，不能只拿 vanilla/latest `rg`。
 
 所以当前 G2 仍是 **BLOCKED**。变化在于 sandbox、hard-link 和 PTY 都已经有 production-shaped Community 适配路径，而且仍保留官方 Agent/Session/tool ownership；尚未闭合的是 exact Node 22 carrier、node-pty/Koffi/sharp 真机证据、PTY minimal preset 的真实 session 行为，以及官方 ripgrep path seam / Android platform package。
@@ -218,7 +218,7 @@ probe 不下载依赖，也不修改上游源码：
 必须在 Android carrier 上实际启动：
 
 ```text
-official @deepseek-ai/dsh@0.2.2-rc.1
+official @deepseek-ai/dsh@0.2.2-rc.2
 → selected official composition
 → session create
 → model turn
