@@ -117,6 +117,7 @@ export async function buildDesktopBundles(outputRoot = appRoot) {
     }),
     esbuild.build({
       ...common,
+      format: 'cjs',
       entryPoints: ['src/preload.ts'],
       outfile: join(distDir, 'preload.js'),
     }),

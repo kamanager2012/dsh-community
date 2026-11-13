@@ -24,14 +24,47 @@ describe('desktop ESM bundles CJS/sodium-native interop', () => {
       await buildDesktopBundles(buildOut)
 
       const mainJsPath = join(buildOut, 'dist', 'main.js')
+      const preloadJsPath = join(buildOut, 'dist', 'preload.js')
       const pluginPath = join(buildOut, 'remote-bundle', 'cordis-plugin.mjs')
       const mainSource = readFileSync(mainJsPath, 'utf8')
+      const preloadSource = readFileSync(preloadJsPath, 'utf8')
       const pluginSource = readFileSync(pluginPath, 'utf8')
 
       expect(mainSource).toContain('const require = __dshCreateRequire(import.meta.url);')
       expect(mainSource).not.toContain('require-addon/lib/node.js')
       expect(mainSource).not.toContain('__filename')
       expect(pluginSource).not.toContain('__filename')
+      expect(preloadSource).not.toMatch(/^\s*import\s+/mu)
+
+      // Electron executes sandboxed preload scripts via CommonJS-style function wrapper;
+      // verify preload.js loads without ESM syntax and exposes window.dshCommunity.
+      let exposedName = ''
+      let exposedApi: Record<string, unknown> | undefined
+      const sandboxPreload = new Function('require', 'module', 'exports', preloadSource) as (
+        req: (id: string) => unknown,
+        mod: { exports: Record<string, unknown> },
+        exp: Record<string, unknown>,
+      ) => void
+      const cjsMod = { exports: {} }
+      sandboxPreload(
+        (id) => {
+          if (id !== 'electron') throw new Error(`Unexpected sandbox require in preload: ${id}`)
+          return {
+            contextBridge: {
+              exposeInMainWorld: (name: string, api: Record<string, unknown>) => {
+                exposedName = name
+                exposedApi = api
+              },
+            },
+            ipcRenderer: { invoke: () => Promise.resolve() },
+          }
+        },
+        cjsMod,
+        cjsMod.exports,
+      )
+      expect(exposedName).toBe('dshCommunity')
+      expect(typeof exposedApi?.showRemote).toBe('function')
+      expect(typeof exposedApi?.remoteStart).toBe('function')
 
       writeFileSync(join(buildOut, 'package.json'), '{"type":"module"}\n')
 
