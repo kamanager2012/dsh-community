@@ -116,6 +116,25 @@ export function apply(ctx: CordisContext): (() => void) | void {
     store.setModel(agent.options.model ?? 'default')
     store.setStatus(agent.status)
 
+    const existingLog = agent.session?.log
+    if (Array.isArray(existingLog) && existingLog.length > 0) {
+      store.applySessionEvent({ log: existingLog })
+    }
+
+    const commandsSvc = ctx.commands ?? ctx.get('commands')
+    if (commandsSvc?.list) {
+      try {
+        const listed = commandsSvc.list(agent)
+        store.setCommands(listed.map((c) => ({
+          name: c.name,
+          description: c.description,
+          ...(c.inputHint !== undefined ? { inputHint: c.inputHint } : {}),
+        })))
+      } catch {
+        // Optional command catalog should never block TUI startup.
+      }
+    }
+
     agent.ctx.on('session/event', (event: Record<string, unknown>) => {
       store.applySessionEvent(event)
     })
@@ -124,6 +143,16 @@ export function apply(ctx: CordisContext): (() => void) | void {
     const enqueueUserInput = (text: string): void => {
       sendChain = sendChain.then(async () => {
         try {
+          if (text.startsWith('/') && !text.startsWith('/image')) {
+            const cmdName = text.slice(1).split(/\s+/u, 1)[0] ?? ''
+            if (cmdName !== '' && commandsSvc?.execute && (!commandsSvc.find || commandsSvc.find(agent, cmdName))) {
+              const handled = await commandsSvc.execute(agent, text, [])
+              if (handled !== false) {
+                store.showNotice(`已执行官方命令：/${cmdName}`)
+                return
+              }
+            }
+          }
           const { content } = await buildUserContent(text, ctx.attachments)
           agent.followup(createUserMessage({
             content,

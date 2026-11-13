@@ -14,6 +14,8 @@ export interface KeyEvent {
   readonly ctrl?: boolean
   readonly backspace?: boolean
   readonly delete?: boolean
+  readonly upArrow?: boolean
+  readonly downArrow?: boolean
 }
 
 export interface KeyHandlerDeps {
@@ -37,7 +39,9 @@ export function handleKey(deps: KeyHandlerDeps, raw: string, key: KeyEvent = {})
     ? ['\r']
     : (raw === '' && (key.backspace || key.delete))
       ? ['\x7f']
-      : [...raw].map((ch) => ch === '\n' ? '\r' : ch)
+      : (raw === '' && (key.upArrow || key.downArrow))
+        ? ['']
+        : [...raw].map((ch) => ch === '\n' ? '\r' : ch)
   for (const ch of list) {
     applyChar(deps, ch, key)
   }
@@ -85,7 +89,35 @@ function applyChar(deps: KeyHandlerDeps, ch: string, key: KeyEvent): void {
     store.setDraft('')
     if (trimmed === '/exit') deps.onExit()
     else if (trimmed === '/help') deps.showHelp()
-    else if (trimmed !== '') deps.onSend(trimmed)
+    else if (trimmed === '/todos') {
+      const lines = state.todos.length === 0
+        ? ['暂无待办任务']
+        : state.todos.map((t, i) => `${i + 1}. [${t.status}] ${t.content}`)
+      store.showHelp(`待办清单（${state.todos.length}）：\n  ${lines.join('\n  ')}`)
+    } else if (trimmed === '/usage' || trimmed === '/status') {
+      const u = state.usage
+      const total = u.inputTokens + u.outputTokens + u.cacheReadTokens + u.cacheWriteTokens
+      store.showHelp(
+        `会话状态：${state.title ?? '未命名'} · 模型：${state.model} · 状态：${state.status}\n` +
+        `用量统计：输入 ${u.inputTokens} / 输出 ${u.outputTokens} / 缓存读 ${u.cacheReadTokens} / 总计 ${total} · 回合 ${u.turns}`,
+      )
+    } else if (trimmed === '/commands') {
+      const listText = state.commands.length === 0
+        ? '当前未加载扩展斜杠命令'
+        : state.commands.map((c) => `/${c.name}${c.inputHint ? ` ${c.inputHint}` : ''} — ${c.description}`).join('\n  ')
+      store.showHelp(`可用官方斜杠命令：\n  ${listText}`)
+    } else if (trimmed !== '') {
+      store.recordPrompt(trimmed)
+      deps.onSend(trimmed)
+    }
+    return
+  }
+  if (key.upArrow && ch === '') {
+    store.recallPreviousPrompt()
+    return
+  }
+  if (key.downArrow && ch === '') {
+    store.recallNextPrompt()
     return
   }
   if (ch === '\x7f' || ch === '\b') {

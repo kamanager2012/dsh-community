@@ -368,6 +368,30 @@ export async function runRemoteCommand(
     if (existsSync(stores.hostIdentityPath)) {
       hostFingerprint = (await stores.hostIdentityStore.getPublicIdentity()).fingerprint
     }
+    const live = readLiveControlEndpoint(stores.configDir)
+    let liveStatus: Record<string, unknown> | undefined
+    let liveSessions: Array<Record<string, unknown>> | undefined
+    if (live) {
+      try {
+        const [stRes, sessRes] = await Promise.all([
+          fetchControl(`${live.controlUrl}/status`, {
+            headers: { authorization: `Bearer ${live.controlToken}` },
+          }),
+          fetchControl(`${live.controlUrl}/sessions`, {
+            headers: { authorization: `Bearer ${live.controlToken}` },
+          }).catch(() => undefined),
+        ])
+        if (stRes.ok) {
+          liveStatus = (await stRes.json()) as Record<string, unknown>
+        }
+        if (sessRes?.ok) {
+          const body = (await sessRes.json()) as { sessions?: Array<Record<string, unknown>> }
+          if (Array.isArray(body.sessions)) liveSessions = body.sessions
+        }
+      } catch {
+        // Offline or stale control lock; keep persisted offline status cleanly.
+      }
+    }
     const summary = {
       configDir: stores.configDir,
       dshHome,
@@ -375,18 +399,39 @@ export async function runRemoteCommand(
       ...(hostFingerprint !== undefined ? { hostFingerprint } : {}),
       activeDevices: devices.filter((d) => d.revokedAt === undefined).length,
       revokedDevices: devices.filter((d) => d.revokedAt !== undefined).length,
+      running: liveStatus !== undefined,
+      ...(liveStatus !== undefined
+        ? {
+            lanEndpointUrl: liveStatus.lanEndpointUrl,
+            relayRoomId: liveStatus.relayRoomId,
+            activeConnections: liveStatus.activeConnections,
+            pendingApprovals: liveStatus.pendingApprovals,
+            pendingQuestions: liveStatus.pendingQuestions,
+            pendingPairingCandidates: liveStatus.pendingPairingCandidates,
+          }
+        : {}),
+      ...(liveSessions !== undefined ? { sessions: liveSessions } : {}),
     }
     if (asJson) {
       process.stdout.write(`${JSON.stringify(summary)}\n`)
     } else {
-      process.stdout.write(
-        [
-          `Remote 配置目录：${summary.configDir}`,
-          `官方 DSH_HOME：${summary.dshHome}`,
-          `主机指纹：${summary.hostFingerprint ?? '尚未初始化（首次 start 时生成）'}`,
-          `信任设备：${summary.activeDevices} 个生效，${summary.revokedDevices} 个已吊销`,
-        ].join('\n') + '\n',
-      )
+      const out = [
+        `Remote 配置目录：${summary.configDir}`,
+        `官方 DSH_HOME：${summary.dshHome}`,
+        `主机指纹：${summary.hostFingerprint ?? '尚未初始化（首次 start 时生成）'}`,
+        `信任设备：${summary.activeDevices} 个生效，${summary.revokedDevices} 个已吊销`,
+        `宿主运行态：${summary.running ? `在线 (连接 ${String(liveStatus?.activeConnections ?? 0)}, 待审批 ${String(liveStatus?.pendingApprovals ?? 0)}, 待回答 ${String(liveStatus?.pendingQuestions ?? 0)})` : '未运行'}`,
+      ]
+      if (liveSessions && liveSessions.length > 0) {
+        out.push(`活跃/可读会话 (${String(liveSessions.length)}):`)
+        for (const s of liveSessions.slice(0, 8)) {
+          const id = String(s.id ?? '')
+          const title = typeof s.title === 'string' && s.title !== '' ? ` [${s.title}]` : ''
+          const status = typeof s.status === 'string' ? ` (${s.status})` : ''
+          out.push(`  - ${id}${title}${status}`)
+        }
+      }
+      process.stdout.write(out.join('\n') + '\n')
     }
     return 0
   }
@@ -526,7 +571,7 @@ export async function runRemoteCommand(
           ...(flags.qr && typeof ready.deepLink === 'string' && ready.deepLink.length > 0
             ? [formatPairingQrBlock(ready.deepLink, Boolean(process.stdout.isTTY))]
             : []),
-          `交互命令: confirm <candidateId> | devices | revoke <deviceId> | qr | quit`,
+          `交互命令: confirm <candidateId> | devices | sessions | revoke <deviceId> | qr | quit`,
         )
         process.stdout.write(`${lines.join('\n')}\n`)
       }
@@ -574,6 +619,11 @@ export async function runRemoteCommand(
             process.stdout.write(`${await res.text()}\n`)
           } else if (cmd === 'devices') {
             const res = await fetchControl(`${controlUrl}/devices`, {
+              headers: { authorization: `Bearer ${controlToken}` },
+            })
+            process.stdout.write(`${await res.text()}\n`)
+          } else if (cmd === 'sessions') {
+            const res = await fetchControl(`${controlUrl}/sessions`, {
               headers: { authorization: `Bearer ${controlToken}` },
             })
             process.stdout.write(`${await res.text()}\n`)

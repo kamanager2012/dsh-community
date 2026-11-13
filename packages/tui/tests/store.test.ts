@@ -219,4 +219,111 @@ describe('store interaction flows', () => {
       expect(store.state.questions).toBeUndefined()
     })
   })
+
+  it('folds todo/write, turn lifecycle, token usage, title, historical assistant/message, and tool error flags', () => {
+    const store = createStore()
+    store.applySessionEvent({
+      log: [
+        { type: 'session/title', seq: 1, data: { title: '架构重构' } },
+        { type: 'session.model', seq: 2, data: { provider: 'deepseek', model: 'deepseek-reasoner' } },
+        { type: 'turn/start', seq: 3, data: {} },
+        {
+          type: 'todo/write',
+          seq: 4,
+          data: {
+            todos: [
+              { id: 't1', content: '分析竞品', status: 'completed' },
+              { id: 't2', content: '实现优化', status: 'in_progress' },
+            ],
+          },
+        },
+        { type: 'step/end', seq: 5, data: { usage: { inputTokens: 150, outputTokens: 40, cacheReadTokens: 25 } } },
+        {
+          type: 'assistant/message',
+          seq: 6,
+          data: {
+            message: {
+              content: [
+                { type: 'thinking', thinking: '先检查回放队列' },
+                { type: 'text', text: '历史回复已加载。' },
+              ],
+            },
+          },
+        },
+        { type: 'tool/call', seq: 7, data: { callId: 'err1', name: 'bash', arguments: '{"cmd":"false"}' } },
+        { type: 'tool/result', seq: 8, data: { callId: 'err1', isError: true, meta: { summary: 'exit 1' } } },
+        { type: 'turn/end', seq: 9, data: { stopReason: 'interrupted' } },
+      ],
+    })
+
+    expect(store.state.title).toBe('架构重构')
+    expect(store.state.model).toBe('deepseek-reasoner')
+    expect(store.state.status).toBe('idle')
+    expect(store.state.todos).toHaveLength(2)
+    expect(store.state.usage).toEqual({
+      inputTokens: 150,
+      outputTokens: 40,
+      cacheReadTokens: 25,
+      cacheWriteTokens: 0,
+      turns: 1,
+    })
+    expect(store.state.items.some((i) => i.kind === 'assistant' && i.text === '历史回复已加载。' && i.reasoning === '先检查回放队列')).toBe(true)
+    expect(store.state.items.some((i) => i.kind === 'tool' && i.id === 'err1' && i.isError === true)).toBe(true)
+    expect(store.state.items.some((i) => i.kind === 'notice' && i.tone === 'warn' && i.text.includes('中断'))).toBe(true)
+
+    // Next turn/start clears previous turn's todo checklist
+    store.applySessionEvent({ log: [{ type: 'turn/start', seq: 10, data: {} }] })
+    expect(store.state.todos).toEqual([])
+    expect(store.state.status).toBe('running')
+    expect(store.state.usage.turns).toBe(2)
+  })
+
+  it('handles /todos, /usage, /commands locally and recalls prompt history via Up/Down arrows', () => {
+    const store = createStore()
+    store.setCommands([{ name: 'compact', description: '压缩会话' }])
+    store.applySessionEvent({
+      log: [
+        { type: 'turn/start', seq: 1, data: {} },
+        { type: 'todo/write', seq: 2, data: { todos: [{ id: '1', content: 'Run check', status: 'in_progress' }] } },
+        { type: 'step/end', seq: 3, data: { usage: { inputTokens: 80, outputTokens: 20 } } },
+      ],
+    })
+
+    const sent: string[] = []
+    const d = {
+      store,
+      onSend: (t: string) => sent.push(t),
+      onCancel: () => {},
+      onExit: () => {},
+      showHelp: () => {},
+      toggleThinking: () => {},
+    }
+
+    handleKey(d, 'first prompt', {})
+    handleKey(d, '', { return: true })
+    handleKey(d, 'second prompt', {})
+    handleKey(d, '', { return: true })
+    expect(sent).toEqual(['first prompt', 'second prompt'])
+
+    // Up arrow cycles backwards, Down restores current draft
+    handleKey(d, 'typing', {})
+    handleKey(d, '', { upArrow: true })
+    expect(store.state.draft).toBe('second prompt')
+    handleKey(d, '', { upArrow: true })
+    expect(store.state.draft).toBe('first prompt')
+    handleKey(d, '', { downArrow: true })
+    expect(store.state.draft).toBe('second prompt')
+    handleKey(d, '', { downArrow: true })
+    expect(store.state.draft).toBe('typing')
+
+    store.setDraft('')
+    for (const cmd of ['/todos', '/usage', '/commands']) {
+      handleKey(d, cmd, {})
+      handleKey(d, '', { return: true })
+    }
+    expect(sent).toEqual(['first prompt', 'second prompt'])
+    expect(store.state.items.filter((i) => i.kind === 'help').map((i) => i.text).join('\n')).toContain('Run check')
+    expect(store.state.items.filter((i) => i.kind === 'help').map((i) => i.text).join('\n')).toContain('/compact')
+    expect(store.state.items.filter((i) => i.kind === 'help').map((i) => i.text).join('\n')).toContain('输入 80 / 输出 20')
+  })
 })
