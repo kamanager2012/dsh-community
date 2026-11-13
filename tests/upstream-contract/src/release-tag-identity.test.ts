@@ -124,6 +124,19 @@ describe('release tag identity validator', () => {
     expect(result.stdout).toContain('Published Latest=' + publishedTag)
   })
 
+  it('accepts a Linux-AppImage-only Complementary Edition Published Latest fixture', () => {
+    const root = makeFixture()
+    const facts = JSON.parse(readFileSync(join(root, 'docs/current-release.json'), 'utf8'))
+    facts.assets = { linuxAppImage: facts.assets.linuxAppImage }
+    facts.publishedAssets = { linuxAppImage: facts.publishedAssets.linuxAppImage }
+    facts.publishedReleaseEvidence.primaryAssets = {
+      linuxAppImage: facts.publishedReleaseEvidence.primaryAssets.linuxAppImage,
+    }
+    writeFileSync(join(root, 'docs/current-release.json'), JSON.stringify(facts, null, 2) + '\n')
+    const result = run(root)
+    expect(result.status).toBe(0)
+  })
+
   it('rejects a manually pushed tag that does not match Candidate Source', () => {
     const result = run(makeFixture(), 'v9.9.9')
     expect(result.status).toBe(1)

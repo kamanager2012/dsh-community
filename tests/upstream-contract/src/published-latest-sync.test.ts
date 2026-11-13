@@ -108,8 +108,11 @@ describe('Published Latest synchronization', () => {
     expect(readFileSync(path, 'utf8')).toBe(before)
   })
 
-  it('updates only publication truth while preserving Candidate and evidence state', () => {
-    const { root, facts } = makeRoot()
+  it('updates only publication truth while preserving Candidate and evidence state (Linux AppImage only)', () => {
+    const { root, facts, release } = makeRoot()
+    release.assets = release.assets.filter((asset) => asset.name.endsWith('.AppImage'))
+    writeFileSync(join(root, 'latest.json'), JSON.stringify(release, null, 2) + '\n')
+
     const result = run(root, true)
     expect(result.status).toBe(0)
 
@@ -124,12 +127,28 @@ describe('Published Latest synchronization', () => {
 
     expect(next.communityProduct.githubLatestTag).toBe('v0.1.2-rc.1')
     expect(next.assets.linuxAppImage).toBe('dsh-community-0.1.2-rc.1.AppImage')
-    expect(next.assets.macosDmg).toBe('dsh-community-0.1.2-rc.1.dmg')
-    expect(next.assets.windowsSetup).toBe('DSH.Community.Setup.0.1.2-rc.1.exe')
+    expect(next.assets.macosDmg).toBeUndefined()
+    expect(next.assets.windowsSetup).toBeUndefined()
     expect(next.publishedAssets).toEqual(next.assets)
     expect(next.publishedReleaseEvidence.releaseId).toBe(999)
-    expect(next.publishedReleaseEvidence.primaryAssets.windowsSetup.assetId).toBe(103)
+    expect(next.publishedReleaseEvidence.primaryAssets.linuxAppImage.assetId).toBe(101)
+    expect(next.publishedReleaseEvidence.primaryAssets.macosDmg).toBeUndefined()
+    expect(next.publishedReleaseEvidence.primaryAssets.windowsSetup).toBeUndefined()
     expect(next.asOf).toBe('2026-09-02')
+  })
+
+  it('preserves historical 3-asset evidence when legacy dmg/exe assets exist on the release', () => {
+    const { root } = makeRoot()
+    const result = run(root, true)
+    expect(result.status).toBe(0)
+
+    const next = JSON.parse(
+      readFileSync(join(root, 'docs/current-release.json'), 'utf8'),
+    )
+    expect(next.assets.linuxAppImage).toBe('dsh-community-0.1.2-rc.1.AppImage')
+    expect(next.assets.macosDmg).toBe('dsh-community-0.1.2-rc.1.dmg')
+    expect(next.assets.windowsSetup).toBe('DSH.Community.Setup.0.1.2-rc.1.exe')
+    expect(next.publishedReleaseEvidence.primaryAssets.windowsSetup.assetId).toBe(103)
   })
 
   it('refuses to sync an alpha tag into Published Latest', () => {
@@ -143,10 +162,10 @@ describe('Published Latest synchronization', () => {
     expect(result.stderr).toContain('not Latest-eligible')
   })
 
-  it('fails closed when a required installer is missing', () => {
+  it('fails closed when the required Linux AppImage installer is missing', () => {
     const { root, release } = makeRoot()
     release.assets = release.assets.filter(
-      (asset) => !asset.name.endsWith('.dmg'),
+      (asset) => !asset.name.endsWith('.AppImage'),
     )
     writeFileSync(join(root, 'latest.json'), JSON.stringify(release, null, 2) + '\n')
     const result = run(root, true)

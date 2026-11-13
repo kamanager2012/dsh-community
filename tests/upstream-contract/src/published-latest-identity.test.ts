@@ -109,13 +109,35 @@ describe('Published Latest release-gate wiring', () => {
 })
 
 describe('Published Latest identity validator', () => {
-  it('accepts the exact GitHub release identity and three primary assets', () => {
+  it('accepts the exact GitHub release identity and three historical primary assets', () => {
     const { root } = makeRoot()
     const result = run(root)
     expect(result.status).toBe(0)
     expect(result.stdout).toContain('Published Latest verified: ' + tag)
     expect(result.stdout).toContain('releaseId=' + releaseId)
     expect(result.stdout).toContain('primaryAssets=3')
+  })
+
+  it('accepts a Linux-AppImage-only Complementary Edition Published Latest', () => {
+    const { root, facts, release } = makeRoot()
+    const linuxName = facts.assets.linuxAppImage
+    const nextFacts = {
+      ...facts,
+      assets: { linuxAppImage: linuxName },
+      publishedAssets: { linuxAppImage: linuxName },
+      publishedReleaseEvidence: {
+        ...facts.publishedReleaseEvidence,
+        primaryAssets: {
+          linuxAppImage: primary.linuxAppImage,
+        },
+      },
+    }
+    release.assets = release.assets.filter((asset) => asset.name === linuxName)
+    writeFixture(root, nextFacts, release)
+
+    const result = run(root)
+    expect(result.status).toBe(0)
+    expect(result.stdout).toContain('primaryAssets=1')
   })
 
   it('rejects GitHub Latest tag drift even when the value is syntactically valid', () => {

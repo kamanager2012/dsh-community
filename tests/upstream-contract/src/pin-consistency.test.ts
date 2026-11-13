@@ -99,8 +99,9 @@ describe('docs/current-release.json', () => {
       communityProduct: { version: string; githubLatestTag: string }
       candidateTag: string
       dualBadge: string
-      assets: { linuxAppImage: string; macosDmg: string; windowsSetup: string }
-      publishedAssets: { linuxAppImage: string; macosDmg: string; windowsSetup: string }
+      endpoints: Array<{ id: string; onLatestDownload: boolean; status?: string }>
+      assets: { linuxAppImage: string; macosDmg?: string; windowsSetup?: string }
+      publishedAssets: { linuxAppImage: string; macosDmg?: string; windowsSetup?: string }
       publishedReleaseEvidence: {
         releaseId: number
         tag: string
@@ -121,9 +122,18 @@ describe('docs/current-release.json', () => {
     expect(facts.dualBadge).toBe(
       `DeepSeek Harness Community v${version} [Official Core: ${OFFICIAL_DSH_PACKAGE}@${PINNED_DSH_VERSION}]`,
     )
+    expect(facts.endpoints.map((endpoint) => endpoint.id)).toEqual([
+      'linux-terminal',
+      'linux-appimage',
+      'android',
+    ])
     expect(facts.assets.linuxAppImage).toBe(`dsh-community-${publishedVersion}.AppImage`)
-    expect(facts.assets.macosDmg).toBe(`dsh-community-${publishedVersion}.dmg`)
-    expect(facts.assets.windowsSetup).toBe(`DSH.Community.Setup.${publishedVersion}.exe`)
+    if (facts.assets.macosDmg !== undefined) {
+      expect(facts.assets.macosDmg).toBe(`dsh-community-${publishedVersion}.dmg`)
+    }
+    if (facts.assets.windowsSetup !== undefined) {
+      expect(facts.assets.windowsSetup).toBe(`DSH.Community.Setup.${publishedVersion}.exe`)
+    }
     expect(facts.historicalIndependentTags).not.toContain(`v${version}`)
     expect(facts.historicalIndependentTags).not.toContain(facts.communityProduct.githubLatestTag)
     expect(facts.schemaVersion).toBeGreaterThanOrEqual(2)
@@ -136,8 +146,13 @@ describe('docs/current-release.json', () => {
       /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/u,
     )
     for (const key of ['linuxAppImage', 'macosDmg', 'windowsSetup'] as const) {
+      const expectedName = facts.publishedAssets[key]
       const evidence = facts.publishedReleaseEvidence.primaryAssets[key]
-      expect(evidence?.name, key).toBe(facts.publishedAssets[key])
+      if (expectedName === undefined) {
+        expect(evidence, key).toBeUndefined()
+        continue
+      }
+      expect(evidence?.name, key).toBe(expectedName)
       expect(evidence?.assetId, key).toBeGreaterThan(0)
       expect(evidence?.digest, key).toMatch(/^sha256:[0-9a-f]{64}$/u)
     }

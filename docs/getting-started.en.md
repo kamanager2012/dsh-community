@@ -8,32 +8,28 @@
 
 | Goal | Entry | Meaning |
 | --- | --- | --- |
-| Use the official Runtime directly | [`npx @deepseek-ai/dsh web`](https://github.com/deepseek-ai/deepseek-harness) | Official product path |
-| Use the community Terminal / TUI | `dsh-community` or `pnpm tui` from source | Community UX around the official Runtime |
-| Download the Windows Desktop build | [Latest `v0.1.1-rc.2`](https://github.com/kamanager2012/dsh-community/releases/latest) | Re-run exact-asset smoke on the new tag; full user loop still requires review |
-| Download the macOS Desktop build | [Latest `v0.1.1-rc.2`](https://github.com/kamanager2012/dsh-community/releases/latest) | Re-run exact-asset smoke on the new tag; full user loop still requires review |
-| Use the WSL/Linux Terminal | `dsh-community` / `pnpm tui` | Primary Linux Community endpoint |
+| Use Official Web or Windows / macOS Desktop | [`deepseek-ai/deepseek-harness`](https://github.com/deepseek-ai/deepseek-harness) (`npx @deepseek-ai/dsh web`) | Upstream product and Win/macOS desktop builds; Complementary Edition does not duplicate them |
+| Use the community Terminal / TUI | `dsh-community` or `pnpm tui` from source | Primary Linux / WSL complementary endpoint around the official Runtime |
+| Download the Linux Desktop AppImage | [Latest `v0.1.1-rc.2`](https://github.com/kamanager2012/dsh-community/releases/latest) `.AppImage` or `pnpm desktop:package -- --appimage` | Linux desktop complementary build absent upstream |
+| Inspect Android Remote Client (experimental) | In-repo `apps/android` + `packages/remote-adapter` | `[LABS]` / `[UNVERIFIED]`, outside Published Latest |
 | Read the full operational guide | [DeepSeek Harness Handbook](https://kamanager2012.github.io/dsh-community/en/) | Providers, Sessions, security, automation, and acceptance |
 
-Do not download a formal client from archived Suite, the standalone Marketplace, the standalone Plugins registry, or Edition. **Published Latest** is defined by [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) plus `githubLatestTag / publishedAssets / publishedReleaseEvidence` in `current-release.json`; published assets carry keyless cosign signatures (`.sigstore.json`). Do not download historical `v0.1.2`–`v0.1.6` as the current product. Official Web is an upstream companion, not a Community endpoint. The product has five Community endpoints: four currently published plus the active-source Android endpoint, which remains `[UNVERIFIED]` and outside Published Latest. See [community-endpoints.en.md](community-endpoints.en.md) and the [version policy](version-policy.md).
+Do not download a formal client from archived Suite, the standalone Marketplace, the standalone Plugins registry, or Edition. **Published Latest** is defined by [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) plus `githubLatestTag / publishedAssets / publishedReleaseEvidence` in `current-release.json`; published assets carry keyless cosign signatures (`.sigstore.json`). Do not download historical `v0.1.2`–`v0.1.6` as the current product. Official Web and Win/macOS Desktop are upstream surfaces, not Complementary Community endpoints. The product defines three complementary Community endpoints: two currently published (`WSL/Linux Terminal` and `Linux AppImage`) plus the active-source `Android` Remote Client, which remains `[UNVERIFIED]` and outside Published Latest. See [community-endpoints.en.md](community-endpoints.en.md) and the [version policy](version-policy.md).
 
 A source checkout displays the **Candidate Source** Dual-Badge, not the Published Latest version. Candidate core, community product version, `candidateTag`, and Dual-Badge are read from [`current-release.json`](current-release.json); source may lead the published download.
 
 ## Current published download assets
 
-[`v0.1.1-rc.2`](https://github.com/kamanager2012/dsh-community/releases/latest):
+Historical [`v0.1.1-rc.2`](https://github.com/kamanager2012/dsh-community/releases/latest) on the Release page (GitHub may display spaces as dots):
 
-- `DSH Community Setup 0.1.1-rc.2.exe` — Windows (GitHub may display spaces as dots)
-- `dsh-community-0.1.1-rc.2.dmg` — macOS
-- `dsh-community-0.1.1-rc.2.AppImage` — Linux endpoint 4
+- `dsh-community-0.1.1-rc.2.AppImage` — Linux Desktop AppImage (retained on future Complementary Edition releases)
+- `dsh-community-0.1.1-rc.2.dmg` — macOS (historical artifact; retired after `v0.1.1-rc.2` in favor of official `deepseek-harness`)
+- `DSH Community Setup 0.1.1-rc.2.exe` — Windows (historical artifact; retired after `v0.1.1-rc.2` in favor of official `deepseek-harness`)
 
-Use the exact filenames on the Release page. Each file has a matching `.sha256`. Windows / macOS builds are **unsigned and not notarized**. Windows SmartScreen may say “Unknown publisher”: More info → Run anyway, then check the sidecar hash:
+Future Complementary Edition releases publish only `.AppImage` plus the `official-runtime.cdx.json` SBOM. Each file has a matching `.sha256` sidecar and `.sigstore.json` bundle:
 
 ```sh
-# Windows PowerShell:
-Get-FileHash 'DSH Community Setup 0.1.1-rc.2.exe' -Algorithm SHA256
-# macOS / Linux:
-shasum -a 256 -c dsh-community-0.1.1-rc.2.dmg.sha256
+sha256sum -c dsh-community-0.1.1-rc.2.AppImage.sha256
 ```
 
 The first desktop launch unpacks the official runtime into user data once. Sessions stay in official `~/.dsh`.

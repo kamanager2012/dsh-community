@@ -58,19 +58,6 @@
       "category": "Development",
       "icon": "resources/icon.png",
       "syncDesktopName": true
-    },
-    "mac": {
-      "target": [
-        "dir"
-      ],
-      "icon": "resources/icon.png",
-      "category": "public.app-category.developer-tools"
-    },
-    "win": {
-      "target": [
-        "dir"
-      ],
-      "icon": "resources/icon.png"
     }
   }
 }

@@ -1,6 +1,6 @@
 /**
  * Local release gate. Pushing the tag starts the GitHub `release` workflow,
- * which builds Linux / Windows / macOS artifacts and publishes the release.
+ * which builds the Linux AppImage + official-runtime SBOM and publishes the release.
  *
  * Usage: node scripts/release.mjs v0.1.0-rc.8-community.1
  */
@@ -62,6 +62,6 @@ run('pnpm', ['desktop:package', '--', '--appimage'])
 process.stdout.write('4/6 tag\n')
 run('git', ['tag', tag])
 
-process.stdout.write(`5/6 push tag to ${remote} (starts the 3-OS release workflow)\n`)
+process.stdout.write(`5/6 push tag to ${remote} (starts the release workflow)\n`)
 run('git', ['push', remote, tag])
 process.stdout.write(`\n${tag} pushed. Watch https://github.com/kamanager2012/dsh-community/actions\n`)

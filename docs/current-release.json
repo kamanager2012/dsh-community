@@ -11,20 +11,11 @@
     "download": "https://github.com/kamanager2012/dsh-community/releases/latest"
   },
   "dualBadge": "DeepSeek Harness Community v0.2.2-rc.2 [Official Core: @deepseek-ai/dsh@0.2.2-rc.2]",
+  "positioning": "Complementary community edition: provides endpoints absent from official deepseek-ai/deepseek-harness (WSL/Linux Terminal, Linux Desktop AppImage, and active [UNVERIFIED] Android Remote Client). Windows and macOS Desktop installers are delivered upstream by official deepseek-harness.",
   "endpoints": [
     {
       "id": "linux-terminal",
       "name": "WSL/Linux Terminal",
-      "onLatestDownload": true
-    },
-    {
-      "id": "windows-desktop",
-      "name": "Windows Desktop",
-      "onLatestDownload": true
-    },
-    {
-      "id": "macos-desktop",
-      "name": "macOS Desktop",
       "onLatestDownload": true
     },
     {
@@ -39,12 +30,26 @@
       "status": "UNVERIFIED"
     }
   ],
-  "officialWeb": "kernel UI; not a community endpoint",
+  "retiredEndpoints": [
+    {
+      "id": "windows-desktop",
+      "name": "Windows Desktop",
+      "retiredAfter": "v0.1.1-rc.2",
+      "replacedBy": "Official deepseek-ai/deepseek-harness win-x64 desktop"
+    },
+    {
+      "id": "macos-desktop",
+      "name": "macOS Desktop",
+      "retiredAfter": "v0.1.1-rc.2",
+      "replacedBy": "Official deepseek-ai/deepseek-harness mac-arm64/mac-x64 desktop"
+    }
+  ],
+  "officialWeb": "kernel UI and upstream Win/macOS Desktop; not community endpoints",
   "assets": {
     "linuxAppImage": "dsh-community-0.1.1-rc.2.AppImage",
     "macosDmg": "dsh-community-0.1.1-rc.2.dmg",
     "windowsSetup": "DSH.Community.Setup.0.1.1-rc.2.exe",
-    "note": "GitHub may show Windows spaces as dots. Use the exact names on the Release page."
+    "note": "Historical v0.1.1-rc.2 shipped Linux/Win/macOS (GitHub may show Windows spaces as dots). Future Complementary Edition releases ship Linux AppImage only."
   },
   "historicalIndependentTags": [
     "v0.1.2",
@@ -107,7 +112,7 @@
     "linuxAppImage": "dsh-community-0.1.1-rc.2.AppImage",
     "macosDmg": "dsh-community-0.1.1-rc.2.dmg",
     "windowsSetup": "DSH.Community.Setup.0.1.1-rc.2.exe",
-    "note": "GitHub may show Windows spaces as dots. Use the exact names on the Release page."
+    "note": "Historical v0.1.1-rc.2 shipped Linux/Win/macOS (GitHub may show Windows spaces as dots). Future Complementary Edition releases ship Linux AppImage only."
   },
   "publishedReleaseEvidence": {
     "releaseId": 374950921,

@@ -1,13 +1,12 @@
-# Android Fifth Community Endpoint (Mobile)
+# Android Third Complementary Community Endpoint (Mobile)
 
-> Status: `[LABS]` / `[UNVERIFIED]`. Android remains the fifth Community endpoint, but its target has changed from an embedded local runtime to a lightweight Remote Client. No published Android capability is claimed before Remote Android Acceptance passes.
+> Status: `[LABS]` / `[UNVERIFIED]`. Under the Complementary Edition scope, Android is the **third complementary Community endpoint** (alongside WSL/Linux Terminal and Linux AppImage), and its target has changed from an embedded local runtime to a lightweight Remote Client. No published Android capability is claimed before Remote Android Acceptance passes.
 
 [中文](android-endpoint.md) · [Runtime Substrate](android-runtime-substrate.en.md) · [Reality Gate](reality-gate.en.md)
 
 ## Positioning
 
-Android is the **fifth Community endpoint** (after WSL/Linux Terminal, Windows Desktop,
-macOS Desktop, and Linux AppImage). Its source is active in this repository, but it is not yet part of Published Latest. The target is now an APK Remote Client: official `@deepseek-ai/dsh` runs only on a trusted Host, while Android handles Session / Prompt / event-stream / approval / question interaction. Android carries no Node runtime, Agent loop, Session store, or tool executor. See [Remote Host-Client Architecture](remote-host-client.md).
+Android is the **third complementary Community endpoint** (alongside WSL/Linux Terminal and Linux AppImage; Official Web plus Windows and macOS Desktop are delivered upstream by official `deepseek-harness`). Its source is active in this repository, but it is not yet part of Published Latest. The target is now an APK Remote Client: official `@deepseek-ai/dsh` runs only on a trusted Host, while Android handles Session / Prompt / event-stream / approval / question interaction. Android carries no Node runtime, Agent loop, Session store, or tool executor. See [Remote Host-Client Architecture](remote-host-client.md).
 
 ## Target architecture
 

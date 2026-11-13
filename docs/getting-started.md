@@ -8,35 +8,31 @@
 
 | 目标 | 入口 | 说明 |
 | --- | --- | --- |
-| 直接使用官方 Runtime | [`npx @deepseek-ai/dsh web`](https://github.com/deepseek-ai/deepseek-harness) | 官方产品路径 |
-| 使用社区终端 / TUI | 本仓库 `dsh-community` 或源码中的 `pnpm tui` | 社区 UX，执行核心仍是官方 Runtime |
-| 下载 Windows 桌面包 | [Latest `v0.1.1-rc.2`](https://github.com/kamanager2012/dsh-community/releases/latest) | 新 tag 需重跑 exact-asset smoke；完整用户闭环仍需复核 |
-| 下载 macOS 桌面包 | [Latest `v0.1.1-rc.2`](https://github.com/kamanager2012/dsh-community/releases/latest) | 新 tag 需重跑 exact-asset smoke；完整用户闭环仍需复核 |
-| 使用 WSL/Linux 终端 | `dsh-community` / `pnpm tui` | Linux 的主力 Community endpoint |
+| 使用官方 Web 或 Windows / macOS 桌面 | [`deepseek-ai/deepseek-harness`](https://github.com/deepseek-ai/deepseek-harness)（`npx @deepseek-ai/dsh web`） | 官方上游产品与桌面路径，互补版不重复打包 Win/macOS |
+| 使用社区终端 / TUI | 本仓库 `dsh-community` 或源码中的 `pnpm tui` | Linux / WSL 主力互补端，执行核心仍是官方 Runtime |
+| 下载 Linux 桌面 AppImage | [Latest `v0.1.1-rc.2`](https://github.com/kamanager2012/dsh-community/releases/latest) `.AppImage` 或 `pnpm desktop:package -- --appimage` | 官方未覆盖的 Linux 桌面互补端；新 tag 需重跑 exact-asset smoke |
+| 了解 Android Remote Client（实验中） | 本仓 `apps/android` + `packages/remote-adapter` | `[LABS]` / `[UNVERIFIED]`，不进 Published Latest |
 | 查完整操作手册 | [DeepSeek Harness Handbook](https://kamanager2012.github.io/dsh-community/) | Provider、Session、安全、自动化和验收 |
 
-不要从已归档的 Suite、独立 Marketplace、独立 Plugins 或 Edition 下载正式客户端。**Published Latest** 仍以 [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) 和 `current-release.json` 中的 `githubLatestTag / publishedAssets / publishedReleaseEvidence` 为准；发行产物带 keyless cosign 签名（`.sigstore.json`）。不要下载历史编号 `v0.1.2`–`v0.1.6` 当当前产品。官方 Web 是上游兼容入口，不是 Community 发行端。五个 Community endpoints（四个当前已发行 + Android 活跃源码 `[UNVERIFIED]`）的定义见 [community-endpoints.md](community-endpoints.md)。详见[版本策略](version-policy.md)。
+不要从已归档的 Suite、独立 Marketplace、独立 Plugins 或 Edition 下载正式客户端。**Published Latest** 仍以 [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) 和 `current-release.json` 中的 `githubLatestTag / publishedAssets / publishedReleaseEvidence` 为准；发行产物带 keyless cosign 签名（`.sigstore.json`）。不要下载历史编号 `v0.1.2`–`v0.1.6` 当当前产品。官方 Web 与 Windows/macOS Desktop 是上游端，不是 Community 互补端。三个互补 Community endpoints（两个当前已发行：WSL/Linux 终端与 Linux AppImage；外加活跃源码 Android `[UNVERIFIED]`）的定义见 [community-endpoints.md](community-endpoints.md)。详见[版本策略](version-policy.md)。
 
 从源码运行时，Desktop/TUI 显示的是 **Candidate Source** 的 Dual-Badge，而不是 Published Latest 的版本号。候选 core、产品号、`candidateTag` 与 Dual-Badge 统一读取 [`current-release.json`](current-release.json)；源码候选可以领先于已发布下载。
 
 ## 当前已发布下载资产
 
-[`v0.1.1-rc.2`](https://github.com/kamanager2012/dsh-community/releases/latest)：
+历史 [`v0.1.1-rc.2`](https://github.com/kamanager2012/dsh-community/releases/latest) Release 页目前包含（GitHub 可能把 Windows 空格显示成点）：
 
-- `DSH Community Setup 0.1.1-rc.2.exe` — Windows（GitHub 可能把空格显示成点）
-- `dsh-community-0.1.1-rc.2.dmg` — macOS
-- `dsh-community-0.1.1-rc.2.AppImage` — Linux 第 4 端
+- `dsh-community-0.1.1-rc.2.AppImage` — Linux 桌面 AppImage（未来互补版持续保留）
+- `dsh-community-0.1.1-rc.2.dmg` — macOS（历史版本，后续已交还官方 `deepseek-harness` 退役）
+- `DSH Community Setup 0.1.1-rc.2.exe` — Windows（历史版本，后续已交还官方 `deepseek-harness` 退役）
 
-以 Release 页上的精确文件名为准。每个文件都有对应的 `.sha256`。Windows / macOS 包**未签名、未公证**。Windows 可能弹出 SmartScreen「未知发布者」：选「更多信息 → 仍要运行」，然后用 sidecar 校验：
+后续新版本将仅发行 `.AppImage` 与 `official-runtime.cdx.json` SBOM。每个文件都有对应的 `.sha256` 与 `.sigstore.json`。本地校验：
 
 ```sh
-# Windows PowerShell:
-Get-FileHash 'DSH Community Setup 0.1.1-rc.2.exe' -Algorithm SHA256
-# macOS / Linux:
-shasum -a 256 -c dsh-community-0.1.1-rc.2.dmg.sha256
+sha256sum -c dsh-community-0.1.1-rc.2.AppImage.sha256
 ```
 
-第一次打开桌面会解一份官方 Runtime 到用户数据目录，只做一次。对话仍在官方 `~/.dsh`。
+第一次打开 Linux AppImage 会解一份官方 Runtime 到用户数据目录，只做一次。对话仍在官方 `~/.dsh`。
 
 ## 五分钟从源码启动
 

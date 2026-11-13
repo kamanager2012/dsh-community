@@ -27,8 +27,8 @@ describe('official-runtime SBOM release boundary', () => {
 
   it('makes the SBOM a required signed release dependency', () => {
     expect(release).toContain('  runtime-sbom:')
-    expect(release).toContain('needs: [build-linux, build-windows, build-macos, runtime-sbom]')
-    expect(release).toContain('needs: [build-linux, build-windows, build-macos, runtime-sbom, sign]')
+    expect(release).toContain('needs: [build-linux, runtime-sbom]')
+    expect(release).toContain('needs: [build-linux, runtime-sbom, sign]')
     expect(release).toContain('dist-artifacts/*/*-official-runtime.cdx.json')
     expect(release).toContain('release-metadata/*-official-runtime.cdx.json.sha256')
   })
