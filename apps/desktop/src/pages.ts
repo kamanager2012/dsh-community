@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto'
 import { COMMUNITY_PRODUCT_NAME } from './branding.ts'
 import {
   PLUGIN_CATEGORIES,
@@ -97,13 +98,31 @@ function escapeHtml(value: string): string {
     .replaceAll("'", '&#39;')
 }
 
-function shellDocument(title: string, body: string): string {
+function createCspNonce(): string {
+  return randomBytes(16).toString('base64')
+}
+
+function shellDocument(title: string, bodyOrRender: string | ((nonce: string) => string)): string {
+  const nonce = createCspNonce()
+  const body = typeof bodyOrRender === 'function' ? bodyOrRender(nonce) : bodyOrRender
+  const csp = [
+    "default-src 'none'",
+    `style-src 'nonce-${nonce}'`,
+    `script-src 'nonce-${nonce}'`,
+    "img-src 'none'",
+    "connect-src 'none'",
+    "frame-src 'none'",
+    "object-src 'none'",
+    "base-uri 'none'",
+    "form-action 'none'",
+  ].join('; ')
   return `<!doctype html>
 <html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="${csp}" />
     <title>${escapeHtml(title)}</title>
-    <style>
+    <style nonce="${nonce}">
       :root { color-scheme: dark; }
       html, body { height: 100%; margin: 0; background: #101218; color: #d9dee8;
         font: 15px/1.5 ui-sans-serif, system-ui, sans-serif; }
@@ -120,6 +139,8 @@ function shellDocument(title: string, body: string): string {
       button:disabled { opacity: 0.5; cursor: not-allowed; }
       pre.ok { background: #0b1a12; border: 1px solid #1d4a2c; }
       .chip.ok { color: #7ee2a8; border-color: #2f6fed; }
+      .chip.risk-med { color: #f5c26b; border-color: #7c5816; }
+      .chip.risk-high { color: #ff8e8e; border-color: #7a2929; background: #1c0c0e; }
       .row { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
       nav.nav { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 18px; }
       nav.nav button { font-size: 13px; padding: 6px 10px; }
@@ -156,7 +177,7 @@ function shellDocument(title: string, body: string): string {
       </nav>
       ${body}
     </div></main>
-    <script>
+    <script nonce="${nonce}">
       const go = {
         official: () => window.dshCommunity?.openOfficial(),
         sessions: () => window.dshCommunity?.showSessions(),
@@ -191,13 +212,13 @@ export function renderLoadingPage(detail?: string): string {
 export function renderErrorPage(message: string): string {
   return shellDocument(
     `${COMMUNITY_PRODUCT_NAME} · 官方运行时`,
-    `<h1>官方运行时没有就绪</h1>
+    (nonce) => `<h1>官方运行时没有就绪</h1>
      <p>这是社区壳。失败发生在已发布的 <code>@deepseek-ai/dsh</code> 子进程，而不是本仓的 harness 拷贝。</p>
      <pre>${escapeHtml(message)}</pre>
      <div class="row">
        <button id="retry">重新启动官方运行时</button>
      </div>
-     <script>
+     <script nonce="${nonce}">
        document.getElementById('retry')?.addEventListener('click', () => {
          window.dshCommunity?.restartHost()
        })
@@ -208,7 +229,7 @@ export function renderErrorPage(message: string): string {
 export function renderAboutPage(model: AboutPageModel): string {
   return shellDocument(
     `${model.product} · 关于`,
-    `<h1>${escapeHtml(model.identity)}</h1>
+    (nonce) => `<h1>${escapeHtml(model.identity)}</h1>
      <p>社区重构的桌面壳：子进程拉起官方 Harness，窗口只加载 loopback。默认共用官方 <code>~/.dsh</code>，和 TUI / Web 是同一批 Session。stdout 只当日志。</p>
      <dl>
        <dt>官方包</dt><dd><code>${escapeHtml(model.officialPackage)}@${escapeHtml(model.officialVersion)}</code></dd>
@@ -224,7 +245,7 @@ export function renderAboutPage(model: AboutPageModel): string {
        <button id="retry">重新启动官方运行时</button>
        <button class="secondary" data-go="official">返回会话</button>
      </div>
-     <script>
+     <script nonce="${nonce}">
        document.getElementById('retry')?.addEventListener('click', () => {
          window.dshCommunity?.restartHost()
        })
@@ -248,14 +269,14 @@ export function renderOfficialSessionsPage(model: OfficialSessionsPageModel): st
        </table>`
   return shellDocument(
     `${model.product} · 官方 Session`,
-    `<h1>官方 Session</h1>
+    (nonce) => `<h1>官方 Session</h1>
      <p>只读列出官方 <code>${escapeHtml(model.officialHome)}</code>${model.isolated ? '（隔离）' : ''} 下的 <code>sessions/</code>。恢复对话走官方 Web 或 <code>dsh-community-tui --resume &lt;id&gt;</code>。本页不另建 session 目录。</p>
      ${rows}
      <div class="row">
        <button data-go="official">打开官方 Web</button>
        <button class="secondary" data-go="sessions">刷新列表</button>
      </div>
-     <script>
+     <script nonce="${nonce}">
        document.querySelectorAll('[data-resume]').forEach((btn) => {
          btn.addEventListener('click', () => {
            const id = btn.getAttribute('data-resume')
@@ -294,7 +315,7 @@ export function renderRuntimePage(model: RuntimePageModel): string {
 export function renderSettingsPage(model: SettingsPageModel): string {
   return shellDocument(
     `${model.product} · 设置`,
-    `<h1>Desktop 设置</h1>
+    (nonce) => `<h1>Desktop 设置</h1>
      <p>只改壳自己的偏好。官方 session 仍在 <code>${escapeHtml(model.officialHome)}</code>${model.isolated ? '（独立数据目录）' : ''}。</p>
      <label class="opt">
        <input type="checkbox" id="hideToTray" ${model.hideToTray ? 'checked' : ''} />
@@ -311,7 +332,7 @@ export function renderSettingsPage(model: SettingsPageModel): string {
        <button id="save">保存</button>
        <button class="secondary" data-go="official">返回会话</button>
      </div>
-     <script>
+     <script nonce="${nonce}">
        document.getElementById('save')?.addEventListener('click', () => {
          window.dshCommunity?.applySettings({
            hideToTray: document.getElementById('hideToTray')?.checked === true,
@@ -352,20 +373,39 @@ export function renderMarketplacePage(model: MarketplacePageModel): string {
     if (members.length === 0) return ''
     const rows = members.map((plugin) => {
       const installed = installedSet.has(plugin.name)
+      const latestSecurity = plugin.versions[plugin.versions.length - 1]?.security
+      const riskBadge = latestSecurity === undefined
+        ? ''
+        : latestSecurity.risk === 'high'
+          ? '<span class="chip risk-high">高风险</span>'
+          : latestSecurity.risk === 'medium'
+            ? '<span class="chip risk-med">中风险</span>'
+            : '<span class="chip">低风险</span>'
+      const securityNote = latestSecurity === undefined
+        ? ''
+        : `<p class="meta">安全说明（${escapeHtml(latestSecurity.manualReviewStatus)} · ${escapeHtml(latestSecurity.lastReviewedAt)}）：${escapeHtml(latestSecurity.manualReviewNote)}</p>`
       const chips = plugin.versions.map((version) => {
         const note = version.notes === undefined ? '' : ` · ${escapeHtml(version.notes)}`
         return `<span class="chip">v${escapeHtml(version.version)} · 验证线 ${escapeHtml(version.testedDsh)}${note}</span>`
       }).join('')
+      const needsConfirm = !installed
+        && latestSecurity !== undefined
+        && (latestSecurity.requiresConfirmation || latestSecurity.risk !== 'low')
+      const confirmAttrs = needsConfirm
+        ? ` data-plugin-confirm="true" data-plugin-risk="${escapeHtml(latestSecurity.risk)}"`
+        : ''
       const actionButton = installed
         ? `<button class="secondary small${disabled}" data-plugin-action="remove" data-plugin-name="${escapeHtml(plugin.name)}">卸载</button>`
-        : `<button class="small${disabled}" data-plugin-action="install" data-plugin-name="${escapeHtml(plugin.name)}">安装到 web profile</button>`
+        : `<button class="small${disabled}" data-plugin-action="install" data-plugin-name="${escapeHtml(plugin.name)}"${confirmAttrs}>安装到 web profile</button>`
       return `<li>
         <div class="plugin-head">
           <code class="plugin-name">${escapeHtml(plugin.name)}</code>
           <span class="author">by ${escapeHtml(plugin.author)}</span>
+          ${riskBadge}
           ${installed ? '<span class="chip ok">已装</span>' : ''}
         </div>
         <p>${escapeHtml(plugin.description)}</p>
+        ${securityNote}
         <div class="chips">${chips}</div>
         <div class="plugin-actions">
           <a href="${escapeHtml(plugin.repo)}">源码仓库</a>
@@ -382,7 +422,7 @@ export function renderMarketplacePage(model: MarketplacePageModel): string {
     : sections
   return shellDocument(
     `${model.product} · 社区市场`,
-    `<h1>社区市场</h1>
+    (nonce) => `<h1>社区市场</h1>
      <p>浏览 <a href="${escapeHtml(model.registryUrl)}">插件目录 catalog.json</a>。安装/卸载按钮唤起官方 <code>dsh plugin --profile ${escapeHtml(model.profile)} add|remove</code>（写完 profile 后重启官方运行时生效）；本窗口不自己实现安装器。TUI profile 的安装仍走 <code>dsh-marketplace install &lt;name&gt;</code> 或上面这行官方命令。</p>
      <p class="meta">${escapeHtml(sourceLine)} · 抓取时间 ${escapeHtml(model.fetchedAt || '—')} · 已装 ${String(model.installed.length)} 个（${escapeHtml(model.profile)} profile）</p>
      ${errorBlock}
@@ -393,7 +433,7 @@ export function renderMarketplacePage(model: MarketplacePageModel): string {
      ${busyBlock}
      ${resultBlock}
      ${body}
-     <script>
+     <script nonce="${nonce}">
        document.getElementById('refresh')?.addEventListener('click', () => {
          window.dshCommunity?.refreshMarketplace()
        })
@@ -402,10 +442,13 @@ export function renderMarketplacePage(model: MarketplacePageModel): string {
        })
        document.querySelectorAll('[data-plugin-action]').forEach((btn) => {
          btn.addEventListener('click', () => {
-           window.dshCommunity?.pluginAction(
-             btn.getAttribute('data-plugin-name') ?? '',
-             btn.getAttribute('data-plugin-action') ?? '',
-           )
+           const name = btn.getAttribute('data-plugin-name') ?? ''
+           const action = btn.getAttribute('data-plugin-action') ?? ''
+           if (action === 'install' && btn.getAttribute('data-plugin-confirm') === 'true') {
+             const risk = btn.getAttribute('data-plugin-risk') ?? 'medium'
+             if (!window.confirm('插件 ' + name + ' 标记为 ' + risk + ' 风险，确认安装到 web profile？')) return
+           }
+           window.dshCommunity?.pluginAction(name, action)
          })
        })
      </script>`,
@@ -415,7 +458,7 @@ export function renderMarketplacePage(model: MarketplacePageModel): string {
 export function renderDiagnosticsPage(model: DiagnosticsPageModel): string {
   return shellDocument(
     `${model.product} · 诊断`,
-    `<h1>Host 诊断</h1>
+    (nonce) => `<h1>Host 诊断</h1>
      <p>stdout / stderr 只当日志。这里不解析 agent 或工具状态。</p>
      <dl>
        <dt>官方数据</dt><dd><code>${escapeHtml(model.officialHome)}</code>${model.isolated ? '（隔离）' : ''}</dd>
@@ -423,17 +466,20 @@ export function renderDiagnosticsPage(model: DiagnosticsPageModel): string {
        <dt>Host</dt><dd>${escapeHtml(model.phase)} · pid ${escapeHtml(model.pid)}</dd>
      </dl>
      <pre>${escapeHtml(model.logs || '(no host log yet)')}</pre>
+     <template id="copy-logs-data">${escapeHtml(model.logs || '')}</template>
      <div class="row">
        <button id="retry">重新启动官方运行时</button>
        <button class="secondary" id="copy">复制日志</button>
        <button class="secondary" data-go="official">返回会话</button>
      </div>
-     <script>
+     <script nonce="${nonce}">
        document.getElementById('retry')?.addEventListener('click', () => {
          window.dshCommunity?.restartHost()
        })
        document.getElementById('copy')?.addEventListener('click', () => {
-         window.dshCommunity?.copyText(${JSON.stringify(model.logs || '')})
+         const el = document.getElementById('copy-logs-data')
+         const text = el && 'content' in el ? (el.content.textContent ?? '') : (el?.textContent ?? '')
+         window.dshCommunity?.copyText(text)
        })
      </script>`,
   )

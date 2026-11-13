@@ -6,6 +6,7 @@ import {
   isDataHtmlUrl,
   isHttpUrl,
   sameOrigin,
+  stampShellDocument,
 } from '../src/navigation.ts'
 
 describe('decideNavigation', () => {
@@ -66,5 +67,11 @@ describe('decideNavigation', () => {
     // Craft data URLs without bridge marker
     expect(isAuthorizedIpcSender({ url: 'data:text/html,<h1>fake</h1>' })).toBe(false)
     expect(isAuthorizedIpcSender({ url: `data:text/html;charset=utf-8,${encodeURIComponent('<h1>phishing</h1>')}` })).toBe(false)
+
+    // Per-boot token enforcement rejects spoofed documents missing the boot token
+    const stampedUrl = `data:text/html;charset=utf-8,${encodeURIComponent(stampShellDocument(genuinePage, 'boot-secret-123'))}`
+    expect(isAuthorizedIpcSender({ url: stampedUrl }, 'boot-secret-123')).toBe(true)
+    expect(isAuthorizedIpcSender({ url: genuineUrl }, 'boot-secret-123')).toBe(false)
+    expect(isAuthorizedIpcSender({ url: stampedUrl }, 'wrong-token')).toBe(false)
   })
 })

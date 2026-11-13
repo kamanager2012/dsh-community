@@ -16,7 +16,7 @@ import { execFileSync } from 'node:child_process'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-const OFFICIAL_RC_LINES = ['0.1.0-rc.6', '0.1.1-rc.1', '0.1.1-rc.2']
+const OFFICIAL_RC_LINES = ['0.1.0-rc.6', '0.1.1-rc.1', '0.1.1-rc.2', '0.2.2-rc.1', '0.2.2-rc.2']
 const WRITE = process.argv.includes('--write-integrity')
 // Offline mode: shape-only verification with zero network access. Lets
 // contributors self-check a PR locally before CI hits npm/GitHub.

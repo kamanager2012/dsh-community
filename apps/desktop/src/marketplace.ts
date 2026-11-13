@@ -23,10 +23,30 @@ export const PLUGIN_CATEGORY_LABELS: Record<PluginCategory, string> = {
   other: '其它',
 }
 
+export type PluginRisk = 'low' | 'medium' | 'high'
+export type ManualReviewStatus = 'unreviewed' | 'partial' | 'reviewed'
+
+export interface MarketplacePluginSecurity {
+  readonly risk: PluginRisk
+  readonly requiresConfirmation: boolean
+  readonly network: string
+  readonly dataEgress: string
+  readonly credentials: string
+  readonly filesystem: string
+  readonly processExecution: string
+  readonly persistence: string
+  readonly manualReviewStatus: ManualReviewStatus
+  readonly manualReviewNote: string
+  readonly lastReviewedAt: string
+}
+
 export interface MarketplacePluginVersion {
   readonly version: string
   readonly testedDsh: string
   readonly notes?: string
+  readonly integrity?: string
+  readonly provenance?: boolean
+  readonly security?: MarketplacePluginSecurity
 }
 
 export interface MarketplacePlugin {
@@ -44,8 +64,51 @@ export interface MarketplaceCatalog {
   readonly plugins: readonly MarketplacePlugin[]
 }
 
-/** Any 0.1.x official rc line. The registry moves across minors; the desktop must follow, not freeze on one release. */
-const DSH_RC_LINE = /^0\.1\.\d+-rc\.\d+$/u
+/** Any 0.1.x or 0.2.x official rc line. The registry moves across minors; the desktop must follow, not freeze on one release. */
+const DSH_RC_LINE = /^0\.[12]\.\d+-rc\.\d+$/u
+const NPM_PACKAGE_NAME_RE = /^(@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/u
+const ISO_DATE_RE = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/u
+const RISK_LEVELS: readonly PluginRisk[] = ['low', 'medium', 'high']
+const MANUAL_REVIEW_STATUSES: readonly ManualReviewStatus[] = ['unreviewed', 'partial', 'reviewed']
+const SECURITY_TEXT_FIELDS = [
+  'network',
+  'dataEgress',
+  'credentials',
+  'filesystem',
+  'processExecution',
+  'persistence',
+  'manualReviewNote',
+] as const
+
+export function isValidNpmPackageName(name: string): boolean {
+  return name.length > 0 && name.length <= 214 && !name.startsWith('-') && NPM_PACKAGE_NAME_RE.test(name)
+}
+
+function parsePluginSecurity(raw: unknown): MarketplacePluginSecurity | undefined {
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return undefined
+  const value = raw as Record<string, unknown>
+  for (const field of SECURITY_TEXT_FIELDS) {
+    if (typeof value[field] !== 'string' || value[field].trim() === '') return undefined
+  }
+  if (!RISK_LEVELS.includes(value.risk as PluginRisk)) return undefined
+  if (typeof value.requiresConfirmation !== 'boolean') return undefined
+  if (value.risk !== 'low' && value.requiresConfirmation !== true) return undefined
+  if (!MANUAL_REVIEW_STATUSES.includes(value.manualReviewStatus as ManualReviewStatus)) return undefined
+  if (typeof value.lastReviewedAt !== 'string' || !ISO_DATE_RE.test(value.lastReviewedAt)) return undefined
+  return {
+    risk: value.risk as PluginRisk,
+    requiresConfirmation: value.requiresConfirmation,
+    network: value.network as string,
+    dataEgress: value.dataEgress as string,
+    credentials: value.credentials as string,
+    filesystem: value.filesystem as string,
+    processExecution: value.processExecution as string,
+    persistence: value.persistence as string,
+    manualReviewStatus: value.manualReviewStatus as ManualReviewStatus,
+    manualReviewNote: value.manualReviewNote as string,
+    lastReviewedAt: value.lastReviewedAt,
+  }
+}
 
 /** Only https: repositories are accepted into the catalog (rejects javascript:, data:, http:, etc.). */
 export function isValidPluginRepoUrl(raw: string): boolean {
@@ -69,7 +132,7 @@ export function parseMarketplaceCatalog(raw: unknown): MarketplaceCatalog | unde
     const plugin = item as Record<string, unknown>
     const { name, description, author, repo, category } = plugin
     if (
-      typeof name !== 'string' || name === '' || names.has(name)
+      typeof name !== 'string' || !isValidNpmPackageName(name) || names.has(name)
       || typeof description !== 'string' || description === ''
       || typeof author !== 'string' || author === ''
       || typeof repo !== 'string' || !isValidPluginRepoUrl(repo)
@@ -83,10 +146,18 @@ export function parseMarketplaceCatalog(raw: unknown): MarketplaceCatalog | unde
       const version = versionItem as Record<string, unknown>
       if (typeof version.version !== 'string' || version.version === '') return undefined
       if (typeof version.testedDsh !== 'string' || !DSH_RC_LINE.test(version.testedDsh)) return undefined
+      let security: MarketplacePluginSecurity | undefined
+      if (version.security !== undefined) {
+        security = parsePluginSecurity(version.security)
+        if (security === undefined) return undefined
+      }
       const entry: MarketplacePluginVersion = {
         version: version.version,
         testedDsh: version.testedDsh,
         ...(typeof version.notes === 'string' && version.notes !== '' ? { notes: version.notes } : {}),
+        ...(typeof version.integrity === 'string' && version.integrity !== '' ? { integrity: version.integrity } : {}),
+        ...(version.provenance === true ? { provenance: true } : {}),
+        ...(security === undefined ? {} : { security }),
       }
       versions.push(entry)
     }
@@ -169,7 +240,7 @@ export function parsePluginActionRequest(raw: unknown): PluginActionRequest | un
   if (raw === null || typeof raw !== 'object') return undefined
   const value = raw as Record<string, unknown>
   const { name, action } = value
-  if (typeof name !== 'string' || name === '') return undefined
+  if (typeof name !== 'string' || !isValidNpmPackageName(name)) return undefined
   if (action !== 'install' && action !== 'remove') return undefined
   return { name, action }
 }

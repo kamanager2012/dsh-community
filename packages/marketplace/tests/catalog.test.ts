@@ -134,6 +134,22 @@ describe('catalog schema', () => {
     assert.equal(parseCatalog(bad), undefined)
   })
 
+  it('accepts 0.2.x-rc.N testedDsh and rejects unsafe plugin package names', () => {
+    const v02 = {
+      ...valid,
+      plugins: [{
+        ...valid.plugins[0],
+        versions: [{ version: '0.2.0', testedDsh: '0.2.2-rc.2' }],
+      }],
+    }
+    assert.equal(parseCatalog(v02)?.plugins[0]?.versions[0]?.testedDsh, '0.2.2-rc.2')
+    const badName = {
+      ...valid,
+      plugins: [{ ...valid.plugins[0], name: '--flag-injection' }],
+    }
+    assert.equal(parseCatalog(badName), undefined)
+  })
+
   it('rejects unknown categories', () => {
     const bad = {
       version: 1 as const,
