@@ -1,5 +1,215 @@
 <?xml version="1.0" encoding="utf-8"?>
-<WebView xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/webview"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="match_parent" />
+    android:layout_height="match_parent"
+    android:background="#121212"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <TextView
+            android:id="@+id/tv_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/remote_client_header"
+            android:textColor="#FFFFFF"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tv_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="@string/status_disconnected"
+            android:textColor="#80CBC4"
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/tv_device_id"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:textColor="#B0BEC5"
+            android:textSize="11sp" />
+
+        <EditText
+            android:id="@+id/et_pairing_json"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:background="#1E1E1E"
+            android:hint="@string/hint_pairing_json"
+            android:inputType="textMultiLine"
+            android:minLines="2"
+            android:padding="8dp"
+            android:textColor="#FFFFFF"
+            android:textColorHint="#78909C"
+            android:textSize="12sp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/btn_connect"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/action_connect" />
+
+            <Button
+                android:id="@+id/btn_scan_lan"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/action_scan_lan" />
+
+            <Button
+                android:id="@+id/btn_failover"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/action_failover" />
+
+            <Button
+                android:id="@+id/btn_disconnect"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/action_disconnect" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:orientation="horizontal">
+
+            <EditText
+                android:id="@+id/et_session_id"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="2"
+                android:background="#1E1E1E"
+                android:hint="@string/hint_session_id"
+                android:padding="8dp"
+                android:textColor="#FFFFFF"
+                android:textColorHint="#78909C"
+                android:textSize="13sp" />
+
+            <Button
+                android:id="@+id/btn_sessions"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/action_sessions" />
+
+            <Button
+                android:id="@+id/btn_attach"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/action_attach" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/tv_approval"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:background="#263238"
+            android:padding="8dp"
+            android:text="@string/no_pending_interaction"
+            android:textColor="#FFD54F"
+            android:textSize="13sp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/btn_approve"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/action_approve" />
+
+            <Button
+                android:id="@+id/btn_reject"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/action_reject" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:orientation="horizontal">
+
+            <EditText
+                android:id="@+id/et_answer"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="2"
+                android:background="#1E1E1E"
+                android:hint="@string/hint_answer"
+                android:padding="8dp"
+                android:textColor="#FFFFFF"
+                android:textColorHint="#78909C"
+                android:textSize="13sp" />
+
+            <Button
+                android:id="@+id/btn_answer_question"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/action_answer" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:orientation="horizontal">
+
+            <EditText
+                android:id="@+id/et_prompt"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="3"
+                android:background="#1E1E1E"
+                android:hint="@string/hint_prompt"
+                android:padding="8dp"
+                android:textColor="#FFFFFF"
+                android:textColorHint="#78909C"
+                android:textSize="13sp" />
+
+            <Button
+                android:id="@+id/btn_send_prompt"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/action_send" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/tv_events"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="#1A1A1A"
+            android:fontFamily="monospace"
+            android:minHeight="220dp"
+            android:padding="8dp"
+            android:textColor="#E0E0E0"
+            android:textSize="11sp" />
+
+    </LinearLayout>
+</ScrollView>

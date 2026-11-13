@@ -1,6 +1,6 @@
 # Android Local Runtime Substrate Decision
 
-> Status: **BLOCKED / candidate identified**. Android remains the active fifth Community endpoint. This document defines the physical/runtime prerequisites for local official DSH execution; it does not promote unverified work into a product claim.
+> Status: **SUPERSEDED IN R5 (historical embedded-runtime record)**. In R5, `apps/android/` retired all embedded Node.js (`nodejs-project`) and `@deepseek-ai/dsh` runtime packaging in favor of a pure thin Remote Client (see [`docs/remote-host-client.md`](remote-host-client.md) and [`docs/android-endpoint.en.md`](android-endpoint.en.md)). This page is preserved solely to document why the R0–R4 local-runtime approach remained blocked; the legacy embedded probes/JSON files referenced below were removed in the R5 migration PR.
 
 ## Decision
 

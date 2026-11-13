@@ -16,14 +16,7 @@ Official Harness is in developer preview and **will break**. This repo is design
    - web flags (`--host`, `--port`) → `packages/dsh-bridge/src/spawn-web.ts`
 8. Do **not** copy files out of `deepseek-ai/deepseek-harness`.
 9. Refresh official snapshots: `pnpm contracts:extract`. Commit the diff and note any public-surface move in `contracts/compatibility/breaking-changes.md`.
-10. Re-adjudicate Android upstream seams against the **same official source checkout** used for the candidate review:
-
-   ```sh
-   node scripts/audit-android-upstream-drift.mjs \
-     --official-source-root /abs/deepseek-harness
-   ```
-
-   Current baseline expects no official Android PTY inspector, no Android sandbox chain, no explicit fs-search executable-path seam, no Android `@vscode/ripgrep-*` package, and continued hard-link publication in session/attachment storage. `NO_DRIFT` means the existing Android blockers/adapters are still structurally relevant. `REVIEW_REQUIRED` is intentionally non-zero: stop the upgrade and re-adjudicate Android before carrying any Community provider, preflight, or blocker forward. If upstream now owns a capability, prefer deleting the Community adaptation rather than preserving it for compatibility.
+10. Verify Android stays pure remote-only and fail-closed (`apps/android/` must contain zero embedded Node or `@deepseek-ai/dsh*` runtime packages, and `node scripts/verify-android-release-ready.mjs` must remain blocked until R6 real-device acceptance passes).
 11. Only then consider recommending the candidate as `latest-tested`. Do not treat that as publication: GitHub Latest and published installer names move only when the release exists.
 
 ## Consolidated local acceptance

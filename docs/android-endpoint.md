@@ -1,61 +1,34 @@
 # Android 第三互补社区端点（移动端）
 
-> 状态：`[LABS]` / `[UNVERIFIED]`。在互补版定位下，Android 是 **第三个互补社区端点**（继 WSL/Linux 终端与 Linux AppImage 之后），目标已从 embedded local runtime 转为轻量 Remote Client；在 Remote Android Acceptance 通过前不承诺已发布能力。
+> 状态：`[LABS]` / `[UNVERIFIED]`。在互补版定位下，Android 是 **三个互补社区端点** 之一（继 WSL/Linux 终端与 Linux AppImage 之后）。R5 已完成架构迁移：移除全部嵌入式 Node.js 与 `@deepseek-ai/dsh` 打包，Android 成为纯轻量 **Remote Client**；在 R6 真机端到端验收（Remote Android Acceptance）通过前不进入 Published Latest。
 
-[English](android-endpoint.en.md) · [Runtime Substrate](android-runtime-substrate.md) · [Reality Gate](reality-gate.md)
+[English](android-endpoint.en.md) · [Historical Runtime Substrate Note](android-runtime-substrate.md) · [Remote Host-Client Architecture](remote-host-client.md)
 
-## 定位
+## 定位与边界
 
-Android 是 DSH Community 互补版的**第三个社区端点**（前两个为 WSL/Linux 终端与 Linux AppImage；Windows Desktop、macOS Desktop 与 Official Web 由官方上游 `deepseek-harness` 提供）。Android 源码属于本仓主线，但当前尚未进入 Published Latest。目标形态改为 APK Remote Client：官方 `@deepseek-ai/dsh` 只运行在可信 Host，Android 仅负责 Session / Prompt / 事件流 / 审批 / 问答交互，不携带 Node、Agent loop、Session store 或 tool executor。完整边界见 [Remote Host-Client Architecture](remote-host-client.md)。
+- Android 是 DSH Community 互补版的**第三个社区端点**（前两个为 WSL/Linux 终端与 Linux AppImage；Windows Desktop、macOS Desktop 与 Official Web 由官方上游 `deepseek-harness` 提供）。
+- 官方 `@deepseek-ai/dsh` 只运行在可信 Host；Android 仅通过 `@dsh-community/remote-adapter` 投射官方 Session 列表、Live Event 流、Follow-up Prompt、工具审批（Approval）与问答（Question）。
+- APK 内**不得**包含 Node runtime（如 `nodejs-mobile`、`libnode.so`）或官方 `@deepseek-ai/dsh*` 包，也不得在本地维护第二套 Agent loop 或 Session store。
 
-## 目标架构
+## R5 架构与模块
 
 ```text
 Official DSH Host
     ↓ verified public seams
 Remote Host Adapter
-    ↓ Noise IK E2EE
-LAN → WebRTC P2P → blind WS Relay
+    ↓ Noise_IK_25519_ChaChaPoly_BLAKE2b E2EE
+LAN WebSocket → WebRTC DataChannel seam → Blind WebSocket Relay
     ↓
-Android Remote Client
+Android Remote Client (Kotlin, noBackupFilesDir + Android Keystore AES-256-GCM)
 ```
 
-Host 是唯一执行与状态中心；Android 是轻量交互终端。旧 Node/substrate/PTY/sandbox/ripgrep Reality Gate 仅作为 embedded-runtime **历史迁移证据**保留，Remote 路径接受后再独立归档/删除。
+- **密钥与安全基线**：`DeviceIdentityStore.kt` 使用 Android Keystore AES-256-GCM 主密钥（优先 StrongBox，回退 TEE）封装设备 Curve25519 密钥于 `noBackupFilesDir`，Manifest 强制 `android:allowBackup="false"`。
+- **密码学与协议**：纯 Kotlin 实现 `Noise_IK_25519_ChaChaPoly_BLAKE2b`，支持单调递增 `connectionEpoch` 校验、`session.attach(afterSeq)` 断点续传与幂等键（`idempotencyKey`）。
+- **容灾切换与后台保活**：`FailoverRemoteSession.kt` 按 `LAN -> WebRTC -> Relay` 顺序回退；`RemoteSessionService.kt` 作为 `dataSync` 前台服务承载常驻状态通知与高优先级交互式审批通知，并遵循网络丢失暂停与指数退避策略。
+- **历史实验清理（按 §13 执行）**：原 R0–R4 嵌入式 Node 22 / `node-pty` / Koffi / Landlock / sharp-WASM / ripgrep / `nodejs-project` 阻塞实验已在 R5 PR 中由显式 Remote Client 测试替代并移除（保留于 Git 提交历史）。
 
-## Legacy embedded-runtime evidence
+## 发布门禁与 CI 验证
 
-## 已知风险(2026-08-17 事实)
-
-| 项 | 事实 | 处置 |
-| --- | --- | --- |
-| Node 引擎要求 | 官方 `0.2.2-rc.2` 要求 `>=24.9.0`；截至 2026-09-02，stock nodejs-mobile 最新 Android release 为 Node 18.20.4 | **硬阻断**：不能用 stock nodejs-mobile 冒充兼容 substrate；需先解决 Node `>=24.9.0` Android runtime（历史 `v22.19.0` 交叉编译 probe 也已低于该要求） |
-| 原生模块 `sharp` | 仅 `attachment-local` 插件使用,无安卓预编译二进制 | 移动端禁用附件/图像插件,或用 NDK 交叉编译后列入验证注册表 |
-| Gradle 接线 | 历史 Labs 使用 `com.github.nodejs-mobile` 插件声明，但当前未建立可验证的现代 Gradle 集成证据 | 已从活跃 Gradle 配置移除；不把未验证插件当成可构建证据 |
-| 后台保活 | 系统会杀后台进程 | Foreground Service + 常驻通知(兼任审批入口) |
-| 上架渠道 | Play 对"可执行任意插件代码"审查严格 | 沿用 GitHub Releases 直发 APK + digest,不走 Play |
-
-## Reality Gate 门禁(Android 专属)
-
-```text
-兼容 Node >=24.9.0 Android substrate 有可复现来源/构建
-  → Termux 真机验证(scripts/termux-verify.sh 通过)
-  → official @deepseek-ai/dsh@0.2.2-rc.2 在 Android substrate 启动
-  → embedded runtime E2E
-  → APK 契约测试
-  → arm64 真机 + x86_64 模拟器 smoke
-  → 发布证据
-```
-
-未通过前保持 `[UNVERIFIED]`。验证结果必须引用 `$HOME/.dsh/termux-verify.log` 的真实输出,不接受"应该能跑"。
-
-## 验证入口
-
-```bash
-# Termux 内
-git clone https://github.com/kamanager2012/dsh-community.git
-cd dsh-community && bash scripts/termux-verify.sh
-```
-
-## 机器状态
-
-当前门禁见 [`apps/android/runtime-substrate.json`](../apps/android/runtime-substrate.json)。只有该状态从 `BLOCKED` 经真实证据升级后，才允许把 Android 描述为可运行 APK。
+- GitHub Actions：`.github/workflows/android-remote-acceptance.yml` 运行纯 JVM 单测、实时 Kotlin-to-Node `RemoteHostRuntime` + `BlindRelayServer` E2EE 互操作测试、Gradle APK 构建，以及 APK ZIP 清单洁净检查（严禁 `libnode.so` / `nodejs-mobile` / `deepseek-ai`）。
+- 机器门禁状态：[`apps/android/evidence/reality-gate.json`](../apps/android/evidence/reality-gate.json)（`schemaVersion: 2`, `architecture: "remote-only"`, `status: "NOT_RUN"`）。
+- 发布阻塞检查：`node scripts/verify-android-release-ready.mjs` 保持 fail-closed（退出码 `1`），直至 R6 真机硬件验收完成并显式晋升前，Android 保持 `[UNVERIFIED]`。

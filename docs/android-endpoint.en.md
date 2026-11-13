@@ -1,62 +1,29 @@
 # Android Third Complementary Community Endpoint (Mobile)
 
-> Status: `[LABS]` / `[UNVERIFIED]`. Under the Complementary Edition scope, Android is the **third complementary Community endpoint** (alongside WSL/Linux Terminal and Linux AppImage), and its target has changed from an embedded local runtime to a lightweight Remote Client. No published Android capability is claimed before Remote Android Acceptance passes.
+> Status: `[LABS]` / `[UNVERIFIED]`. Under the Complementary Edition scope, Android is the **third complementary community endpoint** (alongside WSL/Linux Terminal and Linux AppImage). In R5, `apps/android/` completed migration to a pure lightweight **Remote Client** with zero embedded Node.js or `@deepseek-ai/dsh` runtime; it remains excluded from Published Latest until R6 real-device acceptance passes.
 
-[中文](android-endpoint.md) · [Runtime Substrate](android-runtime-substrate.en.md) · [Reality Gate](reality-gate.en.md)
+[中文](android-endpoint.md) · [Historical Runtime Substrate Note](android-runtime-substrate.en.md) · [Remote Host-Client Architecture](remote-host-client.md)
 
-## Positioning
+## Scope & Architecture
 
-Android is the **third complementary Community endpoint** (alongside WSL/Linux Terminal and Linux AppImage; Official Web plus Windows and macOS Desktop are delivered upstream by official `deepseek-harness`). Its source is active in this repository, but it is not yet part of Published Latest. The target is now an APK Remote Client: official `@deepseek-ai/dsh` runs only on a trusted Host, while Android handles Session / Prompt / event-stream / approval / question interaction. Android carries no Node runtime, Agent loop, Session store, or tool executor. See [Remote Host-Client Architecture](remote-host-client.md).
-
-## Target architecture
+- Official `@deepseek-ai/dsh` executes solely on the trusted Host. Android projects Host sessions, live event streams, follow-up prompts, approvals, and questions over `@dsh-community/remote-adapter`.
+- The built Android APK must contain **no Node runtime** (`nodejs-mobile`, `libnode.so`) and **no official `@deepseek-ai/dsh*` packages**.
 
 ```text
 Official DSH Host
     ↓ verified public seams
 Remote Host Adapter
-    ↓ Noise IK E2EE
-LAN → WebRTC P2P → blind WS Relay
+    ↓ Noise_IK_25519_ChaChaPoly_BLAKE2b E2EE
+LAN WebSocket → WebRTC DataChannel seam → Blind WebSocket Relay
     ↓
-Android Remote Client
+Android Remote Client (Kotlin, noBackupFilesDir + Android Keystore AES-256-GCM)
 ```
 
-The Host is the sole execution and durable-state center. The old Node/substrate/PTY/sandbox/ripgrep Reality Gate is retained only as **legacy embedded-runtime migration evidence** until the Remote path is accepted.
+- **Device identity**: `DeviceIdentityStore.kt` wraps a persistent X25519 keypair under an Android Keystore hardware-backed AES-256-GCM master key (StrongBox with TEE fallback) inside `noBackupFilesDir`, paired with `android:allowBackup="false"`.
+- **Failover & Foreground Service**: `FailoverRemoteSession.kt` executes ordered `LAN -> WebRTC -> Relay` fallback with monotonic `connectionEpoch` validation, `session.attach(afterSeq)` resume cursors, and persistent `idempotencyKey` retries; `RemoteSessionService.kt` maintains the `dataSync` foreground service, interactive approval notifications, and network-aware backoff telemetry.
+- **Migration cleanup (§13)**: the R0–R4 embedded Node 22 / `node-pty` / Koffi / Landlock / sharp-WASM / ripgrep / `nodejs-project` experiments were retired in R5 after explicit remote-client contract and live Node interop tests replaced them (historical materials remain in Git history).
 
-## Legacy embedded-runtime evidence
+## Verification & Fail-Closed Release Gate
 
-## Known risks (facts as of 2026-08-17)
-
-| Item | Fact | Handling |
-| --- | --- | --- |
-| Node engine | official `0.2.2-rc.2` requires `>=24.9.0`; as observed on 2026-09-02, the latest stock nodejs-mobile Android release is Node 18.20.4 | **Hard blocker**: stock nodejs-mobile cannot be treated as a compatible substrate; prove a Node `>=24.9.0` Android runtime first (the historical `v22.19.0` cross-build probe is also below the new floor) |
-| Native `sharp` | used only by `attachment-local`, no Android prebuilt | disable attachment/image plugin on mobile, or NDK cross-compile + registry entry |
-| Gradle integration | restored Labs source declared `com.github.nodejs-mobile`, but no verified current integration evidence exists | removed from the active Gradle configuration rather than claiming a working Node 22 integration |
-| Background keep-alive | OS kills background processes | Foreground Service + persistent notification (also serves as approval entry) |
-| Distribution channel | Play Store scrutiny of "runs arbitrary plugin code" | GitHub Releases direct APK + digest, not Play |
-
-## Reality Gate gates (Android specific)
-
-```text
-reproducible compatible Node >=24.9.0 Android substrate
-  → Termux on-device verification (scripts/termux-verify.sh green)
-  → official @deepseek-ai/dsh@0.2.2-rc.2 starts on that substrate
-  → embedded-runtime E2E
-  → APK contract tests
-  → arm64 real-device + x86_64 emulator smoke
-  → release evidence
-```
-
-Stay `[UNVERIFIED]` until gates pass. Verification results must quote real
-output from `$HOME/.dsh/termux-verify.log` — "should work" is not evidence.
-
-## Verification entry
-
-```bash
-# inside Termux
-git clone https://github.com/kamanager2012/dsh-community.git
-cd dsh-community && bash scripts/termux-verify.sh
-```
-
-## Machine state
-
-See [`apps/android/runtime-substrate.json`](../apps/android/runtime-substrate.json). Android must not be described as a runnable APK until `BLOCKED` is promoted by real evidence.
+- GitHub Actions workflow `.github/workflows/android-remote-acceptance.yml` builds `@dsh-community/remote-adapter`, runs Gradle JVM unit tests + live Kotlin-vs-Node E2EE LAN/Relay failover interop, builds the debug APK, and inspects the APK ZIP to fail on any embedded Node or DSH runtime artifact.
+- Machine release gate [`apps/android/evidence/reality-gate.json`](../apps/android/evidence/reality-gate.json) (`schemaVersion: 2`, `architecture: "remote-only"`) and `node scripts/verify-android-release-ready.mjs` remain fail-closed (`status: "NOT_RUN"`, exit code `1`) until R6 real-device hardware acceptance passes.

@@ -1,14 +1,9 @@
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
-import { spawnSync } from 'node:child_process'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)))
-const EXPECTED_DSH = '0.2.2-rc.2'
-const EXPECTED_NODE = '22.19.0'
-const EXPECTED_NODE_TAG = 'v22.19.0'
-const EXPECTED_NODE_TAG_OBJECT = 'a9d4750074c7b5439c61daa28ea9afb5dc28e43e'
-const EXPECTED_NODE_COMMIT = 'f8fe6858549f75a4b4e9633abf39dd2038dbf496'
+const EXPECTED_HOST_TARGET = '0.2.2-rc.2'
 
 function readJson(rel) {
   return JSON.parse(readFileSync(resolve(ROOT, rel), 'utf8'))
@@ -20,99 +15,112 @@ function fail(reasons) {
   process.exit(1)
 }
 
-const substrate = readJson('apps/android/runtime-substrate.json')
-const native = readJson('apps/android/native-blockers.json')
-const compatibility = readJson('apps/android/native-compatibility.json')
-const evidence = readJson('apps/android/evidence/reality-gate.json')
-const app = readFileSync(
-  resolve(ROOT, 'apps/android/app/src/main/java/org/dsh/community/android/DshApp.kt'),
-  'utf8',
-)
+function walkFiles(dir, out = []) {
+  if (!existsSync(dir)) return out
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name)
+    if (entry.isDirectory()) {
+      if (entry.name === 'build' || entry.name === '.gradle') continue
+      walkFiles(full, out)
+    } else if (entry.isFile()) {
+      out.push(full)
+    }
+  }
+  return out
+}
 
 const reasons = []
 
-const evidenceBacking = spawnSync(
-  process.execPath,
-  [resolve(ROOT, 'scripts/validate-android-evidence-backing.mjs')],
-  { cwd: ROOT, encoding: 'utf8' },
-)
-if (evidenceBacking.status !== 0) {
-  const detail = (evidenceBacking.stderr || evidenceBacking.stdout || 'unknown evidence-backing failure').trim()
-  reasons.push('evidence backing validation failed: ' + detail.replace(/\s+/gu, ' '))
+// 1. Embedded Node / local DSH runtime must remain completely removed
+if (existsSync(resolve(ROOT, 'apps/android/nodejs-project'))) {
+  reasons.push('apps/android/nodejs-project still exists (embedded Node must be removed in R5)')
 }
 
-if (substrate.status !== 'PASS') reasons.push(`runtime substrate status=${String(substrate.status)}`)
-if (substrate.packageClosure?.status !== 'PASS') {
-  reasons.push(`official CLI package closure status=${String(substrate.packageClosure?.status)}`)
-}
-if (substrate.packageClosure?.profileOnlyMitigation !== 'INEFFECTIVE') {
-  reasons.push('official CLI package-closure mitigation contract drifted')
-}
-if (substrate.officialDsh?.version !== EXPECTED_DSH) reasons.push('runtime substrate DSH identity mismatch')
-if (substrate.candidate?.status !== 'PASS') reasons.push(`carrier candidate status=${String(substrate.candidate?.status)}`)
-if (substrate.candidate?.sourceTag !== EXPECTED_NODE_TAG) reasons.push('Node source tag mismatch')
-if (substrate.candidate?.tagObjectSha !== EXPECTED_NODE_TAG_OBJECT) reasons.push('Node tag object mismatch')
-if (substrate.candidate?.sourceCommit !== EXPECTED_NODE_COMMIT) reasons.push('Node source commit mismatch')
-if (substrate.candidate?.tagSignatureVerifiedByGitHub !== true) reasons.push('Node tag verification evidence missing')
-
-const releaseTarget = native.releaseTarget
-if (typeof releaseTarget !== 'string' || releaseTarget === '') reasons.push('native releaseTarget missing')
-else if (native[releaseTarget] !== 'PASS') reasons.push(`native release target ${releaseTarget} status=${String(native[releaseTarget])}`)
-
-for (const blocker of native.blockers ?? []) {
-  if (blocker.status !== 'RESOLVED') reasons.push(`native blocker ${String(blocker.id)} status=${String(blocker.status)}`)
-}
-
-for (const component of compatibility.components ?? []) {
-  if (component.status !== 'PASS') {
-    reasons.push(`Android compatibility component ${String(component.id)} status=${String(component.status)}`)
+for (const file of walkFiles(resolve(ROOT, 'apps/android'))) {
+  if (file.endsWith('.md')) continue
+  if (file.endsWith('reality-gate.json')) continue
+  const lower = file.toLowerCase()
+  if (lower.endsWith('libnode.so') || lower.includes('nodejs-mobile')) {
+    reasons.push(`forbidden embedded Node binary/path in apps/android: ${file}`)
   }
-}
-for (const blocker of compatibility.semanticBlockers ?? []) {
-  if (blocker.status !== 'PASS') {
-    reasons.push(`Android semantic blocker ${String(blocker.id)} status=${String(blocker.status)}`)
+  if (file.endsWith('.kt') || file.endsWith('.kts') || file.endsWith('.xml') || file.endsWith('.json')) {
+    const content = readFileSync(file, 'utf8')
+    if (content.includes('com.github.nodejs-mobile')) {
+      reasons.push(`forbidden nodejs-mobile dependency in ${file}`)
+    }
+    if (content.includes('@deepseek-ai/dsh')) {
+      reasons.push(`forbidden @deepseek-ai/dsh package reference in ${file}`)
+    }
   }
 }
 
-if (evidence.status !== 'PASS') reasons.push(`Reality Gate status=${String(evidence.status)}`)
-for (const gate of ['carrier', 'nativeClosure', 'dshBoot', 'apk']) {
-  if (evidence.gates?.[gate] !== 'PASS') reasons.push(`Reality Gate ${gate}=${String(evidence.gates?.[gate])}`)
+// 2. App entrypoint gate must be promote-ready only on explicit R6 acceptance
+const dshAppPath = resolve(ROOT, 'apps/android/app/src/main/java/org/dsh/community/android/DshApp.kt')
+const dshApp = readFileSync(dshAppPath, 'utf8')
+if (!/REMOTE_CLIENT_MODE\s*=\s*true/u.test(dshApp)) {
+  reasons.push('DshApp.REMOTE_CLIENT_MODE is not true')
+}
+if (!/EMBEDDED_NODE_RUNTIME\s*=\s*false/u.test(dshApp)) {
+  reasons.push('DshApp.EMBEDDED_NODE_RUNTIME is not false')
+}
+if (!/REAL_DEVICE_ACCEPTANCE_READY\s*=\s*true/u.test(dshApp)) {
+  reasons.push('Android real-device R6 Remote Acceptance gate is not promoted (REAL_DEVICE_ACCEPTANCE_READY != true)')
 }
 
-if (evidence.officialDsh !== EXPECTED_DSH) reasons.push('Reality Gate DSH identity mismatch')
-if (evidence.nodeCarrier?.version !== EXPECTED_NODE) reasons.push('Reality Gate Node version mismatch')
-if (evidence.nodeCarrier?.sourceTag !== EXPECTED_NODE_TAG) reasons.push('Reality Gate Node tag mismatch')
-if (evidence.nodeCarrier?.tagObjectSha !== EXPECTED_NODE_TAG_OBJECT) reasons.push('Reality Gate Node tag object mismatch')
-if (evidence.nodeCarrier?.sourceCommit !== EXPECTED_NODE_COMMIT) reasons.push('Reality Gate Node source commit mismatch')
-if (evidence.nodeCarrier?.deviceVerified !== true) reasons.push('Node carrier was not verified on a real Android device')
-if (typeof evidence.nodeCarrier?.sha256 !== 'string' || !/^[a-f0-9]{64}$/u.test(evidence.nodeCarrier.sha256)) {
-  reasons.push('Node carrier SHA-256 evidence missing')
+// 3. Machine-readable R5 remote Reality Gate must be PASS with verified real-device + APK evidence
+const evidence = readJson('apps/android/evidence/reality-gate.json')
+if (evidence.schemaVersion !== 2) {
+  reasons.push(`Reality Gate schemaVersion=${String(evidence.schemaVersion)} (expected 2)`)
 }
-const nativeEvidence = evidence.nativeEvidence ?? {}
-for (const key of [
-  'addonBuildAndLoad',
-  'terminalInspector',
-  'sandbox',
-  'appPrivateHardlinks',
-  'sharpFallback',
-  'ripgrepPackaging',
+if (evidence.architecture !== 'remote-only') {
+  reasons.push(`Reality Gate architecture=${String(evidence.architecture)} (expected remote-only)`)
+}
+if (evidence.officialHostTarget !== EXPECTED_HOST_TARGET) {
+  reasons.push(`Reality Gate officialHostTarget mismatch: ${String(evidence.officialHostTarget)}`)
+}
+if (evidence.embeddedNodeRemoved !== true) {
+  reasons.push('Reality Gate embeddedNodeRemoved must be true')
+}
+if (evidence.status !== 'PASS') {
+  reasons.push(`Reality Gate status=${String(evidence.status)}`)
+}
+
+const remoteAcceptance = evidence.remoteAcceptance ?? {}
+for (const gate of [
+  'pairing',
+  'sessionListAndAttach',
+  'promptStreaming',
+  'approvalIdempotency',
+  'carrierFailover',
+  'backgroundBattery',
+  'deviceRevoke',
 ]) {
-  if (nativeEvidence[key] !== 'PASS') reasons.push(`Android native evidence ${key}=${String(nativeEvidence[key])}`)
+  if (remoteAcceptance[gate] !== 'PASS') {
+    reasons.push(`Remote Acceptance ${gate}=${String(remoteAcceptance[gate])}`)
+  }
 }
-if (evidence.dshBootVerified !== true) reasons.push('official DSH Android boot evidence missing')
-if (evidence.device === null || typeof evidence.device !== 'object') reasons.push('real-device identity/evidence missing')
-if (evidence.apk?.arm64RealDeviceSmoke !== true) reasons.push('arm64 real-device APK smoke missing')
-if (evidence.apk?.x86_64EmulatorSmoke !== true) reasons.push('x86_64 emulator APK smoke missing')
+
+if (evidence.device === null || typeof evidence.device !== 'object') {
+  reasons.push('real-device identity/evidence missing')
+}
+if (evidence.apk?.containsNodeRuntime !== false) {
+  reasons.push('APK Node runtime exclusion proof missing')
+}
+if (evidence.apk?.containsOfficialDsh !== false) {
+  reasons.push('APK official DSH exclusion proof missing')
+}
+if (evidence.apk?.arm64RealDeviceSmoke !== true) {
+  reasons.push('arm64 real-device APK smoke missing')
+}
+if (evidence.apk?.x86_64EmulatorSmoke !== true) {
+  reasons.push('x86_64 emulator APK smoke missing')
+}
 if (typeof evidence.apk?.sha256 !== 'string' || !/^[a-f0-9]{64}$/u.test(evidence.apk.sha256)) {
   reasons.push('APK SHA-256 evidence missing')
-}
-
-if (!/RUNTIME_SUBSTRATE_READY\s*=\s*true/u.test(app)) {
-  reasons.push('Android app runtime gate is not promoted')
 }
 
 if (reasons.length > 0) fail(reasons)
 
 process.stdout.write(
-  `android-release-ready: PASS dsh=${EXPECTED_DSH} node=${EXPECTED_NODE} commit=${EXPECTED_NODE_COMMIT}\n`,
+  `android-release-ready: PASS architecture=remote-only host=${EXPECTED_HOST_TARGET}\n`,
 )
