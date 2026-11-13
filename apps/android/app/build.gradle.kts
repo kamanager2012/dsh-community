@@ -11,20 +11,14 @@ android {
         applicationId = "org.dsh.community.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
+        versionCode = 2
         versionName = "0.2.2-rc.2"
-
-        ndk {
-            // arm64-v8a for real devices; x86_64 for emulator smoke tests
-            abiFilters += listOf("arm64-v8a", "x86_64")
-        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
-            // No Android publish/signing workflow is active yet. This source
-            // remains UNVERIFIED until the runtime-substrate and APK gates pass.
+            // Remains UNVERIFIED until R6 real-device Remote Acceptance passes.
         }
     }
 
@@ -40,15 +34,19 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+
+    testOptions {
+        unitTests {
+            isReturnDefaultValues = true
+        }
+    }
 }
 
-// Embedded Node is deliberately NOT wired here yet. The historical Labs
-// plugin declaration was not a verified Gradle integration, and stock
-// nodejs-mobile currently does not satisfy official DSH Node 22.19+ engines.
-// See ../runtime-substrate.json and docs/android-endpoint.*.
-
+// Pure thin Remote Client (R5): ZERO embedded Node.js runtime, ZERO official DSH packages,
+// ZERO WebView local host, and ZERO unverified native `.so` runtime carriers.
 dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
-    implementation("androidx.webkit:webkit:1.12.1")
+
+    testImplementation("junit:junit:4.13.2")
 }

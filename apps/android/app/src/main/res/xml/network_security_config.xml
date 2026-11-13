@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- LAN ws:// endpoints use Noise IK end-to-end encryption inside every WebSocket frame;
+         relay endpoints should use wss:// whenever TLS is available. -->
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

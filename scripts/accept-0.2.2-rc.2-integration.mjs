@@ -238,10 +238,15 @@ function main() {
     },
   )
 
-  // Android audits remain honest about runtime-lock provenance and unverified evidence.
-  run(process.execPath, ['scripts/audit-android-portable-deps.mjs'])
-  run(process.execPath, ['scripts/audit-android-official-cli-closure.mjs'])
-  run(process.execPath, ['scripts/validate-android-evidence-backing.mjs'])
+  // Android R5 remains fail-closed (remote-only, unverified until R6 real-device acceptance).
+  const androidReady = spawnSync(
+    process.execPath,
+    ['scripts/verify-android-release-ready.mjs'],
+    { cwd: ROOT, env: providerSafeEnv(), encoding: 'utf8', shell: false, windowsHide: true },
+  )
+  if (androidReady.status === 0) {
+    fail('scripts/verify-android-release-ready.mjs unexpectedly returned 0 before R6 acceptance')
+  }
 
   // One deterministic repository acceptance, not edit-by-edit test runs.
   run('pnpm', ['typecheck'], { shell: packageShell })

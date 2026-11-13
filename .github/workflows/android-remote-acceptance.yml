@@ -1,0 +1,89 @@
+name: android-remote-acceptance
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android-remote-client:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          version: 11.21.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install verified Gradle 8.11.1
+        run: |
+          mkdir -p /tmp/gradle-install
+          curl -fsSL https://services.gradle.org/distributions/gradle-8.11.1-bin.zip -o /tmp/gradle-8.11.1-bin.zip
+          echo "f397b287023acdba1e9f6fc5ea72d22dd63669d59ed4a289a29b1a76eee151c6  /tmp/gradle-8.11.1-bin.zip" | sha256sum -c -
+          unzip -q /tmp/gradle-8.11.1-bin.zip -d /tmp/gradle-install
+          echo "/tmp/gradle-install/gradle-8.11.1/bin" >> "$GITHUB_PATH"
+
+      - name: Ensure Android SDK licenses
+        run: |
+          if [ -n "${ANDROID_HOME:-}" ] && [ -x "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" ]; then
+            yes | "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          fi
+
+      - name: Build host remote-adapter for live interop
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --filter @dsh-community/shared-types --filter @dsh-community/dsh-bridge --filter @dsh-community/remote-adapter build
+
+      - name: Run Android JVM unit tests and live Kotlin-to-Node E2EE interop
+        env:
+          DSH_ANDROID_REQUIRE_LIVE_INTEROP: '1'
+          DSH_ANDROID_INTEROP_HOST_SCRIPT: ${{ github.workspace }}/scripts/r5-android-interop-host.mjs
+        run: |
+          cd apps/android
+          gradle --no-daemon testDebugUnitTest --info
+
+      - name: Assemble debug APK and prove zero embedded Node or official DSH
+        run: |
+          cd apps/android
+          gradle --no-daemon assembleDebug
+          APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
+          test -f "$APK_PATH"
+          unzip -l "$APK_PATH" | tee /tmp/android-apk-entries.txt
+          if grep -iE 'libnode\.so|nodejs-mobile|nodejs-project|@deepseek-ai/dsh|deepseek-ai' /tmp/android-apk-entries.txt; then
+            echo "ERROR: APK contains forbidden embedded Node or official DSH runtime entry" >&2
+            exit 1
+          fi
+          sha256sum "$APK_PATH" | tee /tmp/android-apk-sha256.txt
+          cd "${{ github.workspace }}"
+          if node scripts/verify-android-release-ready.mjs; then
+            echo "ERROR: verify-android-release-ready must stay fail-closed prior to R6 real-device acceptance" >&2
+            exit 1
+          fi
+
+      - name: Upload Android R5 build and interop evidence logs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: android-r5-remote-acceptance-evidence
+          retention-days: 3
+          path: |
+            /tmp/android-apk-entries.txt
+            /tmp/android-apk-sha256.txt
+            apps/android/app/build/test-results/testDebugUnitTest/*.xml

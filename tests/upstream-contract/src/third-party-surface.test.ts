@@ -36,16 +36,9 @@ const METADATA_ONLY_CONFIG_PATHS = new Set([
   join('packages', 'marketplace', 'catalog.json'),
   join('apps', 'desktop', 'runtime-lock', 'package-lock.json'),
   join('apps', 'desktop', 'runtime-lock', 'lifecycle-scripts.json'),
-  // Android adversarial-audit evidence: records foreign native dependencies
-  // that block the official DSH runtime on Android. It is not a manifest,
-  // composition, install list, or shipped dependency surface.
-  join('apps', 'android', 'native-blockers.json'),
-  join('apps', 'android', 'native-compatibility.json'),
 ])
 
-const METADATA_ONLY_CONFIG_ROOTS = [
-  join('apps', 'android', 'evidence', 'records'),
-]
+const METADATA_ONLY_CONFIG_ROOTS: string[] = []
 
 function isMetadataOnlyConfig(path: string): boolean {
   if (METADATA_ONLY_CONFIG_PATHS.has(path)) return true

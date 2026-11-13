@@ -1,3 +1,20 @@
 <resources>
-    <string name="app_name">DSH Harness</string>
+    <string name="app_name">DSH Remote</string>
+    <string name="remote_client_header">DSH Remote Client [LABS / UNVERIFIED]</string>
+    <string name="status_disconnected">[DISCONNECTED] Remote-only thin client</string>
+    <string name="hint_pairing_json">Paste PairingBootstrapDescriptor JSON from Host</string>
+    <string name="hint_session_id">Official Session ID</string>
+    <string name="hint_prompt">Follow-up prompt for attached official session</string>
+    <string name="hint_answer">Reply to Host question</string>
+    <string name="no_pending_interaction">No pending approval or question</string>
+    <string name="action_connect">Connect</string>
+    <string name="action_scan_lan">mDNS LAN</string>
+    <string name="action_failover">Failover</string>
+    <string name="action_disconnect">Disconnect</string>
+    <string name="action_sessions">Sessions</string>
+    <string name="action_attach">Attach</string>
+    <string name="action_approve">Approve</string>
+    <string name="action_reject">Reject</string>
+    <string name="action_answer">Answer</string>
+    <string name="action_send">Send</string>
 </resources>

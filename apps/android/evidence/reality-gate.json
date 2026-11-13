@@ -1,36 +1,26 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
+  "architecture": "remote-only",
   "asOf": "2026-11-13",
   "status": "NOT_RUN",
-  "officialDsh": "0.2.2-rc.2",
-  "gates": {
-    "carrier": "NOT_RUN",
-    "nativeClosure": "BLOCKED",
-    "dshBoot": "NOT_RUN",
-    "apk": "NOT_RUN"
-  },
-  "nodeCarrier": {
-    "version": "22.19.0",
-    "sourceTag": "v22.19.0",
-    "tagObjectSha": "a9d4750074c7b5439c61daa28ea9afb5dc28e43e",
-    "sourceCommit": "f8fe6858549f75a4b4e9633abf39dd2038dbf496",
-    "sha256": null,
-    "deviceVerified": false
+  "officialHostTarget": "0.2.2-rc.2",
+  "embeddedNodeRemoved": true,
+  "remoteAcceptance": {
+    "pairing": "NOT_RUN",
+    "sessionListAndAttach": "NOT_RUN",
+    "promptStreaming": "NOT_RUN",
+    "approvalIdempotency": "NOT_RUN",
+    "carrierFailover": "NOT_RUN",
+    "backgroundBattery": "NOT_RUN",
+    "deviceRevoke": "NOT_RUN"
   },
   "device": null,
-  "dshBootVerified": false,
   "apk": {
     "sha256": null,
+    "containsNodeRuntime": false,
+    "containsOfficialDsh": false,
     "arm64RealDeviceSmoke": false,
     "x86_64EmulatorSmoke": false
   },
-  "notes": "No Android real-device Reality Gate has been completed. This file must stay NOT_RUN until evidence is produced by the manual gates.",
-  "nativeEvidence": {
-    "addonBuildAndLoad": "NOT_RUN",
-    "terminalInspector": "BLOCKED",
-    "sandbox": "BLOCKED",
-    "appPrivateHardlinks": "NOT_RUN",
-    "sharpFallback": "NOT_RUN",
-    "ripgrepPackaging": "BLOCKED"
-  }
+  "notes": "R5 migrated apps/android to a pure thin Remote Client (zero Node.js, zero @deepseek-ai/dsh). Status remains NOT_RUN and excluded from Published Latest until R6 real-device acceptance passes."
 }

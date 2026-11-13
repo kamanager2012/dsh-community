@@ -1,6 +1,6 @@
 # Android 本地 Runtime Substrate 决策
 
-> 状态：**BLOCKED / candidate identified**。Android 仍是活跃的第五个 Community endpoint；本页只定义本地官方 DSH Runtime 的底层可运行条件，不把未通过的实验写成产品能力。
+> 状态：**SUPERSEDED IN R5（历史嵌入式方案已退役）**。自 R5 起，`apps/android/` 已移除全部嵌入式 Node.js（`nodejs-project`）与 `@deepseek-ai/dsh` 本地运行时打包，转为纯轻量 Remote Client（见 [`docs/remote-host-client.md`](remote-host-client.md) 与 [`docs/android-endpoint.md`](android-endpoint.md)）。本文保留作为原 R0–R4 本地嵌入式路径为何受阻并退役的历史记录；下文提及的嵌入式 probe 脚本与 JSON 文件已在 R5 PR 中清理归档。
 
 ## 结论
 
