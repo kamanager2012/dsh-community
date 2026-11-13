@@ -58,6 +58,11 @@ export interface HostLanCarrierOptions {
   readonly hostDisplayLabel?: string
 
   /**
+   * Optional shared connection epoch allocator across carriers belonging to one Host runtime.
+   */
+  readonly epochAllocator?: ConnectionEpochAllocator
+
+  /**
    * Testing flag to allow policy-compliant mock private IPs without binding to local OS interface.
    */
   readonly skipInterfaceCheckForTesting?: boolean
@@ -71,7 +76,7 @@ export class HostLanCarrier {
   private server: Server | undefined = undefined
   private isRunning = false
   private hostKeyPair: HostKeyPair | undefined = undefined
-  private readonly epochAllocator = new ConnectionEpochAllocator()
+  private readonly epochAllocator: ConnectionEpochAllocator
   private readonly preUpgradeSockets = new Map<Socket, NodeJS.Timeout>()
   private readonly activeConnections = new Map<string, LanConnection>()
   private readonly deviceConnections = new Map<string, Set<LanConnection>>()
@@ -80,6 +85,7 @@ export class HostLanCarrier {
 
   constructor(options: HostLanCarrierOptions) {
     this.options = options
+    this.epochAllocator = options.epochAllocator ?? new ConnectionEpochAllocator()
     // P0-5: Validate bounds on constructor/options
     this.bounds = validateLanCarrierBounds(options.bounds)
   }

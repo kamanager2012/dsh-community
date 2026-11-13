@@ -8,6 +8,9 @@ export interface PairingBootstrapDescriptor {
   readonly bootstrapToken: string
   readonly endpointUrl: string
   readonly expiresAt: number
+  readonly signalingUrl?: string | undefined
+  readonly signalingRoomId?: string | undefined
+  readonly stunUrls?: readonly string[] | undefined
 }
 
 const FORBIDDEN_QR_FIELDS = Object.freeze([
@@ -46,6 +49,9 @@ export function createPairingBootstrapDescriptor(params: {
   bootstrapToken: string
   endpointUrl: string
   expiresAt: number
+  signalingUrl?: string | undefined
+  signalingRoomId?: string | undefined
+  stunUrls?: readonly string[] | undefined
 }): PairingBootstrapDescriptor {
   if (params.hostPublicKey.byteLength !== 32) {
     throw new RemoteCryptoError('HANDSHAKE_FAILED', 'host public key must be 32 bytes')
@@ -54,13 +60,45 @@ export function createPairingBootstrapDescriptor(params: {
   const hostPublicKeyHex = Buffer.from(params.hostPublicKey).toString('hex')
   const hostFingerprint = computeFingerprint(params.hostPublicKey)
 
-  const descriptor: PairingBootstrapDescriptor = {
+  const descriptor: {
+    protocolVersion: number
+    hostPublicKeyHex: string
+    hostFingerprint: string
+    bootstrapToken: string
+    endpointUrl: string
+    expiresAt: number
+    signalingUrl?: string
+    signalingRoomId?: string
+    stunUrls?: readonly string[]
+  } = {
     protocolVersion: params.protocolVersion,
     hostPublicKeyHex,
     hostFingerprint,
     bootstrapToken: params.bootstrapToken,
     endpointUrl: params.endpointUrl,
     expiresAt: params.expiresAt,
+  }
+
+  if (params.signalingUrl !== undefined) {
+    if (!params.signalingUrl.startsWith('ws://') && !params.signalingUrl.startsWith('wss://')) {
+      throw new RemoteCryptoError('HANDSHAKE_FAILED', 'invalid signalingUrl in descriptor')
+    }
+    descriptor.signalingUrl = params.signalingUrl
+  }
+  if (params.signalingRoomId !== undefined) {
+    if (!/^[a-zA-Z0-9_-]{8,128}$/.test(params.signalingRoomId)) {
+      throw new RemoteCryptoError('HANDSHAKE_FAILED', 'invalid signalingRoomId in descriptor')
+    }
+    descriptor.signalingRoomId = params.signalingRoomId
+  }
+  if (params.stunUrls !== undefined) {
+    if (
+      !Array.isArray(params.stunUrls) ||
+      params.stunUrls.some((u) => typeof u !== 'string' || !/^stun:[^\s]+$/i.test(u))
+    ) {
+      throw new RemoteCryptoError('HANDSHAKE_FAILED', 'invalid stunUrls in descriptor')
+    }
+    descriptor.stunUrls = Object.freeze([...params.stunUrls])
   }
 
   assertNoSessionOrCredentialsInDescriptor(descriptor as unknown as Record<string, unknown>)
@@ -116,12 +154,51 @@ export function parsePairingBootstrapDescriptor(raw: string): PairingBootstrapDe
     throw new RemoteCryptoError('HANDSHAKE_FAILED', 'invalid expiresAt in descriptor')
   }
 
-  return Object.freeze({
+  const result: {
+    protocolVersion: number
+    hostPublicKeyHex: string
+    hostFingerprint: string
+    bootstrapToken: string
+    endpointUrl: string
+    expiresAt: number
+    signalingUrl?: string
+    signalingRoomId?: string
+    stunUrls?: readonly string[]
+  } = {
     protocolVersion,
     hostPublicKeyHex,
     hostFingerprint,
     bootstrapToken,
     endpointUrl,
     expiresAt,
-  })
+  }
+
+  if (obj.signalingUrl !== undefined) {
+    if (
+      typeof obj.signalingUrl !== 'string' ||
+      (!obj.signalingUrl.startsWith('ws://') && !obj.signalingUrl.startsWith('wss://'))
+    ) {
+      throw new RemoteCryptoError('HANDSHAKE_FAILED', 'invalid signalingUrl in descriptor')
+    }
+    result.signalingUrl = obj.signalingUrl
+  }
+
+  if (obj.signalingRoomId !== undefined) {
+    if (typeof obj.signalingRoomId !== 'string' || !/^[a-zA-Z0-9_-]{8,128}$/.test(obj.signalingRoomId)) {
+      throw new RemoteCryptoError('HANDSHAKE_FAILED', 'invalid signalingRoomId in descriptor')
+    }
+    result.signalingRoomId = obj.signalingRoomId
+  }
+
+  if (obj.stunUrls !== undefined) {
+    if (
+      !Array.isArray(obj.stunUrls) ||
+      obj.stunUrls.some((u) => typeof u !== 'string' || !/^stun:[^\s]+$/i.test(u))
+    ) {
+      throw new RemoteCryptoError('HANDSHAKE_FAILED', 'invalid stunUrls in descriptor')
+    }
+    result.stunUrls = Object.freeze([...obj.stunUrls])
+  }
+
+  return Object.freeze(result)
 }
