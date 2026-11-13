@@ -168,12 +168,16 @@ class LiveNodeInteropTest {
             val activeSession = FailoverRemoteSession(identity, epochGuardProfile)
             val activeEvents = CopyOnWriteArrayList<OfficialSessionEvent>()
             val pushLatch = CountDownLatch(2)
+            val titleLatch = CountDownLatch(1)
             activeSession.addListener(
                 object : FailoverRemoteSession.Listener {
                     override fun onStreamEvent(sid: String, event: OfficialSessionEvent) {
                         if (sid == sessionId) {
                             activeEvents.add(event)
                             pushLatch.countDown()
+                            if (event.type == "session/title") {
+                                titleLatch.countDown()
+                            }
                         }
                     }
                 },
@@ -215,6 +219,11 @@ class LiveNodeInteropTest {
             val renamed = activeSession.renameSession(sessionId, "Renamed R5 Live Session")
             assertEquals("Renamed R5 Live Session", renamed.title)
             assertEquals("Renamed R5 Live Session", activeSession.listSessions().first { it.id == sessionId }.title)
+            assertTrue("did not receive live session/title event over LAN", titleLatch.await(3, TimeUnit.SECONDS))
+            assertTrue(
+                "confirmed seq should advance after model.select & session.rename events",
+                (activeSession.getLastConfirmedSeq(sessionId) ?: 0L) > lastLanSeq,
+            )
 
             // 3. Kill LAN on Host -> failover LAN(down) -> WebRTC(unattached) -> BlindRelayServer!
             httpJson("$controlUrl/drop-lan", method = "POST", body = JsonObject.of())
@@ -225,11 +234,7 @@ class LiveNodeInteropTest {
             assertEquals(TransportKind.RELAY, activeSession.activeCarrier)
             val epoch2 = activeSession.currentEpoch
             assertTrue("epoch2 ($epoch2) must advance past epoch1 ($epoch1)", epoch2 > epoch1)
-            val relayResumed = resumedMap[sessionId] as AttachResumeResult.Events
-            assertTrue(
-                "Relay replay should include session/title event missed after lastLanSeq",
-                relayResumed.events.any { it.type == "session/title" },
-            )
+            assertTrue(resumedMap[sessionId] is AttachResumeResult.Events)
             // Verify ordered fallback errors recorded LAN and WebRTC before Relay succeeded
             assertEquals(listOf(TransportKind.LAN, TransportKind.WEBRTC), activeSession.attemptErrors.map { it.kind })
 
