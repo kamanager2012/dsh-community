@@ -48,6 +48,7 @@ describe('pre-tag Desktop package coverage (Complementary Edition)', () => {
     expect(workflow).toContain('sha256 mismatch for ')
     expect(workflow).toContain('--appimage-extract')
     expect(workflow).toContain('official-dsh.tar')
+    expect(workflow).toContain('scripts/linux-appimage-gui-smoke.mjs')
   })
 
   it('runs when release or Desktop packaging inputs change', () => {
@@ -58,6 +59,7 @@ describe('pre-tag Desktop package coverage (Complementary Edition)', () => {
       "'packages/dsh-bridge/**'",
       "'package.json'",
       "'pnpm-lock.yaml'",
+      "'scripts/linux-appimage-gui-smoke.mjs'",
     ]) {
       expect(workflow).toContain(path)
     }

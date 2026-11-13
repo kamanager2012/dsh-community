@@ -1091,6 +1091,11 @@ if (!gotLock) {
     const message = error instanceof Error ? error.stack ?? error.message : String(error)
     process.stderr.write(`dsh-community uncaught exception: ${message}\n`)
   })
+  const handleTerminationSignal = (): void => {
+    if (!quitting) app.quit()
+  }
+  process.once('SIGINT', handleTerminationSignal)
+  process.once('SIGTERM', handleTerminationSignal)
   app.on('before-quit', (event) => {
     persistWindowState()
     pluginChild?.kill('SIGTERM')
