@@ -3,6 +3,7 @@ package org.dsh.community.android
 import org.dsh.community.android.crypto.CryptoUtils
 import org.dsh.community.android.crypto.Curve25519
 import org.dsh.community.android.transport.LanMdnsSanitizer
+import org.dsh.community.android.transport.PairingInputHelper
 import org.dsh.community.android.transport.PairingQrParser
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
@@ -113,5 +114,61 @@ class PairingQrParserAndMdnsTest {
                 rawAttributes = mapOf("bootstrapToken" to "leak".toByteArray(StandardCharsets.UTF_8)),
             )
         }
+    }
+
+    @Test
+    fun pairingInputHelperExtractsFromShareTextClipboardAndIntents() {
+        val sampleUri = "dsh-remote://pair?data=eyJwcm90b2NvbFZlcnNpb24iOjF9"
+        assertEquals(
+            sampleUri,
+            PairingInputHelper.extractPairingPayload("Scan or tap: $sampleUri."),
+        )
+        assertEquals(
+            "{\"protocolVersion\":1}",
+            PairingInputHelper.extractPairingPayload("  {\"protocolVersion\":1}  "),
+        )
+        assertEquals(null, PairingInputHelper.extractPairingPayload("hello world"))
+        assertEquals(null, PairingInputHelper.extractPairingPayload("   "))
+
+        assertEquals(
+            sampleUri,
+            PairingInputHelper.extractFromIntent(
+                PairingInputHelper.ACTION_VIEW_NAME,
+                sampleUri,
+                null,
+            ),
+        )
+        assertEquals(
+            null,
+            PairingInputHelper.extractFromIntent(
+                PairingInputHelper.ACTION_VIEW_NAME,
+                "https://example.com/pair",
+                null,
+            ),
+        )
+        assertEquals(
+            sampleUri,
+            PairingInputHelper.extractFromIntent(
+                PairingInputHelper.ACTION_SEND_NAME,
+                null,
+                "Pair with Host\n$sampleUri",
+            ),
+        )
+        assertEquals(
+            "Connected via webrtc (epoch 3)",
+            PairingInputHelper.resolveForegroundNotificationText(
+                hasActiveSession = true,
+                currentStatus = "Connected via webrtc (epoch 3)",
+                startCount = 2,
+            ),
+        )
+        assertEquals(
+            "Idle (2 starts)",
+            PairingInputHelper.resolveForegroundNotificationText(
+                hasActiveSession = false,
+                currentStatus = "Connected via webrtc (epoch 3)",
+                startCount = 2,
+            ),
+        )
     }
 }

@@ -1,9 +1,12 @@
 package org.dsh.community.android
 
+import android.Manifest
+import android.content.ClipboardManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
@@ -22,6 +25,7 @@ import org.dsh.community.android.service.DiscoverySelectOutcome
 import org.dsh.community.android.service.RemoteSessionService
 import org.dsh.community.android.transport.DiscoveredLanHost
 import org.dsh.community.android.transport.LanMdnsDiscoverer
+import org.dsh.community.android.transport.PairingInputHelper
 import org.dsh.community.android.transport.PairingQrParser
 import org.dsh.community.android.transport.RemoteConnectionPhase
 import org.dsh.community.android.transport.TransportKind
@@ -136,6 +140,10 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
             service?.disconnect()
         }
 
+        findViewById<Button>(R.id.btn_paste_pair).setOnClickListener {
+            pastePairingFromClipboard()
+        }
+
         findViewById<Button>(R.id.btn_reconnect).setOnClickListener {
             stickyStatusError = null
             service?.reconnectSavedHost()
@@ -191,6 +199,7 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
             }
         }
 
+        requestNotificationPermissionIfNeeded()
         handleIncomingIntent(intent)
     }
 
@@ -357,31 +366,87 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
         }
     }
 
-    private fun handleIncomingIntent(incoming: Intent?) {
-        if (incoming == null || incoming === lastHandledIntentRef) return
-        if (incoming.action != Intent.ACTION_VIEW) return
-        val uri = incoming.data ?: return
-        if (!"dsh-remote".equals(uri.scheme, ignoreCase = true)) return
-        lastHandledIntentRef = incoming
-        val uriString = uri.toString()
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_POST_NOTIFICATIONS) {
+            val granted = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
+            if (granted) {
+                appendLog("POST_NOTIFICATIONS permission granted")
+            } else {
+                appendLog(getString(R.string.permission_notifications_denied))
+            }
+        }
+    }
+
+    private fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQUEST_POST_NOTIFICATIONS)
+        }
+    }
+
+    private fun pastePairingFromClipboard() {
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+        val clip = clipboard?.primaryClip
+        val rawClip = if (clip != null && clip.itemCount > 0) {
+            clip.getItemAt(0)?.coerceToText(this)?.toString()
+        } else {
+            null
+        }
+        if (rawClip.isNullOrBlank()) {
+            val msg = getString(R.string.clipboard_empty_pairing)
+            stickyStatusError = msg
+            statusView.text = msg
+            appendLog(msg)
+            return
+        }
+        val payload = PairingInputHelper.extractPairingPayload(rawClip)
+        if (payload == null) {
+            val msg = getString(R.string.clipboard_invalid_pairing)
+            stickyStatusError = msg
+            statusView.text = msg
+            appendLog(msg)
+            return
+        }
+        acceptPairingPayload(payload, sourceLabel = "Clipboard")
+    }
+
+    private fun acceptPairingPayload(rawInput: String, sourceLabel: String) {
         try {
-            val descriptor = PairingQrParser.parseInput(uriString)
+            val descriptor = PairingQrParser.parseInput(rawInput)
             stickyStatusError = null
-            pairingInput.setText(uriString)
-            appendLog("Deep-link validated (fp=${descriptor.hostFingerprint.take(12)}..., endpoint=${descriptor.endpointUrl})")
+            pairingInput.setText(rawInput)
+            appendLog("$sourceLabel validated (fp=${descriptor.hostFingerprint.take(12)}..., endpoint=${descriptor.endpointUrl})")
             val svc = service
             if (svc != null) {
                 pendingDeepLinkInput = null
-                svc.connectWithPairingInput(uriString)
+                svc.connectWithPairingInput(rawInput)
             } else {
-                pendingDeepLinkInput = uriString
+                pendingDeepLinkInput = rawInput
             }
         } catch (t: Throwable) {
-            val rejectedBanner = "[REJECTED] Invalid dsh-remote link: ${t.message}"
+            val rejectedBanner = "[REJECTED] Invalid $sourceLabel pairing: ${t.message}"
             stickyStatusError = rejectedBanner
             statusView.text = rejectedBanner
-            appendLog("Rejected dsh-remote link: ${t.message}")
+            appendLog("Rejected $sourceLabel pairing: ${t.message}")
         }
+    }
+
+    private fun handleIncomingIntent(incoming: Intent?) {
+        if (incoming == null || incoming === lastHandledIntentRef) return
+        val extracted = PairingInputHelper.extractFromIntent(
+            action = incoming.action,
+            dataString = incoming.dataString,
+            extraText = incoming.getStringExtra(Intent.EXTRA_TEXT),
+        ) ?: return
+        lastHandledIntentRef = incoming
+        val source = if (incoming.action == Intent.ACTION_SEND) "Share sheet" else "Deep-link"
+        acceptPairingPayload(extracted, sourceLabel = source)
     }
 
     private fun selectAndAttachSession(sessionId: String) {
@@ -584,5 +649,6 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
 
     private companion object {
         const val _DshMdnsServiceLabel = "_dsh-remote._tcp."
+        const val REQUEST_POST_NOTIFICATIONS = 1001
     }
 }
