@@ -1,0 +1,155 @@
+name: remote-host-relay-acceptance
+
+on:
+  pull_request:
+    paths:
+      - 'packages/remote-adapter/**'
+      - 'scripts/r4-relay-*.mjs'
+      - '.github/workflows/remote-host-relay-acceptance.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  blind-relay-failover-acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          version: 11.21.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build remote-adapter package
+        run: pnpm --filter @dsh-community/remote-adapter build
+      - name: Install network isolation and packet capture tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y iproute2 iptables tcpdump python3
+      - name: Run R4 LAN+WebRTC blocked -> Blind Relay failover acceptance and capture WAN pcap
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/r4-artifacts
+          rm -f /tmp/r4-artifacts/* /tmp/r4-wan.pcap /tmp/r4-relay-evidence.json /tmp/r4-pairing-token.txt /tmp/r4-secrets.txt
+
+          ALL_NS=(dsh-r4-wan dsh-r4-host dsh-r4-client)
+          cleanup() {
+            rc=$?
+            if [ -n "${TCPDUMP_PID:-}" ]; then
+              sudo kill -TERM "${TCPDUMP_PID}" 2>/dev/null || true
+              wait "${TCPDUMP_PID}" 2>/dev/null || true
+            fi
+            sudo chmod 0644 /tmp/r4-wan.pcap /tmp/r4-relay-evidence.json /tmp/r4-tcpdump.log 2>/dev/null || true
+            cp /tmp/r4-relay-evidence.json /tmp/r4-wan.pcap /tmp/r4-tcpdump.log /tmp/r4-artifacts/ 2>/dev/null || true
+            if [ "$rc" -ne 0 ] && [ -s /tmp/r4-wan.pcap ]; then
+              echo "--- WAN pcap summary on failure ---"
+              tcpdump -nn -c 80 -r /tmp/r4-wan.pcap 2>/dev/null || true
+            fi
+            for ns in "${ALL_NS[@]}"; do
+              sudo ip netns del "$ns" 2>/dev/null || true
+            done
+          }
+          trap cleanup EXIT
+
+          for ns in "${ALL_NS[@]}"; do
+            sudo ip netns del "$ns" 2>/dev/null || true
+            sudo ip netns add "$ns"
+            sudo ip netns exec "$ns" ip link set lo up
+          done
+
+          # Isolated WAN bridge namespace (holds BlindRelayServer, SelfHostedStunServer, SelfHostedSignalingServer)
+          sudo ip netns exec dsh-r4-wan ip link add br-r4-wan type bridge
+          sudo ip netns exec dsh-r4-wan ip addr add 10.211.0.1/24 dev br-r4-wan
+          sudo ip netns exec dsh-r4-wan ip link set br-r4-wan up
+
+          sudo ip link add veth-wan-host netns dsh-r4-wan type veth peer name veth-host-wan netns dsh-r4-host
+          sudo ip netns exec dsh-r4-wan ip link set veth-wan-host master br-r4-wan up
+          sudo ip netns exec dsh-r4-host ip addr add 10.211.0.11/24 dev veth-host-wan
+          sudo ip netns exec dsh-r4-host ip link set veth-host-wan up
+
+          sudo ip link add veth-wan-cli netns dsh-r4-wan type veth peer name veth-cli-wan netns dsh-r4-client
+          sudo ip netns exec dsh-r4-wan ip link set veth-wan-cli master br-r4-wan up
+          sudo ip netns exec dsh-r4-client ip addr add 10.211.0.22/24 dev veth-cli-wan
+          sudo ip netns exec dsh-r4-client ip link set veth-cli-wan up
+
+          # Block ALL direct host <-> client packets (blocks direct LAN TCP/WS AND WebRTC UDP/TCP P2P)
+          # Both Host and Client can ONLY reach the WAN BlindRelayServer / STUN / Signaling at 10.211.0.1
+          sudo ip netns exec dsh-r4-host iptables -A INPUT -s 10.211.0.22 -j DROP
+          sudo ip netns exec dsh-r4-host iptables -A OUTPUT -d 10.211.0.22 -j DROP
+          sudo ip netns exec dsh-r4-client iptables -A INPUT -s 10.211.0.11 -j DROP
+          sudo ip netns exec dsh-r4-client iptables -A OUTPUT -d 10.211.0.11 -j DROP
+
+          sudo ip netns exec dsh-r4-wan tcpdump -i br-r4-wan -nn -U -w /tmp/r4-wan.pcap >/tmp/r4-tcpdump.log 2>&1 &
+          TCPDUMP_PID=$!
+          sleep 0.4
+
+          NODE_BIN="$(command -v node)"
+          sudo -E env "PATH=$PATH" \
+            R4_WAN_ADDRESS=10.211.0.1 \
+            R4_HOST_NETNS=dsh-r4-host \
+            R4_HOST_BIND_IP=10.211.0.11 \
+            R4_CLIENT_NETNS=dsh-r4-client \
+            R4_CLIENT_BIND_IP=10.211.0.22 \
+            R4_EVIDENCE_PATH=/tmp/r4-relay-evidence.json \
+            R4_PAIRING_TOKEN_PATH=/tmp/r4-pairing-token.txt \
+            R4_SECRETS_PATH=/tmp/r4-secrets.txt \
+            ip netns exec dsh-r4-wan "$NODE_BIN" scripts/r4-relay-failover-acceptance.mjs
+
+          sudo kill -TERM "${TCPDUMP_PID}"
+          wait "${TCPDUMP_PID}" || true
+          unset TCPDUMP_PID
+
+          sudo chmod 0644 /tmp/r4-wan.pcap /tmp/r4-relay-evidence.json /tmp/r4-tcpdump.log
+          sudo test -s /tmp/r4-wan.pcap
+
+          # Verify zero direct host<->client packets crossed br-r4-wan (only relay via 10.211.0.1)
+          DIRECT_COUNT="$(tcpdump -nn -r /tmp/r4-wan.pcap '(src host 10.211.0.11 and dst host 10.211.0.22) or (src host 10.211.0.22 and dst host 10.211.0.11)' 2>/dev/null | wc -l)"
+          echo "Direct host<->client packet count on br-r4-wan: ${DIRECT_COUNT}"
+          test "${DIRECT_COUNT}" -eq 0
+
+          RELAY_PACKETS="$(tcpdump -nn -r /tmp/r4-wan.pcap 'tcp and (host 10.211.0.1 and (host 10.211.0.11 or host 10.211.0.22))' 2>/dev/null | wc -l)"
+          echo "Blind Relay TCP packet count on br-r4-wan: ${RELAY_PACKETS}"
+          test "${RELAY_PACKETS}" -gt 0
+
+          # Verify zero plaintext sensitive markers/tokens leaked anywhere in WAN pcap
+          TOKEN="$(sudo cat /tmp/r4-pairing-token.txt)"
+          python3 - "$TOKEN" <<'PY'
+          import sys
+          pcap = open('/tmp/r4-wan.pcap', 'rb').read()
+          token = sys.argv[1].encode('utf-8')
+          markers = [
+              b'R4_REAL_SESSION_MARKER',
+              b'R4_REAL_EVENT_1',
+              b'R4_REAL_EVENT_2',
+              b'R4_REAL_EVENT_3',
+              b'R4_REAL_EVENT_4',
+              b'R4_REAL_PROMPT_MARKER',
+              b'R4_REAL_APPROVAL_MARKER',
+              b'R4_REAL_APPROVAL_RESULT',
+              token,
+          ]
+          for m in markers:
+              if m in pcap:
+                  raise SystemExit(f'PLAINTEXT LEAK DETECTED IN R4 WAN PCAP: {m!r}')
+          print('PCAP_PLAINTEXT_LEAK_CHECK_OK')
+          PY
+
+          sudo rm -f /tmp/r4-pairing-token.txt /tmp/r4-secrets.txt
+          cp /tmp/r4-relay-evidence.json /tmp/r4-wan.pcap /tmp/r4-tcpdump.log /tmp/r4-artifacts/
+          cat /tmp/r4-relay-evidence.json
+      - name: Upload R4 Blind Relay failover acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: r4-relay-failover-acceptance-${{ github.run_id }}
+          path: /tmp/r4-artifacts/
+          if-no-files-found: ignore
+          retention-days: 3

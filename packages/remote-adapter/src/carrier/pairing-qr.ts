@@ -11,6 +11,8 @@ export interface PairingBootstrapDescriptor {
   readonly signalingUrl?: string | undefined
   readonly signalingRoomId?: string | undefined
   readonly stunUrls?: readonly string[] | undefined
+  readonly relayUrl?: string | undefined
+  readonly relayRoomId?: string | undefined
 }
 
 const FORBIDDEN_QR_FIELDS = Object.freeze([
@@ -52,6 +54,8 @@ export function createPairingBootstrapDescriptor(params: {
   signalingUrl?: string | undefined
   signalingRoomId?: string | undefined
   stunUrls?: readonly string[] | undefined
+  relayUrl?: string | undefined
+  relayRoomId?: string | undefined
 }): PairingBootstrapDescriptor {
   if (params.hostPublicKey.byteLength !== 32) {
     throw new RemoteCryptoError('HANDSHAKE_FAILED', 'host public key must be 32 bytes')
@@ -70,6 +74,8 @@ export function createPairingBootstrapDescriptor(params: {
     signalingUrl?: string
     signalingRoomId?: string
     stunUrls?: readonly string[]
+    relayUrl?: string
+    relayRoomId?: string
   } = {
     protocolVersion: params.protocolVersion,
     hostPublicKeyHex,
@@ -99,6 +105,18 @@ export function createPairingBootstrapDescriptor(params: {
       throw new RemoteCryptoError('HANDSHAKE_FAILED', 'invalid stunUrls in descriptor')
     }
     descriptor.stunUrls = Object.freeze([...params.stunUrls])
+  }
+  if (params.relayUrl !== undefined) {
+    if (!params.relayUrl.startsWith('ws://') && !params.relayUrl.startsWith('wss://')) {
+      throw new RemoteCryptoError('HANDSHAKE_FAILED', 'invalid relayUrl in descriptor')
+    }
+    descriptor.relayUrl = params.relayUrl
+  }
+  if (params.relayRoomId !== undefined) {
+    if (!/^[a-zA-Z0-9_-]{8,128}$/.test(params.relayRoomId)) {
+      throw new RemoteCryptoError('HANDSHAKE_FAILED', 'invalid relayRoomId in descriptor')
+    }
+    descriptor.relayRoomId = params.relayRoomId
   }
 
   assertNoSessionOrCredentialsInDescriptor(descriptor as unknown as Record<string, unknown>)
@@ -164,6 +182,8 @@ export function parsePairingBootstrapDescriptor(raw: string): PairingBootstrapDe
     signalingUrl?: string
     signalingRoomId?: string
     stunUrls?: readonly string[]
+    relayUrl?: string
+    relayRoomId?: string
   } = {
     protocolVersion,
     hostPublicKeyHex,
@@ -198,6 +218,23 @@ export function parsePairingBootstrapDescriptor(raw: string): PairingBootstrapDe
       throw new RemoteCryptoError('HANDSHAKE_FAILED', 'invalid stunUrls in descriptor')
     }
     result.stunUrls = Object.freeze([...obj.stunUrls])
+  }
+
+  if (obj.relayUrl !== undefined) {
+    if (
+      typeof obj.relayUrl !== 'string' ||
+      (!obj.relayUrl.startsWith('ws://') && !obj.relayUrl.startsWith('wss://'))
+    ) {
+      throw new RemoteCryptoError('HANDSHAKE_FAILED', 'invalid relayUrl in descriptor')
+    }
+    result.relayUrl = obj.relayUrl
+  }
+
+  if (obj.relayRoomId !== undefined) {
+    if (typeof obj.relayRoomId !== 'string' || !/^[a-zA-Z0-9_-]{8,128}$/.test(obj.relayRoomId)) {
+      throw new RemoteCryptoError('HANDSHAKE_FAILED', 'invalid relayRoomId in descriptor')
+    }
+    result.relayRoomId = obj.relayRoomId
   }
 
   return Object.freeze(result)
