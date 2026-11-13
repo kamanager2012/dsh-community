@@ -42,7 +42,7 @@ data class HandshakeCompleteNotice(
 data class RpcErrorPayload(
     val code: Int,
     val name: String,
-    val message: String,
+    override val message: String,
 ) : RuntimeException("$name: $message")
 
 sealed interface InboundHostFrame {
