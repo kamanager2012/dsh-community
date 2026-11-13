@@ -10,9 +10,10 @@
 -dontwarn org.jni_zero.**
 -dontwarn javax.annotation.**
 
-# Preserve remote transport, crypto, and protocol types cleanly for stacktraces & JNI/service bindings
+# Preserve remote transport, crypto, service, and protocol types cleanly for stacktraces & JNI/service bindings
 -keepclassmembers class org.dsh.community.android.transport.** { *; }
 -keepclassmembers class org.dsh.community.android.protocol.** { *; }
 -keepclassmembers class org.dsh.community.android.crypto.** { *; }
+-keepclassmembers class org.dsh.community.android.service.** { *; }
 
 -keepattributes Exceptions,InnerClasses,Signature,RuntimeVisibleAnnotations

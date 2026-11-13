@@ -11,6 +11,7 @@ import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.net.ConnectivityManager
 import android.net.Network
+import android.net.NetworkCapabilities
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
@@ -21,6 +22,7 @@ import org.dsh.community.android.crypto.EncryptedDeviceIdentityStore
 import org.dsh.community.android.crypto.EncryptedTrustedHostStore
 import org.dsh.community.android.crypto.TrustedHostRecord
 import org.dsh.community.android.protocol.AttachResumeResult
+import org.dsh.community.android.protocol.DisplayTextSanitizer
 import org.dsh.community.android.protocol.JsonCodec
 import org.dsh.community.android.protocol.JsonNumber
 import org.dsh.community.android.protocol.JsonObject
@@ -37,7 +39,11 @@ import org.dsh.community.android.transport.RemoteConnectionPhase
 import org.dsh.community.android.transport.RemoteEndpointProfile
 import org.dsh.community.android.transport.TransportKind
 import java.io.File
+import java.io.IOException
+import java.util.ArrayDeque
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
@@ -103,6 +109,10 @@ class RemoteSessionService : Service() {
         fun onTrustedHostsChanged(hosts: List<TrustedHostRecord>, activeFingerprint: String?) {}
         fun onPendingApproval(callId: String, summary: String)
         fun onPendingQuestion(questionId: String, prompt: String)
+        fun onPendingApprovalsChanged(approvals: List<PendingApprovalItem>) {}
+        fun onPendingQuestionsChanged(questions: List<PendingQuestionItem>) {}
+        fun onActionSucceeded(action: String, refId: String) {}
+        fun onActionFailed(action: String, reason: String) {}
         fun onMetricsUpdated(identity: DeviceIdentity, stats: BackgroundLifecycleStats) {}
     }
 
@@ -116,6 +126,8 @@ class RemoteSessionService : Service() {
         private const val FOREGROUND_NOTIFICATION_ID = 1001
         private const val APPROVAL_NOTIFICATION_ID = 1002
         private const val STATS_FILE = "remote-lifecycle-stats.json"
+        private const val HEARTBEAT_INTERVAL_MS = 25_000L
+        private const val MAX_REPLAY_EVENTS = 200
 
         const val ACTION_APPROVE_CALL = "org.dsh.community.android.ACTION_APPROVE_CALL"
         const val ACTION_REJECT_CALL = "org.dsh.community.android.ACTION_REJECT_CALL"
@@ -128,11 +140,27 @@ class RemoteSessionService : Service() {
     private val ioExecutor = Executors.newSingleThreadScheduledExecutor { r ->
         Thread(r, "dsh-remote-io").apply { isDaemon = true }
     }
+    private val ackExecutor: ExecutorService = Executors.newSingleThreadExecutor { r ->
+        Thread(r, "dsh-remote-ack").apply { isDaemon = true }
+    }
+    private val heartbeatExecutor = Executors.newSingleThreadScheduledExecutor { r ->
+        Thread(r, "dsh-remote-hb").apply { isDaemon = true }
+    }
     private val uiObservers = CopyOnWriteArrayList<UiObserver>()
-    private val networkAvailable = AtomicBoolean(true)
+    private val activeNetworks = ConcurrentHashMap.newKeySet<Network>()
+    private val networkObserverRegistered = AtomicBoolean(false)
+    private val autoReconnectEligible = AtomicBoolean(false)
+    private val pendingInteractions = PendingInteractionQueue()
+    private val pendingAckSeqs = ConcurrentHashMap<String, Long>()
+    private val ackScheduled = ConcurrentHashMap<String, AtomicBoolean>()
+    private val highestEpochByHost = ConcurrentHashMap<String, Int>()
+    private val reconnectLock = Any()
+    private val replayLock = Any()
+    private val recentEvents = ArrayDeque<Pair<String, OfficialSessionEvent>>()
 
     private val startCount = AtomicInteger(0)
     private val reconnectAttempts = AtomicInteger(0)
+    private val consecutiveReconnectFailures = AtomicInteger(0)
     private val networkLosses = AtomicInteger(0)
     private val approvalNotifications = AtomicInteger(0)
     private val lastStatusMessage = AtomicLong(0L)
@@ -154,7 +182,19 @@ class RemoteSessionService : Service() {
     private var activeSession: FailoverRemoteSession? = null
 
     @Volatile
+    private var lastSessions: List<SessionRef> = emptyList()
+
+    @Volatile
+    private var lastProfile: RemoteEndpointProfile? = null
+
+    @Volatile
+    private var lastDisplayName: String = Build.MODEL ?: "Android"
+
+    @Volatile
     private var reconnectFuture: ScheduledFuture<*>? = null
+
+    @Volatile
+    private var heartbeatFuture: ScheduledFuture<*>? = null
 
     private var connectivityManager: ConnectivityManager? = null
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
@@ -182,7 +222,6 @@ class RemoteSessionService : Service() {
                 disconnect()
             }
             ACTION_APPROVE_CALL -> {
-                cancelApprovalNotification()
                 val callId = intent.getStringExtra(EXTRA_CALL_ID)
                 val key = intent.getStringExtra(EXTRA_IDEMPOTENCY_KEY)
                 if (!callId.isNullOrBlank()) {
@@ -190,7 +229,6 @@ class RemoteSessionService : Service() {
                 }
             }
             ACTION_REJECT_CALL -> {
-                cancelApprovalNotification()
                 val callId = intent.getStringExtra(EXTRA_CALL_ID)
                 val key = intent.getStringExtra(EXTRA_IDEMPOTENCY_KEY)
                 if (!callId.isNullOrBlank()) {
@@ -205,10 +243,19 @@ class RemoteSessionService : Service() {
     override fun onBind(intent: Intent?): IBinder = binder
 
     override fun onDestroy() {
+        autoReconnectEligible.set(false)
         unregisterNetworkObserver()
-        reconnectFuture?.cancel(false)
-        activeSession?.close("service destroyed")
+        stopHeartbeat()
+        synchronized(reconnectLock) {
+            reconnectFuture?.cancel(false)
+            reconnectFuture = null
+        }
+        val toClose = activeSession
+        activeSession = null
         ioExecutor.shutdownNow()
+        ackExecutor.shutdownNow()
+        heartbeatExecutor.shutdownNow()
+        closeSessionOffMainThread(toClose, "service destroyed")
         persistStats()
         super.onDestroy()
     }
@@ -226,6 +273,21 @@ class RemoteSessionService : Service() {
         )
         observer.onMetricsUpdated(id, currentStats())
         observer.onTrustedHostsChanged(trustedHostStore.list(), activeHostFingerprint)
+
+        val sessionsSnapshot = lastSessions
+        if (sessionsSnapshot.isNotEmpty()) {
+            observer.onSessionsUpdated(sessionsSnapshot)
+        }
+        val replaySnapshot = synchronized(replayLock) { recentEvents.toList() }
+        for ((sid, evt) in replaySnapshot) {
+            observer.onEventReceived(sid, evt)
+        }
+        val pendingApprovals = pendingInteractions.listApprovals()
+        observer.onPendingApprovalsChanged(pendingApprovals)
+        pendingApprovals.firstOrNull()?.let { observer.onPendingApproval(it.callId, it.summary) }
+        val pendingQuestions = pendingInteractions.listQuestions()
+        observer.onPendingQuestionsChanged(pendingQuestions)
+        pendingQuestions.firstOrNull()?.let { observer.onPendingQuestion(it.questionId, it.prompt) }
     }
 
     fun listTrustedHosts(): List<TrustedHostRecord> = trustedHostStore.list()
@@ -255,20 +317,32 @@ class RemoteSessionService : Service() {
     }
 
     fun connectWithPairingJson(rawDescriptorJson: String, displayName: String = Build.MODEL ?: "Android") {
+        val sanitizedName = DisplayTextSanitizer.sanitizeSingleLine(displayName).ifBlank { "Android" }
         ioExecutor.execute {
             try {
                 val descriptor = PairingQrParser.parse(rawDescriptorJson)
                 val profile = RemoteEndpointProfile.fromDescriptor(descriptor)
-                connectProfileInternal(profile, displayName)
+                if (!profile.bootstrapToken.isNullOrBlank()) {
+                    // Fresh QR pairing may target a restarted Host process whose epoch resets to 1.
+                    highestEpochByHost.remove(profile.hostFingerprint)
+                }
+                clearReplayEvents()
+                pendingAckSeqs.clear()
+                pendingInteractions.clearAll()
+                lastSessions = emptyList()
+                cancelApprovalNotification()
+                refreshPendingUi(approvalsChanged = true, questionsChanged = true)
+                connectProfileInternal(profile, sanitizedName)
             } catch (t: Throwable) {
-                updateStatus(RemoteConnectionPhase.FAILED, null, 0, "Pairing parse/connect failed: ${t.message}")
+                updateStatus(RemoteConnectionPhase.FAILED, null, 0, "Pairing parse/connect failed: ${sanitizeErr(t)}")
             }
         }
     }
 
     fun connectProfile(profile: RemoteEndpointProfile, displayName: String = Build.MODEL ?: "Android") {
+        val sanitizedName = DisplayTextSanitizer.sanitizeSingleLine(displayName).ifBlank { "Android" }
         ioExecutor.execute {
-            connectProfileInternal(profile, displayName)
+            connectProfileInternal(profile, sanitizedName)
         }
     }
 
@@ -280,7 +354,9 @@ class RemoteSessionService : Service() {
         hostFingerprint: String? = null,
         lanUrlOverride: String? = null,
         displayName: String = Build.MODEL ?: "Android",
+        resetEpochFence: Boolean = true,
     ) {
+        val sanitizedName = DisplayTextSanitizer.sanitizeSingleLine(displayName).ifBlank { "Android" }
         ioExecutor.execute {
             val all = trustedHostStore.list()
             val target = if (!hostFingerprint.isNullOrBlank()) {
@@ -297,10 +373,14 @@ class RemoteSessionService : Service() {
             }
 
             activeHostFingerprint = target.hostFingerprint
+            if (resetEpochFence) {
+                // Explicit user reconnect may follow a Host daemon restart whose epoch restarts at 1.
+                highestEpochByHost.remove(target.hostFingerprint)
+            }
             notifyTrustedHosts()
 
             if (target.isRevoked) {
-                val reason = target.revokedReason ?: "device revoked by host"
+                val reason = DisplayTextSanitizer.sanitizeSingleLine(target.revokedReason ?: "device revoked by host")
                 uiObservers.forEach { it.onPeerRevoked(target.hostFingerprint, reason) }
                 updateStatus(
                     RemoteConnectionPhase.REVOKED,
@@ -312,7 +392,7 @@ class RemoteSessionService : Service() {
             }
 
             val tokenlessProfile = RemoteEndpointProfile.fromTrustedRecord(target, lanUrlOverride)
-            connectProfileInternal(tokenlessProfile, displayName)
+            connectProfileInternal(tokenlessProfile, sanitizedName)
         }
     }
 
@@ -325,11 +405,27 @@ class RemoteSessionService : Service() {
                 ?: activeHostFingerprint
                 ?: trustedHostStore.list().firstOrNull()?.hostFingerprint
                 ?: return@execute
+            highestEpochByHost.remove(targetFp)
             if (activeHostFingerprint.equals(targetFp, ignoreCase = true)) {
-                reconnectFuture?.cancel(false)
-                activeSession?.close("host forgotten")
+                autoReconnectEligible.set(false)
+                consecutiveReconnectFailures.set(0)
+                stopHeartbeat()
+                synchronized(reconnectLock) {
+                    reconnectFuture?.cancel(false)
+                    reconnectFuture = null
+                }
+                val toClose = activeSession
                 activeSession = null
                 activeHostFingerprint = null
+                lastProfile = null
+                lastSessions = emptyList()
+                pendingAckSeqs.clear()
+                clearReplayEvents()
+                pendingInteractions.clearAll()
+                cancelApprovalNotification()
+                refreshPendingUi(approvalsChanged = true, questionsChanged = true)
+                uiObservers.forEach { it.onSessionsUpdated(emptyList()) }
+                closeSessionOffMainThread(toClose, "host forgotten")
             }
             val removed = trustedHostStore.forget(targetFp)
             notifyTrustedHosts()
@@ -352,7 +448,7 @@ class RemoteSessionService : Service() {
         val existing = trustedHostStore.get(fp)
             ?: return DiscoverySelectOutcome.UNKNOWN_UNPAIRED_HOST
         if (existing.isRevoked) {
-            val reason = existing.revokedReason ?: "device revoked by host"
+            val reason = DisplayTextSanitizer.sanitizeSingleLine(existing.revokedReason ?: "device revoked by host")
             uiObservers.forEach { it.onPeerRevoked(fp, reason) }
             ioExecutor.execute {
                 updateStatus(RemoteConnectionPhase.REVOKED, null, 0, "REVOKED: $reason")
@@ -362,10 +458,10 @@ class RemoteSessionService : Service() {
         val updated = trustedHostStore.updateLanFromDiscovery(
             hostFingerprint = fp,
             lanUrl = discovered.endpointUrl,
-            displayLabel = discovered.hostDisplayLabel,
+            displayLabel = DisplayTextSanitizer.sanitizeSingleLine(discovered.hostDisplayLabel),
         ) ?: return DiscoverySelectOutcome.UNKNOWN_UNPAIRED_HOST
         notifyTrustedHosts()
-        reconnectSavedHost(updated.hostFingerprint)
+        reconnectSavedHost(updated.hostFingerprint, resetEpochFence = false)
         return DiscoverySelectOutcome.UPDATED_AND_RECONNECTING
     }
 
@@ -374,9 +470,10 @@ class RemoteSessionService : Service() {
             val session = activeSession ?: return@execute
             try {
                 val list = session.listSessions()
+                lastSessions = list
                 uiObservers.forEach { it.onSessionsUpdated(list) }
             } catch (t: Throwable) {
-                updateStatus(session.phase, session.activeCarrier, session.currentEpoch, "session.list error: ${t.message}")
+                updateStatus(session.phase, session.activeCarrier, session.currentEpoch, "session.list error: ${sanitizeErr(t)}")
             }
         }
     }
@@ -388,58 +485,94 @@ class RemoteSessionService : Service() {
                 when (val result = session.attachSession(sessionId)) {
                     is AttachResumeResult.Events -> {
                         for (evt in result.events) {
+                            enqueueReplayEvent(sessionId, evt)
                             dispatchEventToObservers(sessionId, evt)
+                        }
+                        result.events.lastOrNull()?.let { lastEvt ->
+                            enqueueStreamAck(session, sessionId, lastEvt.seq)
                         }
                     }
                     is AttachResumeResult.ResetRequired -> {
+                        clearReplayEvents(sessionId)
                         updateStatus(
                             session.phase,
                             session.activeCarrier,
                             session.currentEpoch,
-                            "Replay window unavailable (${result.reason}); re-sync from official session",
+                            "Replay window unavailable (${DisplayTextSanitizer.sanitizeSingleLine(result.reason)}); re-sync from official session",
                         )
                     }
                 }
             } catch (t: Throwable) {
-                updateStatus(session.phase, session.activeCarrier, session.currentEpoch, "attach failed: ${t.message}")
+                updateStatus(session.phase, session.activeCarrier, session.currentEpoch, "attach failed: ${sanitizeErr(t)}")
             }
         }
     }
 
     fun submitPromptAsync(sessionId: String, prompt: String) {
         ioExecutor.execute {
-            val session = activeSession ?: return@execute
+            val session = activeSession ?: run {
+                uiObservers.forEach { it.onActionFailed("prompt", "Not connected to Host") }
+                return@execute
+            }
             val opKey = session.newOperationKey("prompt")
             try {
                 session.submitPrompt(sessionId, prompt, opKey)
+                uiObservers.forEach { it.onActionSucceeded("prompt", sessionId) }
             } catch (t: Throwable) {
-                updateStatus(session.phase, session.activeCarrier, session.currentEpoch, "prompt.submit failed: ${t.message}")
+                val reason = sanitizeErr(t)
+                updateStatus(session.phase, session.activeCarrier, session.currentEpoch, "prompt.submit failed: $reason")
+                uiObservers.forEach { it.onActionFailed("prompt", reason) }
             }
         }
     }
 
     fun respondApprovalAsync(callId: String, approved: Boolean, explicitKey: String? = null) {
         ioExecutor.execute {
-            val session = activeSession ?: return@execute
+            val session = activeSession ?: run {
+                uiObservers.forEach { it.onActionFailed("approval", "Not connected to Host") }
+                return@execute
+            }
             val opKey = explicitKey ?: session.newOperationKey("approval-$callId")
             try {
                 session.respondApproval(callId, approved, opKey)
-                val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                nm.cancel(APPROVAL_NOTIFICATION_ID)
+                pendingInteractions.removeApproval(callId)
+                refreshPendingUi(approvalsChanged = true)
+                val nextApproval = pendingInteractions.peekApproval()
+                if (nextApproval == null) {
+                    cancelApprovalNotification()
+                } else {
+                    postApprovalNotification(nextApproval.callId, nextApproval.summary, countMetric = false)
+                }
+                uiObservers.forEach { it.onActionSucceeded("approval", callId) }
             } catch (t: Throwable) {
-                updateStatus(session.phase, session.activeCarrier, session.currentEpoch, "approval.respond failed: ${t.message}")
+                val reason = sanitizeErr(t)
+                updateStatus(session.phase, session.activeCarrier, session.currentEpoch, "approval.respond failed: $reason")
+                refreshPendingUi(approvalsChanged = true)
+                pendingInteractions.peekApproval()?.let {
+                    postApprovalNotification(it.callId, it.summary, countMetric = false)
+                }
+                uiObservers.forEach { it.onActionFailed("approval", reason) }
             }
         }
     }
 
     fun respondQuestionAsync(questionId: String, answer: String) {
         ioExecutor.execute {
-            val session = activeSession ?: return@execute
+            val session = activeSession ?: run {
+                uiObservers.forEach { it.onActionFailed("question", "Not connected to Host") }
+                return@execute
+            }
             val opKey = session.newOperationKey("question-$questionId")
             try {
                 session.respondQuestion(questionId, answer, opKey)
+                pendingInteractions.removeQuestion(questionId)
+                refreshPendingUi(questionsChanged = true)
+                uiObservers.forEach { it.onActionSucceeded("question", questionId) }
             } catch (t: Throwable) {
-                updateStatus(session.phase, session.activeCarrier, session.currentEpoch, "question.respond failed: ${t.message}")
+                val reason = sanitizeErr(t)
+                updateStatus(session.phase, session.activeCarrier, session.currentEpoch, "question.respond failed: $reason")
+                refreshPendingUi(questionsChanged = true)
+                uiObservers.forEach { it.onActionFailed("question", reason) }
             }
         }
     }
@@ -456,6 +589,19 @@ class RemoteSessionService : Service() {
                     "Failing over carrier (attempt #$attempt)...",
                 )
                 session.failoverAndResume()
+                consecutiveReconnectFailures.set(0)
+                autoReconnectEligible.set(true)
+                activeHostFingerprint?.let { fp ->
+                    highestEpochByHost.merge(fp, session.currentEpoch, ::maxOf)
+                }
+                startHeartbeat(session)
+                try {
+                    val sessions = session.listSessions()
+                    lastSessions = sessions
+                    uiObservers.forEach { it.onSessionsUpdated(sessions) }
+                } catch (_: Throwable) {
+                    // Best-effort refresh; stream replay already resumed.
+                }
                 updateStatus(
                     session.phase,
                     session.activeCarrier,
@@ -464,13 +610,17 @@ class RemoteSessionService : Service() {
                 )
             } catch (t: Throwable) {
                 if (t is PeerRevokedException || session.revokedByHost) {
+                    stopHeartbeat()
+                    autoReconnectEligible.set(false)
                     handlePeerRevocation(
                         activeHostFingerprint ?: "",
                         session,
-                        (t as? PeerRevokedException)?.reason ?: t.message ?: "device revoked",
+                        sanitizeErr(t),
                     )
                 } else {
-                    updateStatus(RemoteConnectionPhase.FAILED, null, session.currentEpoch, "Failover failed: ${t.message}")
+                    val reason = sanitizeErr(t)
+                    updateStatus(RemoteConnectionPhase.FAILED, null, session.currentEpoch, "Failover failed: $reason")
+                    scheduleBatterySafeReconnect(session, session.activeCarrier ?: TransportKind.RELAY, reason)
                 }
             } finally {
                 persistStats()
@@ -479,57 +629,109 @@ class RemoteSessionService : Service() {
     }
 
     fun disconnect() {
+        autoReconnectEligible.set(false)
+        consecutiveReconnectFailures.set(0)
+        stopHeartbeat()
         cancelApprovalNotification()
-        reconnectFuture?.cancel(false)
-        activeSession?.close("user disconnect")
+        synchronized(reconnectLock) {
+            reconnectFuture?.cancel(false)
+            reconnectFuture = null
+        }
+        val toClose = activeSession
         activeSession = null
+        lastSessions = emptyList()
+        pendingAckSeqs.clear()
+        clearReplayEvents()
+        pendingInteractions.clearAll()
+        refreshPendingUi(approvalsChanged = true, questionsChanged = true)
+        uiObservers.forEach { it.onSessionsUpdated(emptyList()) }
         updateStatus(RemoteConnectionPhase.DISCONNECTED, null, 0, "Disconnected")
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
+        closeSessionOffMainThread(toClose, "user disconnect")
     }
 
     private fun connectProfileInternal(profile: RemoteEndpointProfile, displayName: String) {
-        reconnectFuture?.cancel(false)
-        activeSession?.close("reconnecting")
+        val prevFp = activeHostFingerprint
+        val hostChanged = prevFp != null && !prevFp.equals(profile.hostFingerprint, ignoreCase = true)
+        synchronized(reconnectLock) {
+            reconnectFuture?.cancel(false)
+            reconnectFuture = null
+        }
+        stopHeartbeat()
+        autoReconnectEligible.set(false)
+        consecutiveReconnectFailures.set(0)
+        val previousSession = activeSession
+        activeSession = null
+        closeSessionOffMainThread(previousSession, "reconnecting")
+
+        if (hostChanged) {
+            lastSessions = emptyList()
+            pendingAckSeqs.clear()
+            clearReplayEvents()
+            pendingInteractions.clearAll()
+            cancelApprovalNotification()
+            refreshPendingUi(approvalsChanged = true, questionsChanged = true)
+            uiObservers.forEach { it.onSessionsUpdated(emptyList()) }
+        }
+
+        lastProfile = profile
+        lastDisplayName = displayName
         activeHostFingerprint = profile.hostFingerprint
         notifyTrustedHosts()
 
         val identity = ensureDeviceIdentity()
+        val initialHighestEpoch = highestEpochByHost[profile.hostFingerprint] ?: 0
         val session = FailoverRemoteSession(
             identity,
             profile,
             webRtcPeerEngine = AndroidWebRtcPeerEngine(applicationContext),
+            initialHighestEpoch = initialHighestEpoch,
         )
         session.addListener(
             object : FailoverRemoteSession.Listener {
                 override fun onPhaseChanged(phase: RemoteConnectionPhase, carrier: TransportKind?, epoch: Int) {
+                    if (epoch > 0) {
+                        highestEpochByHost.merge(profile.hostFingerprint, epoch, ::maxOf)
+                    }
                     val label = "${phase.name} via ${carrier?.wireName ?: "-"} (epoch=$epoch)"
                     updateStatus(phase, carrier, epoch, label)
                 }
 
                 override fun onStreamEvent(sessionId: String, event: OfficialSessionEvent) {
+                    enqueueReplayEvent(sessionId, event)
                     dispatchEventToObservers(sessionId, event)
-                    val seq = event.seq
-                    ioExecutor.execute {
-                        try {
-                            if (activeSession === session) {
-                                session.ackStream(sessionId, seq)
-                            }
-                        } catch (_: Throwable) {
-                            // Best-effort ack; next attach resumes from confirmed cursor.
-                        }
-                    }
+                    enqueueStreamAck(session, sessionId, event.seq)
                 }
 
                 override fun onStreamReset(sessionId: String, reason: String) {
-                    uiObservers.forEach { it.onStreamReset(sessionId, reason) }
+                    clearReplayEvents(sessionId)
+                    for (item in pendingInteractions.listApprovals()) {
+                        if (item.sessionId == sessionId) {
+                            pendingInteractions.removeApproval(item.callId)
+                        }
+                    }
+                    for (item in pendingInteractions.listQuestions()) {
+                        if (item.sessionId == sessionId) {
+                            pendingInteractions.removeQuestion(item.questionId)
+                        }
+                    }
+                    refreshPendingUi(approvalsChanged = true, questionsChanged = true)
+                    if (pendingInteractions.peekApproval() == null) {
+                        cancelApprovalNotification()
+                    }
+                    val cleanReason = DisplayTextSanitizer.sanitizeSingleLine(reason)
+                    uiObservers.forEach { it.onStreamReset(sessionId, cleanReason) }
                 }
 
                 override fun onPeerRevoked(reason: String) {
+                    stopHeartbeat()
+                    autoReconnectEligible.set(false)
                     handlePeerRevocation(profile.hostFingerprint, session, reason)
                 }
 
                 override fun onTransportClosed(carrier: TransportKind, reason: String) {
+                    stopHeartbeat()
                     scheduleBatterySafeReconnect(session, carrier, reason)
                 }
             },
@@ -539,7 +741,7 @@ class RemoteSessionService : Service() {
             val phase = session.connect()
             if (phase == RemoteConnectionPhase.PAIRING_PENDING && !profile.bootstrapToken.isNullOrBlank()) {
                 val res = session.requestPairing(displayName, profile.bootstrapToken)
-                val cid = res.str("candidateId") ?: "pending"
+                val cid = DisplayTextSanitizer.sanitizeSingleLine(res.str("candidateId") ?: "pending")
                 trustedHostStore.upsertTrustedHost(
                     hostPublicKey = profile.hostPublicKey,
                     lanUrl = profile.lanUrl,
@@ -558,6 +760,9 @@ class RemoteSessionService : Service() {
                     "Pairing requested (candidate=$cid); confirm on Host then Reconnect",
                 )
             } else if (phase == RemoteConnectionPhase.ACTIVE) {
+                consecutiveReconnectFailures.set(0)
+                autoReconnectEligible.set(true)
+                highestEpochByHost.merge(profile.hostFingerprint, session.currentEpoch, ::maxOf)
                 trustedHostStore.upsertTrustedHost(
                     hostPublicKey = profile.hostPublicKey,
                     lanUrl = profile.lanUrl,
@@ -568,8 +773,13 @@ class RemoteSessionService : Service() {
                     relayRoomId = profile.relayRoomId,
                     markConnected = true,
                 )
+                trustedHostStore.get(profile.hostFingerprint)?.let { saved ->
+                    lastProfile = RemoteEndpointProfile.fromTrustedRecord(saved, profile.lanUrl)
+                }
                 notifyTrustedHosts()
                 val sessions = session.listSessions()
+                lastSessions = sessions
+                startHeartbeat(session)
                 updateStatus(
                     phase,
                     session.activeCarrier,
@@ -580,13 +790,18 @@ class RemoteSessionService : Service() {
             }
         } catch (t: Throwable) {
             if (t is PeerRevokedException || session.revokedByHost) {
+                stopHeartbeat()
+                autoReconnectEligible.set(false)
                 handlePeerRevocation(
                     profile.hostFingerprint,
                     session,
-                    (t as? PeerRevokedException)?.reason ?: t.message ?: "device revoked",
+                    sanitizeErr(t),
                 )
             } else {
-                updateStatus(RemoteConnectionPhase.FAILED, null, session.currentEpoch, "Connect failed: ${t.message}")
+                if (profile.bootstrapToken == null) {
+                    autoReconnectEligible.set(true)
+                }
+                updateStatus(RemoteConnectionPhase.FAILED, null, session.currentEpoch, "Connect failed: ${sanitizeErr(t)}")
             }
         } finally {
             persistStats()
@@ -598,13 +813,20 @@ class RemoteSessionService : Service() {
         session: FailoverRemoteSession,
         reason: String,
     ) {
-        reconnectFuture?.cancel(false)
-        if (hostFingerprint.isNotBlank()) {
-            trustedHostStore.markRevoked(hostFingerprint, reason)
-            notifyTrustedHosts()
-            uiObservers.forEach { it.onPeerRevoked(hostFingerprint, reason) }
+        autoReconnectEligible.set(false)
+        stopHeartbeat()
+        synchronized(reconnectLock) {
+            reconnectFuture?.cancel(false)
+            reconnectFuture = null
         }
-        updateStatus(RemoteConnectionPhase.REVOKED, null, session.currentEpoch, "REVOKED: $reason")
+        val cleanReason = DisplayTextSanitizer.sanitizeSingleLine(reason)
+        if (hostFingerprint.isNotBlank()) {
+            highestEpochByHost.remove(hostFingerprint)
+            trustedHostStore.markRevoked(hostFingerprint, cleanReason)
+            notifyTrustedHosts()
+            uiObservers.forEach { it.onPeerRevoked(hostFingerprint, cleanReason) }
+        }
+        updateStatus(RemoteConnectionPhase.REVOKED, null, session.currentEpoch, "REVOKED: $cleanReason")
     }
 
     private fun notifyTrustedHosts() {
@@ -615,9 +837,19 @@ class RemoteSessionService : Service() {
 
     private fun scheduleBatterySafeReconnect(session: FailoverRemoteSession, droppedCarrier: TransportKind, reason: String) {
         if (session.revokedByHost || session.phase == RemoteConnectionPhase.REVOKED) return
-        if (activeSession !== session || !networkAvailable.get()) return
-        val attempt = reconnectAttempts.incrementAndGet()
-        if (attempt > 5) {
+        if (!autoReconnectEligible.get() || activeSession !== session) return
+        val cleanReason = DisplayTextSanitizer.sanitizeSingleLine(reason)
+        if (!hasUsableNetwork()) {
+            updateStatus(
+                RemoteConnectionPhase.FAILED,
+                null,
+                session.currentEpoch,
+                "Waiting for network ($droppedCarrier closed: $cleanReason)",
+            )
+            return
+        }
+        val failureAttempt = consecutiveReconnectFailures.incrementAndGet()
+        if (failureAttempt > 5) {
             updateStatus(
                 RemoteConnectionPhase.FAILED,
                 null,
@@ -626,63 +858,280 @@ class RemoteSessionService : Service() {
             )
             return
         }
-        val delayMs = BackoffPolicy.nextDelayMs(attempt - 1)
+        val delayMs = BackoffPolicy.nextDelayMs(failureAttempt - 1)
         updateStatus(
             RemoteConnectionPhase.CONNECTING,
             null,
             session.currentEpoch,
-            "$droppedCarrier closed ($reason); failover in ${delayMs}ms",
+            "$droppedCarrier closed ($cleanReason); failover in ${delayMs}ms",
         )
-        reconnectFuture?.cancel(false)
-        reconnectFuture = ioExecutor.schedule(
-            {
-                if (activeSession === session && networkAvailable.get()) {
-                    failoverAsync()
-                }
-            },
-            delayMs,
-            TimeUnit.MILLISECONDS,
-        )
+        synchronized(reconnectLock) {
+            reconnectFuture?.cancel(false)
+            reconnectFuture = ioExecutor.schedule(
+                {
+                    if (activeSession === session && autoReconnectEligible.get() && hasUsableNetwork()) {
+                        failoverAsync()
+                    }
+                },
+                delayMs,
+                TimeUnit.MILLISECONDS,
+            )
+        }
     }
 
     private fun dispatchEventToObservers(sessionId: String, event: OfficialSessionEvent) {
         uiObservers.forEach { it.onEventReceived(sessionId, event) }
         val dataObj = event.data as? JsonObject ?: return
-        if (event.type == "approval.resolved" || event.type == "question.resolved") {
-            if (event.type == "approval.resolved") {
-                cancelApprovalNotification()
+        if (event.type == "approval.resolved") {
+            val resolvedCallId = dataObj.str("callId")
+            if (resolvedCallId != null) {
+                pendingInteractions.removeApproval(resolvedCallId)
+            } else {
+                for (item in pendingInteractions.listApprovals()) {
+                    if (item.sessionId == null || item.sessionId == sessionId) {
+                        pendingInteractions.removeApproval(item.callId)
+                    }
+                }
             }
+            refreshPendingUi(approvalsChanged = true)
+            val nextApproval = pendingInteractions.peekApproval()
+            if (nextApproval == null) {
+                cancelApprovalNotification()
+            } else {
+                postApprovalNotification(nextApproval.callId, nextApproval.summary, countMetric = false)
+            }
+            return
+        }
+        if (event.type == "question.resolved") {
+            val resolvedQuestionId = dataObj.str("questionId")
+            if (resolvedQuestionId != null) {
+                pendingInteractions.removeQuestion(resolvedQuestionId)
+            } else {
+                for (item in pendingInteractions.listQuestions()) {
+                    if (item.sessionId == null || item.sessionId == sessionId) {
+                        pendingInteractions.removeQuestion(item.questionId)
+                    }
+                }
+            }
+            refreshPendingUi(questionsChanged = true)
             return
         }
         if (event.type.contains("approval", ignoreCase = true) || event.type.contains("permission", ignoreCase = true)) {
             val callId = dataObj.str("callId") ?: return
             val toolLabel = dataObj.str("toolName") ?: dataObj.str("tool") ?: dataObj.str("summary") ?: event.type
             val reason = dataObj.str("reason")
-            val summary = if (!reason.isNullOrBlank()) "$toolLabel — $reason" else toolLabel
-            uiObservers.forEach { it.onPendingApproval(callId, summary) }
-            postApprovalNotification(callId, summary)
+            val rawSummary = if (!reason.isNullOrBlank()) "$toolLabel — $reason" else toolLabel
+            val summary = DisplayTextSanitizer.sanitizeSingleLine(rawSummary)
+            val added = pendingInteractions.enqueueApproval(callId, summary, sessionId)
+            val approvals = pendingInteractions.listApprovals()
+            uiObservers.forEach { it.onPendingApprovalsChanged(approvals) }
+            approvals.firstOrNull()?.let { head ->
+                uiObservers.forEach { it.onPendingApproval(head.callId, head.summary) }
+            }
+            val headForNotif = approvals.firstOrNull() ?: PendingApprovalItem(callId, summary, sessionId)
+            postApprovalNotification(headForNotif.callId, headForNotif.summary, countMetric = added)
         } else if (event.type.contains("question", ignoreCase = true)) {
             val questionId = dataObj.str("questionId") ?: return
             val firstQuestion = dataObj.arr("questions")?.items?.firstOrNull() as? JsonObject
-            val prompt = dataObj.str("prompt")
+            val rawPrompt = dataObj.str("prompt")
                 ?: dataObj.str("question")
                 ?: firstQuestion?.str("question")
                 ?: firstQuestion?.str("prompt")
                 ?: firstQuestion?.str("header")
                 ?: event.type
-            uiObservers.forEach { it.onPendingQuestion(questionId, prompt) }
+            val prompt = DisplayTextSanitizer.sanitizeSingleLine(rawPrompt)
+            pendingInteractions.enqueueQuestion(questionId, prompt, sessionId)
+            val questions = pendingInteractions.listQuestions()
+            uiObservers.forEach { it.onPendingQuestionsChanged(questions) }
+            questions.firstOrNull()?.let { head ->
+                uiObservers.forEach { it.onPendingQuestion(head.questionId, head.prompt) }
+            }
         }
     }
 
     private fun updateStatus(phase: RemoteConnectionPhase, carrier: TransportKind?, epoch: Int, message: String) {
-        statusText = message
+        val cleanMsg = DisplayTextSanitizer.sanitizeSingleLine(message)
+        statusText = cleanMsg
         lastStatusMessage.set(System.currentTimeMillis())
         val id = ensureDeviceIdentity()
-        ensureForeground(message)
+        ensureForeground(cleanMsg)
         val stats = currentStats()
         uiObservers.forEach {
-            it.onStatusChanged(phase, carrier, epoch, id.deviceId, message)
+            it.onStatusChanged(phase, carrier, epoch, id.deviceId, cleanMsg)
             it.onMetricsUpdated(id, stats)
+        }
+    }
+
+    private fun sanitizeErr(t: Throwable): String =
+        DisplayTextSanitizer.sanitizeSingleLine(t.message).ifBlank { t.javaClass.simpleName }
+
+    private fun closeSessionOffMainThread(session: FailoverRemoteSession?, reason: String) {
+        if (session == null) return
+        Thread(
+            {
+                try {
+                    session.close(reason)
+                } catch (_: Throwable) {
+                }
+            },
+            "dsh-remote-close",
+        ).apply {
+            isDaemon = true
+            start()
+        }
+    }
+
+    private fun enqueueReplayEvent(sessionId: String, event: OfficialSessionEvent) {
+        synchronized(replayLock) {
+            recentEvents.addLast(sessionId to event)
+            while (recentEvents.size > MAX_REPLAY_EVENTS) {
+                recentEvents.removeFirst()
+            }
+        }
+    }
+
+    private fun clearReplayEvents(sessionId: String? = null) {
+        synchronized(replayLock) {
+            if (sessionId == null) {
+                recentEvents.clear()
+            } else {
+                val it = recentEvents.iterator()
+                while (it.hasNext()) {
+                    if (it.next().first == sessionId) {
+                        it.remove()
+                    }
+                }
+            }
+        }
+    }
+
+    private fun enqueueStreamAck(session: FailoverRemoteSession, sessionId: String, seq: Long) {
+        pendingAckSeqs.merge(sessionId, seq, ::maxOf)
+        val scheduledFlag = ackScheduled.computeIfAbsent(sessionId) { AtomicBoolean(false) }
+        if (!scheduledFlag.compareAndSet(false, true)) {
+            return
+        }
+        try {
+            ackExecutor.execute {
+                try {
+                    scheduledFlag.set(false)
+                    val targetSeq = pendingAckSeqs[sessionId] ?: return@execute
+                    val confirmed = session.getLastConfirmedSeq(sessionId) ?: -1L
+                    if (targetSeq > confirmed && activeSession === session && session.isTransportOpen()) {
+                        session.ackStream(sessionId, targetSeq)
+                    }
+                } catch (_: Throwable) {
+                    // Best-effort ack; next attach resumes from confirmed cursor.
+                }
+            }
+        } catch (_: Throwable) {
+            scheduledFlag.set(false)
+        }
+    }
+
+    private fun stopHeartbeat() {
+        heartbeatFuture?.cancel(false)
+        heartbeatFuture = null
+    }
+
+    private fun startHeartbeat(session: FailoverRemoteSession) {
+        stopHeartbeat()
+        try {
+            heartbeatFuture = heartbeatExecutor.scheduleWithFixedDelay(
+                {
+                    if (activeSession !== session || session.phase != RemoteConnectionPhase.ACTIVE) {
+                        stopHeartbeat()
+                        return@scheduleWithFixedDelay
+                    }
+                    if (!hasUsableNetwork()) {
+                        return@scheduleWithFixedDelay
+                    }
+                    try {
+                        val ok = session.ping()
+                        if (!ok) {
+                            throw IOException("heartbeat ping returned not ok")
+                        }
+                    } catch (t: Throwable) {
+                        stopHeartbeat()
+                        if (t is PeerRevokedException || session.revokedByHost) {
+                            handlePeerRevocation(
+                                activeHostFingerprint ?: "",
+                                session,
+                                sanitizeErr(t),
+                            )
+                        } else {
+                            val carrier = session.activeCarrier ?: TransportKind.LAN
+                            scheduleBatterySafeReconnect(session, carrier, "heartbeat failed: ${sanitizeErr(t)}")
+                        }
+                    }
+                },
+                HEARTBEAT_INTERVAL_MS,
+                HEARTBEAT_INTERVAL_MS,
+                TimeUnit.MILLISECONDS,
+            )
+        } catch (_: Throwable) {
+            // Executor already shutting down during service destroy.
+        }
+    }
+
+    private fun refreshPendingUi(approvalsChanged: Boolean = false, questionsChanged: Boolean = false) {
+        if (approvalsChanged) {
+            val approvals = pendingInteractions.listApprovals()
+            uiObservers.forEach { it.onPendingApprovalsChanged(approvals) }
+            approvals.firstOrNull()?.let { head ->
+                uiObservers.forEach { it.onPendingApproval(head.callId, head.summary) }
+            }
+        }
+        if (questionsChanged) {
+            val questions = pendingInteractions.listQuestions()
+            uiObservers.forEach { it.onPendingQuestionsChanged(questions) }
+            questions.firstOrNull()?.let { head ->
+                uiObservers.forEach { it.onPendingQuestion(head.questionId, head.prompt) }
+            }
+        }
+    }
+
+    private fun hasUsableNetwork(): Boolean {
+        if (activeNetworks.isNotEmpty()) return true
+        val cm = connectivityManager ?: return true
+        return try {
+            val active = cm.activeNetwork ?: return false
+            val caps = cm.getNetworkCapabilities(active) ?: return true
+            caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        } catch (_: Throwable) {
+            true
+        }
+    }
+
+    private fun resumeAfterNetworkRestore() {
+        if (!autoReconnectEligible.get() || !hasUsableNetwork()) return
+        try {
+            ioExecutor.execute {
+                if (!autoReconnectEligible.get() || !hasUsableNetwork()) return@execute
+                val current = activeSession
+                if (current != null) {
+                    if (current.revokedByHost || current.phase == RemoteConnectionPhase.REVOKED) return@execute
+                    if (current.phase == RemoteConnectionPhase.ACTIVE && current.isTransportOpen()) return@execute
+                    if (current.phase == RemoteConnectionPhase.CONNECTING ||
+                        current.phase == RemoteConnectionPhase.PAIRING_PENDING
+                    ) {
+                        return@execute
+                    }
+                    consecutiveReconnectFailures.set(0)
+                    failoverAsync()
+                    return@execute
+                }
+                val savedFp = activeHostFingerprint
+                val tokenlessProfile = savedFp?.let { trustedHostStore.get(it) }
+                    ?.takeIf { !it.isRevoked }
+                    ?.let { RemoteEndpointProfile.fromTrustedRecord(it, lastProfile?.lanUrl) }
+                    ?: lastProfile?.takeIf { it.bootstrapToken == null }
+                    ?: return@execute
+                consecutiveReconnectFailures.set(0)
+                connectProfileInternal(tokenlessProfile, lastDisplayName)
+            }
+        } catch (_: Throwable) {
+            // Service shutting down.
         }
     }
 
@@ -694,23 +1143,63 @@ class RemoteSessionService : Service() {
     }
 
     private fun registerNetworkObserver() {
-        val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return
+        if (!networkObserverRegistered.compareAndSet(false, true)) return
+        val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: run {
+            networkObserverRegistered.set(false)
+            return
+        }
         connectivityManager = cm
         val cb = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
-                networkAvailable.set(true)
+                val prevCount = activeNetworks.size
+                activeNetworks.add(network)
+                val s = activeSession
+                if (s != null && s.phase == RemoteConnectionPhase.ACTIVE && s.activeCarrier == TransportKind.LAN) {
+                    // Default network may have switched (e.g. Wi-Fi -> Cellular); probe LAN socket liveness off main thread.
+                    try {
+                        ioExecutor.execute {
+                            if (activeSession === s && s.phase == RemoteConnectionPhase.ACTIVE) {
+                                try {
+                                    if (!s.ping()) throw IOException("ping returned false")
+                                } catch (t: Throwable) {
+                                    scheduleBatterySafeReconnect(s, TransportKind.LAN, "network switch: ${sanitizeErr(t)}")
+                                }
+                            }
+                        }
+                    } catch (_: Throwable) {
+                    }
+                } else if (prevCount == 0 || (s != null && s.phase == RemoteConnectionPhase.FAILED)) {
+                    resumeAfterNetworkRestore()
+                }
             }
 
             override fun onLost(network: Network) {
-                networkAvailable.set(false)
+                activeNetworks.remove(network)
                 networkLosses.incrementAndGet()
                 persistStats()
+                val s = activeSession
+                if (hasUsableNetwork() && s != null && s.phase == RemoteConnectionPhase.ACTIVE) {
+                    try {
+                        ioExecutor.execute {
+                            if (activeSession === s && s.phase == RemoteConnectionPhase.ACTIVE) {
+                                try {
+                                    if (!s.ping()) throw IOException("ping returned false")
+                                } catch (t: Throwable) {
+                                    val carrier = s.activeCarrier ?: TransportKind.LAN
+                                    scheduleBatterySafeReconnect(s, carrier, "network lost: ${sanitizeErr(t)}")
+                                }
+                            }
+                        }
+                    } catch (_: Throwable) {
+                    }
+                }
             }
         }
         networkCallback = cb
         try {
             cm.registerDefaultNetworkCallback(cb)
         } catch (_: SecurityException) {
+            networkObserverRegistered.set(false)
             // Permission check guarded defensively
         }
     }
@@ -725,6 +1214,8 @@ class RemoteSessionService : Service() {
             }
         }
         networkCallback = null
+        networkObserverRegistered.set(false)
+        activeNetworks.clear()
     }
 
     private fun createNotificationChannels() {
@@ -792,9 +1283,19 @@ class RemoteSessionService : Service() {
         }
     }
 
-    private fun postApprovalNotification(callId: String, summary: String) {
-        approvalNotifications.incrementAndGet()
-        val idempotencyKey = activeSession?.newOperationKey("notif-$callId") ?: "notif-$callId"
+    private fun postApprovalNotification(callId: String, summary: String, countMetric: Boolean = true) {
+        if (countMetric) {
+            approvalNotifications.incrementAndGet()
+        }
+        val cleanCallId = DisplayTextSanitizer.sanitizeSingleLine(callId)
+        val cleanSummary = DisplayTextSanitizer.sanitizeSingleLine(summary)
+        val pendingCount = pendingInteractions.listApprovals().size
+        val title = if (pendingCount > 1) {
+            "Tool Approval Required ($cleanCallId) (+${pendingCount - 1} more)"
+        } else {
+            "Tool Approval Required ($cleanCallId)"
+        }
+        val idempotencyKey = activeSession?.newOperationKey("notif-$cleanCallId") ?: "notif-$cleanCallId"
 
         val approveIntent = serviceActionPendingIntent(
             10,
@@ -812,8 +1313,8 @@ class RemoteSessionService : Service() {
         )
 
         val notification = NotificationCompat.Builder(this, APPROVAL_CHANNEL_ID)
-            .setContentTitle("Tool Approval Required ($callId)")
-            .setContentText(summary)
+            .setContentTitle(title)
+            .setContentText(cleanSummary)
             .setSmallIcon(android.R.drawable.ic_dialog_alert)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
