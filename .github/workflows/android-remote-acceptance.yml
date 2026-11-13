@@ -85,6 +85,80 @@ jobs:
             exit 1
           fi
 
+      - name: Verify arm64-v8a ABI filtering, Release signing, and fail-closed config
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd apps/android
+          BACKUP_DIR="$(mktemp -d /tmp/dsh-orig-release-apks.XXXXXX)"
+          KS_DIR="$(mktemp -d /tmp/dsh-ci-ks.XXXXXX)"
+          KEYSTORE_FILE="$KS_DIR/ci-ephemeral.jks"
+          cleanup() {
+            rm -rf "$KS_DIR" /tmp/android-arm64-release-apk-entries.txt
+            if [[ -d "$BACKUP_DIR/release" ]]; then
+              rm -rf app/build/outputs/apk/release
+              mv "$BACKUP_DIR/release" app/build/outputs/apk/release
+            fi
+            rm -rf "$BACKUP_DIR"
+          }
+          trap cleanup EXIT
+
+          cp -a app/build/outputs/apk/release "$BACKUP_DIR/release"
+
+          keytool -genkeypair -noprompt \
+            -keystore "$KEYSTORE_FILE" \
+            -storetype JKS \
+            -alias dshci \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 1 \
+            -storepass ci-store-secret \
+            -keypass ci-key-secret \
+            -dname "CN=DSH Community CI, OU=Android, O=DSH Community, L=NA, ST=NA, C=US"
+
+          if DSH_ANDROID_KEYSTORE_PATH="$KEYSTORE_FILE" gradle --no-daemon :app:help >/dev/null 2>&1; then
+            echo "ERROR: Partial signing config must fail Gradle configuration" >&2
+            exit 1
+          fi
+          if DSH_ANDROID_SIGNING_REQUIRED=true gradle --no-daemon :app:help >/dev/null 2>&1; then
+            echo "ERROR: DSH_ANDROID_SIGNING_REQUIRED=true without credentials must fail Gradle configuration" >&2
+            exit 1
+          fi
+          if gradle --no-daemon -PdshAbiFilters=riscv64 :app:help >/dev/null 2>&1; then
+            echo "ERROR: Unsupported ABI filter must fail Gradle configuration" >&2
+            exit 1
+          fi
+
+          rm -rf app/build/outputs/apk/release
+          DSH_ANDROID_SIGNING_REQUIRED=true \
+          DSH_ANDROID_KEYSTORE_PATH="$KEYSTORE_FILE" \
+          DSH_ANDROID_KEYSTORE_PASSWORD="ci-store-secret" \
+          DSH_ANDROID_KEY_ALIAS="dshci" \
+          DSH_ANDROID_KEY_PASSWORD="ci-key-secret" \
+          gradle --no-daemon -PdshAbiFilters=arm64-v8a :app:assembleRelease --info
+
+          ARM64_RELEASE_APK="app/build/outputs/apk/release/app-release.apk"
+          test -f "$ARM64_RELEASE_APK"
+          test ! -f "app/build/outputs/apk/release/app-release-unsigned.apk"
+
+          unzip -l "$ARM64_RELEASE_APK" | tee /tmp/android-arm64-release-apk-entries.txt
+          grep -q 'lib/arm64-v8a/libjingle_peerconnection_so.so' /tmp/android-arm64-release-apk-entries.txt
+          if grep -qE 'lib/(x86_64|x86|armeabi-v7a)/' /tmp/android-arm64-release-apk-entries.txt; then
+            echo "ERROR: arm64-v8a filtered APK unexpectedly includes non-arm64 native libraries" >&2
+            exit 1
+          fi
+          if grep -iE 'libnode\.so|nodejs-mobile|nodejs-project|@deepseek-ai/dsh|deepseek-ai|webkit' /tmp/android-arm64-release-apk-entries.txt; then
+            echo "ERROR: arm64-v8a signed APK contains forbidden embedded runtime entry" >&2
+            exit 1
+          fi
+
+          APKSIGNER_BIN="$(command -v apksigner || find "${ANDROID_SDK_ROOT:-/nonexistent}/build-tools" "${ANDROID_HOME:-/nonexistent}/build-tools" /usr/local/lib/android/sdk/build-tools -maxdepth 2 -name apksigner -type f 2>/dev/null | sort -V | tail -n 1 || true)"
+          test -n "$APKSIGNER_BIN"
+          test -x "$APKSIGNER_BIN"
+          "$APKSIGNER_BIN" verify --verbose "$ARM64_RELEASE_APK"
+          ls -lh "$ARM64_RELEASE_APK"
+          sha256sum "$ARM64_RELEASE_APK"
+
       - name: Upload assembled R6 APKs for emulator acceptance
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:

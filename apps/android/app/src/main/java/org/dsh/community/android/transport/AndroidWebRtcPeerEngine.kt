@@ -23,6 +23,10 @@ import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
@@ -91,10 +95,18 @@ class AndroidWebRtcPeerEngine(
         private val disposed = AtomicBoolean(false)
         private val failureRef = AtomicReference<Throwable?>(null)
         private val reassembler = DataChannelChunkCodec.Reassembler(maxFrameBytes)
+        private val endOfCandidatesScheduler: ScheduledExecutorService =
+            Executors.newSingleThreadScheduledExecutor { runnable ->
+                Thread(runnable, "dsh-webrtc-eoc").apply { isDaemon = true }
+            }
 
         private var hostPeerId: String? = null
         private var offerSent = false
         private var remoteDescSet = false
+        private var localCandidateCount = 0
+        private var gatheringComplete = false
+        private var endOfCandidatesSent = false
+        private var endOfCandidatesTask: ScheduledFuture<*>? = null
         private val localIceQueue = ArrayList<JsonValue>()
         private val remoteIceQueue = ArrayList<IceCandidate>()
 
@@ -292,7 +304,12 @@ class AndroidWebRtcPeerEngine(
                     override fun onIceGatheringChange(newState: PeerConnection.IceGatheringState?) {
                         logWebRtc("onIceGatheringChange state=$newState")
                         if (newState == PeerConnection.IceGatheringState.COMPLETE && !closed.get()) {
-                            emitLocalIce(JsonNull)
+                            synchronized(stateLock) {
+                                gatheringComplete = true
+                                if (!endOfCandidatesSent) {
+                                    scheduleEndOfCandidatesLocked()
+                                }
+                            }
                         }
                     }
 
@@ -349,6 +366,7 @@ class AndroidWebRtcPeerEngine(
                     when (state) {
                         DataChannel.State.OPEN -> {
                             if (opened.compareAndSet(false, true)) {
+                                shutdownEndOfCandidates()
                                 openLatch.countDown()
                                 val ws = signalingWs
                                 signalingWs = null
@@ -642,10 +660,57 @@ class AndroidWebRtcPeerEngine(
             }
         }
 
+        private fun scheduleEndOfCandidatesLocked() {
+            endOfCandidatesTask?.cancel(false)
+            endOfCandidatesTask = null
+            if (closed.get() || disposed.get() || endOfCandidatesSent || endOfCandidatesScheduler.isShutdown) {
+                return
+            }
+            // Wait past trailing local/srflx candidates before emitting null:
+            // some libwebrtc builds fire COMPLETE before onIceCandidate callbacks.
+            val delayMs = if (localCandidateCount > 0) 150L else 400L
+            try {
+                endOfCandidatesTask = endOfCandidatesScheduler.schedule(
+                    { flushEndOfCandidates() },
+                    delayMs,
+                    TimeUnit.MILLISECONDS,
+                )
+            } catch (_: RejectedExecutionException) {
+            }
+        }
+
+        private fun flushEndOfCandidates() {
+            if (closed.get() || disposed.get()) return
+            emitLocalIceInternal(JsonNull, isEndOfCandidates = true)
+        }
+
+        private fun shutdownEndOfCandidates() {
+            synchronized(stateLock) {
+                endOfCandidatesTask?.cancel(false)
+                endOfCandidatesTask = null
+            }
+            endOfCandidatesScheduler.shutdownNow()
+        }
+
         private fun emitLocalIce(candidateJson: JsonValue) {
+            emitLocalIceInternal(candidateJson, isEndOfCandidates = false)
+        }
+
+        private fun emitLocalIceInternal(candidateJson: JsonValue, isEndOfCandidates: Boolean) {
             synchronized(signalingSendLock) {
                 var readyTarget: String? = null
                 synchronized(stateLock) {
+                    if (closed.get() || disposed.get()) return
+                    if (isEndOfCandidates) {
+                        if (endOfCandidatesSent) return
+                        endOfCandidatesSent = true
+                        endOfCandidatesTask = null
+                    } else {
+                        localCandidateCount += 1
+                        if (gatheringComplete && !endOfCandidatesSent) {
+                            scheduleEndOfCandidatesLocked()
+                        }
+                    }
                     val target = hostPeerId
                     if (!offerSent || target == null) {
                         localIceQueue.add(candidateJson)
@@ -705,6 +770,7 @@ class AndroidWebRtcPeerEngine(
 
         private fun cleanupAsync() {
             if (!disposed.compareAndSet(false, true)) return
+            shutdownEndOfCandidates()
             val ws = signalingWs
             signalingWs = null
             val dc = dataChannel

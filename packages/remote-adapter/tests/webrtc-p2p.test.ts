@@ -11,6 +11,7 @@ import {
   createConfiguredPeerConnection,
   createPairingBootstrapDescriptor,
   DataChannelFrameReassembler,
+  DSH_WEBRTC_DATA_CHANNEL_LABEL,
   encodeDataChannelChunks,
   FileHostIdentityStore,
   HostWebRtcCarrier,
@@ -27,10 +28,12 @@ import {
   SelfHostedStunServer,
   SignalingClient,
   stunBindingProbe,
+  toRtcIceCandidateInit,
   validateSelfOwnedStunUrls,
   verifyStunFingerprint,
   WebRtcClientCarrier,
   type OfficialRemoteSeams,
+  type RtcIceCandidatePayload,
 } from '../src/index.js'
 
 interface DhModule {
@@ -521,6 +524,121 @@ describe('R3 STUN, Signaling, and WebRTC P2P carrier', () => {
       expect(Date.now() - startedAt).toBeGreaterThanOrEqual(130)
       expect(transportClosed).toBe(true)
     } finally {
+      await runtime.stop()
+      await sig.stop()
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('opens DataChannel when remote end-of-candidates arrives before real ICE candidates', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'dsh-r3-premature-eoc-'))
+    const hostStore = new FileHostIdentityStore(join(dir, 'host.json'))
+    const trustStore = new InMemoryDeviceTrustStore()
+    const sig = new SelfHostedSignalingServer({ enabled: true, host: '127.0.0.1', port: 0 })
+    await sig.start()
+
+    const roomId = 'premature-eoc-room'
+    const { seams } = fakeSeams()
+    const runtime = new RemoteHostRuntime({
+      seams,
+      trustStore,
+      hostIdentityStore: hostStore,
+      carrier: { enabled: false },
+      webrtc: {
+        enabled: true,
+        signalingUrl: sig.getEndpointUrl()!,
+        roomId,
+        ice: { iceInterfaceAddresses: { udp4: '127.0.0.1' } },
+      },
+    })
+    await runtime.start()
+
+    const signaling = new SignalingClient(sig.getEndpointUrl()!)
+    const pc = createConfiguredPeerConnection({ iceInterfaceAddresses: { udp4: '127.0.0.1' } })
+    const dc = pc.createDataChannel(DSH_WEBRTC_DATA_CHANNEL_LABEL, { ordered: true })
+    const bufferedLocalIce: RtcIceCandidatePayload[] = []
+    let releaseCandidates = false
+    let hostPeerId = ''
+
+    try {
+      const joined = await signaling.joinRoom({ roomId, timeoutMs: 5_000 })
+      hostPeerId = joined.hostPeerId
+
+      const dcOpened = new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('DataChannel did not open')), 5_000)
+        const onOpen = () => {
+          clearTimeout(timer)
+          resolve()
+        }
+        if (dc.readyState === 'open') {
+          onOpen()
+        } else {
+          dc.onopen = onOpen
+        }
+      })
+
+      let clientRemoteDescSet = false
+      const clientRemoteIceQueue: (RtcIceCandidatePayload | null)[] = []
+
+      signaling.setHandlers({
+        onAnswer: (msg) => {
+          void (async () => {
+            await pc.setRemoteDescription(msg.sdp)
+            clientRemoteDescSet = true
+            while (clientRemoteIceQueue.length > 0) {
+              const cand = clientRemoteIceQueue.shift()!
+              await pc.addIceCandidate(toRtcIceCandidateInit(cand)).catch(() => {})
+            }
+          })()
+        },
+        onIceCandidate: (msg) => {
+          if (!clientRemoteDescSet) {
+            clientRemoteIceQueue.push(msg.candidate)
+            return
+          }
+          void pc.addIceCandidate(toRtcIceCandidateInit(msg.candidate)).catch(() => {})
+        },
+      })
+
+      pc.onicecandidate = ({ candidate }) => {
+        if (!candidate || !candidate.candidate) return
+        const payload: RtcIceCandidatePayload = {
+          candidate: candidate.candidate,
+          sdpMid: candidate.sdpMid ?? '0',
+          sdpMLineIndex: candidate.sdpMLineIndex ?? 0,
+        }
+        if (releaseCandidates) {
+          signaling.sendIceCandidate(hostPeerId, payload)
+        } else {
+          bufferedLocalIce.push(payload)
+        }
+      }
+
+      const offer = await pc.createOffer()
+      await pc.setLocalDescription(offer)
+      signaling.sendOffer(hostPeerId, { type: 'offer', sdp: offer.sdp })
+      // Simulate libwebrtc firing onIceGatheringChange(COMPLETE) before onIceCandidate callbacks
+      signaling.sendIceCandidate(hostPeerId, null)
+
+      await new Promise((r) => setTimeout(r, 25))
+      releaseCandidates = true
+      for (const cand of bufferedLocalIce) {
+        signaling.sendIceCandidate(hostPeerId, cand)
+      }
+      bufferedLocalIce.length = 0
+
+      await dcOpened
+      expect(dc.readyState).toBe('open')
+    } finally {
+      try {
+        signaling.close()
+      } catch {}
+      try {
+        dc.close()
+      } catch {}
+      try {
+        await pc.close()
+      } catch {}
       await runtime.stop()
       await sig.stop()
       rmSync(dir, { recursive: true, force: true })
