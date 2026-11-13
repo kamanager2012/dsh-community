@@ -212,7 +212,15 @@ export function apply(ctx: OfficialCordisContextLike): () => void {
       dshHome,
       hostFingerprint: identity.fingerprint,
       lanUrl: bridge.runtime.carrier.getEndpointUrl(),
-      relayRoomId: bridge.runtime.relay?.getRoomId(),
+      ...(relayUrl !== undefined ? { relayUrl } : {}),
+      ...(bridge.runtime.relay?.getRoomId() !== undefined
+        ? { relayRoomId: bridge.runtime.relay.getRoomId() }
+        : {}),
+      ...(signalingUrl !== undefined ? { signalingUrl } : {}),
+      ...(bridge.runtime.webrtc?.getRoomId() !== undefined
+        ? { signalingRoomId: bridge.runtime.webrtc.getRoomId() }
+        : {}),
+      ...(stunUrls !== undefined && stunUrls.length > 0 ? { stunUrls } : {}),
       ...(initialSessionId !== undefined ? { sessionId: initialSessionId } : {}),
       ...(controlServer !== undefined
         ? { controlUrl: controlServer.url, controlToken: controlServer.controlToken }

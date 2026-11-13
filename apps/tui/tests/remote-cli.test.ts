@@ -1,9 +1,9 @@
-import { spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { spawn, spawnSync } from 'node:child_process'
+import { existsSync, mkdtempSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve, sep } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { openPersistentRemoteStores } from '@dsh-community/remote-adapter'
+import { openPersistentRemoteStores, stunBindingProbe } from '@dsh-community/remote-adapter'
 import { COMMUNITY_TUI_HELP, parseCommunityLaunch } from '../src/launch.js'
 import { COMMUNITY_REMOTE_HELP, composeRemoteHostPatchYaml, runRemoteCommand } from '../src/remote.js'
 
@@ -179,18 +179,90 @@ describe('dsh-community remote CLI routing and subcommands', () => {
     expect(ioRevokeMissing.stderr()).toContain('nonexistent-device')
   })
 
+function ensureBuiltTuiBin(): string {
+  const pkgRoot = resolve(import.meta.dirname, '..')
+  const binPath = resolve(pkgRoot, 'dist', 'bin.js')
+  const srcPath = resolve(pkgRoot, 'src', 'remote.ts')
+  const needsBuild = !existsSync(binPath) || statSync(srcPath).mtimeMs > statSync(binPath).mtimeMs
+  if (needsBuild) {
+    const buildRes = spawnSync('pnpm', ['--filter', '@dsh-community/tui...', 'build'], {
+      cwd: resolve(pkgRoot, '..', '..'),
+      encoding: 'utf8',
+    })
+    expect(buildRes.status, buildRes.stderr).toBe(0)
+  }
+  return binPath
+}
+
+async function spawnCliUntilReadyJson<T>(
+  binPath: string,
+  args: readonly string[],
+  env: NodeJS.ProcessEnv,
+): Promise<{
+  ready: T
+  stopAndWait: () => Promise<number>
+}> {
+  return await new Promise((resolveReady, rejectReady) => {
+    const child = spawn(process.execPath, [binPath, ...args], {
+      env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    let stdoutBuf = ''
+    let stderrBuf = ''
+    let settled = false
+    const timer = setTimeout(() => {
+      if (!settled) {
+        settled = true
+        child.kill('SIGKILL')
+        rejectReady(new Error(`Timed out waiting for CLI ready JSON (${args.join(' ')}): ${stderrBuf}`))
+      }
+    }, 10_000)
+
+    const stopAndWait = (): Promise<number> =>
+      new Promise((resolveExit) => {
+        if (child.exitCode !== null) {
+          resolveExit(child.exitCode)
+          return
+        }
+        child.once('exit', (code) => resolveExit(code ?? 0))
+        child.kill('SIGTERM')
+      })
+
+    child.stderr.on('data', (chunk: Buffer) => {
+      stderrBuf += chunk.toString('utf8')
+    })
+    child.stdout.on('data', (chunk: Buffer) => {
+      stdoutBuf += chunk.toString('utf8')
+      const nl = stdoutBuf.indexOf('\n')
+      if (nl !== -1 && !settled) {
+        settled = true
+        clearTimeout(timer)
+        try {
+          resolveReady({
+            ready: JSON.parse(stdoutBuf.slice(0, nl).trim()) as T,
+            stopAndWait,
+          })
+        } catch (err) {
+          void stopAndWait()
+          rejectReady(err)
+        }
+      }
+    })
+    child.once('exit', (code) => {
+      if (!settled) {
+        settled = true
+        clearTimeout(timer)
+        rejectReady(new Error(`CLI exited (${code}) before ready JSON: ${stderrBuf}`))
+      }
+    })
+  })
+}
+
   it('executes built bin.js remote subcommands cleanly without DEEPSEEK_API_KEY and fails closed on remote start', () => {
     const root = makeTempDir('dsh-remote-bin-')
     const dshHome = join(root, 'official-dsh-home')
     const configDir = join(root, 'community-remote-config')
-    const binPath = resolve(import.meta.dirname, '..', 'dist', 'bin.js')
-    if (!existsSync(binPath)) {
-      const buildRes = spawnSync('pnpm', ['build'], {
-        cwd: resolve(import.meta.dirname, '..'),
-        encoding: 'utf8',
-      })
-      expect(buildRes.status, buildRes.stderr).toBe(0)
-    }
+    const binPath = ensureBuiltTuiBin()
     const childEnv: NodeJS.ProcessEnv = {
       ...process.env,
       DSH_HOME: dshHome,
@@ -220,5 +292,89 @@ describe('dsh-community remote CLI routing and subcommands', () => {
     })
     expect(startRes.status).toBe(2)
     expect(startRes.stderr).toContain('DEEPSEEK_API_KEY')
+  })
+
+  it('launches self-hosted BlindRelayServer via remote relay --json without leaking hostSecret', async () => {
+    const binPath = ensureBuiltTuiBin()
+    const secret = 'relay-cli-secret-do-not-echo'
+    const childEnv: NodeJS.ProcessEnv = {
+      ...process.env,
+      DSH_REMOTE_RELAY_HOST_SECRET: secret,
+    }
+    delete childEnv.DEEPSEEK_API_KEY
+
+    const { ready, stopAndWait } = await spawnCliUntilReadyJson<{
+      kind: string
+      host: string
+      port: number
+      endpointUrl: string
+      healthzUrl: string
+      authRequired: boolean
+    }>(binPath, ['remote', 'relay', '--host', '127.0.0.1', '--port', '0', '--json'], childEnv)
+
+    try {
+      expect(ready.kind).toBe('blind-relay')
+      expect(ready.host).toBe('127.0.0.1')
+      expect(ready.port).toBeGreaterThan(0)
+      expect(ready.endpointUrl).toBe(`ws://127.0.0.1:${ready.port}`)
+      expect(ready.authRequired).toBe(true)
+      expect(JSON.stringify(ready)).not.toContain(secret)
+
+      const res = await fetch(ready.healthzUrl)
+      expect(res.status).toBe(200)
+      expect(await res.json()).toEqual({ ok: true })
+    } finally {
+      expect(await stopAndWait()).toBe(0)
+    }
+  })
+
+  it('launches self-hosted WebRTC signaling + STUN via remote signaling --json and fails closed on wildcard without opt-in', async () => {
+    const binPath = ensureBuiltTuiBin()
+    const childEnv: NodeJS.ProcessEnv = { ...process.env }
+    delete childEnv.DEEPSEEK_API_KEY
+
+    // Wildcard bind without --allow-wildcard must fail closed
+    const denied = await runRemoteCommand(
+      ['signaling', '--host', '0.0.0.0', '--port', '0'],
+      childEnv,
+    )
+    expect(denied).toBe(1)
+
+    const { ready, stopAndWait } = await spawnCliUntilReadyJson<{
+      kind: string
+      host: string
+      port: number
+      endpointUrl: string
+      healthzUrl: string
+      authRequired: boolean
+      stunUrl?: string
+    }>(
+      binPath,
+      ['remote', 'signaling', '--host', '127.0.0.1', '--port', '0', '--stun-port', '0', '--json'],
+      childEnv,
+    )
+
+    try {
+      expect(ready.kind).toBe('webrtc-signaling')
+      expect(ready.host).toBe('127.0.0.1')
+      expect(ready.port).toBeGreaterThan(0)
+      expect(ready.authRequired).toBe(false)
+      expect(ready.stunUrl).toMatch(/^stun:127\.0\.0\.1:\d+$/u)
+
+      const res = await fetch(ready.healthzUrl)
+      expect(res.status).toBe(200)
+      expect(await res.json()).toEqual({ ok: true })
+
+      const stunPort = Number(ready.stunUrl!.split(':').pop())
+      const mapped = await stunBindingProbe({
+        serverHost: '127.0.0.1',
+        serverPort: stunPort,
+        timeoutMs: 2_000,
+      })
+      expect(mapped.address).toBe('127.0.0.1')
+      expect(mapped.port).toBeGreaterThan(0)
+    } finally {
+      expect(await stopAndWait()).toBe(0)
+    }
   })
 })
