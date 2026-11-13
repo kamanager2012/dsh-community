@@ -229,7 +229,13 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
                 stickyStatusError = null
             }
             val sticky = stickyStatusError
-            statusView.text = if ((phase == RemoteConnectionPhase.DISCONNECTED || phase == RemoteConnectionPhase.REVOKED) && sticky != null) {
+            statusView.text = if (
+                sticky != null && (
+                    sticky.startsWith("[REJECTED]") ||
+                        phase == RemoteConnectionPhase.DISCONNECTED ||
+                        phase == RemoteConnectionPhase.REVOKED
+                )
+            ) {
                 sticky
             } else {
                 "[$phase] carrier=${carrier?.wireName ?: "-"} epoch=$epoch — $message"

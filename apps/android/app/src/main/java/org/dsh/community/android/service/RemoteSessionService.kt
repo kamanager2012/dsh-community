@@ -493,7 +493,16 @@ class RemoteSessionService : Service() {
 
                 override fun onStreamEvent(sessionId: String, event: OfficialSessionEvent) {
                     dispatchEventToObservers(sessionId, event)
-                    session.ackStream(sessionId, event.seq)
+                    val seq = event.seq
+                    ioExecutor.execute {
+                        try {
+                            if (activeSession === session) {
+                                session.ackStream(sessionId, seq)
+                            }
+                        } catch (_: Throwable) {
+                            // Best-effort ack; next attach resumes from confirmed cursor.
+                        }
+                    }
                 }
 
                 override fun onStreamReset(sessionId: String, reason: String) {
