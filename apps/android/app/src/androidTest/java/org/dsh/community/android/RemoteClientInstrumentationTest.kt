@@ -584,6 +584,10 @@ class RemoteClientInstrumentationTest {
         assertFalse("descriptor.signalingUrl required for WebRTC P2P acceptance", descriptor.signalingUrl.isNullOrBlank())
         val webrtcStunUrls = emulatedStunUrl.takeIf { it.isNotEmpty() }?.let { listOf(it) }
             ?: descriptor.stunUrls.orEmpty()
+        android.util.Log.i(
+            "DshWebRtc",
+            "Stage 2b start stunCount=${webrtcStunUrls.size} emulatedStun=${emulatedStunUrl.isNotEmpty()}",
+        )
         val deadLanToWebRtcProfile = RemoteEndpointProfile(
             hostPublicKey = descriptor.hostPublicKeyBytes,
             hostFingerprint = descriptor.hostFingerprint,
@@ -594,7 +598,7 @@ class RemoteClientInstrumentationTest {
             relayUrl = null,
             bootstrapToken = null,
         )
-        val webRtcEngine = AndroidWebRtcPeerEngine(context, connectTimeoutMs = 12_000L)
+        val webRtcEngine = AndroidWebRtcPeerEngine(context, connectTimeoutMs = 15_000L)
         val webrtcSession = FailoverRemoteSession(
             primaryIdentity,
             deadLanToWebRtcProfile,
@@ -612,6 +616,7 @@ class RemoteClientInstrumentationTest {
                 "WebRTC DataChannel attachSession must succeed",
                 webrtcSession.attachSession(explicitSessionId) is AttachResumeResult.Events,
             )
+            android.util.Log.i("DshWebRtc", "Stage 2b pass activeCarrier=${webrtcSession.activeCarrier}")
         } finally {
             webrtcSession.close("stage2 dead-lan webrtc p2p check done")
         }

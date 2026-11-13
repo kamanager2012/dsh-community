@@ -83,6 +83,7 @@ class AndroidWebRtcPeerEngine(
         private val callbacks: RemoteTransportCallbacks,
     ) : WebRtcPeerHandle {
         private val stateLock = Any()
+        private val signalingSendLock = Any()
         private val sendLock = Any()
         private val openLatch = CountDownLatch(1)
         private val opened = AtomicBoolean(false)
@@ -107,6 +108,7 @@ class AndroidWebRtcPeerEngine(
         private var dataChannel: DataChannel? = null
 
         fun openBlocking() {
+            logWebRtc("openBlocking start stunServers=${iceServers.size} timeoutMs=$connectTimeoutMs")
             val ws = BinaryWebSocketClient(
                 url = signalingUrl,
                 connectTimeoutMs = wsConnectTimeoutMs,
@@ -118,6 +120,7 @@ class AndroidWebRtcPeerEngine(
             val pc = try {
                 createPeerConnection()
             } catch (t: Throwable) {
+                closed.set(true)
                 cleanupAsync()
                 throw TransportUnavailableException(
                     "WEBRTC_PEER_INIT_FAILED",
@@ -132,6 +135,7 @@ class AndroidWebRtcPeerEngine(
             }
             val dc = pc.createDataChannel(dataChannelLabel, dcInit)
             if (dc == null) {
+                closed.set(true)
                 cleanupAsync()
                 throw TransportUnavailableException(
                     "WEBRTC_DC_INIT_FAILED",
@@ -151,7 +155,10 @@ class AndroidWebRtcPeerEngine(
                         "roomId" to JsonString(roomId),
                     ),
                 )
+                logWebRtc("signaling connected; sent client.join")
             } catch (t: Throwable) {
+                logWebRtc("signaling connect/join failed: ${t.message}")
+                closed.set(true)
                 cleanupAsync()
                 throw TransportUnavailableException(
                     "WEBRTC_SIGNALING_CONNECT_FAILED",
@@ -164,6 +171,7 @@ class AndroidWebRtcPeerEngine(
                 openLatch.await(connectTimeoutMs, TimeUnit.MILLISECONDS)
             } catch (ie: InterruptedException) {
                 Thread.currentThread().interrupt()
+                closed.set(true)
                 cleanupAsync()
                 throw TransportUnavailableException(
                     "WEBRTC_INTERRUPTED",
@@ -173,6 +181,10 @@ class AndroidWebRtcPeerEngine(
             }
 
             if (!completed) {
+                logWebRtc(
+                    "openLatch timeout after ${connectTimeoutMs}ms ice=${pc.iceConnectionState()} conn=${pc.connectionState()} dc=${dc.state()}",
+                )
+                closed.set(true)
                 cleanupAsync()
                 throw TransportUnavailableException(
                     "WEBRTC_TIMEOUT",
@@ -182,6 +194,8 @@ class AndroidWebRtcPeerEngine(
 
             val err = failureRef.get()
             if (err != null && !opened.get()) {
+                logWebRtc("open failed before OPEN: ${err.message}")
+                closed.set(true)
                 cleanupAsync()
                 if (err is IOException) throw err
                 throw TransportUnavailableException(
@@ -192,6 +206,8 @@ class AndroidWebRtcPeerEngine(
             }
 
             if (!opened.get()) {
+                logWebRtc("openLatch released without opened=true")
+                closed.set(true)
                 cleanupAsync()
                 throw TransportUnavailableException(
                     "WEBRTC_CONNECT_FAILED",
@@ -245,9 +261,12 @@ class AndroidWebRtcPeerEngine(
             return factory.createPeerConnection(
                 config,
                 object : PeerConnection.Observer {
-                    override fun onSignalingChange(newState: PeerConnection.SignalingState?) = Unit
+                    override fun onSignalingChange(newState: PeerConnection.SignalingState?) {
+                        logWebRtc("onSignalingChange state=$newState")
+                    }
 
                     override fun onIceConnectionChange(newState: PeerConnection.IceConnectionState?) {
+                        logWebRtc("onIceConnectionChange state=$newState")
                         if (newState == PeerConnection.IceConnectionState.FAILED ||
                             newState == PeerConnection.IceConnectionState.CLOSED
                         ) {
@@ -255,9 +274,12 @@ class AndroidWebRtcPeerEngine(
                         }
                     }
 
-                    override fun onStandardizedIceConnectionChange(newState: PeerConnection.IceConnectionState?) = Unit
+                    override fun onStandardizedIceConnectionChange(newState: PeerConnection.IceConnectionState?) {
+                        logWebRtc("onStandardizedIceConnectionChange state=$newState")
+                    }
 
                     override fun onConnectionChange(newState: PeerConnection.PeerConnectionState?) {
+                        logWebRtc("onConnectionChange state=$newState")
                         if (newState == PeerConnection.PeerConnectionState.FAILED ||
                             newState == PeerConnection.PeerConnectionState.CLOSED
                         ) {
@@ -268,6 +290,7 @@ class AndroidWebRtcPeerEngine(
                     override fun onIceConnectionReceivingChange(receiving: Boolean) = Unit
 
                     override fun onIceGatheringChange(newState: PeerConnection.IceGatheringState?) {
+                        logWebRtc("onIceGatheringChange state=$newState")
                         if (newState == PeerConnection.IceGatheringState.COMPLETE && !closed.get()) {
                             emitLocalIce(JsonNull)
                         }
@@ -275,6 +298,7 @@ class AndroidWebRtcPeerEngine(
 
                     override fun onIceCandidate(candidate: IceCandidate?) {
                         if (candidate == null || closed.get()) return
+                        logWebRtc("local ICE candidate ${describeCandidate(candidate.sdp)}")
                         val candJson = JsonObject.of(
                             "candidate" to JsonString(candidate.sdp),
                             "sdpMid" to JsonString(candidate.sdpMid ?: "0"),
@@ -283,9 +307,26 @@ class AndroidWebRtcPeerEngine(
                         emitLocalIce(candJson)
                     }
 
-                    override fun onIceCandidateError(event: IceCandidateErrorEvent?) = Unit
+                    override fun onIceCandidateError(event: IceCandidateErrorEvent?) {
+                        if (event != null) {
+                            logWebRtc(
+                                "onIceCandidateError ${event.address.orEmpty()}:${event.port} code=${event.errorCode} text=${event.errorText.orEmpty()}",
+                            )
+                        }
+                    }
+
                     override fun onIceCandidatesRemoved(candidates: Array<out IceCandidate>?) = Unit
-                    override fun onSelectedCandidatePairChanged(event: CandidatePairChangeEvent?) = Unit
+
+                    override fun onSelectedCandidatePairChanged(event: CandidatePairChangeEvent?) {
+                        if (event != null) {
+                            val localDesc = event.local?.sdp?.let(::describeCandidate) ?: "?"
+                            val remoteDesc = event.remote?.sdp?.let(::describeCandidate) ?: "?"
+                            logWebRtc(
+                                "selectedPair local=($localDesc) remote=($remoteDesc) reason=${event.reason.orEmpty()}",
+                            )
+                        }
+                    }
+
                     override fun onAddStream(stream: MediaStream?) = Unit
                     override fun onRemoveStream(stream: MediaStream?) = Unit
                     override fun onDataChannel(channel: DataChannel?) = Unit
@@ -302,8 +343,10 @@ class AndroidWebRtcPeerEngine(
                 override fun onBufferedAmountChange(previousAmount: Long) = Unit
 
                 override fun onStateChange() {
+                    val state = dc.state()
+                    logWebRtc("DataChannel onStateChange state=$state closed=${closed.get()}")
                     if (closed.get()) return
-                    when (dc.state()) {
+                    when (state) {
                         DataChannel.State.OPEN -> {
                             if (opened.compareAndSet(false, true)) {
                                 openLatch.countDown()
@@ -323,7 +366,7 @@ class AndroidWebRtcPeerEngine(
                             }
                         }
                         DataChannel.State.CLOSING, DataChannel.State.CLOSED -> {
-                            handleDrop("WebRTC DataChannel ${dc.state()}", null)
+                            handleDrop("WebRTC DataChannel $state", null)
                         }
                         else -> Unit
                     }
@@ -431,6 +474,7 @@ class AndroidWebRtcPeerEngine(
                 )
                 return
             }
+            logWebRtc("client.joined received; creating offer")
             synchronized(stateLock) {
                 hostPeerId = remoteHostPeerId
             }
@@ -439,42 +483,47 @@ class AndroidWebRtcPeerEngine(
                 object : SdpObserver {
                     override fun onCreateSuccess(sdp: SessionDescription?) {
                         if (sdp == null || closed.get()) return
+                        logWebRtc("createOffer succeeded; calling setLocalDescription")
                         pc.setLocalDescription(
                             object : SdpObserver {
                                 override fun onSetSuccess() {
                                     if (closed.get()) return
-                                    val targetPeerId: String
-                                    val bufferedLocalIce: List<JsonValue>
-                                    synchronized(stateLock) {
-                                        targetPeerId = hostPeerId ?: return
-                                        offerSent = true
-                                        bufferedLocalIce = localIceQueue.toList()
-                                        localIceQueue.clear()
-                                    }
-                                    val ws = signalingWs ?: return
-                                    try {
-                                        sendSignalingJson(
-                                            ws,
-                                            JsonObject.of(
-                                                "v" to JsonNumber(1),
-                                                "type" to JsonString("rtc.offer"),
-                                                "roomId" to JsonString(roomId),
-                                                "toPeerId" to JsonString(targetPeerId),
-                                                "sdp" to JsonObject.of(
-                                                    "type" to JsonString("offer"),
-                                                    "sdp" to JsonString(sdp.description),
-                                                ),
-                                            ),
-                                        )
-                                        for (cand in bufferedLocalIce) {
-                                            sendIcePayload(ws, targetPeerId, cand)
+                                    synchronized(signalingSendLock) {
+                                        val targetPeerId: String
+                                        val bufferedLocalIce: List<JsonValue>
+                                        synchronized(stateLock) {
+                                            targetPeerId = hostPeerId ?: return
+                                            offerSent = true
+                                            bufferedLocalIce = localIceQueue.toList()
+                                            localIceQueue.clear()
                                         }
-                                    } catch (t: Throwable) {
-                                        failBeforeOpen(t)
+                                        val ws = signalingWs ?: return
+                                        try {
+                                            sendSignalingJson(
+                                                ws,
+                                                JsonObject.of(
+                                                    "v" to JsonNumber(1),
+                                                    "type" to JsonString("rtc.offer"),
+                                                    "roomId" to JsonString(roomId),
+                                                    "toPeerId" to JsonString(targetPeerId),
+                                                    "sdp" to JsonObject.of(
+                                                        "type" to JsonString("offer"),
+                                                        "sdp" to JsonString(sdp.description),
+                                                    ),
+                                                ),
+                                            )
+                                            for (cand in bufferedLocalIce) {
+                                                sendIcePayload(ws, targetPeerId, cand)
+                                            }
+                                            logWebRtc("sent rtc.offer + queuedIce=${bufferedLocalIce.size}")
+                                        } catch (t: Throwable) {
+                                            failBeforeOpen(t)
+                                        }
                                     }
                                 }
 
                                 override fun onSetFailure(error: String?) {
+                                    logWebRtc("setLocalDescription failed: $error")
                                     failBeforeOpen(
                                         TransportUnavailableException(
                                             "WEBRTC_SET_LOCAL_SDP_FAILED",
@@ -491,6 +540,7 @@ class AndroidWebRtcPeerEngine(
                     }
 
                     override fun onCreateFailure(error: String?) {
+                        logWebRtc("createOffer failed: $error")
                         failBeforeOpen(
                             TransportUnavailableException(
                                 "WEBRTC_CREATE_OFFER_FAILED",
@@ -519,6 +569,7 @@ class AndroidWebRtcPeerEngine(
                 )
                 return
             }
+            logWebRtc("rtc.answer received; calling setRemoteDescription")
             val pc = peerConnection ?: return
             pc.setRemoteDescription(
                 object : SdpObserver {
@@ -530,15 +581,19 @@ class AndroidWebRtcPeerEngine(
                             pendingRemote = remoteIceQueue.toList()
                             remoteIceQueue.clear()
                         }
+                        logWebRtc("setRemoteDescription ok; applying queuedRemoteIce=${pendingRemote.size}")
                         for (ice in pendingRemote) {
                             try {
-                                pc.addIceCandidate(ice)
-                            } catch (_: Throwable) {
+                                val added = pc.addIceCandidate(ice)
+                                logWebRtc("addIceCandidate(queued ${describeCandidate(ice.sdp)})=$added")
+                            } catch (t: Throwable) {
+                                logWebRtc("addIceCandidate(queued) failed: ${t.message}")
                             }
                         }
                     }
 
                     override fun onSetFailure(error: String?) {
+                        logWebRtc("setRemoteDescription failed: $error")
                         failBeforeOpen(
                             TransportUnavailableException(
                                 "WEBRTC_SET_REMOTE_SDP_FAILED",
@@ -556,7 +611,10 @@ class AndroidWebRtcPeerEngine(
 
         private fun handleRemoteIce(msg: JsonObject) {
             val candVal = msg.fields["candidate"] ?: return
-            if (candVal is JsonNull) return
+            if (candVal is JsonNull) {
+                logWebRtc("remote end-of-candidates received")
+                return
+            }
             val candObj = candVal as? JsonObject ?: return
             val candStr = candObj.str("candidate")
             if (candStr.isNullOrEmpty()) return
@@ -574,27 +632,33 @@ class AndroidWebRtcPeerEngine(
             }
             if (canAddImmediately && !closed.get()) {
                 try {
-                    peerConnection?.addIceCandidate(candidate)
-                } catch (_: Throwable) {
+                    val added = peerConnection?.addIceCandidate(candidate)
+                    logWebRtc("addIceCandidate(live ${describeCandidate(candStr)})=$added")
+                } catch (t: Throwable) {
+                    logWebRtc("addIceCandidate(live) failed: ${t.message}")
                 }
+            } else if (!closed.get()) {
+                logWebRtc("queued remote ICE ${describeCandidate(candStr)}")
             }
         }
 
         private fun emitLocalIce(candidateJson: JsonValue) {
-            var readyTarget: String? = null
-            synchronized(stateLock) {
-                val target = hostPeerId
-                if (!offerSent || target == null) {
-                    localIceQueue.add(candidateJson)
-                } else {
-                    readyTarget = target
+            synchronized(signalingSendLock) {
+                var readyTarget: String? = null
+                synchronized(stateLock) {
+                    val target = hostPeerId
+                    if (!offerSent || target == null) {
+                        localIceQueue.add(candidateJson)
+                    } else {
+                        readyTarget = target
+                    }
                 }
-            }
-            val peerId = readyTarget ?: return
-            val ws = signalingWs ?: return
-            try {
-                sendIcePayload(ws, peerId, candidateJson)
-            } catch (_: Throwable) {
+                val peerId = readyTarget ?: return
+                val ws = signalingWs ?: return
+                try {
+                    sendIcePayload(ws, peerId, candidateJson)
+                } catch (_: Throwable) {
+                }
             }
         }
 
@@ -617,7 +681,9 @@ class AndroidWebRtcPeerEngine(
 
         private fun failBeforeOpen(error: Throwable) {
             if (!opened.get()) {
-                failureRef.compareAndSet(null, error)
+                if (failureRef.compareAndSet(null, error)) {
+                    logWebRtc("failBeforeOpen: ${error.message}")
+                }
                 openLatch.countDown()
             }
         }
@@ -628,6 +694,7 @@ class AndroidWebRtcPeerEngine(
                 return
             }
             if (!closed.compareAndSet(false, true)) return
+            logWebRtc("handleDrop after OPEN: $reason (${error?.message})")
             cleanupAsync()
             if (error != null) {
                 callbacks.onError(error)
@@ -735,4 +802,25 @@ class AndroidWebRtcPeerEngine(
             }
         }
     }
+}
+
+private const val LOG_TAG = "DshWebRtc"
+
+private fun logWebRtc(message: String) {
+    try {
+        android.util.Log.i(LOG_TAG, message)
+    } catch (_: Throwable) {
+        // Allow JVM unit tests where android.util.Log is not mocked.
+    }
+}
+
+private fun describeCandidate(sdpLine: String): String {
+    val parts = sdpLine.trim().split(Regex("\\s+"))
+    if (parts.size < 8) return "malformed(${parts.size})"
+    val proto = parts[2]
+    val ip = parts[4]
+    val port = parts[5]
+    val typIdx = parts.indexOf("typ")
+    val candType = if (typIdx >= 0 && typIdx + 1 < parts.size) parts[typIdx + 1] else "?"
+    return "$proto $ip:$port typ=$candType"
 }
