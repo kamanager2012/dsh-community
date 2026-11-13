@@ -14,6 +14,7 @@ import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.Base64
 import java.util.concurrent.atomic.AtomicBoolean
+import javax.net.ssl.SSLParameters
 import javax.net.ssl.SSLSocket
 import javax.net.ssl.SSLSocketFactory
 
@@ -26,6 +27,7 @@ class BinaryWebSocketClient(
     private val connectTimeoutMs: Int = 5_000,
     private val maxFrameBytes: Int = 65_536,
     private val binaryOnly: Boolean = true,
+    private val sslSocketFactory: SSLSocketFactory? = null,
 ) {
     interface Listener {
         fun onOpen()
@@ -60,7 +62,14 @@ class BinaryWebSocketClient(
 
     fun isOpen(): Boolean = openFlag.get() && !closed.get()
 
+    internal fun configureTlsParameters(ssl: SSLSocket) {
+        val params: SSLParameters = ssl.sslParameters
+        params.endpointIdentificationAlgorithm = "HTTPS"
+        ssl.sslParameters = params
+    }
+
     fun connectBlocking(listener: Listener) {
+        if (closed.get()) throw IOException("WebSocket is already closed")
         val uri = URI(url)
         val scheme = uri.scheme?.lowercase()
             ?: throw IllegalArgumentException("WebSocket URL missing scheme: $url")
@@ -68,6 +77,7 @@ class BinaryWebSocketClient(
             throw IllegalArgumentException("unsupported WebSocket scheme '$scheme'")
         }
         val host = uri.host ?: throw IllegalArgumentException("WebSocket URL missing host: $url")
+        val connectHost = host.removePrefix("[").removeSuffix("]")
         val port = if (uri.port > 0) uri.port else if (scheme == "wss") 443 else 80
         val path = buildString {
             append(if (uri.rawPath.isNullOrEmpty()) "/" else uri.rawPath)
@@ -78,83 +88,92 @@ class BinaryWebSocketClient(
         }
 
         val rawSocket = Socket()
-        rawSocket.connect(InetSocketAddress(host, port), connectTimeoutMs)
-        rawSocket.tcpNoDelay = true
-        rawSocket.soTimeout = connectTimeoutMs
+        var socketToClose: Socket = rawSocket
+        try {
+            rawSocket.connect(InetSocketAddress(connectHost, port), connectTimeoutMs)
+            rawSocket.tcpNoDelay = true
+            rawSocket.soTimeout = connectTimeoutMs
 
-        val activeSocket: Socket = if (scheme == "wss") {
-            val ssl = (SSLSocketFactory.getDefault() as SSLSocketFactory)
-                .createSocket(rawSocket, host, port, true) as SSLSocket
-            ssl.startHandshake()
-            ssl
-        } else {
-            rawSocket
-        }
+            val activeSocket: Socket = if (scheme == "wss") {
+                val factory = sslSocketFactory ?: (SSLSocketFactory.getDefault() as SSLSocketFactory)
+                val ssl = factory.createSocket(rawSocket, connectHost, port, true) as SSLSocket
+                socketToClose = ssl
+                configureTlsParameters(ssl)
+                ssl.startHandshake()
+                ssl
+            } else {
+                rawSocket
+            }
 
-        val input = BufferedInputStream(activeSocket.getInputStream(), 16_384)
-        val out = activeSocket.getOutputStream()
+            val input = BufferedInputStream(activeSocket.getInputStream(), 16_384)
+            val out = activeSocket.getOutputStream()
 
-        val keyBytes = ByteArray(16)
-        random.nextBytes(keyBytes)
-        val wsKey = Base64.getEncoder().encodeToString(keyBytes)
-        val expectedAccept = computeAcceptKey(wsKey)
+            val keyBytes = ByteArray(16)
+            random.nextBytes(keyBytes)
+            val wsKey = Base64.getEncoder().encodeToString(keyBytes)
+            val expectedAccept = computeAcceptKey(wsKey)
 
-        val hostHeader = if ((scheme == "ws" && port == 80) || (scheme == "wss" && port == 443)) {
-            host
-        } else {
-            "$host:$port"
-        }
+            val hostHeader = if ((scheme == "ws" && port == 80) || (scheme == "wss" && port == 443)) {
+                host
+            } else {
+                "$host:$port"
+            }
 
-        val upgradeReq = buildString {
-            append("GET ").append(path).append(" HTTP/1.1\r\n")
-            append("Host: ").append(hostHeader).append("\r\n")
-            append("Upgrade: websocket\r\n")
-            append("Connection: Upgrade\r\n")
-            append("Sec-WebSocket-Key: ").append(wsKey).append("\r\n")
-            append("Sec-WebSocket-Version: 13\r\n")
-            append("\r\n")
-        }.toByteArray(StandardCharsets.US_ASCII)
+            val upgradeReq = buildString {
+                append("GET ").append(path).append(" HTTP/1.1\r\n")
+                append("Host: ").append(hostHeader).append("\r\n")
+                append("Upgrade: websocket\r\n")
+                append("Connection: Upgrade\r\n")
+                append("Sec-WebSocket-Key: ").append(wsKey).append("\r\n")
+                append("Sec-WebSocket-Version: 13\r\n")
+                append("\r\n")
+            }.toByteArray(StandardCharsets.US_ASCII)
 
-        out.write(upgradeReq)
-        out.flush()
+            out.write(upgradeReq)
+            out.flush()
 
-        val headerText = readHttpUpgradeHeaders(input)
-        val lines = headerText.split("\r\n")
-        if (lines.isEmpty() || !lines[0].startsWith("HTTP/1.1 101")) {
-            activeSocket.close()
-            throw IOException("WebSocket upgrade failed: ${lines.firstOrNull() ?: "empty response"}")
-        }
-        var acceptHeader: String? = null
-        for (i in 1 until lines.size) {
-            val line = lines[i]
-            val colon = line.indexOf(':')
-            if (colon > 0) {
-                val name = line.substring(0, colon).trim()
-                if (name.equals("Sec-WebSocket-Accept", ignoreCase = true)) {
-                    acceptHeader = line.substring(colon + 1).trim()
-                    break
+            val headerText = readHttpUpgradeHeaders(input)
+            val lines = headerText.split("\r\n")
+            if (lines.isEmpty() || !lines[0].startsWith("HTTP/1.1 101")) {
+                throw IOException("WebSocket upgrade failed: ${lines.firstOrNull() ?: "empty response"}")
+            }
+            var acceptHeader: String? = null
+            for (i in 1 until lines.size) {
+                val line = lines[i]
+                val colon = line.indexOf(':')
+                if (colon > 0) {
+                    val name = line.substring(0, colon).trim()
+                    if (name.equals("Sec-WebSocket-Accept", ignoreCase = true)) {
+                        acceptHeader = line.substring(colon + 1).trim()
+                        break
+                    }
                 }
             }
-        }
-        if (acceptHeader != expectedAccept) {
-            activeSocket.close()
-            throw IOException("WebSocket Sec-WebSocket-Accept mismatch")
-        }
-        activeSocket.soTimeout = 0
+            if (acceptHeader != expectedAccept) {
+                throw IOException("WebSocket Sec-WebSocket-Accept mismatch")
+            }
+            activeSocket.soTimeout = 0
 
-        socket = activeSocket
-        output = out
-        openFlag.set(true)
-        listener.onOpen()
+            socket = activeSocket
+            output = out
+            openFlag.set(true)
+            listener.onOpen()
 
-        val thread = Thread(
-            { readLoop(input, listener) },
-            "dsh-ws-reader-${host}:$port",
-        ).apply {
-            isDaemon = true
+            val thread = Thread(
+                { readLoop(input, listener) },
+                "dsh-ws-reader-${connectHost}:$port",
+            ).apply {
+                isDaemon = true
+            }
+            readerThread = thread
+            thread.start()
+        } catch (t: Throwable) {
+            try {
+                socketToClose.close()
+            } catch (_: Throwable) {
+            }
+            throw t
         }
-        readerThread = thread
-        thread.start()
     }
 
     fun sendBinary(payload: ByteArray) {

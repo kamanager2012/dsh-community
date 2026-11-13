@@ -171,4 +171,21 @@ class PairingQrParserAndMdnsTest {
             ),
         )
     }
+
+    @Test
+    fun mdnsSanitizerSupportsCompactHostTxtKeysAndBracketsIpv6() {
+        val compact = LanMdnsSanitizer.toDiscoveredHost(
+            serviceName = "workstation-fp",
+            hostAddress = "fe80::1a2b:3c4d%wlan0",
+            port = 8443,
+            rawAttributes = mapOf(
+                "fp" to "deadbeef".toByteArray(StandardCharsets.UTF_8),
+                "v" to "2".toByteArray(StandardCharsets.UTF_8),
+            ),
+        )
+        assertEquals("deadbeef", compact.hostFingerprint)
+        assertEquals(2, compact.protocolVersion)
+        assertEquals("ws://[fe80::1a2b:3c4d]:8443", compact.endpointUrl)
+        assertEquals("ws://192.168.1.50:8443", LanMdnsSanitizer.formatEndpointUrl("192.168.1.50", 8443))
+    }
 }
