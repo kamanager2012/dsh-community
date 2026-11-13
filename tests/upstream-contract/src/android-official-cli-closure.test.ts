@@ -45,6 +45,7 @@ describe('Android official CLI package closure', () => {
     expect(edges).toContain('@deepseek-ai/dsh-base -> @deepseek-ai/dsh-subprocess-local')
     expect(edges).toContain('@deepseek-ai/dsh-subprocess-local -> node-pty')
     expect(edges).toContain('@deepseek-ai/dsh-attachment-local -> sharp')
-    expect(edges).toContain('@deepseek-ai/dsh-tool-fs-search -> @vscode/ripgrep')
+    expect(edges).toContain('@deepseek-ai/dsh-tool-fs-search -> @deepseek-ai/dsh-util-ripgrep')
+    expect(edges).toContain('@deepseek-ai/dsh-util-ripgrep -> @vscode/ripgrep')
   })
 })
