@@ -11,18 +11,26 @@ export type Capability =
 export type RemoteMethod =
   | 'session.list'
   | 'session.attach'
+  | 'session.create'
   | 'prompt.submit'
+  | 'turn.abort'
   | 'approval.respond'
   | 'question.respond'
+  | 'model.list'
+  | 'model.select'
   | 'stream.ack'
   | 'ping'
 
 const REMOTE_METHODS = new Set<RemoteMethod>([
   'session.list',
   'session.attach',
+  'session.create',
   'prompt.submit',
+  'turn.abort',
   'approval.respond',
   'question.respond',
+  'model.list',
+  'model.select',
   'stream.ack',
   'ping',
 ])
@@ -57,6 +65,7 @@ export interface OfficialSessionEvent {
 export interface PromptSubmitParams {
   readonly sessionId: string
   readonly prompt: string
+  readonly mode?: PromptSubmitMode | undefined
 }
 
 export interface ApprovalRespondParams {
@@ -79,12 +88,51 @@ export interface StreamAckParams {
   readonly seq: number
 }
 
+export type PromptSubmitMode = 'followup' | 'steer'
+
+export interface FollowupOptions {
+  readonly mode?: PromptSubmitMode | undefined
+}
+
+export interface CreateSessionParams {
+  readonly sessionId?: string | undefined
+  readonly title?: string | undefined
+}
+
+export interface TurnAbortParams {
+  readonly sessionId: string
+  readonly keepInbox?: boolean | undefined
+}
+
+export interface ModelSelectionParams {
+  readonly provider: string
+  readonly model: string
+  readonly reasoningEffort?: string | undefined
+}
+
+export interface ModelOptionRef {
+  readonly provider: string
+  readonly providerName?: string | undefined
+  readonly model: string
+  readonly name: string
+  readonly description?: string | undefined
+}
+
+export interface ModelCatalogResult {
+  readonly current?: ModelSelectionParams | undefined
+  readonly models: readonly ModelOptionRef[]
+}
+
 export interface OfficialRemoteSeams {
   listSessions(): Promise<readonly SessionRef[]>
   assertSession(sessionId: string): Promise<void>
-  followup(sessionId: string, prompt: string): Promise<unknown>
+  followup(sessionId: string, prompt: string, options?: FollowupOptions): Promise<unknown>
   respondApproval(callId: string, decision: 'approved' | 'rejected'): Promise<unknown>
   respondQuestion(questionId: string, answer: unknown): Promise<unknown>
+  createSession?(options?: CreateSessionParams): Promise<SessionRef>
+  abortTurn?(sessionId: string, options?: { readonly keepInbox?: boolean | undefined }): Promise<unknown>
+  listModels?(sessionId?: string): Promise<ModelCatalogResult>
+  selectModel?(sessionId: string, selection: ModelSelectionParams): Promise<unknown>
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

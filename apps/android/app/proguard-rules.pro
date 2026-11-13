@@ -1,6 +1,7 @@
 # Keep Android entrypoints referenced from AndroidManifest.xml
 -keep public class org.dsh.community.android.DshApp
 -keep public class org.dsh.community.android.MainActivity
+-keep public class org.dsh.community.android.qr.QrScanActivity
 -keep public class org.dsh.community.android.service.RemoteSessionService { *; }
 
 # Keep org.webrtc Java API & JNI native callbacks intact under R8 minification

@@ -1,0 +1,23 @@
+<resources>
+    <color name="dsh_bg_canvas">#0D1117</color>
+    <color name="dsh_bg_surface">#161B22</color>
+    <color name="dsh_bg_surface_alt">#1C2128</color>
+    <color name="dsh_bg_user_bubble">#1F3A5F</color>
+    <color name="dsh_bg_tool_card">#141920</color>
+    <color name="dsh_bg_alert_card">#251D10</color>
+    <color name="dsh_bg_chip">#21262D</color>
+    <color name="dsh_bg_chip_active">#1D4ED8</color>
+    <color name="dsh_bg_code">#0B0E14</color>
+    <color name="dsh_border_subtle">#30363D</color>
+    <color name="dsh_border_accent">#388BFD</color>
+    <color name="dsh_text_primary">#E6EDF3</color>
+    <color name="dsh_text_secondary">#8B949E</color>
+    <color name="dsh_text_accent">#58A6FF</color>
+    <color name="dsh_text_code">#79C0FF</color>
+    <color name="dsh_status_active">#2EA043</color>
+    <color name="dsh_status_warn">#D29922</color>
+    <color name="dsh_status_danger">#F85149</color>
+    <color name="dsh_btn_primary">#2563EB</color>
+    <color name="dsh_btn_secondary">#21262D</color>
+    <color name="dsh_btn_danger">#B91C1C</color>
+</resources>

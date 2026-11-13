@@ -472,6 +472,31 @@ describe('Real Official @deepseek-ai/dsh Live Subprocess Host Acceptance (R6)', 
     expect(list2.some((s: any) => s.id === 'session-r6-live-e2e')).toBe(true)
     const resumed = await phoneAfterRestart.resumeSession('session-r6-live-e2e')
     expect(JSON.stringify(resumed.events)).toContain('R6_LIVE_HOST_COMPLETE')
+
+    // Verify real Cordis @deepseek-ai/dsh subprocess supports model.list, session.create, and turn.abort
+    const liveModels = await phoneAfterRestart.request('model.list', {
+      sessionId: 'session-r6-live-e2e',
+    })
+    expect(Array.isArray(liveModels.models)).toBe(true)
+    expect(liveModels.models.length).toBeGreaterThanOrEqual(1)
+
+    const liveCreated = await phoneAfterRestart.request(
+      'session.create',
+      { sessionId: 'session-r6-created-remote', title: 'Remote Phone Session' },
+      { idempotencyKey: 'live-dsh-create-1' },
+    )
+    expect(liveCreated.id).toBe('session-r6-created-remote')
+    const listAfterCreate = await phoneAfterRestart.request('session.list')
+    expect(listAfterCreate.some((s: any) => s.id === 'session-r6-created-remote')).toBe(true)
+
+    await phoneAfterRestart.resumeSession('session-r6-created-remote')
+    const abortRes = await phoneAfterRestart.request(
+      'turn.abort',
+      { sessionId: 'session-r6-created-remote' },
+      { idempotencyKey: 'live-dsh-abort-1' },
+    )
+    expect(abortRes).toEqual({ sessionId: 'session-r6-created-remote', aborted: true })
+
     phoneAfterRestart.close()
 
     await fetch(`${ready2.controlUrl}/shutdown`, {

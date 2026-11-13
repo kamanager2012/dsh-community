@@ -30,6 +30,10 @@ import { RemoteHostRuntime, type RemoteHostRuntimeOptions } from './host-runtime
 import {
   REMOTE_PROTOCOL_VERSION,
   type Capability,
+  type FollowupOptions,
+  type ModelCatalogResult,
+  type ModelOptionRef,
+  type ModelSelectionParams,
   type OfficialRemoteSeams,
   type SessionRef,
 } from './protocol.js'
@@ -58,13 +62,24 @@ export interface OfficialAgentLike {
   readonly id: string
   readonly status?: string
   readonly options?: { readonly provider?: string; readonly model?: string }
+  readonly model?: {
+    current?(): ModelSelectionParams | undefined
+    select?(selection: ModelSelectionParams): void
+  }
   readonly session?: {
     readonly id?: string
     readonly log?: readonly unknown[]
   }
   readonly ctx: OfficialAgentContextLike
   followup(message: Record<string, unknown>): void
-  cancel?(cause: string): void
+  steer?(message: Record<string, unknown>): void
+  cancel?(
+    cause:
+      | { readonly kind: 'user' | 'parent' | 'disposed' }
+      | { readonly kind: 'hook'; readonly reason: string }
+      | string,
+    options?: { readonly keepInbox?: boolean | undefined },
+  ): void
   whenIdle?(): Promise<void>
 }
 
@@ -527,9 +542,13 @@ export class OfficialHostCordisBridge {
     const seams: OfficialRemoteSeams = {
       listSessions: () => this.listSessions(),
       assertSession: (sessionId) => this.assertSession(sessionId),
-      followup: (sessionId, prompt) => this.followup(sessionId, prompt),
+      followup: (sessionId, prompt, options) => this.followup(sessionId, prompt, options),
       respondApproval: (callId, decision) => this.respondApproval(callId, decision),
       respondQuestion: (questionId, answer) => this.respondQuestion(questionId, answer),
+      createSession: (options) => this.createSession(options),
+      abortTurn: (sessionId, options) => this.abortTurn(sessionId, options),
+      listModels: (sessionId) => this.listModels(sessionId),
+      selectModel: (sessionId, selection) => this.selectModel(sessionId, selection),
     }
 
     this.runtime = new RemoteHostRuntime({
@@ -825,12 +844,22 @@ export class OfficialHostCordisBridge {
     })
     state.unsubscribes.push(unsubError)
 
+    const unsubStatus = agent.ctx.on('agent/status', (payload: unknown) => {
+      const rec = asRecord(payload)
+      const status = typeof rec?.status === 'string' ? rec.status : undefined
+      if (status === 'idle' || status === 'running') {
+        this.emitNormalizedEvent(sessionId, 'agent/status', { status })
+      }
+    })
+    state.unsubscribes.push(unsubStatus)
+
     return state
   }
 
   async createSession(options?: {
     readonly sessionId?: string | undefined
     readonly cwd?: string | undefined
+    readonly title?: string | undefined
   }): Promise<SessionRef> {
     const sessionId = options?.sessionId ?? `session-${randomUUID()}`
     const cwd = options?.cwd ?? this.cwd
@@ -847,7 +876,22 @@ export class OfficialHostCordisBridge {
     await handle.agent.whenIdle?.()
     this.ownedHandles.set(sessionId, handle)
     this.attachAgentListeners(sessionId, handle.agent, handle)
-    return { id: sessionId, title: cwd }
+    let title = cwd
+    if (options?.title) {
+      const titleSvc = this.ctx.get?.('sessionTitle') as
+        | { rename?(session: unknown, title: string): { title: string } }
+        | undefined
+      if (titleSvc?.rename && handle.agent.session) {
+        try {
+          title = titleSvc.rename(handle.agent.session, options.title).title
+        } catch {
+          title = options.title
+        }
+      } else {
+        title = options.title
+      }
+    }
+    return { id: sessionId, title }
   }
 
   async ensureLiveAgent(sessionId: string): Promise<OfficialAgentLike> {
@@ -914,7 +958,11 @@ export class OfficialHostCordisBridge {
     await this.ensureLiveAgent(sessionId)
   }
 
-  async followup(sessionId: string, prompt: string): Promise<{ sessionId: string; messageId: string }> {
+  async followup(
+    sessionId: string,
+    prompt: string,
+    options?: FollowupOptions,
+  ): Promise<{ sessionId: string; messageId: string }> {
     const agent = await this.ensureLiveAgent(sessionId)
     const messageId = randomUUID()
     const message = Object.freeze({
@@ -923,9 +971,154 @@ export class OfficialHostCordisBridge {
       content: Object.freeze([{ type: 'text', text: prompt }]),
       source: Object.freeze({ kind: 'user' }),
     })
-    agent.followup(message)
+    if (options?.mode === 'steer' && typeof agent.steer === 'function') {
+      agent.steer(message)
+    } else {
+      agent.followup(message)
+    }
     this.seenEvents.followups += 1
     return { sessionId, messageId }
+  }
+
+  async abortTurn(
+    sessionId: string,
+    options?: { readonly keepInbox?: boolean | undefined },
+  ): Promise<{ sessionId: string; aborted: true }> {
+    const agent = await this.ensureLiveAgent(sessionId)
+    if (typeof agent.cancel !== 'function') {
+      throw new RemoteProtocolError(
+        'INVALID_REQUEST',
+        'session agent does not support turn cancellation',
+      )
+    }
+    agent.cancel(
+      { kind: 'user' },
+      options?.keepInbox ? { keepInbox: true } : undefined,
+    )
+    for (const [callId, pending] of this.pendingApprovals.entries()) {
+      if (pending.sessionId === sessionId) {
+        this.pendingApprovals.delete(callId)
+        pending.cleanup()
+        pending.resolve('cancelled')
+        this.emitNormalizedEvent(sessionId, 'approval.resolved', {
+          callId,
+          decision: 'cancelled',
+        })
+      }
+    }
+    for (const [questionId, pending] of this.pendingQuestions.entries()) {
+      if (pending.sessionId === sessionId) {
+        this.pendingQuestions.delete(questionId)
+        pending.cleanup()
+        pending.reject(new Error('question request aborted (ASK_ABORTED)'))
+        this.emitNormalizedEvent(sessionId, 'question.resolved', {
+          questionId,
+          cancelled: true,
+        })
+      }
+    }
+    return { sessionId, aborted: true }
+  }
+
+  async listModels(sessionId?: string): Promise<ModelCatalogResult> {
+    let current: ModelSelectionParams | undefined
+    if (sessionId) {
+      const agent = await this.ensureLiveAgent(sessionId)
+      const selected = agent.model?.current?.()
+      if (selected?.provider && selected?.model) {
+        current = {
+          provider: selected.provider,
+          model: selected.model,
+          ...(selected.reasoningEffort ? { reasoningEffort: selected.reasoningEffort } : {}),
+        }
+      } else if (agent.options?.provider && agent.options?.model) {
+        current = {
+          provider: agent.options.provider,
+          model: agent.options.model,
+        }
+      }
+    }
+    if (!current) {
+      const fallback = this.ctx.agentDefaultModel?.currentSelection()
+      if (fallback?.provider && fallback?.model) {
+        current = { provider: fallback.provider, model: fallback.model }
+      }
+    }
+
+    const llmSvc = readOptionalService<{
+      listProviders?(): ReadonlyArray<{ readonly id: string; readonly name?: string }>
+      listModels?(
+        provider: string,
+      ): Promise<
+        ReadonlyArray<{
+          readonly id: string
+          readonly name?: string
+          readonly description?: string
+        }>
+      >
+    }>(this.ctx, 'llm')
+    const models: ModelOptionRef[] = []
+    if (llmSvc?.listProviders && llmSvc?.listModels) {
+      for (const provider of llmSvc.listProviders()) {
+        try {
+          const items = await llmSvc.listModels(provider.id)
+          for (const m of items) {
+            models.push({
+              provider: provider.id,
+              ...(provider.name ? { providerName: provider.name } : {}),
+              model: m.id,
+              name: m.name ?? m.id,
+              ...(m.description ? { description: m.description } : {}),
+            })
+          }
+        } catch {
+          // Isolate unhealthy providers from blocking valid ones.
+        }
+      }
+    } else if (current) {
+      models.push({
+        provider: current.provider,
+        model: current.model,
+        name: current.model,
+      })
+    }
+    return {
+      ...(current !== undefined ? { current } : {}),
+      models,
+    }
+  }
+
+  async selectModel(
+    sessionId: string,
+    selection: ModelSelectionParams,
+  ): Promise<{ readonly sessionId: string; readonly selection: ModelSelectionParams }> {
+    const agent = await this.ensureLiveAgent(sessionId)
+    if (!agent.model?.select) {
+      throw new RemoteProtocolError(
+        'INVALID_REQUEST',
+        'session agent does not support model selection',
+      )
+    }
+    const llmSvc = readOptionalService<{
+      resolveCallConfig?(config: ModelSelectionParams): Promise<unknown>
+    }>(this.ctx, 'llm')
+    if (llmSvc?.resolveCallConfig) {
+      try {
+        await llmSvc.resolveCallConfig(selection)
+      } catch (err) {
+        throw new RemoteProtocolError(
+          'INVALID_REQUEST',
+          err instanceof Error ? err.message : String(err),
+        )
+      }
+    }
+    agent.model.select(selection)
+    this.emitNormalizedEvent(sessionId, 'session.model', {
+      provider: selection.provider,
+      model: selection.model,
+      ...(selection.reasoningEffort ? { reasoningEffort: selection.reasoningEffort } : {}),
+    })
+    return { sessionId, selection }
   }
 
   async respondApproval(
@@ -1115,6 +1308,16 @@ export class OfficialHostCordisBridge {
 
     await this.runtime.stop()
   }
+}
+
+function readOptionalService<T>(
+  ctx: OfficialCordisContextLike,
+  key: string,
+): T | undefined {
+  if (typeof ctx.get === 'function') {
+    return ctx.get(key) as T | undefined
+  }
+  return (ctx as unknown as Record<string, unknown>)[key] as T | undefined
 }
 
 function normalizeQuestionAnswer(

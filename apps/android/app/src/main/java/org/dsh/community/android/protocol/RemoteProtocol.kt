@@ -12,15 +12,47 @@ object RemoteProtocol {
     const val METHOD_PAIRING_REQUEST = "pairing.request"
     const val METHOD_SESSION_LIST = "session.list"
     const val METHOD_SESSION_ATTACH = "session.attach"
+    const val METHOD_SESSION_CREATE = "session.create"
     const val METHOD_STREAM_ACK = "stream.ack"
     const val METHOD_PROMPT_SUBMIT = "prompt.submit"
+    const val METHOD_TURN_ABORT = "turn.abort"
     const val METHOD_APPROVAL_RESPOND = "approval.respond"
     const val METHOD_QUESTION_RESPOND = "question.respond"
+    const val METHOD_MODEL_LIST = "model.list"
+    const val METHOD_MODEL_SELECT = "model.select"
 }
 
 data class SessionRef(
     val id: String,
     val title: String?,
+)
+
+data class ModelOptionRef(
+    val provider: String,
+    val providerName: String? = null,
+    val model: String,
+    val name: String,
+    val description: String? = null,
+)
+
+data class ModelCatalogResult(
+    val currentProvider: String?,
+    val currentModel: String?,
+    val currentReasoningEffort: String?,
+    val models: List<ModelOptionRef>,
+)
+
+data class QuestionOptionSpec(
+    val label: String,
+    val description: String? = null,
+)
+
+data class QuestionSpec(
+    val id: String,
+    val header: String? = null,
+    val question: String,
+    val multiSelect: Boolean = false,
+    val options: List<QuestionOptionSpec> = emptyList(),
 )
 
 data class OfficialSessionEvent(
@@ -165,14 +197,71 @@ object RemoteFrameCodec {
     fun parseSessionList(result: JsonValue): List<SessionRef> {
         val arr = result as? JsonArray
             ?: throw IllegalArgumentException("session.list result must be JSON array")
-        return arr.items.map { item ->
-            val obj = item as? JsonObject
-                ?: throw IllegalArgumentException("session.list item must be JSON object")
-            SessionRef(
-                id = obj.str("id") ?: throw IllegalArgumentException("session item missing id"),
-                title = obj.str("title"),
+        return arr.items.map { item -> parseSessionRef(item) }
+    }
+
+    fun parseSessionRef(result: JsonValue): SessionRef {
+        val obj = result as? JsonObject
+            ?: throw IllegalArgumentException("session item must be JSON object")
+        return SessionRef(
+            id = obj.str("id") ?: throw IllegalArgumentException("session item missing id"),
+            title = obj.str("title"),
+        )
+    }
+
+    fun parseModelCatalog(result: JsonValue): ModelCatalogResult {
+        val obj = result as? JsonObject ?: return ModelCatalogResult(null, null, null, emptyList())
+        val currentObj = obj.obj("current")
+        val modelsArr = obj.arr("models")?.items.orEmpty()
+        val models = modelsArr.mapNotNull { item ->
+            val mObj = item as? JsonObject ?: return@mapNotNull null
+            val provider = mObj.str("provider")?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val model = mObj.str("model")?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            ModelOptionRef(
+                provider = provider,
+                providerName = mObj.str("providerName"),
+                model = model,
+                name = mObj.str("name")?.takeIf { it.isNotBlank() } ?: model,
+                description = mObj.str("description"),
             )
         }
+        return ModelCatalogResult(
+            currentProvider = currentObj?.str("provider"),
+            currentModel = currentObj?.str("model"),
+            currentReasoningEffort = currentObj?.str("reasoningEffort"),
+            models = models,
+        )
+    }
+
+    fun parseQuestionSpecs(dataObj: JsonObject): List<QuestionSpec> {
+        val rawArr = dataObj.arr("questions")?.items.orEmpty()
+        val parsed = ArrayList<QuestionSpec>(rawArr.size)
+        for ((index, rawItem) in rawArr.withIndex()) {
+            val qObj = rawItem as? JsonObject ?: continue
+            val qId = qObj.str("id")?.takeIf { it.isNotBlank() } ?: "q${index + 1}"
+            val qText = qObj.str("question")
+                ?: qObj.str("prompt")
+                ?: qObj.str("header")
+                ?: ""
+            val options = qObj.arr("options")?.items.orEmpty().mapNotNull { optRaw ->
+                val optObj = optRaw as? JsonObject ?: return@mapNotNull null
+                val label = optObj.str("label")?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                QuestionOptionSpec(
+                    label = label,
+                    description = optObj.str("description"),
+                )
+            }
+            parsed.add(
+                QuestionSpec(
+                    id = qId,
+                    header = qObj.str("header"),
+                    question = qText,
+                    multiSelect = qObj.bool("multiSelect") == true,
+                    options = options,
+                ),
+            )
+        }
+        return parsed
     }
 
     fun parseAttachResult(result: JsonValue): AttachResumeResult {

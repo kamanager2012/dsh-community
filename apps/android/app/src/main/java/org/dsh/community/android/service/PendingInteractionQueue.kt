@@ -1,5 +1,7 @@
 package org.dsh.community.android.service
 
+import org.dsh.community.android.protocol.QuestionSpec
+
 data class PendingApprovalItem(
     val callId: String,
     val summary: String,
@@ -10,6 +12,7 @@ data class PendingQuestionItem(
     val questionId: String,
     val prompt: String,
     val sessionId: String? = null,
+    val questions: List<QuestionSpec> = emptyList(),
 )
 
 /**
@@ -45,16 +48,23 @@ class PendingInteractionQueue {
     fun listApprovals(): List<PendingApprovalItem> = approvals.toList()
 
     @Synchronized
-    fun enqueueQuestion(questionId: String, prompt: String, sessionId: String? = null): Boolean {
+    fun enqueueQuestion(
+        questionId: String,
+        prompt: String,
+        sessionId: String? = null,
+        questions: List<QuestionSpec> = emptyList(),
+    ): Boolean {
         if (questionId.isBlank()) return false
-        val idx = questions.indexOfFirst { it.questionId == questionId }
+        val idx = questionsList().indexOfFirst { it.questionId == questionId }
         if (idx >= 0) {
-            questions[idx] = PendingQuestionItem(questionId, prompt, sessionId)
+            this.questions[idx] = PendingQuestionItem(questionId, prompt, sessionId, questions)
             return false
         }
-        questions.add(PendingQuestionItem(questionId, prompt, sessionId))
+        this.questions.add(PendingQuestionItem(questionId, prompt, sessionId, questions))
         return true
     }
+
+    private fun questionsList(): List<PendingQuestionItem> = questions
 
     @Synchronized
     fun removeQuestion(questionId: String): PendingQuestionItem? {

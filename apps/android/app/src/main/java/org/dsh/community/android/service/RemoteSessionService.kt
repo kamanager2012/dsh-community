@@ -27,7 +27,10 @@ import org.dsh.community.android.protocol.JsonCodec
 import org.dsh.community.android.protocol.JsonNumber
 import org.dsh.community.android.protocol.JsonObject
 import org.dsh.community.android.protocol.JsonString
+import org.dsh.community.android.protocol.JsonValue
+import org.dsh.community.android.protocol.ModelCatalogResult
 import org.dsh.community.android.protocol.OfficialSessionEvent
+import org.dsh.community.android.protocol.RemoteFrameCodec
 import org.dsh.community.android.protocol.SessionRef
 import org.dsh.community.android.transport.AndroidWebRtcPeerEngine
 import org.dsh.community.android.transport.DiscoveredLanHost
@@ -103,8 +106,12 @@ class RemoteSessionService : Service() {
             message: String,
         )
         fun onSessionsUpdated(sessions: List<SessionRef>)
+        fun onSessionCreated(session: SessionRef) {}
+        fun onSessionAttached(sessionId: String) {}
         fun onEventReceived(sessionId: String, event: OfficialSessionEvent)
         fun onStreamReset(sessionId: String, reason: String) {}
+        fun onAgentStatusChanged(sessionId: String, status: String) {}
+        fun onModelCatalogUpdated(sessionId: String?, catalog: ModelCatalogResult) {}
         fun onPeerRevoked(hostFingerprint: String, reason: String) {}
         fun onTrustedHostsChanged(hosts: List<TrustedHostRecord>, activeFingerprint: String?) {}
         fun onPendingApproval(callId: String, summary: String)
@@ -183,6 +190,11 @@ class RemoteSessionService : Service() {
 
     @Volatile
     private var lastSessions: List<SessionRef> = emptyList()
+    @Volatile
+    private var attachedSessionId: String? = null
+    @Volatile
+    private var lastModelCatalog: ModelCatalogResult? = null
+    private val agentStatusBySession = ConcurrentHashMap<String, String>()
 
     @Volatile
     private var lastProfile: RemoteEndpointProfile? = null
@@ -278,6 +290,15 @@ class RemoteSessionService : Service() {
         if (sessionsSnapshot.isNotEmpty()) {
             observer.onSessionsUpdated(sessionsSnapshot)
         }
+        attachedSessionId?.let { attached ->
+            observer.onSessionAttached(attached)
+            agentStatusBySession[attached]?.let { st ->
+                observer.onAgentStatusChanged(attached, st)
+            }
+        }
+        lastModelCatalog?.let { catalog ->
+            observer.onModelCatalogUpdated(attachedSessionId, catalog)
+        }
         val replaySnapshot = synchronized(replayLock) { recentEvents.toList() }
         for ((sid, evt) in replaySnapshot) {
             observer.onEventReceived(sid, evt)
@@ -295,6 +316,17 @@ class RemoteSessionService : Service() {
     fun currentHostFingerprint(): String? = activeHostFingerprint
 
     fun currentIdentity(): DeviceIdentity = ensureDeviceIdentity()
+
+    fun currentAttachedSessionId(): String? = attachedSessionId
+
+    fun currentAgentStatus(sessionId: String): String = agentStatusBySession[sessionId] ?: "idle"
+
+    fun currentModelCatalog(): ModelCatalogResult? = lastModelCatalog
+
+    fun replayEventsForSession(sessionId: String): List<OfficialSessionEvent> =
+        synchronized(replayLock) {
+            recentEvents.filter { it.first == sessionId }.map { it.second }
+        }
 
     fun currentStatsFile(): File = File(noBackupFilesDir, STATS_FILE)
 
@@ -330,6 +362,9 @@ class RemoteSessionService : Service() {
                 pendingAckSeqs.clear()
                 pendingInteractions.clearAll()
                 lastSessions = emptyList()
+                attachedSessionId = null
+                lastModelCatalog = null
+                agentStatusBySession.clear()
                 cancelApprovalNotification()
                 refreshPendingUi(approvalsChanged = true, questionsChanged = true)
                 connectProfileInternal(profile, sanitizedName)
@@ -419,6 +454,9 @@ class RemoteSessionService : Service() {
                 activeHostFingerprint = null
                 lastProfile = null
                 lastSessions = emptyList()
+                attachedSessionId = null
+                lastModelCatalog = null
+                agentStatusBySession.clear()
                 pendingAckSeqs.clear()
                 clearReplayEvents()
                 pendingInteractions.clearAll()
@@ -478,37 +516,77 @@ class RemoteSessionService : Service() {
         }
     }
 
-    fun attachSessionAsync(sessionId: String) {
+    fun createSessionAsync(title: String? = null, autoAttach: Boolean = true) {
         ioExecutor.execute {
-            val session = activeSession ?: return@execute
+            val session = activeSession ?: run {
+                uiObservers.forEach { it.onActionFailed("session.create", "Not connected to Host") }
+                return@execute
+            }
+            val opKey = session.newOperationKey("session-create")
             try {
-                when (val result = session.attachSession(sessionId)) {
-                    is AttachResumeResult.Events -> {
-                        for (evt in result.events) {
-                            enqueueReplayEvent(sessionId, evt)
-                            dispatchEventToObservers(sessionId, evt)
-                        }
-                        result.events.lastOrNull()?.let { lastEvt ->
-                            enqueueStreamAck(session, sessionId, lastEvt.seq)
-                        }
-                    }
-                    is AttachResumeResult.ResetRequired -> {
-                        clearReplayEvents(sessionId)
-                        updateStatus(
-                            session.phase,
-                            session.activeCarrier,
-                            session.currentEpoch,
-                            "Replay window unavailable (${DisplayTextSanitizer.sanitizeSingleLine(result.reason)}); re-sync from official session",
-                        )
-                    }
+                val created = session.createSession(title = title, idempotencyKey = opKey)
+                val refreshed = try {
+                    session.listSessions()
+                } catch (_: Throwable) {
+                    listOf(created) + lastSessions.filterNot { it.id == created.id }
+                }
+                lastSessions = refreshed
+                uiObservers.forEach { it.onSessionsUpdated(refreshed) }
+                uiObservers.forEach { it.onSessionCreated(created) }
+                uiObservers.forEach { it.onActionSucceeded("session.create", created.id) }
+                if (autoAttach) {
+                    attachSessionInternal(session, created.id)
                 }
             } catch (t: Throwable) {
-                updateStatus(session.phase, session.activeCarrier, session.currentEpoch, "attach failed: ${sanitizeErr(t)}")
+                val reason = sanitizeErr(t)
+                updateStatus(session.phase, session.activeCarrier, session.currentEpoch, "session.create failed: $reason")
+                uiObservers.forEach { it.onActionFailed("session.create", reason) }
             }
         }
     }
 
-    fun submitPromptAsync(sessionId: String, prompt: String) {
+    fun attachSessionAsync(sessionId: String) {
+        ioExecutor.execute {
+            val session = activeSession ?: return@execute
+            attachSessionInternal(session, sessionId)
+        }
+    }
+
+    private fun attachSessionInternal(session: FailoverRemoteSession, sessionId: String) {
+        attachedSessionId = sessionId
+        uiObservers.forEach { it.onSessionAttached(sessionId) }
+        agentStatusBySession[sessionId]?.let { st ->
+            uiObservers.forEach { it.onAgentStatusChanged(sessionId, st) }
+        }
+        try {
+            when (val result = session.attachSession(sessionId)) {
+                is AttachResumeResult.Events -> {
+                    for (evt in result.events) {
+                        enqueueReplayEvent(sessionId, evt)
+                        dispatchEventToObservers(sessionId, evt)
+                    }
+                    result.events.lastOrNull()?.let { lastEvt ->
+                        enqueueStreamAck(session, sessionId, lastEvt.seq)
+                    }
+                }
+                is AttachResumeResult.ResetRequired -> {
+                    clearReplayEvents(sessionId)
+                    agentStatusBySession.remove(sessionId)
+                    uiObservers.forEach { it.onAgentStatusChanged(sessionId, "idle") }
+                    updateStatus(
+                        session.phase,
+                        session.activeCarrier,
+                        session.currentEpoch,
+                        "Replay window unavailable (${DisplayTextSanitizer.sanitizeSingleLine(result.reason)}); re-sync from official session",
+                    )
+                }
+            }
+        } catch (t: Throwable) {
+            updateStatus(session.phase, session.activeCarrier, session.currentEpoch, "attach failed: ${sanitizeErr(t)}")
+        }
+    }
+
+    fun submitPromptAsync(sessionId: String, prompt: String, mode: String? = null) {
         ioExecutor.execute {
             val session = activeSession ?: run {
                 uiObservers.forEach { it.onActionFailed("prompt", "Not connected to Host") }
@@ -516,12 +594,50 @@ class RemoteSessionService : Service() {
             }
             val opKey = session.newOperationKey("prompt")
             try {
-                session.submitPrompt(sessionId, prompt, opKey)
+                session.submitPrompt(sessionId, prompt, opKey, mode)
                 uiObservers.forEach { it.onActionSucceeded("prompt", sessionId) }
             } catch (t: Throwable) {
                 val reason = sanitizeErr(t)
                 updateStatus(session.phase, session.activeCarrier, session.currentEpoch, "prompt.submit failed: $reason")
                 uiObservers.forEach { it.onActionFailed("prompt", reason) }
+            }
+        }
+    }
+
+    fun abortTurnAsync(sessionId: String, keepInbox: Boolean = false) {
+        ioExecutor.execute {
+            val session = activeSession ?: run {
+                uiObservers.forEach { it.onActionFailed("abort", "Not connected to Host") }
+                return@execute
+            }
+            val opKey = session.newOperationKey("abort-$sessionId")
+            try {
+                session.abortTurn(sessionId, keepInbox, opKey)
+                agentStatusBySession[sessionId] = "idle"
+                uiObservers.forEach { it.onAgentStatusChanged(sessionId, "idle") }
+                var removedApproval = false
+                for (item in pendingInteractions.listApprovals()) {
+                    if (item.sessionId == sessionId && pendingInteractions.removeApproval(item.callId) != null) {
+                        removedApproval = true
+                    }
+                }
+                var removedQuestion = false
+                for (item in pendingInteractions.listQuestions()) {
+                    if (item.sessionId == sessionId && pendingInteractions.removeQuestion(item.questionId) != null) {
+                        removedQuestion = true
+                    }
+                }
+                if (removedApproval || removedQuestion) {
+                    refreshPendingUi(approvalsChanged = removedApproval, questionsChanged = removedQuestion)
+                    if (pendingInteractions.peekApproval() == null) {
+                        cancelApprovalNotification()
+                    }
+                }
+                uiObservers.forEach { it.onActionSucceeded("abort", sessionId) }
+            } catch (t: Throwable) {
+                val reason = sanitizeErr(t)
+                updateStatus(session.phase, session.activeCarrier, session.currentEpoch, "turn.abort failed: $reason")
+                uiObservers.forEach { it.onActionFailed("abort", reason) }
             }
         }
     }
@@ -557,6 +673,21 @@ class RemoteSessionService : Service() {
     }
 
     fun respondQuestionAsync(questionId: String, answer: String) {
+        respondQuestionInternal(questionId) { session, opKey ->
+            session.respondQuestion(questionId, answer, opKey)
+        }
+    }
+
+    fun respondQuestionStructuredAsync(questionId: String, answerValue: JsonValue) {
+        respondQuestionInternal(questionId) { session, opKey ->
+            session.respondQuestionJson(questionId, answerValue, opKey)
+        }
+    }
+
+    private fun respondQuestionInternal(
+        questionId: String,
+        sendFn: (FailoverRemoteSession, String) -> Unit,
+    ) {
         ioExecutor.execute {
             val session = activeSession ?: run {
                 uiObservers.forEach { it.onActionFailed("question", "Not connected to Host") }
@@ -564,7 +695,7 @@ class RemoteSessionService : Service() {
             }
             val opKey = session.newOperationKey("question-$questionId")
             try {
-                session.respondQuestion(questionId, answer, opKey)
+                sendFn(session, opKey)
                 pendingInteractions.removeQuestion(questionId)
                 refreshPendingUi(questionsChanged = true)
                 uiObservers.forEach { it.onActionSucceeded("question", questionId) }
@@ -573,6 +704,64 @@ class RemoteSessionService : Service() {
                 updateStatus(session.phase, session.activeCarrier, session.currentEpoch, "question.respond failed: $reason")
                 refreshPendingUi(questionsChanged = true)
                 uiObservers.forEach { it.onActionFailed("question", reason) }
+            }
+        }
+    }
+
+    fun refreshModelsAsync(sessionId: String? = attachedSessionId, silentOnError: Boolean = false) {
+        ioExecutor.execute {
+            val session = activeSession ?: run {
+                if (!silentOnError) {
+                    uiObservers.forEach { it.onActionFailed("model.list", "Not connected to Host") }
+                }
+                return@execute
+            }
+            try {
+                val catalog = session.listModels(sessionId)
+                lastModelCatalog = catalog
+                uiObservers.forEach { it.onModelCatalogUpdated(sessionId, catalog) }
+                uiObservers.forEach { it.onActionSucceeded("model.list", catalog.currentModel ?: "") }
+            } catch (t: Throwable) {
+                if (!silentOnError) {
+                    val reason = sanitizeErr(t)
+                    updateStatus(session.phase, session.activeCarrier, session.currentEpoch, "model.list failed: $reason")
+                    uiObservers.forEach { it.onActionFailed("model.list", reason) }
+                }
+            }
+        }
+    }
+
+    fun selectModelAsync(
+        sessionId: String,
+        provider: String,
+        model: String,
+        reasoningEffort: String? = null,
+    ) {
+        ioExecutor.execute {
+            val session = activeSession ?: run {
+                uiObservers.forEach { it.onActionFailed("model.select", "Not connected to Host") }
+                return@execute
+            }
+            val opKey = session.newOperationKey("model-select")
+            try {
+                val selected = session.selectModel(sessionId, provider, model, reasoningEffort, opKey)
+                val updated = lastModelCatalog?.copy(
+                    currentProvider = selected.provider,
+                    currentModel = selected.model,
+                    currentReasoningEffort = reasoningEffort ?: lastModelCatalog?.currentReasoningEffort,
+                ) ?: ModelCatalogResult(
+                    currentProvider = selected.provider,
+                    currentModel = selected.model,
+                    currentReasoningEffort = reasoningEffort,
+                    models = listOf(selected),
+                )
+                lastModelCatalog = updated
+                uiObservers.forEach { it.onModelCatalogUpdated(sessionId, updated) }
+                uiObservers.forEach { it.onActionSucceeded("model.select", "${selected.provider}/${selected.model}") }
+            } catch (t: Throwable) {
+                val reason = sanitizeErr(t)
+                updateStatus(session.phase, session.activeCarrier, session.currentEpoch, "model.select failed: $reason")
+                uiObservers.forEach { it.onActionFailed("model.select", reason) }
             }
         }
     }
@@ -640,6 +829,9 @@ class RemoteSessionService : Service() {
         val toClose = activeSession
         activeSession = null
         lastSessions = emptyList()
+        attachedSessionId = null
+        lastModelCatalog = null
+        agentStatusBySession.clear()
         pendingAckSeqs.clear()
         clearReplayEvents()
         pendingInteractions.clearAll()
@@ -667,6 +859,9 @@ class RemoteSessionService : Service() {
 
         if (hostChanged) {
             lastSessions = emptyList()
+            attachedSessionId = null
+            lastModelCatalog = null
+            agentStatusBySession.clear()
             pendingAckSeqs.clear()
             clearReplayEvents()
             pendingInteractions.clearAll()
@@ -706,6 +901,8 @@ class RemoteSessionService : Service() {
 
                 override fun onStreamReset(sessionId: String, reason: String) {
                     clearReplayEvents(sessionId)
+                    agentStatusBySession.remove(sessionId)
+                    uiObservers.forEach { it.onAgentStatusChanged(sessionId, "idle") }
                     for (item in pendingInteractions.listApprovals()) {
                         if (item.sessionId == sessionId) {
                             pendingInteractions.removeApproval(item.callId)
@@ -882,6 +1079,32 @@ class RemoteSessionService : Service() {
     private fun dispatchEventToObservers(sessionId: String, event: OfficialSessionEvent) {
         uiObservers.forEach { it.onEventReceived(sessionId, event) }
         val dataObj = event.data as? JsonObject ?: return
+        if (event.type == "agent/status") {
+            val status = dataObj.str("status")?.trim()?.lowercase()?.ifBlank { "idle" } ?: "idle"
+            agentStatusBySession[sessionId] = status
+            uiObservers.forEach { it.onAgentStatusChanged(sessionId, status) }
+            return
+        }
+        if (event.type == "turn/end") {
+            agentStatusBySession[sessionId] = "idle"
+            uiObservers.forEach { it.onAgentStatusChanged(sessionId, "idle") }
+            return
+        }
+        if (event.type == "session.model" || event.type == "model.selected") {
+            val provider = dataObj.str("provider")
+            val model = dataObj.str("model")
+            val effort = dataObj.str("reasoningEffort")
+            if (!provider.isNullOrBlank() && !model.isNullOrBlank()) {
+                val updated = (lastModelCatalog ?: ModelCatalogResult(null, null, null, emptyList())).copy(
+                    currentProvider = provider,
+                    currentModel = model,
+                    currentReasoningEffort = effort ?: lastModelCatalog?.currentReasoningEffort,
+                )
+                lastModelCatalog = updated
+                uiObservers.forEach { it.onModelCatalogUpdated(sessionId, updated) }
+            }
+            return
+        }
         if (event.type == "approval.resolved") {
             val resolvedCallId = dataObj.str("callId")
             if (resolvedCallId != null) {
@@ -932,15 +1155,17 @@ class RemoteSessionService : Service() {
             postApprovalNotification(headForNotif.callId, headForNotif.summary, countMetric = added)
         } else if (event.type.contains("question", ignoreCase = true)) {
             val questionId = dataObj.str("questionId") ?: return
+            val specs = RemoteFrameCodec.parseQuestionSpecs(dataObj)
             val firstQuestion = dataObj.arr("questions")?.items?.firstOrNull() as? JsonObject
             val rawPrompt = dataObj.str("prompt")
                 ?: dataObj.str("question")
+                ?: specs.firstOrNull()?.question
                 ?: firstQuestion?.str("question")
                 ?: firstQuestion?.str("prompt")
                 ?: firstQuestion?.str("header")
                 ?: event.type
             val prompt = DisplayTextSanitizer.sanitizeSingleLine(rawPrompt)
-            pendingInteractions.enqueueQuestion(questionId, prompt, sessionId)
+            pendingInteractions.enqueueQuestion(questionId, prompt, sessionId, specs)
             val questions = pendingInteractions.listQuestions()
             uiObservers.forEach { it.onPendingQuestionsChanged(questions) }
             questions.firstOrNull()?.let { head ->
