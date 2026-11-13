@@ -8,7 +8,7 @@ import type { PairingCoordinator } from '../crypto/pairing-coordinator.js'
 import type { RemoteAdapterCore } from '../core.js'
 import type { AuthenticatedPeer } from '../protocol.js'
 import { validateLanCarrierBounds, type LanCarrierBounds } from './constants.js'
-import { RemoteServerChannel } from './remote-channel.js'
+import { RemoteServerChannel, revokeDeviceChannels } from './remote-channel.js'
 import { SignalingClient } from './signaling-client.js'
 import type { RtcIceCandidatePayload, RtcSessionDescriptionPayload } from './signaling-server.js'
 import {
@@ -349,14 +349,7 @@ export class HostWebRtcCarrier {
   }
 
   private handleRevocation(deviceId: string): void {
-    const set = this.deviceChannels.get(deviceId)
-    if (!set) return
-    for (const ch of Array.from(set)) {
-      try {
-        ch.terminate(1008, 'device revoked')
-      } catch {}
-    }
-    this.deviceChannels.delete(deviceId)
+    revokeDeviceChannels(this.deviceChannels, deviceId, 'device revoked', 1008)
   }
 
   broadcastEvent(event: unknown): void {

@@ -356,7 +356,7 @@ describe('remote host non-mobile finalization', () => {
     }
   })
 
-  it('bounds reconnect attempts after revoke and never busy-loops', async () => {
+  it('aborts reconnect immediately after revoke with zero retry delays', async () => {
     const { seams } = fakeSeams()
     const trustStore = new InMemoryDeviceTrustStore()
     const dir = mkdtempSync(join(tmpdir(), 'dsh-revoke-reconnect-'))
@@ -378,6 +378,85 @@ describe('remote host non-mobile finalization', () => {
         trustDomainId: host.identity.trustDomainId,
       })
       const delays: number[] = []
+      const endpointUrl = runtime.carrier.getEndpointUrl()!
+      const client = new LanClientCarrier({
+        clientKeyPair: keys,
+        hostPublicKey: host.identity.publicKey,
+        endpointUrl,
+        handshakeTimeoutMs: 250,
+        sleep: async (ms) => {
+          delays.push(ms)
+        },
+      })
+      await client.connect()
+      trustStore.revokeSync(record.deviceId)
+      const deadline = Date.now() + 500
+      while ((client.isOpen() || !client.getSession().isRevoked()) && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 10))
+      }
+      expect(client.isOpen()).toBe(false)
+      expect(client.getSession().isRevoked()).toBe(true)
+
+      await expect(
+        client.reconnectWithBackoff({
+          initialDelayMs: 5,
+          maxDelayMs: 10,
+          multiplier: 2,
+          maxAttempts: 3,
+        }),
+      ).rejects.toThrow(/revoked/i)
+
+      expect(delays).toEqual([])
+      expect(client.isOpen()).toBe(false)
+
+      const freshDelays: number[] = []
+      const freshClient = new LanClientCarrier({
+        clientKeyPair: keys,
+        hostPublicKey: host.identity.publicKey,
+        endpointUrl,
+        handshakeTimeoutMs: 250,
+        sleep: async (ms) => {
+          freshDelays.push(ms)
+        },
+      })
+      await expect(
+        freshClient.reconnectWithBackoff({
+          initialDelayMs: 5,
+          maxDelayMs: 10,
+          multiplier: 2,
+          maxAttempts: 3,
+        }),
+      ).rejects.toThrow(/revoked/i)
+      expect(freshDelays).toEqual([])
+      expect(freshClient.getSession().isRevoked()).toBe(true)
+    } finally {
+      await runtime.stop()
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('bounds transient reconnect attempts with exponential backoff and never busy-loops', async () => {
+    const { seams } = fakeSeams()
+    const trustStore = new InMemoryDeviceTrustStore()
+    const dir = mkdtempSync(join(tmpdir(), 'dsh-transient-reconnect-'))
+    const hostStore = new FileHostIdentityStore(join(dir, 'host.json'))
+    const runtime = new RemoteHostRuntime({
+      seams,
+      trustStore,
+      hostIdentityStore: hostStore,
+      carrier: { enabled: true, host: '127.0.0.1', port: 0 },
+    })
+    await runtime.start()
+    try {
+      const host = await hostStore.loadOrCreate()
+      const keys = clientKeyPair()
+      trustStore.trustSync({
+        staticPublicKey: keys.publicKey,
+        displayName: 'transient',
+        grantedCapabilities: ['observe'],
+        trustDomainId: host.identity.trustDomainId,
+      })
+      const delays: number[] = []
       const client = new LanClientCarrier({
         clientKeyPair: keys,
         hostPublicKey: host.identity.publicKey,
@@ -388,9 +467,9 @@ describe('remote host non-mobile finalization', () => {
         },
       })
       await client.connect()
-      trustStore.revokeSync(record.deviceId)
-      await new Promise((resolve) => setTimeout(resolve, 20))
-      expect(client.isOpen()).toBe(false)
+      await runtime.stop()
+      client.close()
+      expect(client.getSession().isRevoked()).toBe(false)
 
       await expect(
         client.reconnectWithBackoff({

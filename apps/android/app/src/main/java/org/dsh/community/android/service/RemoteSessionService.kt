@@ -18,6 +18,8 @@ import androidx.core.app.NotificationCompat
 import org.dsh.community.android.MainActivity
 import org.dsh.community.android.crypto.DeviceIdentity
 import org.dsh.community.android.crypto.EncryptedDeviceIdentityStore
+import org.dsh.community.android.crypto.EncryptedTrustedHostStore
+import org.dsh.community.android.crypto.TrustedHostRecord
 import org.dsh.community.android.protocol.AttachResumeResult
 import org.dsh.community.android.protocol.JsonCodec
 import org.dsh.community.android.protocol.JsonNumber
@@ -25,8 +27,10 @@ import org.dsh.community.android.protocol.JsonObject
 import org.dsh.community.android.protocol.JsonString
 import org.dsh.community.android.protocol.OfficialSessionEvent
 import org.dsh.community.android.protocol.SessionRef
+import org.dsh.community.android.transport.DiscoveredLanHost
 import org.dsh.community.android.transport.FailoverRemoteSession
 import org.dsh.community.android.transport.PairingQrParser
+import org.dsh.community.android.transport.PeerRevokedException
 import org.dsh.community.android.transport.RemoteConnectionPhase
 import org.dsh.community.android.transport.RemoteEndpointProfile
 import org.dsh.community.android.transport.TransportKind
@@ -70,6 +74,13 @@ object BackoffPolicy {
     }
 }
 
+enum class DiscoverySelectOutcome {
+    UPDATED_AND_RECONNECTING,
+    UNKNOWN_UNPAIRED_HOST,
+    REVOKED_HOST,
+    MISSING_FINGERPRINT,
+}
+
 /**
  * Foreground service hosting the Noise IK [FailoverRemoteSession], network-loss failover hook,
  * interactive approval notifications, and battery/background lifecycle evidence counters.
@@ -85,6 +96,9 @@ class RemoteSessionService : Service() {
         )
         fun onSessionsUpdated(sessions: List<SessionRef>)
         fun onEventReceived(sessionId: String, event: OfficialSessionEvent)
+        fun onStreamReset(sessionId: String, reason: String) {}
+        fun onPeerRevoked(hostFingerprint: String, reason: String) {}
+        fun onTrustedHostsChanged(hosts: List<TrustedHostRecord>, activeFingerprint: String?) {}
         fun onPendingApproval(callId: String, summary: String)
         fun onPendingQuestion(questionId: String, prompt: String)
         fun onMetricsUpdated(identity: DeviceIdentity, stats: BackgroundLifecycleStats) {}
@@ -126,6 +140,13 @@ class RemoteSessionService : Service() {
 
     @Volatile
     private var deviceIdentity: DeviceIdentity? = null
+
+    private val trustedHostStore: EncryptedTrustedHostStore by lazy {
+        EncryptedTrustedHostStore.createForAndroid(this)
+    }
+
+    @Volatile
+    private var activeHostFingerprint: String? = null
 
     @Volatile
     private var activeSession: FailoverRemoteSession? = null
@@ -193,7 +214,12 @@ class RemoteSessionService : Service() {
             message = statusText,
         )
         observer.onMetricsUpdated(id, currentStats())
+        observer.onTrustedHostsChanged(trustedHostStore.list(), activeHostFingerprint)
     }
+
+    fun listTrustedHosts(): List<TrustedHostRecord> = trustedHostStore.list()
+
+    fun currentHostFingerprint(): String? = activeHostFingerprint
 
     fun currentIdentity(): DeviceIdentity = ensureDeviceIdentity()
 
@@ -233,6 +259,103 @@ class RemoteSessionService : Service() {
         ioExecutor.execute {
             connectProfileInternal(profile, displayName)
         }
+    }
+
+    /**
+     * Reconnects to a persisted trusted Host using its Keystore-wrapped profile and local
+     * Curve25519 identity without any pairing `bootstrapToken`. Fails closed when revoked.
+     */
+    fun reconnectSavedHost(
+        hostFingerprint: String? = null,
+        lanUrlOverride: String? = null,
+        displayName: String = Build.MODEL ?: "Android",
+    ) {
+        ioExecutor.execute {
+            val all = trustedHostStore.list()
+            val target = if (!hostFingerprint.isNullOrBlank()) {
+                trustedHostStore.get(hostFingerprint)
+            } else {
+                activeHostFingerprint?.let { trustedHostStore.get(it) }
+                    ?: all.firstOrNull { !it.isRevoked }
+                    ?: all.firstOrNull()
+            }
+
+            if (target == null) {
+                updateStatus(RemoteConnectionPhase.FAILED, null, 0, "No saved Host profile available")
+                return@execute
+            }
+
+            activeHostFingerprint = target.hostFingerprint
+            notifyTrustedHosts()
+
+            if (target.isRevoked) {
+                val reason = target.revokedReason ?: "device revoked by host"
+                uiObservers.forEach { it.onPeerRevoked(target.hostFingerprint, reason) }
+                updateStatus(
+                    RemoteConnectionPhase.REVOKED,
+                    null,
+                    0,
+                    "REVOKED (cached): $reason — Forget & re-pair after Host re-trusts",
+                )
+                return@execute
+            }
+
+            val tokenlessProfile = RemoteEndpointProfile.fromTrustedRecord(target, lanUrlOverride)
+            connectProfileInternal(tokenlessProfile, displayName)
+        }
+    }
+
+    /**
+     * Removes a saved Host profile (and tears down the live connection if active).
+     */
+    fun forgetHost(hostFingerprint: String? = null) {
+        ioExecutor.execute {
+            val targetFp = hostFingerprint?.takeIf { it.isNotBlank() }
+                ?: activeHostFingerprint
+                ?: trustedHostStore.list().firstOrNull()?.hostFingerprint
+                ?: return@execute
+            if (activeHostFingerprint.equals(targetFp, ignoreCase = true)) {
+                reconnectFuture?.cancel(false)
+                activeSession?.close("host forgotten")
+                activeSession = null
+                activeHostFingerprint = null
+            }
+            val removed = trustedHostStore.forget(targetFp)
+            notifyTrustedHosts()
+            updateStatus(
+                RemoteConnectionPhase.DISCONNECTED,
+                null,
+                0,
+                if (removed) "Forgot saved Host ${targetFp.take(12)}..." else "Disconnected",
+            )
+        }
+    }
+
+    /**
+     * Enforces `discovery !== trust`: updates `lanUrl` and reconnects tokenlessly ONLY if
+     * [DiscoveredLanHost.hostFingerprint] matches an existing non-revoked trusted Host.
+     */
+    fun applyDiscoveredLanHost(discovered: DiscoveredLanHost): DiscoverySelectOutcome {
+        val fp = discovered.hostFingerprint?.trim()?.takeIf { it.isNotEmpty() }
+            ?: return DiscoverySelectOutcome.MISSING_FINGERPRINT
+        val existing = trustedHostStore.get(fp)
+            ?: return DiscoverySelectOutcome.UNKNOWN_UNPAIRED_HOST
+        if (existing.isRevoked) {
+            val reason = existing.revokedReason ?: "device revoked by host"
+            uiObservers.forEach { it.onPeerRevoked(fp, reason) }
+            ioExecutor.execute {
+                updateStatus(RemoteConnectionPhase.REVOKED, null, 0, "REVOKED: $reason")
+            }
+            return DiscoverySelectOutcome.REVOKED_HOST
+        }
+        val updated = trustedHostStore.updateLanFromDiscovery(
+            hostFingerprint = fp,
+            lanUrl = discovered.endpointUrl,
+            displayLabel = discovered.hostDisplayLabel,
+        ) ?: return DiscoverySelectOutcome.UNKNOWN_UNPAIRED_HOST
+        notifyTrustedHosts()
+        reconnectSavedHost(updated.hostFingerprint)
+        return DiscoverySelectOutcome.UPDATED_AND_RECONNECTING
     }
 
     fun refreshSessionsAsync() {
@@ -329,7 +452,15 @@ class RemoteSessionService : Service() {
                     "Connected via ${session.activeCarrier?.wireName} (epoch ${session.currentEpoch})",
                 )
             } catch (t: Throwable) {
-                updateStatus(RemoteConnectionPhase.FAILED, null, session.currentEpoch, "Failover failed: ${t.message}")
+                if (t is PeerRevokedException || session.revokedByHost) {
+                    handlePeerRevocation(
+                        activeHostFingerprint ?: "",
+                        session,
+                        (t as? PeerRevokedException)?.reason ?: t.message ?: "device revoked",
+                    )
+                } else {
+                    updateStatus(RemoteConnectionPhase.FAILED, null, session.currentEpoch, "Failover failed: ${t.message}")
+                }
             } finally {
                 persistStats()
             }
@@ -346,7 +477,11 @@ class RemoteSessionService : Service() {
     }
 
     private fun connectProfileInternal(profile: RemoteEndpointProfile, displayName: String) {
+        reconnectFuture?.cancel(false)
         activeSession?.close("reconnecting")
+        activeHostFingerprint = profile.hostFingerprint
+        notifyTrustedHosts()
+
         val identity = ensureDeviceIdentity()
         val session = FailoverRemoteSession(identity, profile)
         session.addListener(
@@ -358,7 +493,24 @@ class RemoteSessionService : Service() {
 
                 override fun onStreamEvent(sessionId: String, event: OfficialSessionEvent) {
                     dispatchEventToObservers(sessionId, event)
-                    session.ackStream(sessionId, event.seq)
+                    val seq = event.seq
+                    ioExecutor.execute {
+                        try {
+                            if (activeSession === session) {
+                                session.ackStream(sessionId, seq)
+                            }
+                        } catch (_: Throwable) {
+                            // Best-effort ack; next attach resumes from confirmed cursor.
+                        }
+                    }
+                }
+
+                override fun onStreamReset(sessionId: String, reason: String) {
+                    uiObservers.forEach { it.onStreamReset(sessionId, reason) }
+                }
+
+                override fun onPeerRevoked(reason: String) {
+                    handlePeerRevocation(profile.hostFingerprint, session, reason)
                 }
 
                 override fun onTransportClosed(carrier: TransportKind, reason: String) {
@@ -372,13 +524,35 @@ class RemoteSessionService : Service() {
             if (phase == RemoteConnectionPhase.PAIRING_PENDING && !profile.bootstrapToken.isNullOrBlank()) {
                 val res = session.requestPairing(displayName, profile.bootstrapToken)
                 val cid = res.str("candidateId") ?: "pending"
+                trustedHostStore.upsertTrustedHost(
+                    hostPublicKey = profile.hostPublicKey,
+                    lanUrl = profile.lanUrl,
+                    signalingUrl = profile.signalingUrl,
+                    signalingRoomId = profile.signalingRoomId,
+                    stunUrls = profile.stunUrls,
+                    relayUrl = profile.relayUrl,
+                    relayRoomId = profile.relayRoomId,
+                    markConnected = false,
+                )
+                notifyTrustedHosts()
                 updateStatus(
                     phase,
                     session.activeCarrier,
                     session.currentEpoch,
-                    "Pairing requested (candidate=$cid); confirm on Host then reconnect",
+                    "Pairing requested (candidate=$cid); confirm on Host then Reconnect",
                 )
             } else if (phase == RemoteConnectionPhase.ACTIVE) {
+                trustedHostStore.upsertTrustedHost(
+                    hostPublicKey = profile.hostPublicKey,
+                    lanUrl = profile.lanUrl,
+                    signalingUrl = profile.signalingUrl,
+                    signalingRoomId = profile.signalingRoomId,
+                    stunUrls = profile.stunUrls,
+                    relayUrl = profile.relayUrl,
+                    relayRoomId = profile.relayRoomId,
+                    markConnected = true,
+                )
+                notifyTrustedHosts()
                 val sessions = session.listSessions()
                 updateStatus(
                     phase,
@@ -389,13 +563,42 @@ class RemoteSessionService : Service() {
                 uiObservers.forEach { it.onSessionsUpdated(sessions) }
             }
         } catch (t: Throwable) {
-            updateStatus(RemoteConnectionPhase.FAILED, null, session.currentEpoch, "Connect failed: ${t.message}")
+            if (t is PeerRevokedException || session.revokedByHost) {
+                handlePeerRevocation(
+                    profile.hostFingerprint,
+                    session,
+                    (t as? PeerRevokedException)?.reason ?: t.message ?: "device revoked",
+                )
+            } else {
+                updateStatus(RemoteConnectionPhase.FAILED, null, session.currentEpoch, "Connect failed: ${t.message}")
+            }
         } finally {
             persistStats()
         }
     }
 
+    private fun handlePeerRevocation(
+        hostFingerprint: String,
+        session: FailoverRemoteSession,
+        reason: String,
+    ) {
+        reconnectFuture?.cancel(false)
+        if (hostFingerprint.isNotBlank()) {
+            trustedHostStore.markRevoked(hostFingerprint, reason)
+            notifyTrustedHosts()
+            uiObservers.forEach { it.onPeerRevoked(hostFingerprint, reason) }
+        }
+        updateStatus(RemoteConnectionPhase.REVOKED, null, session.currentEpoch, "REVOKED: $reason")
+    }
+
+    private fun notifyTrustedHosts() {
+        val snapshot = trustedHostStore.list()
+        val fp = activeHostFingerprint
+        uiObservers.forEach { it.onTrustedHostsChanged(snapshot, fp) }
+    }
+
     private fun scheduleBatterySafeReconnect(session: FailoverRemoteSession, droppedCarrier: TransportKind, reason: String) {
+        if (session.revokedByHost || session.phase == RemoteConnectionPhase.REVOKED) return
         if (activeSession !== session || !networkAvailable.get()) return
         val attempt = reconnectAttempts.incrementAndGet()
         if (attempt > 5) {

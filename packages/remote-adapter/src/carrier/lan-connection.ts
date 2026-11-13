@@ -146,6 +146,13 @@ export class LanConnection {
     this.channel.terminate(code, reason)
   }
 
+  /**
+   * Emits an encrypted `peer.revoked` notification before closing the connection.
+   */
+  notifyRevoked(reason = 'device revoked', code = 1008): void {
+    this.channel.notifyRevoked(reason, code)
+  }
+
   sendEvent(event: unknown): void {
     this.channel.sendEvent(event)
   }

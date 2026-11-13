@@ -375,12 +375,13 @@ It is a secure, minimal remote projection of the official Host runtime.
 
 ## 15. R6 Official Host Bridge & Android Instrumentation
 
-- **Official Host Cordis Bridge (`@dsh-community/remote-adapter`)**: `OfficialHostCordisBridge` and `@dsh-community/remote-adapter/cordis-plugin` attach directly inside official `@deepseek-ai/dsh --profile headless --patch ...` via Cordis events (`session/event`, `agent/assistant-stream`, `agent/error`, `approval/request`, `user-questions/request`) while keeping `DSH_REMOTE_CONFIG_DIR` strictly outside `DSH_HOME` (`~/.dsh`).
+- **Official Host Cordis Bridge (`@dsh-community/remote-adapter`)**: `OfficialHostCordisBridge` and `@dsh-community/remote-adapter/cordis-plugin` attach directly inside official `@deepseek-ai/dsh --profile headless --patch ...` via Cordis events (`session/event`, `agent/assistant-stream`, `agent/error`, `approval/request`, `user-questions/request`) while keeping `DSH_REMOTE_CONFIG_DIR` strictly outside `DSH_HOME` (`~/.dsh`), emitting encrypted `peer.revoked` prior to channel teardown and `stream.reset` on replay window invalidation.
 - **Host CLI (`dsh-community remote`)**:
   - `dsh-community remote start [--host <ip>] [--port <n>] [--mdns] [--relay-url <url>] [--session <id>] [--json]`
   - `dsh-community remote devices [--json]`
   - `dsh-community remote revoke <deviceId>`
   - `dsh-community remote status [--json]`
-- **Android Deep-Link & Instrumentation**:
+- **Android Saved Hosts, Deep-Link & Instrumentation**:
   - `MainActivity` handles `dsh-remote://pair?data=<base64url>` (`ACTION_VIEW`) through `PairingQrParser`, never passing session IDs or credentials inside the URI.
-  - `apps/android/app/src/androidTest/.../RemoteClientInstrumentationTest.kt` and `scripts/accept-android-r6-device.mjs` verify `AndroidKeyStore`, `RemoteSessionService` (`dataSync`), `adb reverse` Noise IK E2EE RPC/failover, and `x86_64` KVM emulator instrumentation while leaving `arm64RealDeviceSmoke` fail-closed (`false`) until verified on physical `arm64-v8a` hardware.
+  - `EncryptedTrustedHostStore` (`AndroidKeyStore` AES-256-GCM in `noBackupFilesDir`) persists paired Hosts without `bootstrapToken` for tokenless reconnect, matches mDNS `_dsh-remote._tcp.` discoveries by `hostFingerprint` while preserving `discovery !== trust` for unpaired Hosts, supports Forget Host, clears stale buffers on `stream.reset`, and halts reconnects fail-closed on `peer.revoked`.
+  - `apps/android/app/src/androidTest/.../RemoteClientInstrumentationTest.kt` and `scripts/accept-android-r6-device.mjs` verify `AndroidKeyStore`, `RemoteSessionService` (`dataSync`), `adb reverse` Noise IK E2EE RPC/questions/stream-reset/dead-LAN-to-relay failover/revocation, and `x86_64` KVM emulator instrumentation while leaving `arm64RealDeviceSmoke` fail-closed (`false`) until verified on physical `arm64-v8a` hardware.

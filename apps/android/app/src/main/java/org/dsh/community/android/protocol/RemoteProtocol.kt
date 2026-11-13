@@ -50,6 +50,8 @@ sealed interface InboundHostFrame {
     data class RpcSuccess(val id: String, val result: JsonValue) : InboundHostFrame
     data class RpcFailure(val id: String?, val error: RpcErrorPayload) : InboundHostFrame
     data class StreamEvent(val sessionId: String, val event: OfficialSessionEvent) : InboundHostFrame
+    data class StreamReset(val sessionId: String, val reason: String) : InboundHostFrame
+    data class PeerRevoked(val reason: String) : InboundHostFrame
 }
 
 /**
@@ -124,6 +126,18 @@ object RemoteFrameCodec {
                 ?: throw IllegalArgumentException("stream.event missing event")
             val event = parseSessionEvent(evtObj)
             return InboundHostFrame.StreamEvent(sessionId = sessionId, event = event)
+        }
+
+        if (type == "stream.reset") {
+            val sessionId = obj.str("sessionId")
+                ?: throw IllegalArgumentException("stream.reset missing sessionId")
+            val reason = obj.str("reason") ?: "window-unavailable"
+            return InboundHostFrame.StreamReset(sessionId = sessionId, reason = reason)
+        }
+
+        if (type == "peer.revoked") {
+            val reason = obj.str("reason") ?: "device revoked"
+            return InboundHostFrame.PeerRevoked(reason = reason)
         }
 
         if (obj.str("jsonrpc") == "2.0") {

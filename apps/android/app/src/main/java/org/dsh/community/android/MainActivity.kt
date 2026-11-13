@@ -13,10 +13,12 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import org.dsh.community.android.crypto.DeviceIdentity
+import org.dsh.community.android.crypto.TrustedHostRecord
 import org.dsh.community.android.protocol.JsonObject
 import org.dsh.community.android.protocol.OfficialSessionEvent
 import org.dsh.community.android.protocol.SessionRef
 import org.dsh.community.android.service.BackgroundLifecycleStats
+import org.dsh.community.android.service.DiscoverySelectOutcome
 import org.dsh.community.android.service.RemoteSessionService
 import org.dsh.community.android.transport.DiscoveredLanHost
 import org.dsh.community.android.transport.LanMdnsDiscoverer
@@ -39,6 +41,8 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
     private lateinit var deviceIdView: TextView
     private lateinit var metricsView: TextView
     private lateinit var pairingInput: EditText
+    private lateinit var savedHostsContainer: LinearLayout
+    private lateinit var discoveredHostsContainer: LinearLayout
     private lateinit var sessionIdInput: EditText
     private lateinit var sessionChipsContainer: LinearLayout
     private lateinit var promptInput: EditText
@@ -60,6 +64,12 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
     private var lastIdentity: DeviceIdentity? = null
     private var lastStats: BackgroundLifecycleStats? = null
     private val discoveredHosts = LinkedHashMap<String, DiscoveredLanHost>()
+
+    private data class ChipSpec(
+        val label: String,
+        val backgroundColor: Int,
+        val onClick: () -> Unit,
+    )
 
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
@@ -88,6 +98,8 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
         deviceIdView = findViewById(R.id.tv_device_id)
         metricsView = findViewById(R.id.tv_metrics)
         pairingInput = findViewById(R.id.et_pairing_json)
+        savedHostsContainer = findViewById(R.id.ll_saved_hosts)
+        discoveredHostsContainer = findViewById(R.id.ll_discovered_hosts)
         sessionIdInput = findViewById(R.id.et_session_id)
         sessionChipsContainer = findViewById(R.id.ll_session_chips)
         promptInput = findViewById(R.id.et_prompt)
@@ -120,7 +132,18 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
         }
 
         findViewById<Button>(R.id.btn_disconnect).setOnClickListener {
+            stickyStatusError = null
             service?.disconnect()
+        }
+
+        findViewById<Button>(R.id.btn_reconnect).setOnClickListener {
+            stickyStatusError = null
+            service?.reconnectSavedHost()
+        }
+
+        findViewById<Button>(R.id.btn_forget_host).setOnClickListener {
+            stickyStatusError = null
+            service?.forgetHost()
         }
 
         findViewById<Button>(R.id.btn_sessions).setOnClickListener {
@@ -200,17 +223,52 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
         message: String,
     ) {
         runOnUiThread {
-            if (phase != RemoteConnectionPhase.DISCONNECTED) {
+            if (phase == RemoteConnectionPhase.REVOKED) {
+                stickyStatusError = "[REVOKED] carrier=${carrier?.wireName ?: "-"} epoch=$epoch — $message"
+            } else if (phase != RemoteConnectionPhase.DISCONNECTED) {
                 stickyStatusError = null
             }
             val sticky = stickyStatusError
-            statusView.text = if (phase == RemoteConnectionPhase.DISCONNECTED && sticky != null) {
+            statusView.text = if (
+                sticky != null && (
+                    sticky.startsWith("[REJECTED]") ||
+                        phase == RemoteConnectionPhase.DISCONNECTED ||
+                        phase == RemoteConnectionPhase.REVOKED
+                )
+            ) {
                 sticky
             } else {
                 "[$phase] carrier=${carrier?.wireName ?: "-"} epoch=$epoch — $message"
             }
             val backingLabel = lastIdentity?.backing ?: "Keystore-wrapped"
             deviceIdView.text = "Device ID ($backingLabel): $deviceId"
+        }
+    }
+
+    override fun onTrustedHostsChanged(hosts: List<TrustedHostRecord>, activeFingerprint: String?) {
+        runOnUiThread {
+            renderSavedHostChips(hosts, activeFingerprint)
+        }
+    }
+
+    override fun onPeerRevoked(hostFingerprint: String, reason: String) {
+        runOnUiThread {
+            val banner = "[REVOKED] ${hostFingerprint.take(12)}...: $reason"
+            stickyStatusError = banner
+            statusView.text = banner
+            appendLog("Peer revoked by Host (${hostFingerprint.take(12)}...): $reason")
+        }
+    }
+
+    override fun onStreamReset(sessionId: String, reason: String) {
+        runOnUiThread {
+            if (attachedSessionId == null || attachedSessionId == sessionId) {
+                streamBuffer.setLength(0)
+                inReasoningBlock = false
+                assistantStreamView.text = getString(R.string.assistant_stream_empty)
+            }
+            appendLog("[stream.reset #$sessionId] $reason — resyncing from official Host")
+            service?.attachSessionAsync(sessionId)
         }
     }
 
@@ -341,27 +399,84 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
     }
 
     private fun renderSessionChips(sessions: List<SessionRef>) {
-        sessionChipsContainer.removeAllViews()
-        if (sessions.isEmpty()) {
+        val selectedId = sessionIdInput.text?.toString()?.trim()
+        renderChipRow(
+            container = sessionChipsContainer,
+            emptyHintResId = R.string.session_picker_hint,
+            chips = sessions.map { session ->
+                val label = session.title?.take(22)?.takeIf { it.isNotBlank() } ?: session.id.take(14)
+                val selected = session.id == selectedId
+                ChipSpec(
+                    label = label,
+                    backgroundColor = if (selected) 0xFF00695C.toInt() else 0xFF263238.toInt(),
+                    onClick = { selectAndAttachSession(session.id) },
+                )
+            },
+        )
+    }
+
+    private fun renderSavedHostChips(hosts: List<TrustedHostRecord>, activeFingerprint: String?) {
+        renderChipRow(
+            container = savedHostsContainer,
+            emptyHintResId = R.string.saved_hosts_hint,
+            chips = hosts.map { host ->
+                val prefix = if (host.isRevoked) "[REVOKED] " else "Saved: "
+                val suffix = " (${host.hostFingerprint.take(8)})"
+                val bg = when {
+                    host.isRevoked -> 0xFF7F1D1D.toInt()
+                    host.hostFingerprint == activeFingerprint -> 0xFF00695C.toInt()
+                    else -> 0xFF37474F.toInt()
+                }
+                ChipSpec(
+                    label = "$prefix${host.label.take(16)}$suffix",
+                    backgroundColor = bg,
+                    onClick = {
+                        stickyStatusError = null
+                        service?.reconnectSavedHost(host.hostFingerprint)
+                    },
+                )
+            },
+        )
+    }
+
+    private fun renderDiscoveredHostChips() {
+        renderChipRow(
+            container = discoveredHostsContainer,
+            emptyHintResId = R.string.mdns_hosts_hint,
+            chips = discoveredHosts.values.map { host ->
+                val fpShort = host.hostFingerprint?.take(8) ?: "?"
+                ChipSpec(
+                    label = "mDNS: ${host.hostDisplayLabel.take(14)} ($fpShort)",
+                    backgroundColor = 0xFF1E3A5F.toInt(),
+                    onClick = { onDiscoveredHostChipClicked(host) },
+                )
+            },
+        )
+    }
+
+    private fun renderChipRow(
+        container: LinearLayout,
+        emptyHintResId: Int,
+        chips: List<ChipSpec>,
+    ) {
+        container.removeAllViews()
+        if (chips.isEmpty()) {
             val hint = TextView(this).apply {
-                text = getString(R.string.session_picker_hint)
+                text = getString(emptyHintResId)
                 setTextColor(0xFF78909C.toInt())
                 textSize = 11f
             }
-            sessionChipsContainer.addView(hint)
+            container.addView(hint)
             return
         }
-        val selectedId = sessionIdInput.text?.toString()?.trim()
-        for (session in sessions) {
+        for (chip in chips) {
             val btn = Button(this).apply {
-                val label = session.title?.take(22)?.takeIf { it.isNotBlank() } ?: session.id.take(14)
-                text = label
+                text = chip.label
                 textSize = 11f
                 isAllCaps = false
-                val selected = session.id == selectedId
-                setBackgroundColor(if (selected) 0xFF00695C.toInt() else 0xFF263238.toInt())
+                setBackgroundColor(chip.backgroundColor)
                 setTextColor(0xFFFFFFFF.toInt())
-                setOnClickListener { selectAndAttachSession(session.id) }
+                setOnClickListener { chip.onClick() }
             }
             val lp = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -369,7 +484,31 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
             ).apply {
                 marginEnd = 12
             }
-            sessionChipsContainer.addView(btn, lp)
+            container.addView(btn, lp)
+        }
+    }
+
+    private fun onDiscoveredHostChipClicked(host: DiscoveredLanHost) {
+        when (service?.applyDiscoveredLanHost(host)) {
+            DiscoverySelectOutcome.UPDATED_AND_RECONNECTING -> {
+                stickyStatusError = null
+                appendLog("mDNS matched trusted Host (${host.hostFingerprint?.take(12)}...); updated LAN URL to ${host.endpointUrl}")
+            }
+            DiscoverySelectOutcome.UNKNOWN_UNPAIRED_HOST -> {
+                val msg = "[UNPAIRED] mDNS host ${host.hostDisplayLabel} is untrusted — scan QR or paste dsh-remote:// URI (discovery !== trust)"
+                stickyStatusError = msg
+                statusView.text = msg
+                appendLog(msg)
+            }
+            DiscoverySelectOutcome.REVOKED_HOST -> {
+                val msg = "[REVOKED] Discovered host ${host.hostFingerprint?.take(12)}... is revoked — Forget & re-pair after Host re-trusts"
+                stickyStatusError = msg
+                statusView.text = msg
+                appendLog(msg)
+            }
+            DiscoverySelectOutcome.MISSING_FINGERPRINT, null -> {
+                appendLog("Discovered mDNS host ${host.hostDisplayLabel} missing hostFingerprint")
+            }
         }
     }
 
@@ -412,6 +551,14 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
         }
     }
 
+    internal fun handleDiscoveredHostForUi(host: DiscoveredLanHost) {
+        discoveredHosts[host.endpointUrl] = host
+        runOnUiThread {
+            appendLog("mDNS Host: ${host.hostDisplayLabel} -> ${host.endpointUrl} fp=${host.hostFingerprint ?: "?"}")
+            renderDiscoveredHostChips()
+        }
+    }
+
     private fun startMdnsScan() {
         val discoverer = LanMdnsDiscoverer(this)
         mdnsDiscoverer = discoverer
@@ -419,10 +566,7 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
         discoverer.start(
             object : LanMdnsDiscoverer.Listener {
                 override fun onHostFound(host: DiscoveredLanHost) {
-                    discoveredHosts[host.endpointUrl] = host
-                    runOnUiThread {
-                        appendLog("mDNS Host: ${host.hostDisplayLabel} -> ${host.endpointUrl} fp=${host.hostFingerprint ?: "?"}")
-                    }
+                    handleDiscoveredHostForUi(host)
                 }
 
                 override fun onDiscoveryFailed(errorCode: Int, reason: String) {

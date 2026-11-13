@@ -45,6 +45,7 @@ export class RemoteServerChannel {
   private idleTimer: NodeJS.Timeout | undefined = undefined
   private pendingInboundWork = 0
   private pendingOutboundFrames = 0
+  private revokeCloseTimer: NodeJS.Timeout | undefined = undefined
 
   constructor(
     readonly transport: FramedMessageTransport,
@@ -132,11 +133,66 @@ export class RemoteServerChannel {
   }
 
   terminate(code = 1000, reason = ''): void {
+    if (this.revokeCloseTimer) {
+      clearTimeout(this.revokeCloseTimer)
+      this.revokeCloseTimer = undefined
+    }
     if (this.state === 'CLOSED') return
     this.cleanup()
     try {
       this.transport.close(code, reason)
     } catch {}
+  }
+
+  /**
+   * Sends a best-effort encrypted `peer.revoked` notification before closing
+   * the transport, while synchronously moving the channel to `CLOSED` so no
+   * further RPCs or events can be processed for the revoked peer.
+   */
+  notifyRevoked(reason = 'device revoked', code = 1008): void {
+    if (this.state === 'CLOSED') return
+
+    const closeTransport = (): void => {
+      if (this.revokeCloseTimer) {
+        clearTimeout(this.revokeCloseTimer)
+        this.revokeCloseTimer = undefined
+      }
+      try {
+        this.transport.close(code, reason)
+      } catch {}
+    }
+
+    const scheduleDelayedClose = (delayMs: number): void => {
+      if (this.revokeCloseTimer) {
+        clearTimeout(this.revokeCloseTimer)
+      }
+      this.revokeCloseTimer = setTimeout(closeTransport, delayMs)
+      this.revokeCloseTimer.unref?.()
+    }
+
+    const canSendNotice =
+      this.noiseSession !== undefined &&
+      this.transport.isWritable() &&
+      (this.state === 'CHANNEL_AUTHENTICATED' ||
+        this.state === 'PAIRING_PENDING' ||
+        this.state === 'DEVICE_AUTHORIZED' ||
+        this.state === 'ACTIVE')
+
+    let queued = false
+    if (canSendNotice) {
+      // Reserve fallback close before queuing write so synchronous transport flushes shrink delay cleanly.
+      scheduleDelayedClose(80)
+      queued = this.sendEncrypted(
+        textEncoder.encode(JSON.stringify({ type: 'peer.revoked', reason })),
+        () => scheduleDelayedClose(15),
+      )
+    }
+
+    this.cleanup()
+
+    if (!queued) {
+      closeTransport()
+    }
   }
 
   canWriteControlBytes(byteLength: number): boolean {
@@ -161,9 +217,9 @@ export class RemoteServerChannel {
     }
   }
 
-  private sendEncrypted(plaintext: Uint8Array): void {
+  private sendEncrypted(plaintext: Uint8Array, onFlushed?: () => void): boolean {
     if (this.state === 'CLOSED' || !this.noiseSession || !this.transport.isWritable()) {
-      return
+      return false
     }
 
     // P0-4: Check outbound frame size BEFORE encryption & allocation
@@ -171,7 +227,7 @@ export class RemoteServerChannel {
     const expectedCipherLength = plaintext.byteLength + 16
     if (expectedCipherLength > this.ctx.bounds.maxFrameBytes) {
       this.terminate(1009, 'outbound frame size exceeds maxFrameBytes')
-      return
+      return false
     }
 
     if (
@@ -179,7 +235,7 @@ export class RemoteServerChannel {
       this.pendingOutboundFrames >= this.ctx.bounds.maxOutboundQueue
     ) {
       this.terminate(1008, 'slow client: outbound buffer high-water mark exceeded')
-      return
+      return false
     }
 
     let ciphertext: Uint8Array
@@ -187,20 +243,25 @@ export class RemoteServerChannel {
       ciphertext = this.noiseSession.encrypt(plaintext)
     } catch {
       this.terminate(1008, 'encryption failure')
-      return
+      return false
     }
 
     if (ciphertext.byteLength > this.ctx.bounds.maxFrameBytes) {
       this.terminate(1009, 'outbound ciphertext exceeds maxFrameBytes')
-      return
+      return false
     }
 
     const done = this.trackControlSend()
     try {
-      this.transport.send(ciphertext, done)
+      this.transport.send(ciphertext, () => {
+        done()
+        onFlushed?.()
+      })
+      return true
     } catch {
       done()
       this.terminate(1008, 'transport send failed')
+      return false
     }
   }
 
@@ -327,7 +388,7 @@ export class RemoteServerChannel {
     }
 
     if (record.revokedAt !== undefined) {
-      this.terminate(1008, 'device is revoked')
+      this.notifyRevoked('device is revoked', 1008)
       return
     }
 
@@ -486,4 +547,29 @@ export class RemoteServerChannel {
       this.sendEncrypted(textEncoder.encode(JSON.stringify(errResp)))
     }
   }
+}
+
+/**
+ * Shared revocation teardown across all carrier maps: notifies each live
+ * connection/channel bound to `deviceId` and clears the device entry while
+ * isolating individual close failures.
+ */
+export function revokeDeviceChannels<
+  T extends { notifyRevoked(reason?: string, code?: number): void },
+>(
+  deviceMap: Map<string, Set<T>>,
+  deviceId: string,
+  reason = 'device revoked',
+  code = 1008,
+): void {
+  const entries = deviceMap.get(deviceId)
+  if (!entries) return
+  for (const entry of Array.from(entries)) {
+    try {
+      entry.notifyRevoked(reason, code)
+    } catch {
+      // Fault isolation: one connection error does not block sibling revocations
+    }
+  }
+  deviceMap.delete(deviceId)
 }
