@@ -258,10 +258,14 @@ export class SelfHostedSignalingServer {
       this.handleUpgrade(req, socket as Socket, head)
     })
 
+    server.headersTimeout = Math.min(server.headersTimeout, Math.max(this.registerTimeoutMs, 5_000))
+    server.requestTimeout = Math.max(this.registerTimeoutMs, 10_000)
+
     await new Promise<void>((resolve, reject) => {
       server.once('error', reject)
       server.listen(bindPort, bindHost, () => {
         server.removeListener('error', reject)
+        server.on('error', () => {})
         resolve()
       })
     })
@@ -361,7 +365,6 @@ export class SelfHostedSignalingServer {
 
     socket.on('data', (chunk: Buffer) => {
       try {
-        this.resetPeerIdle(peer)
         peer.parser.push(chunk)
       } catch {
         this.terminatePeer(peer, 1008, 'internal signaling error')
@@ -432,6 +435,11 @@ export class SelfHostedSignalingServer {
     }
 
     if (frame.opcode === WebSocketOpcode.PING) {
+      if (!this.consumePeerRateBudget(peer)) {
+        this.terminatePeer(peer, 1008, 'signaling rate limit exceeded')
+        return
+      }
+      this.resetPeerIdle(peer)
       if (peer.pendingOutboundFrames >= this.maxOutboundQueue) {
         this.terminatePeer(peer, 1008, 'slow signaling peer')
         return
@@ -445,6 +453,11 @@ export class SelfHostedSignalingServer {
     }
 
     if (frame.opcode === WebSocketOpcode.PONG) {
+      if (!this.consumePeerRateBudget(peer)) {
+        this.terminatePeer(peer, 1008, 'signaling rate limit exceeded')
+        return
+      }
+      this.resetPeerIdle(peer)
       return
     }
 
@@ -457,6 +470,7 @@ export class SelfHostedSignalingServer {
       this.terminatePeer(peer, 1008, 'signaling rate limit exceeded')
       return
     }
+    this.resetPeerIdle(peer)
 
     let parsed: Record<string, unknown>
     try {
@@ -733,12 +747,22 @@ export class SelfHostedSignalingServer {
   private terminatePeer(peer: SignalingPeer, code: number, reason: string): void {
     const wasClosed = peer.closed
     this.cleanupPeer(peer)
-    if (!wasClosed) {
+    if (!wasClosed && !peer.socket.destroyed) {
+      const closeFrame = encodeCloseFrame(code, reason)
+      const forceTimer = setTimeout(() => {
+        if (!peer.socket.destroyed) peer.socket.destroy()
+      }, 100)
+      forceTimer.unref?.()
       try {
         if (peer.socket.writable) {
-          peer.socket.write(encodeCloseFrame(code, reason))
+          peer.socket.end(closeFrame, () => {
+            clearTimeout(forceTimer)
+            if (!peer.socket.destroyed) peer.socket.destroy()
+          })
+          return
         }
       } catch {}
+      clearTimeout(forceTimer)
     }
     try {
       if (!peer.socket.destroyed) {
@@ -748,7 +772,7 @@ export class SelfHostedSignalingServer {
   }
 
   async stop(): Promise<void> {
-    if (!this.isRunning) return
+    if (!this.isRunning && !this.server) return
     this.isRunning = false
 
     for (const [socket, timer] of this.preUpgradeSockets.entries()) {
@@ -765,10 +789,12 @@ export class SelfHostedSignalingServer {
     this.rooms.clear()
 
     if (this.server) {
-      await new Promise<void>((resolve) => {
-        this.server!.close(() => resolve())
-      })
+      const server = this.server
       this.server = undefined
+      server.closeAllConnections?.()
+      await new Promise<void>((resolve) => {
+        server.close(() => resolve())
+      })
     }
   }
 }

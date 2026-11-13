@@ -24,10 +24,22 @@ export function officialSessionRoot(dshHome: string): string {
 export function listOfficialSessions(root: string): OfficialSessionRef[] {
   if (!existsSync(root)) return []
   const found: OfficialSessionRef[] = []
-  for (const project of readdirSync(root, { withFileTypes: true })) {
+  let projects
+  try {
+    projects = readdirSync(root, { withFileTypes: true })
+  } catch {
+    return []
+  }
+  for (const project of projects) {
     if (!project.isDirectory()) continue
     const projectDir = join(root, project.name)
-    for (const session of readdirSync(projectDir, { withFileTypes: true })) {
+    let sessions
+    try {
+      sessions = readdirSync(projectDir, { withFileTypes: true })
+    } catch {
+      continue
+    }
+    for (const session of sessions) {
       if (!session.isDirectory()) continue
       const sessionDir = join(projectDir, session.name)
       for (const file of OFFICIAL_SESSION_FILES) {

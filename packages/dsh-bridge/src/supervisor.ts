@@ -93,71 +93,84 @@ export function createWebSupervisor(options: WebSupervisorOptions): WebSuperviso
       const exitResult = deferred<void>()
       exited = exitResult.promise
       let settled = false
-      const startupCleanups: Array<() => void> = []
+      let timer: ReturnType<typeof setTimeout> | undefined
+      const streamCleanups: Array<() => void> = []
       const stdoutDiagnostic = credentialSafeDiagnostic(appendOutput)
       const stderrDiagnostic = credentialSafeDiagnostic(appendOutput)
 
-      const cleanupStartup = (): void => {
-        clearTimeout(timer)
-        for (const dispose of startupCleanups.splice(0)) dispose()
+      const stopTimer = (): void => {
+        if (timer !== undefined) {
+          clearTimeout(timer)
+          timer = undefined
+        }
+      }
+      const disposeStreams = (): void => {
+        for (const dispose of streamCleanups.splice(0)) dispose()
+        stdoutDiagnostic.flush()
+        stderrDiagnostic.flush()
       }
       // Failure must not surface until the doomed child is confirmed dead,
       // or the next generation could start while this one is still alive.
       const failAfterChildExit = async (error: unknown): Promise<void> => {
         if (settled) return
         settled = true
-        cleanupStartup()
+        stopTimer()
         spawned.kill('SIGTERM')
-        let timer: ReturnType<typeof setTimeout> | undefined
+        let shutdownTimer: ReturnType<typeof setTimeout> | undefined
         const outcome = await Promise.race([
           exitResult.promise.then(() => 'closed' as const),
           new Promise<'timeout'>((resolve) => {
-            timer = setTimeout(() => {
+            shutdownTimer = setTimeout(() => {
               resolve('timeout')
             }, shutdownTimeoutMs)
           }),
         ])
-        if (timer !== undefined) clearTimeout(timer)
+        if (shutdownTimer !== undefined) clearTimeout(shutdownTimer)
         if (outcome === 'timeout') {
           spawned.kill('SIGKILL')
           await exitResult.promise
         }
-        stdoutDiagnostic.flush()
-        stderrDiagnostic.flush()
+        disposeStreams()
         const diagnostic = output === '' ? '' : `\nHost output:\n${output}`
         reject(new Error(`${error instanceof Error ? error.message : String(error)}${diagnostic}`))
       }
       const acceptChunk = (chunk: string): void => {
         stdoutDiagnostic.push(chunk)
+        if (settled) return
         try {
           const url = parser.push(chunk)
           if (url === undefined || settled) return
           settled = true
           ready = true
-          cleanupStartup()
+          stopTimer()
           resolve(url)
         } catch (error) {
           void failAfterChildExit(error)
         }
       }
 
-      const timer = setTimeout(() => {
+      timer = setTimeout(() => {
         void failAfterChildExit(
           new Error(`official dsh web readiness timed out after ${String(readinessTimeoutMs)}ms`),
         )
       }, readinessTimeoutMs)
 
-      startupCleanups.push(spawned.stdout.onData(acceptChunk))
-      startupCleanups.push(spawned.stderr.onData((chunk) => {
+      streamCleanups.push(spawned.stdout.onData(acceptChunk))
+      streamCleanups.push(spawned.stderr.onData((chunk) => {
         stderrDiagnostic.push(chunk)
       }))
       spawned.onError((error) => {
         exitResult.resolve()
+        if (ready) {
+          disposeStreams()
+          return
+        }
         void failAfterChildExit(new Error(`official dsh web failed to spawn: ${error.message}`))
       })
       spawned.onExit((code, signal) => {
         exitResult.resolve()
         if (ready) {
+          disposeStreams()
           if (!shuttingDown) options.onUnexpectedExit?.({ code, signal })
           return
         }

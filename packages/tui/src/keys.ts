@@ -12,6 +12,8 @@ export interface KeyEvent {
   readonly return?: boolean
   readonly escape?: boolean
   readonly ctrl?: boolean
+  readonly backspace?: boolean
+  readonly delete?: boolean
 }
 
 export interface KeyHandlerDeps {
@@ -23,9 +25,19 @@ export interface KeyHandlerDeps {
   readonly toggleThinking: () => void
 }
 
+function dropLastCodePoint(text: string): string {
+  const chars = [...text]
+  chars.pop()
+  return chars.join('')
+}
+
 /** Handle one useInput callback (one keypress, possibly several characters). */
 export function handleKey(deps: KeyHandlerDeps, raw: string, key: KeyEvent = {}): void {
-  const list = key.return ? ['\r'] : [...raw].map((ch) => ch === '\n' ? '\r' : ch)
+  const list = key.return
+    ? ['\r']
+    : (raw === '' && (key.backspace || key.delete))
+      ? ['\x7f']
+      : [...raw].map((ch) => ch === '\n' ? '\r' : ch)
   for (const ch of list) {
     applyChar(deps, ch, key)
   }
@@ -60,6 +72,10 @@ function applyChar(deps: KeyHandlerDeps, ch: string, key: KeyEvent): void {
       })
       return
     }
+    if (ch === '\x7f' || ch === '\b') {
+      store.setDraft(dropLastCodePoint(state.draft))
+      return
+    }
     if (ch >= ' ' && ch !== '\x7f') store.setDraft(state.draft + ch)
     return
   }
@@ -67,9 +83,13 @@ function applyChar(deps: KeyHandlerDeps, ch: string, key: KeyEvent): void {
   if (ch === '\r') {
     const trimmed = state.draft.trim()
     store.setDraft('')
-    if (trimmed === '/exit') process.exit(0)
+    if (trimmed === '/exit') deps.onExit()
     else if (trimmed === '/help') deps.showHelp()
     else if (trimmed !== '') deps.onSend(trimmed)
+    return
+  }
+  if (ch === '\x7f' || ch === '\b') {
+    store.setDraft(dropLastCodePoint(state.draft))
     return
   }
   if (ch === '\t') {
@@ -80,6 +100,9 @@ function applyChar(deps: KeyHandlerDeps, ch: string, key: KeyEvent): void {
     deps.onCancel()
     return
   }
-  if (ch === 'q' && key.ctrl) deps.onExit()
+  if (ch === 'q' && key.ctrl) {
+    deps.onExit()
+    return
+  }
   if (ch >= ' ' && ch !== '\x7f') store.setDraft(state.draft + ch)
 }

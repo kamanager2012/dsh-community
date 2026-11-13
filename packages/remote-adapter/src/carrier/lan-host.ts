@@ -181,10 +181,14 @@ export class HostLanCarrier {
         this.handleUpgrade(req, socket, head)
       })
 
+      server.headersTimeout = Math.min(server.headersTimeout, Math.max(this.bounds.handshakeTimeoutMs, 5_000))
+      server.requestTimeout = Math.max(this.bounds.handshakeTimeoutMs, 10_000)
+
       await new Promise<void>((resolve, reject) => {
         server.once('error', reject)
         server.listen(bindPort, bindHost, () => {
           server.removeListener('error', reject)
+          server.on('error', () => {})
           resolve()
         })
       })

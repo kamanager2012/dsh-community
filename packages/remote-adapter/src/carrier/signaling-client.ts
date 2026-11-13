@@ -149,6 +149,13 @@ export class SignalingClient {
     })
   }
 
+  sendPing(): void {
+    this.sendMessage({
+      v: 1,
+      type: 'ping',
+    })
+  }
+
   close(): void {
     const ws = this.ws
     this.ws = undefined

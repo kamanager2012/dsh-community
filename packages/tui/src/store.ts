@@ -107,7 +107,7 @@ export interface UiStore {
   setFatal(message: string): void
   setDraft(text: string): void
   showHelp(text: string): void
-  askApproval(prompt: ApprovalPrompt): Promise<string>
+  askApproval(prompt: ApprovalPrompt, signal?: AbortSignal): Promise<string>
   resolveApproval(outcome: string): void
   askQuestions(request: UserQuestionRequest): Promise<UserQuestionAnswer>
   resolveQuestions(answer: UserQuestionAnswer): void
@@ -118,7 +118,12 @@ export function createStore(): UiStore {
   let lastSeq = -1
   const listeners = new Set<() => void>()
   let approvalWaiter: ((outcome: string) => void) | undefined
-  let questionWaiter: ((answer: UserQuestionAnswer) => void) | undefined
+  let cleanupApprovalAbort: (() => void) | undefined
+  let questionWaiter: {
+    readonly resolve: (answer: UserQuestionAnswer) => void
+    readonly reject: (error: Error) => void
+  } | undefined
+  let cleanupQuestionAbort: (() => void) | undefined
 
   const emit = (): void => {
     for (const listener of listeners) listener()
@@ -233,21 +238,38 @@ export function createStore(): UiStore {
     showHelp(text) {
       set({ items: [...state.items, { kind: 'help', id: String(state.items.length), text }] })
     },
-    askApproval(prompt) {
+    askApproval(prompt, signal) {
       if (approvalWaiter !== undefined) {
         return Promise.reject(
           new Error('an approval prompt is already pending; resolve it before requesting another'),
         )
       }
+      if (signal?.aborted) {
+        return Promise.resolve('cancelled')
+      }
       set({ approval: prompt })
       return new Promise<string>((resolve) => {
         approvalWaiter = resolve
+        if (signal !== undefined) {
+          const onAbort = (): void => {
+            cleanupApprovalAbort = undefined
+            const waiter = approvalWaiter
+            approvalWaiter = undefined
+            set({ approval: undefined })
+            waiter?.('cancelled')
+          }
+          signal.addEventListener('abort', onAbort, { once: true })
+          cleanupApprovalAbort = () => signal.removeEventListener('abort', onAbort)
+        }
       })
     },
     resolveApproval(outcome) {
-      set({ approval: undefined })
-      approvalWaiter?.(outcome)
+      cleanupApprovalAbort?.()
+      cleanupApprovalAbort = undefined
+      const waiter = approvalWaiter
       approvalWaiter = undefined
+      set({ approval: undefined })
+      waiter?.(outcome)
     },
     askQuestions(request) {
       if (questionWaiter !== undefined) {
@@ -255,15 +277,33 @@ export function createStore(): UiStore {
           new Error('a question prompt is already pending; answer it before requesting another'),
         )
       }
+      if (request.signal?.aborted) {
+        return Promise.reject(new Error('question request aborted'))
+      }
       set({ questions: { request } })
-      return new Promise<UserQuestionAnswer>((resolve) => {
-        questionWaiter = resolve
+      return new Promise<UserQuestionAnswer>((resolve, reject) => {
+        questionWaiter = { resolve, reject }
+        const signal = request.signal
+        if (signal !== undefined) {
+          const onAbort = (): void => {
+            cleanupQuestionAbort = undefined
+            const waiter = questionWaiter
+            questionWaiter = undefined
+            set({ questions: undefined })
+            waiter?.reject(new Error('question request aborted'))
+          }
+          signal.addEventListener('abort', onAbort, { once: true })
+          cleanupQuestionAbort = () => signal.removeEventListener('abort', onAbort)
+        }
       })
     },
     resolveQuestions(answer) {
-      set({ questions: undefined })
-      questionWaiter?.(answer)
+      cleanupQuestionAbort?.()
+      cleanupQuestionAbort = undefined
+      const waiter = questionWaiter
       questionWaiter = undefined
+      set({ questions: undefined })
+      waiter?.resolve(answer)
     },
   }
 }

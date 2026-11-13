@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process'
+import { StringDecoder } from 'node:string_decoder'
 import type { OfficialWebBind } from '@dsh-community/shared-types'
 
 export interface HostChild {
@@ -32,12 +33,25 @@ export interface SpawnOfficialWebOptions {
 function streamAdapter(stream: NodeJS.ReadableStream): HostChild['stdout'] {
   return {
     onData(listener) {
+      const decoder = new StringDecoder('utf8')
+      let flushed = false
       const accept = (chunk: string | Buffer): void => {
-        listener(chunk.toString())
+        const text = typeof chunk === 'string' ? chunk : decoder.write(chunk)
+        if (text !== '') listener(text)
+      }
+      const flush = (): void => {
+        if (flushed) return
+        flushed = true
+        const tail = decoder.end()
+        if (tail !== '') listener(tail)
       }
       stream.on('data', accept)
+      stream.once('end', flush)
+      stream.once('close', flush)
       return () => {
         stream.off('data', accept)
+        stream.off('end', flush)
+        stream.off('close', flush)
       }
     },
   }
@@ -64,7 +78,11 @@ export function adaptNodeChild(child: ChildProcess): HostChild {
       }
     },
     kill(signal) {
-      child.kill(signal)
+      try {
+        if (child.exitCode === null && child.signalCode === null) {
+          child.kill(signal)
+        }
+      } catch {}
     },
   }
 }

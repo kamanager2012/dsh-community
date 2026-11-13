@@ -67,6 +67,12 @@ function validateMaxMessages(limit: number | undefined): number {
   return limit
 }
 
+function zeroizeBuffer(buf: unknown): void {
+  if (Buffer.isBuffer(buf) || buf instanceof Uint8Array) {
+    buf.fill(0)
+  }
+}
+
 export class NoiseInitiatorSession {
   private state: NoiseSessionState = 'NEW'
   private readonly noise: NoiseInstance
@@ -216,6 +222,11 @@ export class NoiseInitiatorSession {
     this.state = 'CLOSED'
     this.sendCipher = undefined
     this.recvCipher = undefined
+    zeroizeBuffer(this.noise.tx)
+    zeroizeBuffer(this.noise.rx)
+    zeroizeBuffer(this.noise.re)
+    zeroizeBuffer(this.noise.hash)
+    zeroizeBuffer(this.noise.s?.secretKey)
   }
 }
 
@@ -384,5 +395,10 @@ export class NoiseResponderSession {
     this.state = 'CLOSED'
     this.sendCipher = undefined
     this.recvCipher = undefined
+    zeroizeBuffer(this.noise.tx)
+    zeroizeBuffer(this.noise.rx)
+    zeroizeBuffer(this.noise.re)
+    zeroizeBuffer(this.noise.hash)
+    zeroizeBuffer(this.noise.s?.secretKey)
   }
 }

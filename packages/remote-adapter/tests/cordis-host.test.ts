@@ -1,3 +1,4 @@
+import { request as httpRequest } from 'node:http'
 import { mkdtempSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -601,6 +602,59 @@ describe('OfficialHostCordisBridge & Persistent Community Storage', () => {
       await control.close()
       await bridge.stop()
       await relay.stop()
+    }
+  })
+
+  it('rejects non-loopback Host headers on createBridgeControlServer and reads only 16KiB header slice of JSONL logs', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-host-ctrl-sec-'))
+    const dshHome = join(root, 'dsh-home')
+    const configDir = join(root, 'remote-cfg')
+    const hugeDir = join(dshHome, 'sessions', 's-huge')
+    mkdirSync(hugeDir, { recursive: true })
+    const firstLine = JSON.stringify({ id: 's-huge', meta: { cwd: '/workspace/huge-repo' } })
+    writeFileSync(
+      join(hugeDir, 'session.jsonl'),
+      `${firstLine}\n${'x'.repeat(256 * 1024)}\n`,
+      'utf8',
+    )
+
+    const ctx = new FakeRootContext()
+    const bridge = new OfficialHostCordisBridge({
+      ctx,
+      configDir,
+      dshHome,
+      carrier: { enabled: true, host: '127.0.0.1', port: 0 },
+    })
+    await bridge.start()
+    const control = await createBridgeControlServer(bridge)
+
+    try {
+      const refs = listOfficialSessionRefsFromRoot(join(dshHome, 'sessions'))
+      expect(refs).toEqual([{ id: 's-huge', title: '/workspace/huge-repo' }])
+
+      const port = Number(new URL(control.url).port)
+      const status = await new Promise<number>((resolve, reject) => {
+        const req = httpRequest(
+          {
+            host: '127.0.0.1',
+            port,
+            path: '/status',
+            method: 'GET',
+            headers: { Host: 'evil.example:8080' },
+          },
+          (res) => {
+            res.resume()
+            resolve(res.statusCode ?? 0)
+          },
+        )
+        req.on('error', reject)
+        req.end()
+      })
+      expect(status).toBe(403)
+    } finally {
+      await control.close()
+      await bridge.stop()
+      rmSync(root, { recursive: true, force: true })
     }
   })
 })

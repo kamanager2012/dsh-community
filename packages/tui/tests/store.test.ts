@@ -164,5 +164,59 @@ describe('store interaction flows', () => {
       expect(sent).toEqual(['你好'])
       expect(store.state.draft).toBe('')
     })
+
+    it('supports backspace and DEL codepoint deletion in both chat and free-text question modes', async () => {
+      const store = createStore()
+      const { deps: d } = deps(store)
+      handleKey(d, '你好🚀', {})
+      handleKey(d, '', { backspace: true })
+      expect(store.state.draft).toBe('你好')
+      handleKey(d, '\x7f', {})
+      expect(store.state.draft).toBe('你')
+      handleKey(d, '\b', {})
+      expect(store.state.draft).toBe('')
+
+      const pending = store.askQuestions({ questions: [{ id: 'q1', question: '说明?' }] })
+      handleKey(d, 'ab🚀', {})
+      handleKey(d, '', { delete: true })
+      expect(store.state.draft).toBe('ab')
+      handleKey(d, '', { return: true })
+      await expect(pending).resolves.toEqual({ answers: [{ id: 'q1', selected: [], custom: 'ab' }] })
+    })
+
+    it('/exit invokes deps.onExit instead of calling process.exit directly', () => {
+      const store = createStore()
+      const base = deps(store)
+      let exited = 0
+      const d = {
+        ...base.deps,
+        onExit: () => {
+          exited += 1
+        },
+      }
+      handleKey(d, '/exit', {})
+      handleKey(d, '', { return: true })
+      expect(exited).toBe(1)
+      expect(base.sent).toEqual([])
+    })
+
+    it('cleans up pending approval and question prompts when AbortSignal fires', async () => {
+      const store = createStore()
+      const ac1 = new AbortController()
+      const approvalPromise = store.askApproval({ toolName: 'bash' }, ac1.signal)
+      expect(store.state.approval).toBeDefined()
+      ac1.abort()
+      await expect(approvalPromise).resolves.toBe('cancelled')
+      expect(store.state.approval).toBeUndefined()
+
+      const ac2 = new AbortController()
+      const questionPromise = store.askQuestions(
+        { questions: [{ id: 'q-abort', question: '确定?' }], signal: ac2.signal },
+      )
+      expect(store.state.questions).toBeDefined()
+      ac2.abort()
+      await expect(questionPromise).rejects.toThrow(/aborted/i)
+      expect(store.state.questions).toBeUndefined()
+    })
   })
 })

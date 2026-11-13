@@ -35,6 +35,14 @@ export interface HostWebRtcCarrierOptions {
   readonly ice?: WebRtcIceConfigOptions | undefined
   /** Maximum time allowed for ICE + DataChannel opening per peer (default: 10s). */
   readonly iceConnectTimeoutMs?: number | undefined
+  /** Periodic signaling keepalive interval in ms (default: 20_000; 0 disables). */
+  readonly keepaliveIntervalMs?: number | undefined
+  /** Automatically reconnect to signaling server after unexpected disconnect (default: true). */
+  readonly reconnect?: boolean | undefined
+  /** Initial reconnect backoff delay in ms (default: 500). */
+  readonly reconnectMinDelayMs?: number | undefined
+  /** Maximum reconnect backoff delay in ms (default: 15_000). */
+  readonly reconnectMaxDelayMs?: number | undefined
   readonly core: RemoteAdapterCore
   readonly trustStore: DeviceTrustStore
   readonly hostIdentityStore: HostIdentityStore
@@ -55,6 +63,8 @@ interface HostPeerSession {
   closed: boolean
 }
 
+const MAX_ICE_QUEUE_ENTRIES = 64
+
 /**
  * Host WebRTC P2P carrier connecting to self-owned Signaling + STUN,
  * binding opened DataChannels directly to the shared Noise IK + RemoteServerChannel engine.
@@ -69,6 +79,11 @@ export class HostWebRtcCarrier {
   private signaling: SignalingClient | undefined = undefined
   private roomId: string | undefined = undefined
   private isRunning = false
+  private shouldRun = false
+  private lifecycleGeneration = 0
+  private reconnectAttempt = 0
+  private keepaliveTimer: NodeJS.Timeout | undefined = undefined
+  private reconnectTimer: NodeJS.Timeout | undefined = undefined
   private unsubscribeRevocations: (() => void) | undefined = undefined
   private readonly peersBySignalingId = new Map<string, HostPeerSession>()
   private readonly activeChannels = new Map<string, RemoteServerChannel>()
@@ -100,7 +115,7 @@ export class HostWebRtcCarrier {
   }
 
   async start(): Promise<void> {
-    if (this.isRunning) return
+    if (this.shouldRun || this.isRunning) return
 
     if (!this.isEnabled()) {
       throw new RemoteCryptoError(
@@ -116,30 +131,16 @@ export class HostWebRtcCarrier {
       )
     }
 
+    const gen = ++this.lifecycleGeneration
+    this.shouldRun = true
+    this.reconnectAttempt = 0
+
     try {
       this.hostKeyPair = await this.options.hostIdentityStore.loadOrCreate()
       this.roomId = this.options.roomId ?? this.hostKeyPair.identity.fingerprint
 
-      const signaling = new SignalingClient(this.options.signalingUrl)
-      signaling.setHandlers({
-        onOffer: (msg) => {
-          void this.handleOffer(msg.fromPeerId, msg.sdp)
-        },
-        onIceCandidate: (msg) => {
-          this.handleRemoteIce(msg.fromPeerId, msg.candidate)
-        },
-        onPeerLeft: (peerId) => {
-          const entry = this.peersBySignalingId.get(peerId)
-          if (entry && !entry.channel) {
-            this.teardownPeerSession(entry, 1001, 'peer left signaling before datachannel opened')
-          }
-        },
-        onClose: () => {
-          if (this.isRunning) {
-            this.signaling = undefined
-          }
-        },
-      })
+      const signaling = this.createConfiguredSignalingClient(gen)
+      this.signaling = signaling
 
       await signaling.registerHost({
         roomId: this.roomId,
@@ -148,8 +149,13 @@ export class HostWebRtcCarrier {
         timeoutMs: this.bounds.handshakeTimeoutMs,
       })
 
-      this.signaling = signaling
+      if (!this.shouldRun || gen !== this.lifecycleGeneration) {
+        signaling.close()
+        return
+      }
+
       this.isRunning = true
+      this.startKeepalive()
 
       this.unsubscribeRevocations = this.options.trustStore.subscribeRevocations((event) => {
         this.handleRevocation(event.deviceId)
@@ -158,6 +164,112 @@ export class HostWebRtcCarrier {
       await this.stop()
       throw err
     }
+  }
+
+  private createConfiguredSignalingClient(gen: number): SignalingClient {
+    const signaling = new SignalingClient(this.options.signalingUrl)
+    signaling.setHandlers({
+      onOffer: (msg) => {
+        void this.handleOffer(msg.fromPeerId, msg.sdp)
+      },
+      onIceCandidate: (msg) => {
+        this.handleRemoteIce(msg.fromPeerId, msg.candidate)
+      },
+      onPeerLeft: (peerId) => {
+        const entry = this.peersBySignalingId.get(peerId)
+        if (entry && !entry.channel) {
+          this.teardownPeerSession(entry, 1001, 'peer left signaling before datachannel opened')
+        }
+      },
+      onClose: () => {
+        if (this.signaling !== signaling) return
+        this.clearKeepalive()
+        this.signaling = undefined
+        for (const entry of Array.from(this.peersBySignalingId.values())) {
+          if (!entry.channel) {
+            this.teardownPeerSession(entry, 1001, 'signaling closed before datachannel opened')
+          }
+        }
+        if (this.shouldRun && gen === this.lifecycleGeneration && (this.options.reconnect ?? true)) {
+          this.scheduleReconnect(gen)
+        }
+      },
+    })
+    return signaling
+  }
+
+  private clearKeepalive(): void {
+    if (this.keepaliveTimer) {
+      clearInterval(this.keepaliveTimer)
+      this.keepaliveTimer = undefined
+    }
+  }
+
+  private clearReconnect(): void {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer)
+      this.reconnectTimer = undefined
+    }
+  }
+
+  private startKeepalive(): void {
+    this.clearKeepalive()
+    const intervalMs = this.options.keepaliveIntervalMs ?? 20_000
+    if (intervalMs <= 0 || !Number.isFinite(intervalMs)) return
+    this.keepaliveTimer = setInterval(() => {
+      if (!this.shouldRun || !this.signaling?.isOpen()) return
+      try {
+        this.signaling.sendPing()
+      } catch {}
+    }, intervalMs)
+    this.keepaliveTimer.unref?.()
+  }
+
+  private scheduleReconnect(gen: number): void {
+    this.clearReconnect()
+    if (!this.shouldRun || gen !== this.lifecycleGeneration) return
+    const minDelayMs = Math.max(25, this.options.reconnectMinDelayMs ?? 500)
+    const maxDelayMs = Math.max(minDelayMs, this.options.reconnectMaxDelayMs ?? 15_000)
+    const delayMs = Math.min(maxDelayMs, minDelayMs * 2 ** Math.min(this.reconnectAttempt, 6))
+    this.reconnectAttempt += 1
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = undefined
+      void this.attemptReconnect(gen)
+    }, delayMs)
+    this.reconnectTimer.unref?.()
+  }
+
+  private async attemptReconnect(gen: number): Promise<void> {
+    if (!this.shouldRun || gen !== this.lifecycleGeneration || !this.roomId) return
+    const signaling = this.createConfiguredSignalingClient(gen)
+    this.signaling = signaling
+
+    try {
+      await signaling.registerHost({
+        roomId: this.roomId,
+        hostAuthSecret: this.options.hostAuthSecret,
+        joinToken: this.options.joinToken,
+        timeoutMs: this.bounds.handshakeTimeoutMs,
+      })
+    } catch {
+      if (this.signaling === signaling) {
+        this.signaling = undefined
+      }
+      signaling.close()
+      if (this.shouldRun && gen === this.lifecycleGeneration) {
+        this.scheduleReconnect(gen)
+      }
+      return
+    }
+
+    if (!this.shouldRun || gen !== this.lifecycleGeneration || this.signaling !== signaling) {
+      signaling.close()
+      return
+    }
+
+    this.reconnectAttempt = 0
+    this.isRunning = true
+    this.startKeepalive()
   }
 
   private async handleOffer(
@@ -196,7 +308,9 @@ export class HostWebRtcCarrier {
       if (entry.closed || !this.signaling?.isOpen()) return
       const payload: RtcIceCandidatePayload | null = candidate ? candidate.toJSON() : null
       if (!entry.answerSent) {
-        entry.localIceBuffer.push(payload)
+        if (entry.localIceBuffer.length < MAX_ICE_QUEUE_ENTRIES) {
+          entry.localIceBuffer.push(payload)
+        }
         return
       }
       try {
@@ -295,6 +409,10 @@ export class HostWebRtcCarrier {
   private handleRemoteIce(fromPeerId: string, candidate: RtcIceCandidatePayload | null): void {
     const entry = this.peersBySignalingId.get(fromPeerId)
     if (!entry || entry.closed) return
+    if (entry.remoteIceQueue.length >= MAX_ICE_QUEUE_ENTRIES) {
+      this.teardownPeerSession(entry, 1009, 'ICE candidate queue limit exceeded')
+      return
+    }
     entry.remoteIceQueue.push(candidate)
     if (entry.remoteDescSet) {
       void this.flushRemoteIce(entry)
@@ -363,7 +481,11 @@ export class HostWebRtcCarrier {
   }
 
   async stop(): Promise<void> {
+    this.lifecycleGeneration += 1
+    this.shouldRun = false
     this.isRunning = false
+    this.clearKeepalive()
+    this.clearReconnect()
 
     if (this.unsubscribeRevocations) {
       try {

@@ -11,6 +11,8 @@ export function installProfileDeps(dir: string): { readonly ok: boolean; readonl
     cwd: dir,
     stdio: 'inherit',
     env: process.env,
+    shell: process.platform === 'win32',
+    windowsHide: true,
   })
   return { ok: result.status === 0, status: result.status }
 }
