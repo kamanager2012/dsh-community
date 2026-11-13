@@ -203,7 +203,13 @@ jobs:
       - name: Capture logcat and stop Android emulator
         if: always() && env.KVM_ENABLED == '1'
         run: |
-          adb logcat -d -t 250 > apps/android/app/build/r6-evidence/android-logcat.txt || true
+          mkdir -p apps/android/app/build/r6-evidence
+          {
+            echo "=== DshWebRtc & TestRunner Logcat ==="
+            adb logcat -d -s DshWebRtc:V TestRunner:V || true
+            echo "=== Recent Logcat Tail (250) ==="
+            adb logcat -d -t 250 || true
+          } > apps/android/app/build/r6-evidence/android-logcat.txt || true
           adb emu kill || true
 
       - name: Upload R6 emulator instrumentation acceptance evidence

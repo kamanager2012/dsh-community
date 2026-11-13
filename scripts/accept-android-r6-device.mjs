@@ -10,7 +10,7 @@
 import { execFileSync, spawn } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { networkInterfaces, tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
@@ -462,6 +462,26 @@ function installApkResilient(serial, apkPath) {
   }
 }
 
+function selectReachableHostIpv4() {
+  const candidates = []
+  for (const [name, entries] of Object.entries(networkInterfaces())) {
+    if (!entries) continue
+    for (const entry of entries) {
+      if (entry.family !== 'IPv4' || entry.internal) continue
+      if (entry.address.startsWith('127.') || entry.address.startsWith('169.254.')) continue
+      candidates.push({ name, address: entry.address })
+    }
+  }
+  const nonVirtual = candidates.filter(
+    ({ name }) => !/^(lo|docker|br-|veth|virbr|tun|tap|wg|cni|flannel|kube|cali)/i.test(name),
+  )
+  const sorted = [...(nonVirtual.length > 0 ? nonVirtual : candidates)].sort((a, b) => {
+    const rank = (n) => (/^(eth|en|wl)/i.test(n) ? 0 : 1)
+    return rank(a.name) - rank(b.name)
+  })
+  return { picked: sorted[0], candidates }
+}
+
 async function main() {
   const opts = parseArgs(process.argv.slice(2))
   logStep(`Inspecting APK purity (${opts.apk})`)
@@ -511,6 +531,23 @@ async function main() {
   const emulatedStunUrl =
     deviceInfo.isEmulator && stunPort ? `stun:10.0.2.2:${stunPort}` : hostStunUrl
 
+  const hostNet = selectReachableHostIpv4()
+  const hostIpv4 = hostNet.picked?.address
+  const useSingleEmulatorHostInterface = deviceInfo.isEmulator && Boolean(hostIpv4)
+  logStep(
+    `Host ICE network selection: candidates=${JSON.stringify(hostNet.candidates)} picked=${hostNet.picked ? `${hostNet.picked.name}:${hostNet.picked.address}` : 'none'} singleHostInterface=${useSingleEmulatorHostInterface}`,
+  )
+  const webrtcIceConfig = useSingleEmulatorHostInterface
+    ? {
+        iceInterfaceAddresses: { udp4: hostIpv4 },
+        iceStunGatherTimeoutSec: 1,
+      }
+    : {
+        ...(hostStunUrl ? { stunUrls: [hostStunUrl] } : {}),
+        iceAdditionalHostAddresses: ['127.0.0.1'],
+        iceStunGatherTimeoutSec: 2,
+      }
+
   const bridge = new OfficialHostCordisBridge({
     ctx,
     dshHome,
@@ -526,12 +563,8 @@ async function main() {
           webrtc: {
             enabled: true,
             signalingUrl,
-            ice: {
-              ...(hostStunUrl ? { stunUrls: [hostStunUrl] } : {}),
-              iceAdditionalHostAddresses: ['127.0.0.1'],
-              iceStunGatherTimeoutSec: 2,
-            },
-            iceConnectTimeoutMs: 12_000,
+            ice: webrtcIceConfig,
+            iceConnectTimeoutMs: 20_000,
           },
         }
       : {}),
@@ -702,6 +735,12 @@ async function main() {
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`)
     logStep(`Report written cleanly to ${opts.output}`)
   } catch (err) {
+    try {
+      const rtcLogs = adb(serial, ['logcat', '-d', '-s', 'DshWebRtc:V', 'TestRunner:V'], {
+        timeout: 10_000,
+      })
+      process.stderr.write(`[r6] DshWebRtc & TestRunner logcat on failure:\n${rtcLogs}\n`)
+    } catch {}
     try {
       const logTail = adb(serial, ['logcat', '-d', '-t', '120'], { timeout: 10_000 })
       process.stderr.write(`[r6] Recent adb logcat tail on failure:\n${logTail}\n`)
