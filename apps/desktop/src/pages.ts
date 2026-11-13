@@ -31,6 +31,10 @@ export interface OfficialSessionRow {
   readonly projectKey: string
   readonly transcript: string
   readonly updatedAt: string
+  readonly title?: string | undefined
+  readonly cwd?: string | undefined
+  readonly preview?: string | undefined
+  readonly model?: string | undefined
 }
 
 export interface OfficialSessionsPageModel {
@@ -180,11 +184,13 @@ function shellDocument(title: string, bodyOrRender: string | ((nonce: string) =>
       .pair-info { flex: 1 1 240px; min-width: 0; }
       .field-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
       .field label { display: block; color: #9aa3b2; font-size: 12px; margin-bottom: 4px; }
-      .field input[type="text"], .field input[type="number"], .field select {
+      .field input[type="text"], .field input[type="number"], .field select, input[type="search"] {
         width: 100%; box-sizing: border-box; background: #0b0d12; color: #d9dee8;
         border: 1px solid #2a303b; border-radius: 6px; padding: 7px 10px;
         font: 12px/1.4 ui-monospace, SFMono-Regular, monospace;
       }
+      .hidden-row { display: none; }
+      .session-sub { color: #9ea6b3; font-size: 12px; margin-top: 2px; font-family: system-ui, sans-serif; }
       .custom-host-input { margin-top: 6px; }
       .pending-item { border: 1px solid #2f6fed; border-radius: 8px; padding: 12px; margin-top: 10px; background: #0b1120; }
       .status-line { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 8px 0; }
@@ -281,23 +287,40 @@ export function renderAboutPage(model: AboutPageModel): string {
 }
 
 export function renderOfficialSessionsPage(model: OfficialSessionsPageModel): string {
+  const searchBar = model.sessions.length === 0
+    ? ''
+    : '<div class="field"><input id="session-filter" type="search" placeholder="搜索会话 ID / 标题 / 摘要 / 目录…" /></div>'
   const rows = model.sessions.length === 0
     ? '<p>官方 <code>~/.dsh/sessions</code> 里还没有 session。TUI / Web / 本窗口共用这一份，不会另建目录。</p>'
     : `<table>
-         <thead><tr><th>session</th><th>project</th><th>updated</th><th></th></tr></thead>
-         <tbody>${model.sessions.map((session) =>
-           `<tr>
-              <td><code>${escapeHtml(session.id)}</code></td>
-              <td><code>${escapeHtml(session.projectKey)}</code></td>
+         <thead><tr><th>会话与摘要</th><th>项目 / 目录</th><th>更新时间</th><th></th></tr></thead>
+         <tbody>${model.sessions.map((session) => {
+           const searchBlob = [session.id, session.title ?? '', session.preview ?? '', session.cwd ?? '', session.projectKey, session.model ?? ''].join(' ').toLowerCase()
+           const titleLine = session.title
+             ? `<div><strong>${escapeHtml(session.title)}</strong>${session.model ? ` <span class="chip">${escapeHtml(session.model)}</span>` : ''}</div>`
+             : ''
+           const previewLine = session.preview
+             ? `<div class="session-sub">${escapeHtml(session.preview)}</div>`
+             : ''
+           const projectDisplay = session.cwd ? `${session.cwd} (${session.projectKey})` : session.projectKey
+           return `<tr data-session-row="${escapeHtml(searchBlob)}">
+              <td>${titleLine}<code>${escapeHtml(session.id)}</code>${previewLine}</td>
+              <td><code>${escapeHtml(projectDisplay)}</code></td>
               <td>${escapeHtml(session.updatedAt)}</td>
-              <td><button class="secondary" data-resume="${escapeHtml(session.id)}">复制 --resume</button></td>
-            </tr>`,
-         ).join('')}</tbody>
+              <td>
+                <div class="row">
+                  <button class="secondary small" data-resume="${escapeHtml(session.id)}">复制 --resume</button>
+                  <button class="secondary small" data-copy-id="${escapeHtml(session.id)}">复制 ID</button>
+                </div>
+              </td>
+            </tr>`
+         }).join('')}</tbody>
        </table>`
   return shellDocument(
     `${model.product} · 官方 Session`,
-    (nonce) => `<h1>官方 Session</h1>
+    (nonce) => `<h1>官方 Session（${String(model.sessions.length)}）</h1>
      <p>只读列出官方 <code>${escapeHtml(model.officialHome)}</code>${model.isolated ? '（隔离）' : ''} 下的 <code>sessions/</code>。恢复对话走官方 Web 或 <code>dsh-community-tui --resume &lt;id&gt;</code>。本页不另建 session 目录。</p>
+     ${searchBar}
      ${rows}
      <div class="row">
        <button data-go="official">打开官方 Web</button>
@@ -308,6 +331,20 @@ export function renderOfficialSessionsPage(model: OfficialSessionsPageModel): st
          btn.addEventListener('click', () => {
            const id = btn.getAttribute('data-resume')
            if (id) window.dshCommunity?.copyText('dsh-community-tui --resume ' + id)
+         })
+       })
+       document.querySelectorAll('[data-copy-id]').forEach((btn) => {
+         btn.addEventListener('click', () => {
+           const id = btn.getAttribute('data-copy-id')
+           if (id) window.dshCommunity?.copyText(id)
+         })
+       })
+       const filterInput = document.getElementById('session-filter')
+       filterInput?.addEventListener('input', () => {
+         const q = (filterInput.value ?? '').trim().toLowerCase()
+         document.querySelectorAll('tr[data-session-row]').forEach((tr) => {
+           const blob = tr.getAttribute('data-session-row') ?? ''
+           tr.classList.toggle('hidden-row', q.length > 0 && !blob.includes(q))
          })
        })
      </script>`,
@@ -566,6 +603,8 @@ export function renderRemotePage(model: RemotePageModel): string {
       ? '<span class="chip ok">DEEPSEEK_API_KEY 已配置</span>'
       : '<span class="chip risk-high">缺少 DEEPSEEK_API_KEY</span>'}
     <span class="chip">在线连接 ${String(model.activeConnections)}</span>
+    ${(model.pendingApprovals ?? 0) > 0 ? `<span class="chip risk-med">待审批 ${String(model.pendingApprovals)}</span>` : ''}
+    ${(model.pendingQuestions ?? 0) > 0 ? `<span class="chip risk-med">待回答 ${String(model.pendingQuestions)}</span>` : ''}
     ${model.isolated ? '<span class="chip">独立数据目录</span>' : ''}
   </div>`
 
@@ -645,9 +684,11 @@ export function renderRemotePage(model: RemotePageModel): string {
             </dl>
             <template id="copy-pairing-json">${escapeHtml(model.pairing.pairingJson)}</template>
             <template id="copy-deeplink">${escapeHtml(model.pairing.deepLink)}</template>
+            <template id="copy-host-fingerprint">${escapeHtml(model.hostFingerprint)}</template>
             <div class="row">
               <button class="secondary small" id="copy-pairing-json-btn">复制配对 JSON</button>
               <button class="secondary small" id="copy-deeplink-btn">复制 Deep Link</button>
+              ${model.hostFingerprint ? '<button class="secondary small" id="copy-host-fp-btn">复制指纹</button>' : ''}
             </div>
           </div>
         </div>
@@ -669,6 +710,35 @@ export function renderRemotePage(model: RemotePageModel): string {
       <td>${actionBtn}</td>
     </tr>`
   }).join('')
+
+  const liveSessions = model.liveSessions ?? []
+  const liveSessionsBlock = (model.phase === 'running' || model.phase === 'external') && liveSessions.length > 0
+    ? `<section class="panel">
+        <h2>活跃与可接入会话（${String(liveSessions.length)}）</h2>
+        <table>
+          <thead><tr><th>会话与摘要</th><th>模型 / 状态</th><th>待处理</th></tr></thead>
+          <tbody>${liveSessions.map((s) => {
+            const title = s.title ? `<div><strong>${escapeHtml(s.title)}</strong></div>` : ''
+            const preview = s.preview ? `<div class="session-sub">${escapeHtml(s.preview)}</div>` : ''
+            const statusBadge = s.status === 'running'
+              ? '<span class="chip ok">运行中</span>'
+              : s.status === 'idle'
+                ? '<span class="chip">空闲</span>'
+                : ''
+            const modelBadge = s.model ? ` <span class="chip">${escapeHtml(s.model)}</span>` : ''
+            const pendingBadges = [
+              ...(s.pendingApprovals ? [`<span class="chip risk-med">审批 ${String(s.pendingApprovals)}</span>`] : []),
+              ...(s.pendingQuestions ? [`<span class="chip risk-med">提问 ${String(s.pendingQuestions)}</span>`] : []),
+            ].join(' ') || '<span class="meta">—</span>'
+            return `<tr>
+              <td>${title}<code>${escapeHtml(s.id)}</code>${preview}</td>
+              <td>${statusBadge}${modelBadge}</td>
+              <td>${pendingBadges}</td>
+            </tr>`
+          }).join('')}</tbody>
+        </table>
+      </section>`
+    : ''
 
   const devicesBlock = `<section class="panel">
     <h2>已信任设备（${String(model.devices.length)}）</h2>
@@ -742,6 +812,7 @@ export function renderRemotePage(model: RemotePageModel): string {
      </div>
      ${pendingBlock}
      ${pairingBlock}
+     ${liveSessionsBlock}
      ${devicesBlock}
      ${configBlock}
      ${logsBlock}
@@ -783,6 +854,9 @@ export function renderRemotePage(model: RemotePageModel): string {
        })
        document.getElementById('copy-deeplink-btn')?.addEventListener('click', () => {
          window.dshCommunity?.copyText(readTpl('copy-deeplink'))
+       })
+       document.getElementById('copy-host-fp-btn')?.addEventListener('click', () => {
+         window.dshCommunity?.copyText(readTpl('copy-host-fingerprint'))
        })
        document.getElementById('copy-remote-logs-btn')?.addEventListener('click', () => {
          window.dshCommunity?.copyText(readTpl('copy-remote-logs'))

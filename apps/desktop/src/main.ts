@@ -29,6 +29,7 @@ import {
   listOfficialSessions,
   officialSessionRoot,
   parseRuntimeCatalog,
+  peekOfficialSessionSummary,
   PINNED_DSH_VERSION,
   pinDefault,
   resolveDesktopAppLayout,
@@ -341,12 +342,19 @@ function officialSessionsModel() {
     product: COMMUNITY_PRODUCT_NAME,
     officialHome: home,
     isolated: isolatedNow(),
-    sessions: listOfficialSessions(officialSessionRoot(home)).map((session) => ({
-      id: session.id,
-      projectKey: session.projectKey,
-      transcript: session.transcript,
-      updatedAt: formatSessionMtime(session.mtimeMs),
-    })),
+    sessions: listOfficialSessions(officialSessionRoot(home)).map((session, index) => {
+      const summary = index < 40 ? peekOfficialSessionSummary(session.transcript) : undefined
+      return {
+        id: session.id,
+        projectKey: session.projectKey,
+        transcript: session.transcript,
+        updatedAt: formatSessionMtime(session.mtimeMs),
+        ...(summary?.title !== undefined ? { title: summary.title } : {}),
+        ...(summary?.cwd !== undefined ? { cwd: summary.cwd } : {}),
+        ...(summary?.preview !== undefined ? { preview: summary.preview } : {}),
+        ...(summary?.model !== undefined ? { model: summary.model } : {}),
+      }
+    }),
   }
 }
 
@@ -576,6 +584,11 @@ function remoteUiKey(snap: Awaited<ReturnType<DesktopRemoteController['snapshot'
     snap.phase,
     snap.pid,
     String(snap.activeConnections),
+    String(snap.pendingApprovals ?? 0),
+    String(snap.pendingQuestions ?? 0),
+    (snap.liveSessions ?? [])
+      .map((s) => `${s.id}:${s.status ?? ''}:${String(s.pendingApprovals ?? 0)}:${String(s.pendingQuestions ?? 0)}`)
+      .join(','),
     snap.pairing?.deepLink ?? '',
     String(snap.pendingCandidates.length),
     snap.pendingCandidates.map((c) => `${c.candidateId}:${c.state}`).join(','),

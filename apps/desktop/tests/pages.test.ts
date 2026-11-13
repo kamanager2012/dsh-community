@@ -263,4 +263,78 @@ describe('shell pages', () => {
     expect(html).toContain('缺少 DEEPSEEK_API_KEY')
     expect(html).toContain('Test failure banner')
   })
+
+  it('renders rich session titles, previews, search filter, and live remote session status without inline styles', () => {
+    const sessionsHtml = renderOfficialSessionsPage({
+      product: 'Cogitally-OS Desktop (Community)',
+      officialHome: '/tmp/.dsh',
+      isolated: false,
+      sessions: [
+        {
+          id: 'sess-ui-1',
+          projectKey: '--tmp-repo--',
+          transcript: '/tmp/session.v4.jsonl.zstd',
+          updatedAt: '2026-11-14 01:00:00 UTC',
+          title: 'Competitor Deep Dive',
+          cwd: '/tmp/repo',
+          preview: 'Optimized replay buffer and pagination <script>x</script>',
+          model: 'deepseek-reasoner',
+        },
+      ],
+    })
+    expect(sessionsHtml).toContain('Competitor Deep Dive')
+    expect(sessionsHtml).toContain('deepseek-reasoner')
+    expect(sessionsHtml).toContain('&lt;script&gt;x&lt;/script&gt;')
+    expect(sessionsHtml).toContain('id="session-filter"')
+    expect(sessionsHtml).toContain('data-copy-id="sess-ui-1"')
+    expect(sessionsHtml).not.toMatch(/style="/i)
+
+    const remoteHtml = renderRemotePage({
+      product: 'Cogitally-OS Desktop (Community)',
+      phase: 'running',
+      pid: '4242',
+      configDir: '/tmp/remote',
+      dshHome: '/tmp/.dsh',
+      isolated: false,
+      apiKeyPresent: true,
+      hostFingerprint: 'fp-1234',
+      lanCandidates: ['192.168.1.2'],
+      effectiveListenHost: '192.168.1.2',
+      settings: { listenHost: '', port: 0, enableMdns: true, relayUrl: '', signalingUrl: '', stunUrls: '' },
+      lanUrl: 'ws://192.168.1.2:9000',
+      relayUrl: '',
+      relayRoomId: '',
+      signalingUrl: '',
+      signalingRoomId: '',
+      stunUrls: [],
+      activeConnections: 1,
+      pendingApprovals: 2,
+      pendingQuestions: 1,
+      liveSessions: [
+        {
+          id: 'sess-live-9',
+          title: 'Mobile Refactor',
+          status: 'running',
+          preview: 'Running cargo/pnpm suite',
+          model: 'deepseek-chat',
+          pendingApprovals: 2,
+          pendingQuestions: 1,
+        },
+      ],
+      pairing: {
+        deepLink: 'dsh-remote://pair?fp=1',
+        pairingJson: '{}',
+        qrSvg: '<svg viewBox="0 0 10 10"></svg>',
+      },
+      pendingCandidates: [],
+      devices: [],
+      logs: '',
+    })
+    expect(remoteHtml).toContain('待审批 2')
+    expect(remoteHtml).toContain('待回答 1')
+    expect(remoteHtml).toContain('Mobile Refactor')
+    expect(remoteHtml).toContain('运行中')
+    expect(remoteHtml).toContain('id="copy-host-fp-btn"')
+    expect(remoteHtml).not.toMatch(/style="/i)
+  })
 })

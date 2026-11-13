@@ -121,6 +121,10 @@ describe('desktop ESM bundles CJS/sodium-native interop', () => {
         await import(pathToFileURL(process.argv[1]).href);
         Object.defineProperty(process, 'resourcesPath', { value: process.argv[2], configurable: true });
         await import(pathToFileURL(process.argv[3]).href);
+        const remotePlugin = await import(pathToFileURL(process.argv[4]).href);
+        if (remotePlugin.name !== 'dsh-community-remote' || typeof remotePlugin.apply !== 'function') {
+          throw new Error('cordis-plugin.mjs missing expected Cordis plugin exports');
+        }
         process.stdout.write('BUNDLE_BOOT_OK\\n');
       `
 
@@ -131,6 +135,7 @@ describe('desktop ESM bundles CJS/sodium-native interop', () => {
         mainJsPath,
         fakePackagedRes,
         join(fakeAppDist, 'main.js'),
+        pluginPath,
       ])
       expect(stdout).toContain('BUNDLE_BOOT_OK')
     } finally {

@@ -74,6 +74,16 @@ export interface DesktopRemotePairingView {
   readonly loopbackWarning?: string | undefined
 }
 
+export interface DesktopLiveSessionView {
+  readonly id: string
+  readonly title?: string | undefined
+  readonly status?: string | undefined
+  readonly preview?: string | undefined
+  readonly model?: string | undefined
+  readonly pendingApprovals?: number | undefined
+  readonly pendingQuestions?: number | undefined
+}
+
 export interface DesktopRemoteSnapshot {
   readonly phase: DesktopRemotePhase
   readonly pid: string
@@ -92,6 +102,9 @@ export interface DesktopRemoteSnapshot {
   readonly signalingRoomId: string
   readonly stunUrls: readonly string[]
   readonly activeConnections: number
+  readonly pendingApprovals?: number | undefined
+  readonly pendingQuestions?: number | undefined
+  readonly liveSessions?: readonly DesktopLiveSessionView[] | undefined
   readonly pairing?: DesktopRemotePairingView | undefined
   readonly pendingCandidates: readonly DesktopPendingCandidateView[]
   readonly devices: readonly DesktopRemoteDeviceView[]
@@ -357,6 +370,7 @@ export class DesktopRemoteController {
   private cachedReady: Record<string, unknown> = {}
   private cachedPending: DesktopPendingCandidateView[] = []
   private cachedDevices: DesktopRemoteDeviceView[] = []
+  private cachedSessions: DesktopLiveSessionView[] = []
   private logs = ''
   private notice: string | undefined
   private lastError: string | undefined
@@ -440,6 +454,7 @@ export class DesktopRemoteController {
       this.externalControl = undefined
       this.phase = 'stopped'
       this.cachedPending = []
+      this.cachedSessions = []
     }
   }
 
@@ -449,15 +464,17 @@ export class DesktopRemoteController {
     this.detectOrAttachExternal(configDir)
     const control = this.activeControl()
     if (control === undefined) {
+      this.cachedSessions = []
       await this.refreshOfflineDevices(configDir, ctx.dshHome)
       return
     }
 
     try {
-      const [statusRes, pendingRes, devicesRes] = await Promise.all([
+      const [statusRes, pendingRes, devicesRes, sessionsRes] = await Promise.all([
         this.controlFetch(control, '/status'),
         this.controlFetch(control, '/pairing/pending'),
         this.controlFetch(control, '/devices'),
+        this.controlFetch(control, '/sessions').catch(() => undefined),
       ])
       if (statusRes.ok) {
         const statusBody = (await statusRes.json()) as Record<string, unknown>
@@ -470,6 +487,37 @@ export class DesktopRemoteController {
       if (devicesRes.ok) {
         const body = (await devicesRes.json()) as { devices?: DesktopRemoteDeviceView[] }
         this.cachedDevices = Array.isArray(body.devices) ? body.devices : []
+      }
+      if (sessionsRes?.ok) {
+        const body = (await sessionsRes.json()) as { sessions?: Array<Record<string, unknown>> }
+        if (Array.isArray(body.sessions)) {
+          this.cachedSessions = body.sessions
+            .filter((s) => typeof s?.id === 'string' && s.id !== '')
+            .slice(0, 20)
+            .map((s) => {
+              const modelObj = typeof s.model === 'object' && s.model !== null
+                ? (s.model as Record<string, unknown>)
+                : undefined
+              const modelStr = typeof modelObj?.model === 'string'
+                ? modelObj.model
+                : typeof s.model === 'string'
+                  ? s.model
+                  : undefined
+              return {
+                id: s.id as string,
+                ...(typeof s.title === 'string' && s.title !== '' ? { title: s.title } : {}),
+                ...(typeof s.status === 'string' && s.status !== '' ? { status: s.status } : {}),
+                ...(typeof s.preview === 'string' && s.preview !== '' ? { preview: s.preview } : {}),
+                ...(modelStr !== undefined ? { model: modelStr } : {}),
+                ...(typeof s.pendingApprovals === 'number' && s.pendingApprovals > 0
+                  ? { pendingApprovals: s.pendingApprovals }
+                  : {}),
+                ...(typeof s.pendingQuestions === 'number' && s.pendingQuestions > 0
+                  ? { pendingQuestions: s.pendingQuestions }
+                  : {}),
+              }
+            })
+        }
       }
     } catch {
       if (this.phase === 'external') {
@@ -536,6 +584,14 @@ export class DesktopRemoteController {
       typeof ready.activeConnections === 'number' && Number.isInteger(ready.activeConnections)
         ? ready.activeConnections
         : 0
+    const pendingApprovals =
+      typeof ready.pendingApprovals === 'number' && Number.isInteger(ready.pendingApprovals)
+        ? ready.pendingApprovals
+        : 0
+    const pendingQuestions =
+      typeof ready.pendingQuestions === 'number' && Number.isInteger(ready.pendingQuestions)
+        ? ready.pendingQuestions
+        : 0
 
     return {
       phase: this.phase,
@@ -555,6 +611,9 @@ export class DesktopRemoteController {
       signalingRoomId,
       stunUrls,
       activeConnections,
+      pendingApprovals,
+      pendingQuestions,
+      liveSessions: this.isRunning() ? this.cachedSessions : [],
       pairing: this.isRunning()
         ? buildPairingView({ ...ready, ...(lanUrl !== '' ? { lanUrl } : {}) }, lanCandidates)
         : undefined,

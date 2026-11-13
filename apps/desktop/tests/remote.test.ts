@@ -59,6 +59,25 @@ async function startMockControlServer(): Promise<{
             relayUrl: 'wss://relay.example.com',
             relayRoomId: 'room-1',
             activeConnections: 1,
+            pendingApprovals: 1,
+            pendingQuestions: 0,
+          }),
+        )
+        return
+      }
+      if (reqUrl === '/sessions') {
+        res.end(
+          JSON.stringify({
+            sessions: [
+              {
+                id: 'sess-mock-1',
+                title: 'Mock Live Session',
+                status: 'running',
+                preview: 'Inspecting diffs',
+                model: { provider: 'deepseek', model: 'deepseek-chat' },
+                pendingApprovals: 1,
+              },
+            ],
           }),
         )
         return
@@ -383,6 +402,12 @@ describe('desktop remote controller & validators', () => {
       expect(spawnedEnv.DSH_REMOTE_ENABLE_MDNS).toBe('0')
       expect(spawnedPatch).toContain('dsh-community-remote')
 
+      expect(controller.isRunning()).toBe(true)
+      const liveSnap = await controller.snapshot({ refreshLive: true })
+      expect(liveSnap.pendingApprovals).toBe(1)
+      expect(liveSnap.liveSessions?.[0]?.title).toBe('Mock Live Session')
+      expect(liveSnap.liveSessions?.[0]?.status).toBe('running')
+      expect(liveSnap.liveSessions?.[0]?.model).toBe('deepseek-chat')
       const configDir = resolveDesktopRemoteConfigDir(ctx)
       expect(readLiveControlEndpoint(configDir)?.controlUrl).toBe(mock.baseUrl)
 
