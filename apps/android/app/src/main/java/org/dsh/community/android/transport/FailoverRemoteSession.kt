@@ -458,7 +458,15 @@ class FailoverRemoteSession(
 
             override fun onClosed(reason: String) {
                 if (stage.get() != HandshakeStage.READY) {
-                    handshakeError.compareAndSet(null, IOException("closed during handshake: $reason"))
+                    val err = if (reason.contains("revoked", ignoreCase = true)) {
+                        if (!revokedByHost) {
+                            applyPeerRevoked(reason)
+                        }
+                        PeerRevokedException(reason)
+                    } else {
+                        IOException("closed during handshake: $reason")
+                    }
+                    handshakeError.compareAndSet(null, err)
                     latch.countDown()
                 } else if (!revokedByHost) {
                     val err = IOException("remote channel closed: $reason")
