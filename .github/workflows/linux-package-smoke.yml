@@ -103,5 +103,5 @@ jobs:
           test -n "$host_tar"
           remote_plugin=$(find squashfs-root -path '*/resources/remote/cordis-plugin.mjs' -print -quit)
           test -n "$remote_plugin"
-          node -e "import(process.argv[1]).then((m) => { if (m.name !== 'dsh-community-remote' || typeof m.apply !== 'function') process.exit(1); })" "$remote_plugin"
-          echo "AppImage extract OK: $app_asar ($host_tar)"
+          node --input-type=module -e "import { pathToFileURL } from 'node:url'; import { resolve } from 'node:path'; const m = await import(pathToFileURL(resolve(process.argv[1])).href); if (m.name !== 'dsh-community-remote' || typeof m.apply !== 'function') process.exit(1);" "$remote_plugin"
+          echo "AppImage extract OK: $app_asar ($host_tar, $remote_plugin)"
