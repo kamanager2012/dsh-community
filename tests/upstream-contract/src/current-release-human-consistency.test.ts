@@ -16,8 +16,8 @@ describe('current-release human index consistency', () => {
       dualBadge: string
       publishedAssets: {
         linuxAppImage: string
-        macosDmg: string
-        windowsSetup: string
+        macosDmg?: string
+        windowsSetup?: string
       }
       publishedReleaseEvidence: {
         releaseId: number
@@ -57,7 +57,7 @@ describe('current-release human index consistency', () => {
       facts.publishedAssets.linuxAppImage,
       facts.publishedAssets.macosDmg,
       facts.publishedAssets.windowsSetup,
-    ]) {
+    ].filter((name): name is string => typeof name === 'string')) {
       expect(human).toContain(`- \`${asset}\``)
     }
   })

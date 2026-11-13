@@ -30,15 +30,16 @@ Candidate Source and Published Latest may coincide after publication, but they a
 | Published release evidence | GitHub release ID `374950921`; published `2026-08-22T14:25:10Z`; primary installer asset IDs/digests pinned in `current-release.json` |
 | Candidate Dual-Badge | `DeepSeek Harness Community v0.2.2-rc.2 [Official Core: @deepseek-ai/dsh@0.2.2-rc.2]` |
 | Latest tested | `0.2.2-rc.2` — consolidated local acceptance PASS on commit `750d8c5` (runtime-lock attested by CI [run 43334043848](https://github.com/kamanager2012/dsh-community/actions/runs/43334043848)); compatibility evidence only, not publication |
-| Shipped Community endpoints | WSL/Linux Terminal, Windows Desktop, macOS Desktop, Linux AppImage |
-| Active unpublished endpoint | Android `apps/android` `[UNVERIFIED]`, not on the Latest download page |
-| Official Web | Kernel UI, not a community endpoint |
-| artifact-smoke | `[PARTIAL]` on `v0.1.1-rc.2` ([run 32579569995](https://github.com/kamanager2012/dsh-community/actions/runs/32579569995)): checksum + cosign bundle verify (12 assets) + Windows/macOS first-ready + Linux TUI; full user loop still separate |
+| Active Complementary endpoints (2 shipped) | WSL/Linux Terminal, Linux AppImage (official `deepseek-harness` covers Win/macOS Desktop & Web) |
+| Active unpublished endpoint | Android `apps/android` `[UNVERIFIED]`, Remote Client target, not on the Latest download page |
+| Retired from future releases | Windows Desktop (`DSH.Community.Setup.*.exe`), macOS Desktop (`dsh-community-*.dmg`) — last shipped in historical `v0.1.1-rc.2` |
+| Official Web & Win/macOS Desktop | Upstream surfaces; not community endpoints |
+| artifact-smoke | `[PARTIAL]` on historical `v0.1.1-rc.2` ([run 32579569995](https://github.com/kamanager2012/dsh-community/actions/runs/32579569995)): checksum + cosign bundle verify (12 assets) + legacy Win/macOS + Linux TUI; future tags smoke Linux AppImage + Linux TUI only |
 | Full user loop | `[UNVERIFIED]` — manual exact-release WSL/Linux new→answer→resume→answer gate now lives in [`user-loop-evidence.yml`](../.github/workflows/user-loop-evidence.yml); no successful release run is recorded yet, so status stays unchanged |
 | Plugin `testedDsh` | `0.1.1-rc.2` (compose: `plugin add` + `--dump-config`; restart/user-loop still `[UNVERIFIED]`) |
 | Historical tags | `v0.1.2`–`v0.1.6` are not the current download |
 
-Release-page filenames (GitHub may show Windows spaces as dots):
+Historical `v0.1.1-rc.2` release-page filenames (GitHub may show Windows spaces as dots; future Complementary Edition releases publish `.AppImage` + SBOM only):
 
 - `dsh-community-0.1.1-rc.2.AppImage`
 - `dsh-community-0.1.1-rc.2.dmg`

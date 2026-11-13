@@ -20,7 +20,6 @@ const desktopManifest = require('./package.json')
 const electronVersion = require('electron/package.json').version
 const packVersion = typeof desktopManifest.version === 'string' ? desktopManifest.version : '0.1.1'
 const builderCli = join(desktop, 'node_modules/electron-builder/cli.js')
-const productAppName = 'DSH Community.app'
 
 async function exists(path) {
   try {
@@ -32,42 +31,26 @@ async function exists(path) {
 }
 
 function electronBinaryPath() {
-  if (process.platform === 'win32') return join(electronDir, 'dist', 'electron.exe')
-  if (process.platform === 'darwin') return join(electronDir, 'dist', 'Electron.app')
   return join(electronDir, 'dist', 'electron')
 }
 
 function packagingTarget(argv) {
   const args = argv[0] === '--' ? argv.slice(1) : argv
+  if (args.includes('--win') || args.includes('--mac')) {
+    throw new Error(
+      'Windows and macOS desktop installers are retired under dsh-community Complementary Edition; use official deepseek-ai/deepseek-harness desktop releases.',
+    )
+  }
   if (args.includes('--appimage')) return 'appimage'
-  if (args.includes('--win')) return 'win'
-  if (args.includes('--mac')) return 'mac'
   return 'dir'
-}
-
-async function findMacApp(outDir) {
-  const preferred = ['mac-arm64', 'mac', 'mac-universal', 'mac-x64']
-  for (const name of preferred) {
-    const app = join(outDir, name, productAppName)
-    if (await exists(app)) return app
-  }
-  const entries = await readdir(outDir, { withFileTypes: true })
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue
-    const app = join(outDir, entry.name, productAppName)
-    if (await exists(app)) return app
-  }
-  return undefined
 }
 
 async function ensureElectronDist() {
   const electronBinary = electronBinaryPath()
   if (await exists(electronBinary)) return
   const cacheRoot = join(homedir(), '.cache/electron')
-  if (process.platform !== 'win32' && await exists(cacheRoot)) {
-    const zipName = process.platform === 'darwin'
-      ? `electron-v${electronVersion}-darwin-${process.arch === 'arm64' ? 'arm64' : 'x64'}.zip`
-      : `electron-v${electronVersion}-linux-x64.zip`
+  if (await exists(cacheRoot)) {
+    const zipName = `electron-v${electronVersion}-linux-x64.zip`
     for (const entry of await readdir(cacheRoot, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue
       const zip = join(cacheRoot, entry.name, zipName)
@@ -87,6 +70,13 @@ async function ensureElectronDist() {
 
 function phase(message) {
   process.stdout.write(`[pack ${new Date().toISOString()}] ${message}\n`)
+}
+
+const targetFlag = packagingTarget(process.argv.slice(2))
+if (process.platform !== 'linux') {
+  throw new Error(
+    `dsh-community Desktop packaging supports Linux (AppImage/dir) only; current platform is ${process.platform}.`,
+  )
 }
 
 await ensureElectronDist()
@@ -110,8 +100,6 @@ await rm(packRoot, { recursive: true, force: true })
 await mkdir(join(packRoot, 'dist'), { recursive: true })
 await cp(join(desktop, 'dist'), join(packRoot, 'dist'), { recursive: true })
 await cp(join(desktop, 'resources'), join(packRoot, 'resources'), { recursive: true })
-
-const targetFlag = packagingTarget(process.argv.slice(2))
 
 const linuxTarget = targetFlag === 'appimage'
   ? [{ target: 'AppImage', arch: ['x64'] }]
@@ -169,41 +157,16 @@ const packManifest = {
       executableName: 'dsh-community',
       syncDesktopName: true,
     },
-    win: {
-      target: [{ target: 'dir', arch: ['x64'] }],
-      icon: 'resources/icon.png',
-      artifactName: 'dsh-community-${version}-win-x64.${ext}',
-    },
-    nsis: {
-      artifactName: 'DSH Community Setup ${version}.${ext}',
-      shortcutName: 'DSH Community',
-      oneClick: true,
-      perMachine: false,
-      allowToChangeInstallationDirectory: false,
-    },
-    mac: {
-      target: [{ target: 'dir' }],
-      icon: 'resources/icon.png',
-      category: 'public.app-category.developer-tools',
-      hardenedRuntime: false,
-      gatekeeperAssess: false,
-    },
   },
 }
 
 await writeFile(join(packRoot, 'package.json'), `${JSON.stringify(packManifest, null, 2)}\n`)
-// Keep electron-builder inside this directory so Windows scanning stays
-// bounded to the staging workspace. Do not disable host antimalware protection
-// in CI to compensate for monorepo traversal.
+// Keep electron-builder bounded to this isolated staging workspace so
+// packaging never traverses or weakens host monorepo trees.
 await writeFile(join(packRoot, 'pnpm-workspace.yaml'), 'packages:\n  - "."\n')
 await mkdir(join(packRoot, 'node_modules'), { recursive: true })
 
-const builderArgs = ['--publish', 'never', '--config.npmRebuild=false']
-// Windows first ship is NSIS only. A second zip pass of the official runtime
-// is what has been hanging GHA for 20+ minutes.
-if (targetFlag === 'win') builderArgs.unshift('--win', 'nsis')
-else if (targetFlag === 'mac') builderArgs.unshift('--mac', 'dir', 'dmg')
-else builderArgs.unshift('--linux', targetFlag === 'appimage' ? 'AppImage' : 'dir')
+const builderArgs = ['--linux', targetFlag === 'appimage' ? 'AppImage' : 'dir', '--publish', 'never', '--config.npmRebuild=false']
 
 await rm(releaseDir, { recursive: true, force: true })
 phase(`electron-builder ${builderArgs.join(' ')}`)
@@ -213,25 +176,8 @@ phase('electron-builder finished')
 if (targetFlag === 'appimage') {
   const images = (await readdir(releaseDir)).filter((name) => name.endsWith('.AppImage'))
   if (images.length === 0) throw new Error(`AppImage missing in ${releaseDir}`)
-  process.stdout.write(`packaged ${join(releaseDir, images[0] ?? '')}\n`)
-} else if (targetFlag === 'win') {
-  const names = await readdir(releaseDir)
-  const exe = names.find((name) => name.endsWith('.exe') && name.includes('Setup'))
-    ?? names.find((name) => name.endsWith('.exe'))
-  if (exe === undefined) throw new Error(`Windows installer missing in ${releaseDir}`)
-  const bin = join(releaseDir, 'win-unpacked', 'DSH Community.exe')
-  const officialPath = join(releaseDir, 'win-unpacked', 'resources/host/official-dsh.tar')
-  if (!await exists(bin)) throw new Error(`packaged executable missing: ${bin}`)
-  if (!await exists(officialPath)) throw new Error(`staged official dsh archive missing: ${officialPath}`)
-  process.stdout.write(`packaged ${join(releaseDir, exe)}\n`)
-} else if (targetFlag === 'mac') {
-  const dmg = (await readdir(releaseDir)).find((name) => name.endsWith('.dmg'))
-  if (dmg === undefined) throw new Error(`macOS dmg missing in ${releaseDir}`)
-  const bin = await findMacApp(releaseDir)
-  if (bin === undefined) throw new Error(`packaged executable missing under ${releaseDir} (looked for ${productAppName})`)
-  const officialPath = join(bin, 'Contents/Resources/host/official-dsh.tar')
-  if (!await exists(officialPath)) throw new Error(`staged official dsh archive missing: ${officialPath}`)
-  process.stdout.write(`packaged ${join(releaseDir, dmg)}\n`)
+  const imagePath = join(releaseDir, images[0] ?? '')
+  process.stdout.write(`packaged ${imagePath}\n`)
 } else {
   const unpackedRoot = join(releaseDir, 'linux-unpacked')
   const bin = join(unpackedRoot, 'dsh-community')

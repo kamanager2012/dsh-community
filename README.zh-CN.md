@@ -1,17 +1,17 @@
 # dsh-community
 
-> **你在官方 Web 开的对话，关掉以后在终端或桌面接着聊。**  
-> 官方 DeepSeek Harness 的跨平台社区入口层：共享同一个 `~/.dsh` 会话真源，绝不重写第二套 Agent 循环。
+> **你在官方 Web 或官方 Win/macOS Desktop 开的对话，在 Linux 终端或 Linux AppImage 接着聊。**  
+> 官方 DeepSeek Harness 的互补社区发行版：共享同一个 `~/.dsh` 会话真源，不重复建设官方已有端，绝不重写第二套 Agent 循环。
 
-**DeepSeek Harness 的社区发行、兼容性与安全验证层。**
+**DeepSeek Harness 的官方互补发行、兼容性与安全验证层。**
 
-官方 DeepSeek Harness 是唯一执行内核。本仓不重写 Agent Runtime，而是在已发布的 `@deepseek-ai/dsh` 周围维护四件事：**精确上游版本与契约跟踪、跨平台社区发行、第三方插件兼容性注册表、发行与插件安全证据**。
+官方 DeepSeek Harness 是唯一执行内核，并在上游提供官方 Web 与 Windows / macOS Desktop（`win-x64`、`mac-arm64`、`mac-x64`）。本仓定位为**官方互补版**：在已发布的 `@deepseek-ai/dsh` 周围专注维护官方缺失的端——**WSL/Linux 终端（TUI）、Linux 桌面 AppImage、Android（Remote Client，开发中）**——并维持精确上游 pin 与契约跟踪、第三方插件兼容性注册表、发行与插件安全证据。
 
-项目共有 **5 个 Community endpoints**：WSL/Linux 终端、Windows Desktop、macOS Desktop、Linux AppImage、Android。前 4 个当前已有 Published Latest 发行产物；Android 的既有源码已恢复到本仓 `apps/android` 活跃主线，当前仍为 **[UNVERIFIED]**，尚未进入 Published Latest。所有已发行入口默认共享官方 Runtime、官方插件链和同一个 `~/.dsh` Session 真源。
+项目当前有 **3 个互补 Community endpoints**：WSL/Linux 终端、Linux AppImage、Android。前 2 个当前已有 Published Latest 发行产物；Android 活跃源码在本仓 `apps/android`，目标为轻量 Remote Client，当前仍为 **[UNVERIFIED]**，尚未进入 Published Latest。（历史版本 `v0.1.1-rc.2` 在定位收敛前曾打包 Win/macOS 安装包；后续版本不再双份构建。）所有已发行入口默认共享官方 Runtime、官方插件链和同一个 `~/.dsh` Session 真源。
 
-你今天在官方 Web 开的对话，关掉以后用 `dsh-community` 终端可以接着聊；再打开 Desktop，仍然是同一条会话。
+你今天在官方 Web 或官方 Win/macOS 桌面端开的对话，关掉以后用 `dsh-community` 终端或 Linux AppImage 接着聊，仍然是同一条会话。
 
-> **One Harness. Five community endpoints. Four shipped today; Android active / UNVERIFIED.** Runtime / Session / 插件事实仍归官方内核所有；社区层只维护发行、UX、兼容性与验证，不 vendor 官方源码，不另建第二套 Agent loop 或 Session store。
+> **One Harness. Three complementary community endpoints. Two shipped today; Android active / UNVERIFIED.** Runtime / Session / 插件执行及官方 Web、Win/macOS Desktop 归官方内核上游所有；社区层只做官方缺失的互补端、UX、兼容性与验证，不 vendor 官方源码，不另建第二套 Agent loop 或 Session store。
 
 本仓的 Compatibility Registry 不是 awesome-list：第三方插件条目记录实际 `testedDsh` 版本、包完整性以及 network / data egress / credentials / filesystem / process / persistence 等结构化安全元数据；安装仍走官方 `dsh plugin add` 链。
 
@@ -27,16 +27,14 @@
 
 **Candidate Source 与 Published Latest 是两条独立状态。** 源码可以先升级到新的官方候选版本，而 GitHub Latest、已发布安装包、插件 `testedDsh` 和真实 User-Loop 证据继续停留在上一个已验证版本。不要从 `releases/latest` 的版本号反推当前 workspace 版本，也不要从源码候选版本伪造尚未发布的安装包。
 
-五个社区端的状态、Candidate / Published 身份、安装包名和证据标签统一以 [current-release](docs/current-release.md) / [`current-release.json`](docs/current-release.json) 为准。发行产物使用 keyless cosign 签名；验证方法见 [release 文档](docs/release.md#artifact-signing-keyless)。
+三个互补社区端的状态、Candidate / Published 身份、安装包名和证据标签统一以 [current-release](docs/current-release.md) / [`current-release.json`](docs/current-release.json) 为准。发行产物使用 keyless cosign 签名；验证方法见 [release 文档](docs/release.md#artifact-signing-keyless)。
 
-| 发行面 | 命名 | 入口 |
+| 发行面 | 归属 | 入口 |
 |---|---|---|
-| 官方 Web | 官方上游兼容入口，不是 Community 发行端 | [`npx @deepseek-ai/dsh web`](https://github.com/deepseek-ai/deepseek-harness) |
-| WSL/Linux 终端 | **社区端 1：Terminal / TUI** | `dsh-community` / `dsh-community-tui` / `pnpm tui` |
-| Windows 桌面 | **社区端 2：Desktop** | [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) Setup.exe，或 `pnpm desktop` |
-| macOS 桌面 | **社区端 3：Desktop** | [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) dmg，或 `pnpm desktop` |
-| Linux AppImage | **社区端 4：Desktop** | 随 Release 附带；CLI 用户仍以终端为主 |
-| Android | **社区端 5：Remote Mobile（活跃源码，尚未发行）** | `apps/android`；目标为轻量 Remote Client，`[UNVERIFIED]`，不进 Published Latest，直到 Remote Android Acceptance 通过 |
+| 官方 Web & Win/macOS Desktop | 官方上游既有端，不是 Community 互补端 | [`deepseek-ai/deepseek-harness`](https://github.com/deepseek-ai/deepseek-harness)（`npx @deepseek-ai/dsh web`） |
+| WSL/Linux 终端 | **互补社区端 1：Terminal / TUI** | `dsh-community` / `dsh-community-tui` / `pnpm tui` |
+| Linux AppImage | **互补社区端 2：Linux Desktop** | [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) `.AppImage` 或 `pnpm desktop:package -- --appimage`；CLI 用户仍以终端为主 |
+| Android | **互补社区端 3：Remote Mobile（活跃源码，尚未发行）** | `apps/android` + `packages/remote-adapter`；目标为轻量 Remote Client，`[UNVERIFIED]`，不进 Published Latest，直到 Remote Android Acceptance 通过 |
 
 > 命名红线：不叫 dsh-TUI / DeepSeek Harness Desktop（那是别人的产品名），不在 npm 冒用 `@deepseek-ai` 或 `dsh-tui` 的包名。我们基于官方内核，不是第二套 Harness。
 
@@ -111,7 +109,7 @@ pnpm desktop:package
 pnpm desktop:package -- --appimage
 ```
 
-Windows / macOS 安装包由 GitHub Actions(`release` workflow)在对应系统构建,本地无需坐在那些 OS 上。不要 `npm publish` 本仓的 workspace 包。发布顺序见 [docs/release.md](docs/release.md)。
+Windows / macOS Desktop 安装包已在互补版中退役（由官方 `deepseek-harness` 提供；`v0.1.1-rc.2` 仅作历史记录）。后续仅在 Linux 构建 AppImage。不要 `npm publish` 本仓的 workspace 包。发布顺序见 [docs/release.md](docs/release.md)。
 
 ## 硬边界
 
@@ -129,7 +127,7 @@ Windows / macOS 安装包由 GitHub Actions(`release` workflow)在对应系统�
 2. TUI 对官方 Cordis row 的覆盖数量显著下降（33 → 15 → 8 → 只剩 TUI 自己的 insert）
 3. TUI/Desktop 不实现 Agent loop、Session persistence、Tool execution
 4. 一次 upstream rc bump，业务 UI 原则上零修改
-5. WSL/Linux TUI、Windows/macOS Desktop 与官方 Web 能共享同一 Session 真源
+5. WSL/Linux TUI、Linux AppImage 与官方 Web/Desktop 能共享同一 Session 真源
 6. 新版本兼容问题首先在 contract CI 爆
 
 当前：1 / 3 / 5 按设计成立；2 社区 overlay 只改官方行，不挂第三方 TUI。第 4 条是官方发新包时的回归。

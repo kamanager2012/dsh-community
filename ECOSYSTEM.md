@@ -15,19 +15,17 @@ or a forked tool-execution pipeline.
 
 ## Current product reality
 
-There are **five Community endpoints**:
+This repository follows a **Complementary Edition** boundary: we build and distribute only the endpoints missing from official `deepseek-ai/deepseek-harness`.
 
-1. WSL/Linux Terminal
-2. Windows Desktop
-3. macOS Desktop
-4. Linux AppImage
-5. Android
+There are **three Complementary Community endpoints**:
 
-The first four currently have published artifacts. Android source is active in
-`apps/android`, remains **[UNVERIFIED]**, and is not yet part of GitHub Latest.
+1. WSL/Linux Terminal (`dsh-community` / `pnpm tui`)
+2. Linux AppImage (`apps/desktop` — Linux graphical desktop companion)
+3. Android (`apps/android` + `packages/remote-adapter` — Remote Client target)
 
-Official Web is an upstream companion surface owned by DeepSeek. It is not a
-Community-shipped endpoint.
+WSL/Linux Terminal and Linux AppImage currently have published artifacts. Android source is active in `apps/android`, remains **[UNVERIFIED]**, and is not yet part of GitHub Latest.
+
+Official Web and official Windows/macOS Desktop (`win-x64`, `mac-arm64`, `mac-x64` in upstream `deepseek-ai/deepseek-harness`) are upstream surfaces, not Community-shipped endpoints. (Historical release `v0.1.1-rc.2` included Windows/macOS installers before upstream coverage and our Complementary Edition retirement.)
 
 ```text
                     Official DeepSeek Harness Runtime
@@ -36,19 +34,18 @@ Community-shipped endpoint.
                                  │
        ┌─────────────────────────┼──────────────────────────┐
        ▼                         ▼                          ▼
- WSL/Linux Terminal        Community Desktop         Official Web
-   (community)             ├─ Windows                (upstream)
-                           ├─ macOS
-                           └─ Linux AppImage
+  WSL/Linux Terminal     Linux Desktop AppImage     Upstream Official Surfaces
+    (community)               (community)           ├─ Official Web (upstream)
+                                                    └─ Windows / macOS Desktop (upstream)
 
- Android: active source / UNVERIFIED / not yet published
+  Android Remote Client: active source / [UNVERIFIED] / not yet published
 ```
 
 Preferred public wording:
 
-> **One Harness. Five community endpoints. Four shipped today; Android active / UNVERIFIED.**
+> **One Harness. Three complementary community endpoints. Two shipped today; Android active / UNVERIFIED.**
 
-Always distinguish product membership from publication evidence: Android is in the active product tree but is not yet a Published Latest artifact.
+Always distinguish product membership from publication evidence: Android is in the active product tree but is not yet a Published Latest artifact, and never duplicate Windows/macOS Desktop or Web owned upstream.
 
 ## What the official Runtime owns
 
@@ -195,6 +192,8 @@ See [SECURITY.md](SECURITY.md) for the security policy and
 Do not say:
 
 - “five shipped Community endpoints”
+- “three shipped Community endpoints” (only two are published; Android is `[UNVERIFIED]`)
+- “we ship Windows / macOS Desktop installers” (retired after `v0.1.1-rc.2`; use official `deepseek-harness`)
 - “Android is a current release endpoint”
 - “Official Web is our Web client”
 - “complete ecosystem”

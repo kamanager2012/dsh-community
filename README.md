@@ -1,29 +1,19 @@
 # DSH Community
 
-> **Start a task in official `dsh web`, close your browser, and resume it seamlessly in Terminal or Desktop.**  
-> The unvendored cross-platform distribution layer for DeepSeek Harness — 100% shared `~/.dsh` session truth, zero second agent loop.
+> **Start a task in official `dsh web` or official Win/macOS Desktop, and resume it seamlessly in Linux Terminal or Linux AppImage.**  
+> The unvendored complementary community edition for DeepSeek Harness — 100% shared `~/.dsh` session truth, zero duplicate official surfaces, zero second agent loop.
 
-**Community distribution, compatibility, and security-validation infrastructure for DeepSeek Harness.**
+**Complementary community distribution, compatibility, and security-validation infrastructure for DeepSeek Harness.**
 
-Official DeepSeek Harness remains the only execution kernel. This repository
-does not reimplement the Agent Runtime; it maintains four surrounding concerns:
-**exact upstream pin and contract tracking, cross-platform community
-distribution, a third-party plugin compatibility registry, and release/plugin
-security evidence**.
+Official DeepSeek Harness remains the only execution kernel and owns Official Web plus Windows/macOS Desktop (`win-x64`, `mac-arm64`, `mac-x64`). This repository focuses exclusively on the **three Complementary Community endpoints** absent upstream — **WSL/Linux Terminal**, **Linux Desktop AppImage**, and **Android Remote Client** — plus exact upstream pin/contract tracking, a third-party plugin compatibility registry, and release/plugin security evidence.
 
-There are **five Community endpoints**: WSL/Linux Terminal, Windows Desktop,
-macOS Desktop, Linux AppImage, and Android. The first four currently have
-Published Latest artifacts. The existing Android source has been restored to the
-active `apps/android` tree; it remains **[UNVERIFIED]** and is not yet part of
-Published Latest. Shipped endpoints share the official Runtime, official plugin
-chain, and the same `~/.dsh` Session source of truth by default.
+WSL/Linux Terminal and Linux AppImage currently have Published Latest artifacts. The existing Android source is active in `apps/android` with a lightweight Remote Client target (`packages/remote-adapter`); it remains **[UNVERIFIED]** and is not yet part of Published Latest. (Historical `v0.1.1-rc.2` included Windows/macOS installers prior to upstream Desktop coverage and our Complementary Edition retirement.) Shipped endpoints share the official Runtime, official plugin chain, and the same `~/.dsh` Session source of truth by default.
 
-A conversation you start in official Web is the same conversation you resume in
-`dsh-community` and then open again in Desktop.
+A conversation you start in official Web or official Win/macOS Desktop is the same conversation you resume in `dsh-community` or Linux AppImage.
 
-> **One Harness. Five community endpoints. Four shipped today; Android active / UNVERIFIED.**
-> Runtime, Session, and plugin execution remain owned by the official kernel; the
-> community layer owns distribution, UX, compatibility, and verification only.
+> **One Harness. Three complementary community endpoints. Two shipped today; Android active / UNVERIFIED.**
+> Runtime, Session, plugin execution, Web, and Win/macOS Desktop remain owned by the official kernel; the
+> community layer builds only the missing complementary endpoints, UX, compatibility, and verification.
 
 The in-repo Compatibility Registry is not an awesome list: third-party entries
 carry an actual `testedDsh` line, package integrity evidence, and structured
@@ -71,12 +61,11 @@ session persistence, official UI, and core lifecycle.
 
 | Goal | Use |
 |---|---|
-| Run the official Runtime directly | [`npx @deepseek-ai/dsh web`](https://github.com/deepseek-ai/deepseek-harness) |
-| Download the community product | [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) — exact tag/file names: `docs/current-release.json`; cosign verification: [release docs](docs/release.md#artifact-signing-keyless) |
+| Run the official Runtime / Win & macOS Desktop | [`deepseek-ai/deepseek-harness`](https://github.com/deepseek-ai/deepseek-harness) (`npx @deepseek-ai/dsh web`) |
+| Download Linux AppImage (or inspect historical `v0.1.1-rc.2`) | [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) — exact tag/file names: `docs/current-release.json`; cosign verification: [release docs](docs/release.md#artifact-signing-keyless) |
 | Use the WSL/Linux Terminal / TUI | `pnpm tui` or `dsh-community` after a source install |
-| LAN Remote Host access / Mobile foundation | In-repo `packages/remote-adapter` (Noise IK + LAN transport merged; mobile endpoint remains [UNVERIFIED]) |
-| Use the Windows Desktop shell | [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) Setup.exe, or `pnpm desktop` |
-| Use the macOS Desktop shell | [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) dmg, or `pnpm desktop` |
+| LAN Remote Host access / Mobile foundation | In-repo `packages/remote-adapter` (Noise IK + LAN transport merged; Android Remote endpoint remains `[UNVERIFIED]`) |
+| Run or package Linux Desktop from source | `pnpm desktop` / `pnpm desktop:package -- --appimage` |
 | Read operational guidance | [DeepSeek Harness Handbook](https://kamanager2012.github.io/dsh-community/) |
 | Verified community plugins | Desktop marketplace page, in-repo `pnpm marketplace`, and [`packages/marketplace/catalog.json`](packages/marketplace/catalog.json) — not an awesome list |
 
@@ -90,10 +79,7 @@ identity backed by real release assets. They may be equal after a release, but
 the repository does not depend on that equality. Exact current values live only
 in `docs/current-release.json`.
 
-Earlier independent numbers `v0.1.2`–`v0.1.6` are historical only.
-The Linux AppImage is shipped endpoint 4; the primary Linux CLI path remains WSL/Linux
-Terminal. Official Web is an upstream companion, not a Community endpoint. Android stays
-`[UNVERIFIED]`, is not shipped in Latest, and its first-party source lives in this repository under `apps/android`. Its target is now a lightweight Remote Client; the Host retains the official DSH runtime, repository/toolchain, credentials, and durable Session truth. See `docs/remote-host-client.md`.
+Earlier independent numbers `v0.1.2`–`v0.1.6` are historical only, and Windows/macOS Desktop installers are retired after historical `v0.1.1-rc.2` (use official `deepseek-ai/deepseek-harness` for Windows/macOS Desktop). Linux Desktop AppImage is shipped Complementary endpoint 2 alongside primary WSL/Linux Terminal (endpoint 1). Official Web and Win/macOS Desktop are upstream surfaces, not Community endpoints. Android stays `[UNVERIFIED]`, is not shipped in Latest, and its first-party source lives in this repository under `apps/android`. Its target is now a lightweight Remote Client; the Host retains the official DSH runtime, repository/toolchain, credentials, and durable Session truth. See `docs/remote-host-client.md`.
 
 ## From source
 
@@ -137,7 +123,7 @@ exists, use it; add community code only where a verified gap remains.
 2. TUI patch-surface on official Cordis rows drops toward zero.
 3. TUI/Desktop do not implement Agent loop, Session persistence, or Tool execution.
 4. One upstream rc bump requires zero business UI edits in principle.
-5. WSL/Linux TUI, Windows/macOS Desktop, and official Web share the same session truth.
+5. WSL/Linux TUI, Linux AppImage, and official Web/Desktop share the same session truth.
 6. Upstream regressions break in contract CI before user release.
 
 Currently: 1, 3, and 5 hold by design; 2 community overlay touches official rows without mounting third-party TUIs. Criterion 4 is verified against upstream releases.

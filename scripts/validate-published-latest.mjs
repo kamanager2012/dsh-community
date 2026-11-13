@@ -19,11 +19,13 @@ function readJson(path) {
 function expectedPrimaryAssets(facts) {
   const source = facts.publishedAssets ?? facts.assets
   if (!source) fail('current-release has no published asset names')
-  return {
+  const expected = {
     linuxAppImage: source.linuxAppImage,
-    macosDmg: source.macosDmg,
-    windowsSetup: source.windowsSetup,
   }
+  for (const key of ['macosDmg', 'windowsSetup']) {
+    if (source[key] !== undefined) expected[key] = source[key]
+  }
+  return expected
 }
 
 export function validatePublishedLatestFacts(facts, release) {
@@ -68,6 +70,11 @@ export function validatePublishedLatestFacts(facts, release) {
   }
   const expectedNames = expectedPrimaryAssets(facts)
   const evidenceAssets = evidence.primaryAssets
+  for (const key of Object.keys(evidenceAssets ?? {})) {
+    if (!(key in expectedNames)) {
+      fail('publishedReleaseEvidence contains unexpected primary asset ' + key)
+    }
+  }
 
   for (const [key, name] of Object.entries(expectedNames)) {
     if (typeof name !== 'string' || name.length === 0) {

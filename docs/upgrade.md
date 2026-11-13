@@ -54,7 +54,7 @@ Do not open the `0.2.2-rc.2` pull request until the accepted `0.2.2-rc.2` baseli
 
 A push to a non-main integration branch is the no-Actions staging path under the
 current workflow triggers. Opening a pull request is not: the `0.2.2-rc.2` diff fans
-out into CI, dependency audit, Linux/macOS package smoke, Windows package smoke,
+out into CI, dependency audit, Linux AppImage package smoke,
 runtime-lock verification, runtime-SBOM smoke, and artifact-action smoke.
 Machine-readable state: `contracts/compatibility/remote-integration-gate.json`.
 

@@ -25,34 +25,46 @@ describe('current endpoint narrative', () => {
     'docs/current-release.md',
   ] as const
 
-  it('does not regress to the four-endpoint product-count slogan', () => {
+  it('does not regress to legacy four/five-endpoint claims after Complementary Edition narrowing', () => {
     for (const rel of currentNarrativeFiles) {
-      expect(read(rel), rel).not.toContain('One Harness. Four shipped community endpoints')
+      const text = read(rel)
+      expect(text, rel).not.toContain('One Harness. Four shipped community endpoints')
+      expect(text, rel).not.toMatch(/five Community endpoints/iu)
+      expect(text, rel).not.toContain('5 个 Community endpoints')
+      expect(text, rel).not.toMatch(/四个(?:当前)?已发行/u)
+      expect(text, rel).not.toContain('五个社区端')
     }
   })
 
-  it('keeps five Community endpoints explicit while Android remains unpublished and unverified', () => {
-    expect(read('README.en.md')).toMatch(/five Community endpoints/i)
-    expect(read('ARCHITECTURE.md')).toMatch(/five Community endpoints/i)
-    expect(read('AGENTS.md')).toMatch(/five Community endpoints/i)
-    expect(read('docs/story.md')).toMatch(/Five Community Endpoints/i)
-    expect(read('ECOSYSTEM.md')).toMatch(/five Community endpoints/i)
+  it('keeps three Complementary Community endpoints explicit while Android remains unpublished and unverified', () => {
+    expect(read('README.md')).toMatch(/three complementary community endpoints/iu)
+    expect(read('README.en.md')).toMatch(/three complementary community endpoints/iu)
+    expect(read('ARCHITECTURE.md')).toMatch(/three complementary community endpoints/iu)
+    expect(read('AGENTS.md')).toMatch(/three complementary community endpoints/iu)
+    expect(read('ECOSYSTEM.md')).toMatch(/three complementary community endpoints/iu)
+    expect(read('docs/story.md')).toMatch(/Three Complementary Community Endpoints/u)
+    expect(read('docs/story.md')).toMatch(/三个互补社区端/u)
 
     for (const rel of [
+      'README.md',
       'README.en.md',
       'ARCHITECTURE.md',
       'AGENTS.md',
       'docs/community-endpoints.en.md',
       'docs/current-release.md',
     ]) {
-      expect(read(rel), rel).toMatch(/Android[\s\S]{0,180}(UNVERIFIED|experimental|Experimental)/u)
+      expect(read(rel), rel).toMatch(/Android[\s\S]{0,200}(UNVERIFIED|experimental|Experimental)/u)
+    }
+
+    for (const rel of ['README.en.md', 'ECOSYSTEM.md', 'docs/community-endpoints.en.md']) {
+      expect(read(rel), rel).toMatch(/deepseek-harness[\s\S]{0,160}(Windows|Win\/macOS)/iu)
     }
   })
 
-  it('keeps Chinese onboarding from counting Android as a fifth shipped endpoint', () => {
+  it('keeps Chinese onboarding aligned on two shipped Complementary endpoints and unverified Android', () => {
     const gettingStarted = read('docs/getting-started.md')
-    expect(gettingStarted).not.toContain('五个社区端定义')
-    expect(gettingStarted).toMatch(/四个(?:当前)?已发行/)
+    expect(gettingStarted).toContain('三个互补 Community endpoints')
+    expect(gettingStarted).toContain('两个当前已发行')
     expect(gettingStarted).toMatch(/Android.*UNVERIFIED/u)
   })
 

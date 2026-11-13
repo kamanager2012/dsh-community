@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- 产品定位收敛为**官方互补版（Complementary Edition）**：官方 `deepseek-ai/deepseek-harness` 已提供 Official Web 与 Windows / macOS Desktop（`win-x64`、`mac-arm64`、`mac-x64`），本仓不再双份构建 Windows Setup / macOS DMG，专注保留官方缺失的三个互补社区端——**WSL/Linux 终端（TUI）**、**Linux Desktop AppImage** 与活跃研发中的 **Android Remote Client**（`[UNVERIFIED]`，不进 Published Latest）。
+- 收缩桌面打包与 CI/Release 工作流：下线 `.github/workflows/windows-package-smoke.yml`，将 `.github/workflows/linux-macos-package-smoke.yml` 重命名为 `linux-package-smoke.yml`（仅跑 `ubuntu-latest` AppImage），`runtime-lock-verify.yml` 与 `release.yml` 收敛为 Linux-only（`--win` / `--mac` 在 `apps/desktop/scripts/package.mjs` 显式 fail-closed），`verify-release-set.mjs` 仅要求 `.AppImage` 与 CycloneDX SBOM；同时在 `validate-release-tag.mjs` / `validate-published-latest.mjs` / `sync-published-latest.mjs` 兼容保留历史 `v0.1.1-rc.2` 三端资产证据并支持未来仅 AppImage 发行。
+
 - Android evidence chain 增加标准化 record creator：`scripts/create-android-evidence-record.mjs` 只从真实 probe transcript + 本地 artifact bytes 生成 record，SHA-256 由脚本自行计算；设备身份只接受预哈希值，不接受原始 serial；必须显式提供 capture time 与 Community full SHA，且输出使用 create-only，禁止静默覆盖既有证据。
 - creator 当前识别 carrier / native-addon / app-UID preflight 的真实成功 marker，并为未来 PTY app-UID、DSH boot、arm64/x86_64 APK smoke 固定 record 形状；当前 ripgrep 官方 seam 未解锁，因此 creator 明确拒绝生成 ripgrep PASS record。
 

@@ -1,12 +1,12 @@
-# Android 第五社区端点（移动端）
+# Android 第三互补社区端点（移动端）
 
-> 状态：`[LABS]` / `[UNVERIFIED]`。Android 仍是第五社区端点，但目标已从 embedded local runtime 转为轻量 Remote Client；在 Remote Android Acceptance 通过前不承诺已发布能力。
+> 状态：`[LABS]` / `[UNVERIFIED]`。在互补版定位下，Android 是 **第三个互补社区端点**（继 WSL/Linux 终端与 Linux AppImage 之后），目标已从 embedded local runtime 转为轻量 Remote Client；在 Remote Android Acceptance 通过前不承诺已发布能力。
 
 [English](android-endpoint.en.md) · [Runtime Substrate](android-runtime-substrate.md) · [Reality Gate](reality-gate.md)
 
 ## 定位
 
-Android 是 DSH Community 的**第五个社区端点**（前四个为 WSL/Linux 终端、Windows Desktop、macOS Desktop、Linux AppImage）。Android 源码属于本仓主线，但当前尚未进入 Published Latest。目标形态改为 APK Remote Client：官方 `@deepseek-ai/dsh` 只运行在可信 Host，Android 仅负责 Session / Prompt / 事件流 / 审批 / 问答交互，不携带 Node、Agent loop、Session store 或 tool executor。完整边界见 [Remote Host-Client Architecture](remote-host-client.md)。
+Android 是 DSH Community 互补版的**第三个社区端点**（前两个为 WSL/Linux 终端与 Linux AppImage；Windows Desktop、macOS Desktop 与 Official Web 由官方上游 `deepseek-harness` 提供）。Android 源码属于本仓主线，但当前尚未进入 Published Latest。目标形态改为 APK Remote Client：官方 `@deepseek-ai/dsh` 只运行在可信 Host，Android 仅负责 Session / Prompt / 事件流 / 审批 / 问答交互，不携带 Node、Agent loop、Session store 或 tool executor。完整边界见 [Remote Host-Client Architecture](remote-host-client.md)。
 
 ## 目标架构
 

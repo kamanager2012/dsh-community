@@ -1,10 +1,10 @@
-name: linux-macos-package-smoke
+name: linux-package-smoke
 
 on:
   pull_request:
     paths:
       - '.github/workflows/release.yml'
-      - '.github/workflows/linux-macos-package-smoke.yml'
+      - '.github/workflows/linux-package-smoke.yml'
       - 'apps/desktop/**'
       - 'packages/dsh-bridge/**'
       - 'packages/shared-types/**'
@@ -18,20 +18,8 @@ permissions:
 
 jobs:
   package:
-    name: package (${{ matrix.label }})
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - label: linux-appimage
-            os: ubuntu-latest
-            packageArg: --appimage
-            extension: AppImage
-          - label: macos-dmg
-            os: macos-latest
-            packageArg: --mac
-            extension: dmg
-    runs-on: ${{ matrix.os }}
+    name: package (linux-appimage)
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
@@ -55,19 +43,19 @@ jobs:
         run: pnpm typecheck
 
       - name: Package exact release target
-        run: pnpm desktop:package -- ${{ matrix.packageArg }}
+        run: pnpm desktop:package -- --appimage
 
       - name: Asar vendor=0 guard
         run: pnpm vitest run apps/desktop/tests/asar-purity.test.ts
 
       - name: Generate release checksum
         shell: bash
-        run: node scripts/checksum-release.mjs 'apps/desktop/release/*.${{ matrix.extension }}'
+        run: node scripts/checksum-release.mjs 'apps/desktop/release/*.AppImage'
 
       - name: Verify artifact bytes and checksum sidecar
         shell: bash
         env:
-          EXTENSION: ${{ matrix.extension }}
+          EXTENSION: AppImage
         run: |
           set -euo pipefail
           node - <<'NODE'
@@ -94,7 +82,6 @@ jobs:
           NODE
 
       - name: Extract AppImage filesystem without FUSE
-        if: ${{ matrix.label == 'linux-appimage' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -111,25 +98,6 @@ jobs:
           test -d squashfs-root
           app_asar=$(find squashfs-root -type f -name app.asar -print -quit)
           test -n "$app_asar"
-          echo "AppImage extract OK: $app_asar"
-
-      - name: Mount DMG and verify app bundle
-        if: ${{ matrix.label == 'macos-dmg' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          files=(apps/desktop/release/*.dmg)
-          [ "${#files[@]}" -ge 1 ]
-          artifact="$GITHUB_WORKSPACE/${files[0]}"
-          mount="$RUNNER_TEMP/dsh-community-dmg"
-          rm -rf "$mount"
-          mkdir -p "$mount"
-          cleanup() { hdiutil detach "$mount" -quiet || true; }
-          trap cleanup EXIT
-          hdiutil attach "$artifact" -nobrowse -readonly -mountpoint "$mount" -quiet
-          app=$(find "$mount" -maxdepth 1 -type d -name '*.app' -print -quit)
-          test -n "$app"
-          executable=$(find "$app/Contents/MacOS" -maxdepth 1 -type f -perm -111 -print -quit)
-          test -n "$executable"
-          echo "DMG mount OK: $app"
+          host_tar=$(find squashfs-root -type f -name official-dsh.tar -print -quit)
+          test -n "$host_tar"
+          echo "AppImage extract OK: $app_asar ($host_tar)"

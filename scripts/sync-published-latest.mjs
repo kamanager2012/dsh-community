@@ -24,9 +24,13 @@ function expectedPrimaryNames(tag) {
   }
   const version = tag.slice(1)
   return {
-    linuxAppImage: 'dsh-community-' + version + '.AppImage',
-    macosDmg: 'dsh-community-' + version + '.dmg',
-    windowsSetup: 'DSH.Community.Setup.' + version + '.exe',
+    required: {
+      linuxAppImage: 'dsh-community-' + version + '.AppImage',
+    },
+    optionalLegacy: {
+      macosDmg: 'dsh-community-' + version + '.dmg',
+      windowsSetup: 'DSH.Community.Setup.' + version + '.exe',
+    },
   }
 }
 
@@ -72,10 +76,12 @@ export function syncPublishedLatestFacts(facts, release) {
   }
 
   const primaryAssets = {}
-  for (const [key, name] of Object.entries(names)) {
+  const syncedNames = {}
+  const recordAsset = (key, name, required) => {
     const asset = assets.get(name)
     if (!asset) {
-      fail('GitHub Latest is missing required primary asset ' + name)
+      if (required) fail('GitHub Latest is missing required primary asset ' + name)
+      return
     }
     if (!Number.isInteger(asset.id) || asset.id <= 0) {
       fail('GitHub Latest asset id is invalid for ' + name)
@@ -83,11 +89,18 @@ export function syncPublishedLatestFacts(facts, release) {
     if (typeof asset.digest !== 'string' || !DIGEST_RE.test(asset.digest)) {
       fail('GitHub Latest asset digest is invalid for ' + name)
     }
+    syncedNames[key] = name
     primaryAssets[key] = {
       name,
       assetId: asset.id,
       digest: asset.digest,
     }
+  }
+  for (const [key, name] of Object.entries(names.required)) {
+    recordAsset(key, name, true)
+  }
+  for (const [key, name] of Object.entries(names.optionalLegacy)) {
+    recordAsset(key, name, false)
   }
 
   const beforeCandidate = immutableCandidateSnapshot(facts)
@@ -102,8 +115,8 @@ export function syncPublishedLatestFacts(facts, release) {
   const note = next.publishedAssets?.note
     ?? next.assets?.note
     ?? 'Use the exact names on the GitHub Release page.'
-  next.assets = { ...names, note }
-  next.publishedAssets = { ...names, note }
+  next.assets = { ...syncedNames, note }
+  next.publishedAssets = { ...syncedNames, note }
   next.publishedReleaseEvidence = {
     releaseId: release.id,
     tag: release.tag_name,

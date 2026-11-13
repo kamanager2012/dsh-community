@@ -55,8 +55,7 @@ describe('remote integration gate', () => {
     const workflowFiles = new Map([
       ['ci', '.github/workflows/ci.yml'],
       ['dependency-audit', '.github/workflows/dependency-audit.yml'],
-      ['linux-macos-package-smoke', '.github/workflows/linux-macos-package-smoke.yml'],
-      ['windows-package-smoke', '.github/workflows/windows-package-smoke.yml'],
+      ['linux-package-smoke', '.github/workflows/linux-package-smoke.yml'],
       ['runtime-lock-verify', '.github/workflows/runtime-lock-verify.yml'],
       ['runtime-sbom-smoke', '.github/workflows/runtime-sbom-smoke.yml'],
       ['artifact-action-smoke', '.github/workflows/artifact-action-smoke.yml'],

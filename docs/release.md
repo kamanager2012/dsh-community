@@ -19,7 +19,7 @@ matrix. See [Version and identity policy](version-policy.md).
 | Upstream prerelease candidate | `vX.Y.Z-alpha.N`, `vX.Y.Z-beta.N`, etc. | Candidate/testing channel only; GitHub pre-release, never displaces Published Latest |
 | Community patch | `vX.Y.Z[-prerelease]-community.N` | Community-owned fix on the same official core; GitHub pre-release |
 
-Windows / macOS artifacts are built by GitHub Actions (`release` workflow) — nobody needs to sit on those OSes.
+Windows and macOS Desktop installers (`DSH Community Setup *.exe`, `dsh-community-*.dmg`) are **retired** after historical `v0.1.1-rc.2` under the **Complementary Edition** policy — official `deepseek-ai/deepseek-harness` owns Windows (`win-x64`) and macOS (`mac-arm64`, `mac-x64`) Desktop releases. Future `dsh-community` releases build Linux (`ubuntu-latest`) AppImage + CycloneDX SBOM only.
 
 ## Cut a release
 
@@ -36,11 +36,10 @@ The current download is `v0.1.1-rc.2` on
 Do not download historical `v0.1.2`–`v0.1.6` as the current product. Never move
 or overwrite a published tag.
 
-The script checks a clean tree and a free tag, then runs the canonical release-identity validator before building the AppImage locally and pushing the tag. The GitHub `release` workflow independently runs the same validator on the pushed tag **before any OS build starts**; a manually pushed tag cannot bypass the workspace/pin/current-release/CHANGELOG identity checks. Non-tag `workflow_dispatch` remains available for diagnostic builds. The tag push then starts the 3-OS build:
+The script checks a clean tree and a free tag, then runs the canonical release-identity validator before building the AppImage locally and pushing the tag. The GitHub `release` workflow independently runs the same validator on the pushed tag **before any build starts**; a manually pushed tag cannot bypass the workspace/pin/current-release/CHANGELOG identity checks. Non-tag `workflow_dispatch` remains available for diagnostic builds. The tag push then builds the Complementary Edition release set on `ubuntu-latest`:
 
 1. **Linux** — typecheck + test + AppImage + sha256
-2. **Windows** — NSIS installer (`DSH Community Setup x.y.z.exe`) + sha256. Portable zip is deferred until NSIS is reliably green.
-3. **macOS** — dmg + sha256
+2. **Runtime SBOM** — official-runtime CycloneDX JSON + sha256
 
 The `publish` job collects all assets and creates the GitHub Release with the CHANGELOG section as notes. Only plain `vX.Y.Z` or `vX.Y.Z-rc.N` tags are eligible for `--latest`. Any other prerelease identifier, including `alpha`, `beta`, `preview`, or `community.N`, is forced to `--prerelease`.
 
@@ -84,7 +83,7 @@ deny entry and is not rebuilt. The existing module-resolution, node-pty
 native-binary, classic-node_modules, and runtime-tar size checks then run on
 the resulting staged tree.
 
-The lock is verified independently on Linux, Windows, and macOS by
+The runtime lock is verified on Linux (`ubuntu-latest`) by
 `runtime-lock-verify`, and its separate npm audit fails at high severity and
 above. A pin bump therefore requires a reviewed lock/evidence update plus an
 explicit lifecycle-policy review before a release build may use a different
@@ -102,19 +101,13 @@ coverage.
 ## Artifact naming
 
 ```text
-dsh-community-x.y.z[-prerelease].AppImage        Linux
-DSH Community Setup x.y.z[-prerelease].exe       Windows installer
-dsh-community-x.y.z[-prerelease]-win-x64.zip     Windows portable
-dsh-community-x.y.z[-prerelease].dmg             macOS (unsigned preview)
-dsh-community-x.y.z[-prerelease]-official-runtime.cdx.json
-                                                    embedded official DSH CycloneDX SBOM
+dsh-community-x.y.z[-prerelease].AppImage                  Linux AppImage (Complementary Edition primary binary)
+dsh-community-x.y.z[-prerelease]-official-runtime.cdx.json embedded official DSH CycloneDX SBOM
 ```
 
-Every artifact ships a `<file>.sha256` sidecar.
-
-The source workflow templates the Windows file as `DSH Community Setup
-<version>.exe`. GitHub may display spaces as dots. Always use the exact
-filename shown on the Release page when verifying a published asset.
+Historical `v0.1.1-rc.2` also included legacy `DSH Community Setup *.exe` and
+`dsh-community-*.dmg` installers before those targets were retired to upstream.
+Every published artifact ships a `<file>.sha256` sidecar.
 
 ## Artifact signing (keyless)
 
@@ -123,8 +116,7 @@ job ran on real GitHub OIDC and every published asset carries a bundle, and
 `artifact-smoke` verified all of them in strict mode
 ([run 32579569995](https://github.com/kamanager2012/dsh-community/actions/runs/32579569995)).
 
-**What gets signed.** Every release asset — each installer (AppImage / Setup.exe /
-dmg) and every `<file>.sha256` sidecar — gets one cosign **bundle**:
+**What gets signed.** Every release asset — the AppImage (plus historical Win/macOS installers on `v0.1.1-rc.2`), the CycloneDX SBOM, and every `<file>.sha256` sidecar — gets one cosign **bundle**:
 `<file>.sigstore.json`, containing the detached signature, the Fulcio certificate,
 and the Rekor transparency-log proof in a single file. The workflows pin cosign
 **v2.6.1**: newer v3.x releases no longer ship the detached `.sig` assets that
@@ -159,7 +151,7 @@ cosign verify-blob \
   dsh-community-0.1.1-rc.2.AppImage
 ```
 
-A passing check means: signed by this repo's `release.yml` on the **exact release tag being checked**, cert chain rooted at Sigstore's Fulcio CA, logged in Rekor, and the blob bytes match the signature. `artifact-smoke` reuses one resolved tag across signature, Windows, macOS, and Linux checks; it does not re-read Latest mid-run. It does not mean the binary is malware-free.
+A passing check means: signed by this repo's `release.yml` on the **exact release tag being checked**, cert chain rooted at Sigstore's Fulcio CA, logged in Rekor, and the blob bytes match the signature. `artifact-smoke` reuses one resolved tag across signature, Linux AppImage, and Linux terminal checks; it does not re-read Latest mid-run. It does not mean the binary is malware-free.
 
 **OS-level signing: absent.** Windows Authenticode and macOS codesign /
 notarization are out of scope and not configured (`CSC_IDENTITY_AUTO_DISCOVERY=false`
@@ -180,22 +172,20 @@ https://github.com/kamanager2012/dsh-community/releases/latest
 
 ## Distribution Reality Gate
 
-GitHub Latest is `v0.1.1-rc.2` (1:1 official core). Later `main` commits may
+GitHub Latest is `v0.1.1-rc.2` (historical 3-OS release; future Complementary Edition tags publish Linux AppImage + SBOM only). Later `main` commits may
 contain code or verification fixes that are not in the published download.
-Validate exact Release downloads separately from source or CI. Use the exact
-filename on the Release page (Windows Setup may appear with spaces or dots):
+Validate exact Release downloads separately from source or CI:
 
 | Endpoint | Exact artifact / path | Required flow |
 |---|---|---|
-| Windows Desktop | `DSH Community Setup 0.1.1-rc.2.exe` | clean VM → install → first launch → key → new/resume → plugin → restart |
-| macOS Desktop | `dsh-community-0.1.1-rc.2.dmg` | clean host → install → first launch → key → new/resume → plugin → restart |
 | WSL/Linux Terminal | `dsh-community` / `pnpm tui` | clean WSL/Linux → key → new/resume → plugin → restart |
-| Linux AppImage | `dsh-community-0.1.1-rc.2.AppImage` | community endpoint 4; CLI users still start at Terminal |
-| Android | Labs APK / Termux | `[UNVERIFIED]`; not a Latest download |
+| Linux AppImage | `dsh-community-*.AppImage` | clean Linux desktop → extract/launch → key → new/resume → plugin → restart |
+| Android Remote Client | APK (`apps/android`) | `[UNVERIFIED]`; not a Latest download until Remote Acceptance passes |
+| Windows / macOS Desktop (historical `v0.1.1-rc.2` only) | `DSH Community Setup 0.1.1-rc.2.exe`, `dsh-community-0.1.1-rc.2.dmg` | Retired in future releases; superseded upstream by official `deepseek-harness` |
 
 The gate must also cover uninstall/reinstall, upgrade, missing key, bad network, and
-broken or interrupted Runtime extraction. Record Official Web ↔ WSL/Linux TUI ↔
-Windows/macOS Desktop Session sharing and the exact asset filename plus SHA256.
+broken or interrupted Runtime extraction. Record Official Web / Official Win & macOS Desktop ↔ WSL/Linux TUI ↔
+Linux AppImage Session sharing and the exact asset filename plus SHA256.
 `artifact-smoke` is only a partial install / first-ready / missing-key check; it is not
 a full user loop. The manual, billable exact-release WSL/Linux new/resume gate is
 [`user-loop-evidence`](user-loop-evidence.md); it never runs on a schedule, push, or PR. Earlier smokes (`v0.1.2`, `v0.1.1-rc.1`)

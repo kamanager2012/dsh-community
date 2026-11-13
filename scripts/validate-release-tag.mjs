@@ -53,6 +53,11 @@ function assertReleaseTag(tag, label) {
   }
 }
 
+const REQUIRED_PRIMARY_ASSET_KEYS = ['linuxAppImage']
+const OPTIONAL_LEGACY_ASSET_KEYS = ['macosDmg', 'windowsSetup']
+const ALL_PRIMARY_ASSET_KEYS = [...REQUIRED_PRIMARY_ASSET_KEYS, ...OPTIONAL_LEGACY_ASSET_KEYS]
+const ALLOWED_ASSET_FIELDS = new Set([...ALL_PRIMARY_ASSET_KEYS, 'note'])
+
 function expectedPublishedAssets(version) {
   return {
     linuxAppImage: 'dsh-community-' + version + '.AppImage',
@@ -68,18 +73,31 @@ function assertPublishedAssets(facts, publishedVersion) {
     fail('current-release has no published asset identity')
   }
 
-  for (const key of ['linuxAppImage', 'macosDmg', 'windowsSetup']) {
-    if (publishedAssets[key] !== assets[key]) {
-      fail('current-release publishedAssets.' + key + ' disagrees with assets.' + key)
+  for (const key of Object.keys(assets)) {
+    if (!ALLOWED_ASSET_FIELDS.has(key)) {
+      fail('current-release assets contains unexpected key ' + key)
+    }
+  }
+  for (const key of Object.keys(publishedAssets)) {
+    if (!ALLOWED_ASSET_FIELDS.has(key)) {
+      fail('current-release publishedAssets contains unexpected key ' + key)
     }
   }
 
   const expected = expectedPublishedAssets(publishedVersion)
-  for (const [key, value] of Object.entries(expected)) {
-    if (assets[key] !== value) {
+  for (const key of ALL_PRIMARY_ASSET_KEYS) {
+    const isRequired = REQUIRED_PRIMARY_ASSET_KEYS.includes(key)
+    const inAssets = assets[key] !== undefined
+    const inPublished = publishedAssets[key] !== undefined
+    if (!isRequired && !inAssets && !inPublished) continue
+
+    if (publishedAssets[key] !== assets[key]) {
+      fail('current-release publishedAssets.' + key + ' disagrees with assets.' + key)
+    }
+    if (assets[key] !== expected[key]) {
       fail(
         'current-release published asset ' + key + '=' + String(assets[key])
-          + ', expected ' + value + ' for Published Latest',
+          + ', expected ' + expected[key] + ' for Published Latest',
       )
     }
   }
@@ -110,8 +128,16 @@ function assertPublishedReleaseEvidence(facts, publishedLatestTag) {
   }
 
   const publishedAssets = facts.publishedAssets ?? facts.assets
-  for (const key of ['linuxAppImage', 'macosDmg', 'windowsSetup']) {
+  for (const key of Object.keys(evidence.primaryAssets ?? {})) {
+    if (!ALL_PRIMARY_ASSET_KEYS.includes(key)) {
+      fail('publishedReleaseEvidence contains unexpected primary asset ' + key)
+    }
+  }
+  for (const key of ALL_PRIMARY_ASSET_KEYS) {
+    const isRequired = REQUIRED_PRIMARY_ASSET_KEYS.includes(key)
+    const hasName = publishedAssets?.[key] !== undefined
     const recorded = evidence.primaryAssets?.[key]
+    if (!isRequired && !hasName && recorded === undefined) continue
     if (!recorded || typeof recorded !== 'object') {
       fail('publishedReleaseEvidence missing primary asset ' + key)
     }

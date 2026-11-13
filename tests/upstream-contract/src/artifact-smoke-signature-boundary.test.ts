@@ -15,7 +15,7 @@ describe('post-release signature verification boundary', () => {
     expect(workflow).toContain('TAG: ${{ needs.resolve.outputs.tag }}')
     const verifySection = workflow.slice(
       workflow.indexOf('  verify-signatures:'),
-      workflow.indexOf('  windows-desktop:'),
+      workflow.indexOf('  linux-appimage:'),
     )
     expect(verifySection).not.toContain('releases/latest')
     expect(verifySection).not.toContain('github.event.inputs.tag')
@@ -47,7 +47,7 @@ describe('post-release signature verification boundary', () => {
   it('runs a real signature-only check when the smoke workflow itself changes', () => {
     expect(workflow).toContain('pull_request:')
     expect(workflow).toContain("'.github/workflows/artifact-smoke.yml'")
-    for (const job of ['windows-desktop', 'macos-desktop', 'linux-terminal']) {
+    for (const job of ['linux-appimage', 'linux-terminal']) {
       expect(workflow).toMatch(
         new RegExp(
           '  ' + job + ':\\n    needs: resolve\\n    if: \\$\\{\\{ github\\.event_name != \'pull_request\' \\}\\}',
@@ -55,6 +55,8 @@ describe('post-release signature verification boundary', () => {
         ),
       )
     }
+    expect(workflow).not.toContain('windows-desktop:')
+    expect(workflow).not.toContain('macos-desktop:')
   })
 
   it('keeps current signed release outside the unsigned legacy allowlist', () => {
