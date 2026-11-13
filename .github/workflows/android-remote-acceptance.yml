@@ -141,21 +141,33 @@ jobs:
           echo "${ANDROID_HOME}/platform-tools" >> "$GITHUB_PATH"
           echo "${ANDROID_HOME}/emulator" >> "$GITHUB_PATH"
           export PATH="${ANDROID_HOME}/platform-tools:${ANDROID_HOME}/emulator:${PATH}"
+          mkdir -p "${HOME}/.android/avd" "${{ github.workspace }}/apps/android/app/build/r6-evidence"
+          export ANDROID_USER_HOME="${HOME}/.android"
+          export ANDROID_AVD_HOME="${HOME}/.android/avd"
+          echo "ANDROID_USER_HOME=${HOME}/.android" >> "$GITHUB_ENV"
+          echo "ANDROID_AVD_HOME=${HOME}/.android/avd" >> "$GITHUB_ENV"
           SDK_TOOLS="${ANDROID_HOME}/cmdline-tools/latest/bin"
           yes | "${SDK_TOOLS}/sdkmanager" --licenses >/dev/null || true
           "${SDK_TOOLS}/sdkmanager" "platform-tools" "emulator" "system-images;android-34;default;x86_64"
           echo "no" | "${SDK_TOOLS}/avdmanager" create avd --force -n dsh-r6-api34 -k "system-images;android-34;default;x86_64" --abi x86_64
-          nohup "${ANDROID_HOME}/emulator/emulator" -avd dsh-r6-api34 -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot > /tmp/android-emulator.log 2>&1 &
-          adb wait-for-device
+          ls -la "${ANDROID_AVD_HOME}"
+          "${ANDROID_HOME}/emulator/emulator" -list-avds
+          nohup "${ANDROID_HOME}/emulator/emulator" -avd dsh-r6-api34 -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot > apps/android/app/build/r6-evidence/android-emulator.log 2>&1 &
+          EMU_PID=$!
           for i in $(seq 1 90); do
-            BOOTED="$(adb shell getprop sys.boot_completed | tr -d '\r')"
+            if ! kill -0 "$EMU_PID" 2>/dev/null; then
+              echo "ERROR: Android emulator process exited prematurely" >&2
+              cat apps/android/app/build/r6-evidence/android-emulator.log || true
+              exit 1
+            fi
+            BOOTED="$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
             if [ "$BOOTED" = "1" ]; then
               break
             fi
             sleep 2
           done
-          if [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" != "1" ]; then
-            cat /tmp/android-emulator.log || true
+          if [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)" != "1" ]; then
+            cat apps/android/app/build/r6-evidence/android-emulator.log || true
             exit 1
           fi
           adb shell settings put global window_animation_scale 0 || true
@@ -171,8 +183,8 @@ jobs:
           TEST_APK_PATH="$(find apps/android/app/build/outputs/apk -name 'app-debug-androidTest.apk' | head -n 1)"
           test -n "$APK_PATH"
           test -n "$TEST_APK_PATH"
-          node scripts/accept-android-r6-device.mjs --apk "$APK_PATH" --test-apk "$TEST_APK_PATH" --output /tmp/r6-emulator-acceptance.json
-          node -e "const r=JSON.parse(require('fs').readFileSync('/tmp/r6-emulator-acceptance.json','utf8')); if (r.apk.arm64RealDeviceSmoke !== false || r.apk.x86_64EmulatorSmoke !== true || r.remoteAcceptance.pairing !== 'PASS') process.exit(1);"
+          node scripts/accept-android-r6-device.mjs --apk "$APK_PATH" --test-apk "$TEST_APK_PATH" --output apps/android/app/build/r6-evidence/r6-emulator-acceptance.json
+          node -e "const r=JSON.parse(require('fs').readFileSync('apps/android/app/build/r6-evidence/r6-emulator-acceptance.json','utf8')); if (r.apk.arm64RealDeviceSmoke !== false || r.apk.x86_64EmulatorSmoke !== true || r.remoteAcceptance.pairing !== 'PASS') process.exit(1);"
           if node scripts/verify-android-release-ready.mjs; then
             echo "ERROR: emulator acceptance must never unlock physical arm64 release gate" >&2
             exit 1
@@ -189,5 +201,5 @@ jobs:
           name: android-r6-emulator-acceptance
           retention-days: 3
           path: |
-            /tmp/r6-emulator-acceptance.json
-            /tmp/android-emulator.log
+            apps/android/app/build/r6-evidence/r6-emulator-acceptance.json
+            apps/android/app/build/r6-evidence/android-emulator.log
