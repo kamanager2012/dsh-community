@@ -37,7 +37,7 @@ describe('Android release readiness is fail-closed', () => {
     const source = readFileSync(verifier, 'utf8')
     expect(source).toContain('a9d4750074c7b5439c61daa28ea9afb5dc28e43e')
     expect(source).toContain('f8fe6858549f75a4b4e9633abf39dd2038dbf496')
-    expect(source).toContain("const EXPECTED_DSH = '0.2.2-rc.1'")
+    expect(source).toContain("const EXPECTED_DSH = '0.2.2-rc.2'")
     expect(source).toContain("const EXPECTED_NODE = '22.19.0'")
     expect(source).toContain('scripts/validate-android-evidence-backing.mjs')
   })

@@ -23,7 +23,7 @@ function fixture(options: {
   const root = mkdtempSync(join(tmpdir(), 'dsh-android-upstream-drift-'))
   write(root, 'apps/cli/package.json', JSON.stringify({
     name: '@deepseek-ai/dsh',
-    version: '0.2.2-rc.1',
+    version: '0.2.2-rc.2',
   }))
   write(
     root,
@@ -77,7 +77,7 @@ function run(root: string) {
 }
 
 describe('Android upstream drift audit', () => {
-  it('accepts the current 0.2.2-rc.1-shaped Android seam baseline', () => {
+  it('accepts the current 0.2.2-rc.2-shaped Android seam baseline', () => {
     const root = fixture()
     try {
       const result = run(root)

@@ -5,7 +5,7 @@
   "endpointState": "ACTIVE_SOURCE_UNVERIFIED",
   "officialDsh": {
     "package": "@deepseek-ai/dsh",
-    "version": "0.2.2-rc.1",
+    "version": "0.2.2-rc.2",
     "nodeEngine": ">=24.9.0"
   },
   "stockNodejsMobile": {
@@ -37,7 +37,7 @@
     "sourceCommit": "f8fe6858549f75a4b4e9633abf39dd2038dbf496",
     "tagSignatureVerifiedByGitHub": true
   },
-  "nextGate": "0.2.2-rc.1 raised official engines.node to >=24.9.0, so any local carrier probe must also move beyond the unverified Node v22.19.0 cross-build probe to a verified Node >=24.9.0 tag before running carrier/native/sandbox/app-UID/PTY Reality Gates and storing version-bound evidence records. The release verifier rejects unbacked PASS state, and ripgrep remains blocked on an upstream Android package or explicit executable-path seam.",
+  "nextGate": "0.2.2-rc.2 raised official engines.node to >=24.9.0, so any local carrier probe must also move beyond the unverified Node v22.19.0 cross-build probe to a verified Node >=24.9.0 tag before running carrier/native/sandbox/app-UID/PTY Reality Gates and storing version-bound evidence records. The release verifier rejects unbacked PASS state, and ripgrep remains blocked on an upstream Android package or explicit executable-path seam.",
   "nativeClosure": "apps/android/native-blockers.json",
   "releaseReadinessVerifier": "scripts/verify-android-release-ready.mjs",
   "realityEvidence": "apps/android/evidence/reality-gate.json",
@@ -46,7 +46,7 @@
     "sourceLock": "apps/desktop/runtime-lock/package-lock.json",
     "audit": "scripts/audit-android-official-cli-closure.mjs",
     "profileOnlyMitigation": "INEFFECTIVE",
-    "reason": "Published @deepseek-ai/dsh@0.2.2-rc.1 eagerly includes dsh-base/sdk-minimal/tool-fs-search and their native dependency closure before profile selection."
+    "reason": "Published @deepseek-ai/dsh@0.2.2-rc.2 eagerly includes dsh-base/sdk-minimal/tool-fs-search and their native dependency closure before profile selection."
   },
   "nativeCompatibility": "apps/android/native-compatibility.json",
   "nativeAddonProbe": "scripts/android-native-addon-probe.sh",

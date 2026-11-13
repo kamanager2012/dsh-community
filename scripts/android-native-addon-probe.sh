@@ -34,7 +34,7 @@ set -euo pipefail
 #   ADB_SERIAL=<serial>
 
 MODE="${1:-preflight}"
-EXPECTED_DSH="0.2.2-rc.1"
+EXPECTED_DSH="0.2.2-rc.2"
 EXPECTED_NODE="22.19.0"
 EXPECTED_NODE_TAG="v22.19.0"
 EXPECTED_NODE_TAG_OBJECT="a9d4750074c7b5439c61daa28ea9afb5dc28e43e"

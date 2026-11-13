@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "asOf": "2026-11-13",
   "status": "NOT_RUN",
-  "officialDsh": "0.2.2-rc.1",
+  "officialDsh": "0.2.2-rc.2",
   "gates": {
     "carrier": "NOT_RUN",
     "nativeClosure": "BLOCKED",

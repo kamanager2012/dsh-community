@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
@@ -62,6 +62,10 @@ const fsSearchSourcePath = officialPath(
   sourceRoot,
   'packages/fs/tool-fs-search/src/search-core.ts',
 )
+const utilRipgrepSourcePath = officialPath(
+  sourceRoot,
+  'packages/util/ripgrep/src/index.ts',
+)
 const sessionSource = read(officialPath(
   sourceRoot,
   'packages/session/session-persistence-jsonl/src/index.ts',
@@ -71,21 +75,32 @@ const attachmentSource = read(officialPath(
   'packages/attachment/attachment-local/src/store.ts',
 ))
 
-const ripgrep = spawnSync(
-  process.execPath,
-  [RIPGREP_AUDIT, '--source', fsSearchSourcePath],
-  { cwd: ROOT, encoding: 'utf8' },
-)
-
+const ripgrepTargets = [
+  ...(existsSync(utilRipgrepSourcePath) ? [utilRipgrepSourcePath] : []),
+  fsSearchSourcePath,
+]
 let ripgrepResult
-if (ripgrep.status === 0) {
-  ripgrepResult = JSON.parse(ripgrep.stdout)
-} else {
-  ripgrepResult = {
-    verdict: 'AUDIT_ERROR_REVIEW_REQUIRED',
-    error: (ripgrep.stderr || ripgrep.stdout || 'ripgrep seam audit failed').trim(),
-    androidPackagesPresent: [],
-    sourceAudit: { semantics: { explicitPathSeam: false } },
+for (const targetPath of ripgrepTargets) {
+  const probe = spawnSync(
+    process.execPath,
+    [RIPGREP_AUDIT, '--source', targetPath],
+    { cwd: ROOT, encoding: 'utf8' },
+  )
+  if (probe.status !== 0) {
+    ripgrepResult = {
+      verdict: 'AUDIT_ERROR_REVIEW_REQUIRED',
+      error: (probe.stderr || probe.stdout || 'ripgrep seam audit failed').trim(),
+      androidPackagesPresent: [],
+      sourceAudit: { semantics: { explicitPathSeam: false } },
+    }
+    break
+  }
+  const parsed = JSON.parse(probe.stdout)
+  if (!ripgrepResult || parsed.sourceAudit?.semantics?.explicitPathSeam === true || (parsed.androidPackagesPresent ?? []).length > 0) {
+    ripgrepResult = parsed
+    if (parsed.sourceAudit?.semantics?.explicitPathSeam === true || (parsed.androidPackagesPresent ?? []).length > 0) {
+      break
+    }
   }
 }
 

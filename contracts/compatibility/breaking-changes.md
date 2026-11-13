@@ -3,6 +3,22 @@
 Record the delta here when contract CI or a pin bump hits a public-surface move.
 Do not invent a compatibility shim in Desktop IPC.
 
+## 0.2.2-rc.2
+
+- surface: package / config-row / exports / ripgrep-seam / pin
+- what moved:
+  - Candidate Source is `@deepseek-ai/dsh@0.2.2-rc.2` (`next` dist-tag, published `2026-11-12T02:16:12.076Z`; upstream tag `dsh-v0.2.2-rc.2`, release commit `91319233e1e6ee64da0cb769dd10c9b4c4f95768`, merge commit `ddac96760b6edf8fa0fe17cbdcf0b512f4c12b2c`). `engines.node` remains `>=24.9.0`.
+  - Official Web config snapshot grows **196 → 202** rows: added `agent-team`, `tool-agent-team`, `mcp-manager`, `ui-agent-team`, replaced `account-controller` with `ui-account-notifications`, and replaced `office-to-pdf` with `office-kit` + `workspace-dependencies` + `skill-office`.
+  - Published package snapshot grows **192 → 198** entries: promoted `@deepseek-ai/dsh-agent-team` and `@deepseek-ai/dsh-tool-agent-team`, added `@deepseek-ai/dsh-client-ui-account-notifications`, `@deepseek-ai/dsh-client-ui-agent-team`, `@deepseek-ai/dsh-mcp-manager`, `@deepseek-ai/dsh-office-kit`, `@deepseek-ai/dsh-skill-office`, `@deepseek-ai/dsh-tool-workspace-dependencies`, and updated `@deepseek-ai/dsh-deepseek-account`.
+  - `@deepseek-ai/dsh` `exports` / `files` adds `lib/*.js.map`, `lib/types/*.d.ts.map`, `docs`, and `src`.
+  - `@deepseek-ai/dsh-tool-fs-search/src/search-core.ts` now imports `spawnRipgrep` and re-exports `resolveRgPath` from `@deepseek-ai/dsh-util-ripgrep` (`packages/util/ripgrep/src/index.ts`); `resolveRgPath()` semantics remain zero-argument `@vscode/ripgrep` (`1.18.0`) + `process.pkg` sidecar only (`NO_LEGITIMATE_ANDROID_EXECUTABLE_PATH`).
+  - Community `apps/desktop/runtime-lock` grows **320 → 327** `@deepseek-ai/dsh*` packages pinned cleanly to `0.2.2-rc.2`, retaining `zod@4.6.7` and `undici@^8.12.2` security overrides.
+- community action:
+  - Bump `PINNED_DSH_VERSION`, `COMMUNITY_PRODUCT_VERSION`, workspace manifests, TUI official peers, Android target manifests/scripts, and Desktop runtime lock overrides/lifecycle policy to `0.2.2-rc.2`.
+  - Re-extract `contracts/upstream` snapshots (`config-rows` 202, `packages` 198, `exports`, `cli`).
+  - Point Android ripgrep seam & CLI closure audits at `@deepseek-ai/dsh-util-ripgrep` while keeping Android `[UNVERIFIED]` / `BLOCKED` / `NOT_RUN`.
+  - Regenerate CI-attested `apps/desktop/runtime-lock/package-lock.json` and `evidence.json` on `ubuntu-24.04` (Node 22, npm 10), verify clean `pnpm audit` and `npm audit`, and keep `Published Latest` (`v0.1.1-rc.2`) independent until explicitly released.
+
 ## 0.2.2-rc.1
 
 - `@deepseek-ai/dsh-tui`: `installModelSelection(agentCtx)` dropped its second parameter (`packages/tui/src/index.ts`).
