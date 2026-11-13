@@ -73,7 +73,7 @@
 
 ## 0.2.2-rc.2 — Candidate Source (2026-11-13)
 
-This is a reviewed **Candidate Source**, not GitHub Published Latest. Published Latest remains `v0.1.1-rc.2`; `latest-tested` remains `0.2.2-rc.1` until pre-promotion consolidated local acceptance passes.
+This is a reviewed **Candidate Source**, not GitHub Published Latest. Published Latest remains `v0.1.1-rc.2`; consolidated local acceptance passed on commit `750d8c5` (**97 test files / 469 tests passed, 1 skipped** unpackaged `asar-purity`, 327 exact `0.2.2-rc.2` DSH runtime entries, 0 high/critical advisories in `pnpm audit` and `npm audit`, Android closure/backing/portable audits PASS, 9-plugin offline marketplace PASS) and `latest-tested` advances to `0.2.2-rc.2`.
 
 - Exact npm registry existence (`@deepseek-ai/dsh@0.2.2-rc.2`, published `2026-11-12T02:16:12.076Z`, upstream tag `dsh-v0.2.2-rc.2`, release commit `91319233e1e6ee64da0cb769dd10c9b4c4f95768`, merge commit `ddac96760b6edf8fa0fe17cbdcf0b512f4c12b2c`) was verified.
 - Workspace product/core identity, direct official dependencies, TUI official peers, `pnpm-lock.yaml`, Android closure manifests/scripts, and the complete Desktop DSH runtime closure (`apps/desktop/runtime-lock`) are aligned to `0.2.2-rc.2`.

@@ -17,7 +17,7 @@ Source can move to a reviewed candidate before GitHub Latest moves. These are se
 - `assets` / `publishedAssets` describe installers that actually exist for Published Latest; never synthesize filenames from an unpublished candidate.
 - plugin `testedDsh` and user-loop evidence are evidence states, not aliases for Candidate Source. They move only after their own verification.
 
-Candidate Source and Published Latest may coincide after publication, but they are not required to. On the current line Candidate Source is official `0.2.2-rc.2` (pending runtime-lock & consolidated acceptance) and `latest-tested` is official `0.2.2-rc.1` (consolidated acceptance PASS; compatibility evidence only), while Published Latest remains `v0.1.1-rc.2`.
+Candidate Source and Published Latest may coincide after publication, but they are not required to. On the current line Candidate Source and `latest-tested` are both official `0.2.2-rc.2` (consolidated acceptance PASS; compatibility evidence only), while Published Latest remains `v0.1.1-rc.2`.
 
 ## Current line (2026-11-13)
 
@@ -29,7 +29,7 @@ Candidate Source and Published Latest may coincide after publication, but they a
 | GitHub Latest | [`v0.1.1-rc.2`](https://github.com/kamanager2012/dsh-community/releases/latest) |
 | Published release evidence | GitHub release ID `374950921`; published `2026-08-22T14:25:10Z`; primary installer asset IDs/digests pinned in `current-release.json` |
 | Candidate Dual-Badge | `DeepSeek Harness Community v0.2.2-rc.2 [Official Core: @deepseek-ai/dsh@0.2.2-rc.2]` |
-| Latest tested | `0.2.2-rc.1` — consolidated local acceptance PASS on commit `9f4476d` (runtime-lock attested by CI [run 43327677647](https://github.com/kamanager2012/dsh-community/actions/runs/43327677647) / [run 43328060175](https://github.com/kamanager2012/dsh-community/actions/runs/43328060175)); compatibility evidence only, not publication |
+| Latest tested | `0.2.2-rc.2` — consolidated local acceptance PASS on commit `750d8c5` (runtime-lock attested by CI [run 43334043848](https://github.com/kamanager2012/dsh-community/actions/runs/43334043848)); compatibility evidence only, not publication |
 | Shipped Community endpoints | WSL/Linux Terminal, Windows Desktop, macOS Desktop, Linux AppImage |
 | Active unpublished endpoint | Android `apps/android` `[UNVERIFIED]`, not on the Latest download page |
 | Official Web | Kernel UI, not a community endpoint |

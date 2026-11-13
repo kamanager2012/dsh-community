@@ -1,6 +1,12 @@
 {
   "policy": "Recommend latest tested, not latest published.",
   "runtimes": {
+    "0.2.2-rc.2": {
+      "desktop": "tested",
+      "tui": "tested",
+      "contracts": "snapshotted",
+      "notes": "Consolidated local acceptance PASS on commit 750d8c5c94628746e6cc3fac08c563f56b62ba48 (runtime-lock attested by CI run 43334043848 / job 131585590246): exact Candidate/Published identity, frozen pnpm install, 0 high/critical advisories in pnpm & npm audits, zero contract re-extract drift, exact 0.2.2-rc.2 Desktop runtime closure (327 DSH entries), Android closure/backing/portable audits, typecheck, 97/98 test files and 469/470 tests passed (1 skipped unpackaged asar-purity), authenticated official-Web lifecycle, and 9-plugin marketplace offline verification. Published Latest remains v0.1.1-rc.2."
+    },
     "0.2.2-rc.1": {
       "desktop": "tested",
       "tui": "tested",
