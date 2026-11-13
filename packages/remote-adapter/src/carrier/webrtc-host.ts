@@ -51,15 +51,22 @@ export interface HostWebRtcCarrierOptions {
   readonly epochAllocator?: ConnectionEpochAllocator | undefined
 }
 
+const PREMATURE_END_OF_CANDIDATES_DELAY_MS = 250
+
 interface HostPeerSession {
   readonly peerId: string
   readonly pc: RTCPeerConnection
-  readonly remoteIceQueue: (RtcIceCandidatePayload | null)[]
+  readonly remoteIceQueue: RtcIceCandidatePayload[]
   readonly localIceBuffer: (RtcIceCandidatePayload | null)[]
   remoteDescSet: boolean
   answerSent: boolean
+  receivedRemoteCandidate: boolean
+  pendingEndOfCandidates: boolean
+  endOfCandidatesSent: boolean
+  flushingRemoteIce: boolean
   channel: RemoteServerChannel | undefined
   iceTimer: NodeJS.Timeout | undefined
+  endOfCandidatesTimer: NodeJS.Timeout | undefined
   closed: boolean
 }
 
@@ -292,8 +299,13 @@ export class HostWebRtcCarrier {
       localIceBuffer: [],
       remoteDescSet: false,
       answerSent: false,
+      receivedRemoteCandidate: false,
+      pendingEndOfCandidates: false,
+      endOfCandidatesSent: false,
+      flushingRemoteIce: false,
       channel: undefined,
       iceTimer: undefined,
+      endOfCandidatesTimer: undefined,
       closed: false,
     }
     this.peersBySignalingId.set(fromPeerId, entry)
@@ -332,10 +344,7 @@ export class HostWebRtcCarrier {
 
       const attachOpenChannel = () => {
         if (entry.closed || entry.channel !== undefined || !this.hostKeyPair) return
-        if (entry.iceTimer) {
-          clearTimeout(entry.iceTimer)
-          entry.iceTimer = undefined
-        }
+        this.clearPeerTimers(entry)
 
         const transport = new WebRtcServerDataChannelTransport(
           pc,
@@ -406,35 +415,98 @@ export class HostWebRtcCarrier {
     }
   }
 
+  private clearPeerTimers(entry: HostPeerSession): void {
+    if (entry.iceTimer) {
+      clearTimeout(entry.iceTimer)
+      entry.iceTimer = undefined
+    }
+    if (entry.endOfCandidatesTimer) {
+      clearTimeout(entry.endOfCandidatesTimer)
+      entry.endOfCandidatesTimer = undefined
+    }
+  }
+
+  private scheduleEndOfCandidatesFlush(entry: HostPeerSession): void {
+    if (entry.endOfCandidatesTimer) {
+      clearTimeout(entry.endOfCandidatesTimer)
+      entry.endOfCandidatesTimer = undefined
+    }
+    // Hold premature null so werift does not discard candidates arriving slightly later
+    // (for example on Android libwebrtc builds firing COMPLETE before onIceCandidate).
+    entry.endOfCandidatesTimer = setTimeout(() => {
+      entry.endOfCandidatesTimer = undefined
+      if (entry.closed || entry.channel !== undefined) return
+      if (entry.remoteDescSet) {
+        void this.flushRemoteIce(entry)
+      }
+    }, PREMATURE_END_OF_CANDIDATES_DELAY_MS)
+    entry.endOfCandidatesTimer.unref?.()
+  }
+
   private handleRemoteIce(fromPeerId: string, candidate: RtcIceCandidatePayload | null): void {
     const entry = this.peersBySignalingId.get(fromPeerId)
     if (!entry || entry.closed) return
+    if (candidate === null) {
+      if (entry.endOfCandidatesSent) return
+      entry.pendingEndOfCandidates = true
+      if (!entry.receivedRemoteCandidate) {
+        if (!entry.endOfCandidatesTimer) {
+          this.scheduleEndOfCandidatesFlush(entry)
+        }
+        return
+      }
+      if (entry.remoteDescSet && !entry.endOfCandidatesTimer) {
+        void this.flushRemoteIce(entry)
+      }
+      return
+    }
     if (entry.remoteIceQueue.length >= MAX_ICE_QUEUE_ENTRIES) {
       this.teardownPeerSession(entry, 1009, 'ICE candidate queue limit exceeded')
       return
     }
+    entry.receivedRemoteCandidate = true
     entry.remoteIceQueue.push(candidate)
+    if (entry.pendingEndOfCandidates && !entry.endOfCandidatesSent) {
+      this.scheduleEndOfCandidatesFlush(entry)
+    }
     if (entry.remoteDescSet) {
       void this.flushRemoteIce(entry)
     }
   }
 
   private async flushRemoteIce(entry: HostPeerSession): Promise<void> {
-    while (entry.remoteIceQueue.length > 0 && !entry.closed) {
-      const next = entry.remoteIceQueue.shift()!
-      try {
-        await entry.pc.addIceCandidate(toRtcIceCandidateInit(next))
-      } catch {}
+    if (entry.flushingRemoteIce) return
+    entry.flushingRemoteIce = true
+    try {
+      while (!entry.closed) {
+        if (entry.remoteIceQueue.length > 0) {
+          const next = entry.remoteIceQueue.shift()!
+          try {
+            await entry.pc.addIceCandidate(toRtcIceCandidateInit(next))
+          } catch {}
+          continue
+        }
+        if (entry.pendingEndOfCandidates && !entry.endOfCandidatesTimer) {
+          entry.pendingEndOfCandidates = false
+          if (!entry.endOfCandidatesSent) {
+            entry.endOfCandidatesSent = true
+            try {
+              await entry.pc.addIceCandidate(toRtcIceCandidateInit(null))
+            } catch {}
+          }
+          continue
+        }
+        break
+      }
+    } finally {
+      entry.flushingRemoteIce = false
     }
   }
 
   private teardownPeerSession(entry: HostPeerSession, code: number, reason: string): void {
     if (entry.closed) return
     entry.closed = true
-    if (entry.iceTimer) {
-      clearTimeout(entry.iceTimer)
-      entry.iceTimer = undefined
-    }
+    this.clearPeerTimers(entry)
     this.peersBySignalingId.delete(entry.peerId)
     if (entry.channel) {
       const ch = entry.channel
