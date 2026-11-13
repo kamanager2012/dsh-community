@@ -5,7 +5,14 @@ import { join, resolve, sep } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { openPersistentRemoteStores, stunBindingProbe } from '@dsh-community/remote-adapter'
 import { COMMUNITY_TUI_HELP, parseCommunityLaunch } from '../src/launch.js'
-import { COMMUNITY_REMOTE_HELP, composeRemoteHostPatchYaml, runRemoteCommand } from '../src/remote.js'
+import {
+  buildLoopbackPairingWarning,
+  COMMUNITY_REMOTE_HELP,
+  composeRemoteHostPatchYaml,
+  detectLanIpv4Candidates,
+  formatPairingQrBlock,
+  runRemoteCommand,
+} from '../src/remote.js'
 
 const tempDirs: string[] = []
 
@@ -376,5 +383,36 @@ async function spawnCliUntilReadyJson<T>(
     } finally {
       expect(await stopAndWait()).toBe(0)
     }
+  })
+
+  it('detects RFC1918/Tailscale LAN IPv4s, warns on loopback-only remote start, and renders terminal QR', async () => {
+    const lanIps = detectLanIpv4Candidates({
+      lo: [{ address: '127.0.0.1', netmask: '255.0.0.0', family: 'IPv4', mac: '00:00:00:00:00:00', internal: true, cidr: '127.0.0.1/8' }],
+      eth0: [
+        { address: '192.168.1.25', netmask: '255.255.255.0', family: 'IPv4', mac: '00:00:00:00:00:01', internal: false, cidr: '192.168.1.25/24' },
+        { address: '169.254.1.2', netmask: '255.255.0.0', family: 'IPv4', mac: '00:00:00:00:00:01', internal: false, cidr: '169.254.1.2/16' },
+        { address: '100.64.0.9', netmask: '255.192.0.0', family: 'IPv4', mac: '00:00:00:00:00:01', internal: false, cidr: '100.64.0.9/10' },
+      ],
+    })
+    expect(lanIps).toEqual(['100.64.0.9', '192.168.1.25'])
+
+    const warnLoopback = buildLoopbackPairingWarning({ endpointUrl: 'ws://127.0.0.1:4555' }, lanIps)
+    expect(warnLoopback).toContain('100.64.0.9, 192.168.1.25')
+    expect(buildLoopbackPairingWarning({ endpointUrl: 'ws://192.168.1.25:4555' }, lanIps)).toBeUndefined()
+    expect(
+      buildLoopbackPairingWarning(
+        { endpointUrl: 'ws://127.0.0.1:4555', relayUrl: 'wss://relay.example.com' },
+        lanIps,
+      ),
+    ).toBeUndefined()
+
+    const qrBlock = formatPairingQrBlock('dsh-remote://pair?data=dGVzdA', false)
+    expect(qrBlock).toContain('█')
+
+    expect(COMMUNITY_REMOTE_HELP).toContain('--qr')
+    const io = captureOutputs()
+    const missingKeyCode = await runRemoteCommand(['start', '--qr'], {})
+    expect(missingKeyCode).toBe(2)
+    expect(io.stderr()).not.toContain('未知参数')
   })
 })

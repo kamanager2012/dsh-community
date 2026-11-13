@@ -30,6 +30,7 @@ import org.dsh.community.android.protocol.SessionRef
 import org.dsh.community.android.transport.AndroidWebRtcPeerEngine
 import org.dsh.community.android.transport.DiscoveredLanHost
 import org.dsh.community.android.transport.FailoverRemoteSession
+import org.dsh.community.android.transport.PairingInputHelper
 import org.dsh.community.android.transport.PairingQrParser
 import org.dsh.community.android.transport.PeerRevokedException
 import org.dsh.community.android.transport.RemoteConnectionPhase
@@ -167,13 +168,21 @@ class RemoteSessionService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val count = startCount.incrementAndGet()
-        ensureForeground("Idle ($count starts)")
+        ensureForeground(
+            PairingInputHelper.resolveForegroundNotificationText(
+                hasActiveSession = activeSession != null,
+                currentStatus = statusText,
+                startCount = count,
+            ),
+        )
 
         when (intent?.action) {
             ACTION_DISCONNECT -> {
+                cancelApprovalNotification()
                 disconnect()
             }
             ACTION_APPROVE_CALL -> {
+                cancelApprovalNotification()
                 val callId = intent.getStringExtra(EXTRA_CALL_ID)
                 val key = intent.getStringExtra(EXTRA_IDEMPOTENCY_KEY)
                 if (!callId.isNullOrBlank()) {
@@ -181,6 +190,7 @@ class RemoteSessionService : Service() {
                 }
             }
             ACTION_REJECT_CALL -> {
+                cancelApprovalNotification()
                 val callId = intent.getStringExtra(EXTRA_CALL_ID)
                 val key = intent.getStringExtra(EXTRA_IDEMPOTENCY_KEY)
                 if (!callId.isNullOrBlank()) {
@@ -469,6 +479,7 @@ class RemoteSessionService : Service() {
     }
 
     fun disconnect() {
+        cancelApprovalNotification()
         reconnectFuture?.cancel(false)
         activeSession?.close("user disconnect")
         activeSession = null
@@ -638,6 +649,9 @@ class RemoteSessionService : Service() {
         uiObservers.forEach { it.onEventReceived(sessionId, event) }
         val dataObj = event.data as? JsonObject ?: return
         if (event.type == "approval.resolved" || event.type == "question.resolved") {
+            if (event.type == "approval.resolved") {
+                cancelApprovalNotification()
+            }
             return
         }
         if (event.type.contains("approval", ignoreCase = true) || event.type.contains("permission", ignoreCase = true)) {
@@ -733,6 +747,20 @@ class RemoteSessionService : Service() {
         }
     }
 
+    private fun serviceActionPendingIntent(requestCode: Int, actionIntent: Intent): PendingIntent {
+        val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            PendingIntent.getForegroundService(this, requestCode, actionIntent, flags)
+        } else {
+            PendingIntent.getService(this, requestCode, actionIntent, flags)
+        }
+    }
+
+    private fun cancelApprovalNotification() {
+        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+        nm?.cancel(APPROVAL_NOTIFICATION_ID)
+    }
+
     private fun ensureForeground(contentText: String) {
         val openIntent = PendingIntent.getActivity(
             this,
@@ -740,11 +768,9 @@ class RemoteSessionService : Service() {
             Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        val disconnectIntent = PendingIntent.getService(
-            this,
+        val disconnectIntent = serviceActionPendingIntent(
             1,
             Intent(this, RemoteSessionService::class.java).setAction(ACTION_DISCONNECT),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         val notification: Notification = NotificationCompat.Builder(this, STATUS_CHANNEL_ID)
             .setContentTitle("DSH Remote Client [LABS]")
@@ -770,23 +796,19 @@ class RemoteSessionService : Service() {
         approvalNotifications.incrementAndGet()
         val idempotencyKey = activeSession?.newOperationKey("notif-$callId") ?: "notif-$callId"
 
-        val approveIntent = PendingIntent.getService(
-            this,
+        val approveIntent = serviceActionPendingIntent(
             10,
             Intent(this, RemoteSessionService::class.java)
                 .setAction(ACTION_APPROVE_CALL)
                 .putExtra(EXTRA_CALL_ID, callId)
                 .putExtra(EXTRA_IDEMPOTENCY_KEY, idempotencyKey),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        val rejectIntent = PendingIntent.getService(
-            this,
+        val rejectIntent = serviceActionPendingIntent(
             11,
             Intent(this, RemoteSessionService::class.java)
                 .setAction(ACTION_REJECT_CALL)
                 .putExtra(EXTRA_CALL_ID, callId)
                 .putExtra(EXTRA_IDEMPOTENCY_KEY, idempotencyKey),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
         val notification = NotificationCompat.Builder(this, APPROVAL_CHANNEL_ID)

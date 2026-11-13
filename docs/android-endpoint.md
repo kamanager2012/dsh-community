@@ -24,11 +24,12 @@ Android Remote Client (Kotlin, noBackupFilesDir + Android Keystore AES-256-GCM)
 
 - **密钥与安全基线**：`DeviceIdentityStore.kt` 使用 Android Keystore AES-256-GCM 主密钥（优先 StrongBox，回退 TEE）封装设备 Curve25519 密钥于 `noBackupFilesDir`，Manifest 强制 `android:allowBackup="false"`。
 - **密码学与协议**：纯 Kotlin 实现 `Noise_IK_25519_ChaChaPoly_BLAKE2b`，支持单调递增 `connectionEpoch` 校验、`session.attach(afterSeq)` 断点续传与幂等键（`idempotencyKey`）。
-- **容灾切换与后台保活**：`FailoverRemoteSession.kt` 按 `LAN -> WebRTC -> Relay` 顺序回退；`RemoteSessionService.kt` 作为 `dataSync` 前台服务承载常驻状态通知与高优先级交互式审批通知，并遵循网络丢失暂停与指数退避策略。
+- **容灾切换与后台保活**：`FailoverRemoteSession.kt` 按 `LAN -> WebRTC -> Relay` 顺序回退（`AndroidWebRtcPeerEngine.kt` 基于 `io.github.webrtc-sdk:android` 实现 Noise IK over DataChannel）；`RemoteSessionService.kt` 作为 `dataSync` 前台服务承载常驻状态通知（支持 Android 13+ 运行时 `POST_NOTIFICATIONS` 请求与处理后自动消隐审批通知），并遵循网络丢失暂停与指数退避策略。
+- **实体机与桌面联动配对体验**：`MainActivity` 支持 `dsh-remote://pair` Deep-Link（`ACTION_VIEW`）、系统分享（`ACTION_SEND` `text/plain`）以及一键 **Paste** 剪贴板提取配对；宿主机端 `dsh-community remote start --qr` / 交互命令 `qr` 可直接在终端打印标准 ISO/IEC 18004 半块 UTF-8 二维码。
 - **历史实验清理（按 §13 执行）**：原 R0–R4 嵌入式 Node 22 / `node-pty` / Koffi / Landlock / sharp-WASM / ripgrep / `nodejs-project` 阻塞实验已在 R5 PR 中由显式 Remote Client 测试替代并移除（保留于 Git 提交历史）。
 
 ## 发布门禁与 CI 验证
 
-- GitHub Actions：`.github/workflows/android-remote-acceptance.yml` 运行纯 JVM 单测、实时 Kotlin-to-Node `RemoteHostRuntime` + `BlindRelayServer` E2EE 互操作测试、Gradle APK 构建，以及 APK ZIP 清单洁净检查（严禁 `libnode.so` / `nodejs-mobile` / `deepseek-ai`）。
-- 机器门禁状态：[`apps/android/evidence/reality-gate.json`](../apps/android/evidence/reality-gate.json)（`schemaVersion: 2`, `architecture: "remote-only"`, `status: "NOT_RUN"`）。
-- 发布阻塞检查：`node scripts/verify-android-release-ready.mjs` 保持 fail-closed（退出码 `1`），直至 R6 真机硬件验收完成并显式晋升前，Android 保持 `[UNVERIFIED]`。
+- GitHub Actions：`.github/workflows/android-remote-acceptance.yml` 运行纯 JVM 单测、实时 Kotlin-to-Node `RemoteHostRuntime` 互操作测试、Release R8 ProGuard 混淆构建、APK ZIP 清单洁净检查（严禁 `libnode.so` / `nodejs-mobile` / `deepseek-ai`），以及 KVM Android API 34 (`x86_64`) 模拟器端到端 R6 验收（含 `Dead-LAN -> WebRTC P2P` 与 `Dead-LAN -> Blind Relay` E2EE 容灾、`AndroidKeyStore` 加密持久化及设备吊销）。
+- 机器门禁状态：[`apps/android/evidence/reality-gate.json`](../apps/android/evidence/reality-gate.json)（`schemaVersion: 2`, `architecture: "remote-only"`, `status: "NOT_RUN"`, `arm64RealDeviceSmoke: false`）。
+- 发布阻塞检查：`node scripts/verify-android-release-ready.mjs` 保持 fail-closed（退出码 `1`），直至 R6 真机（物理 `arm64-v8a`）硬件验收完成并显式晋升前，Android 保持 `[UNVERIFIED]`。

@@ -1,9 +1,9 @@
 # Remote Host-Client Architecture
 
-Status: **R1/R2 non-mobile Host scope: CLOSED / MERGED · R3-R6: [LABS] / [UNVERIFIED]**  
+Status: **R1–R5 & Host CLI/WebRTC/Relay/KVM API 34 Emulator Acceptance: MERGED · Physical arm64-v8a R6 Hardware Gate: [BLOCKED / NOT_RUN]**  
 Tracking: #67
 
-This document freezes the target boundary for remote control of an official DeepSeek Harness runtime. The non-mobile Host Adapter and LAN + Noise scope (R1/R2) is implemented and accepted on `main`; it does **not** claim WebRTC, relay, Android, or end-to-end production acceptance for the later gates.
+This document freezes the target boundary for remote control of an official DeepSeek Harness runtime. Host Adapter LAN/WebRTC/Relay + Noise IK, self-hosted `remote relay`/`signaling` CLIs, and Kotlin thin-client KVM API 34 emulator instrumentation are implemented and tested on `main`; the Android release gate remains fail-closed until verified on physical `arm64-v8a` hardware.
 
 ## 1. Product decision
 
@@ -377,13 +377,13 @@ It is a secure, minimal remote projection of the official Host runtime.
 
 - **Official Host Cordis Bridge (`@dsh-community/remote-adapter`)**: `OfficialHostCordisBridge` and `@dsh-community/remote-adapter/cordis-plugin` attach directly inside official `@deepseek-ai/dsh --profile headless --patch ...` via Cordis events (`session/event`, `agent/assistant-stream`, `agent/error`, `approval/request`, `user-questions/request`) while keeping `DSH_REMOTE_CONFIG_DIR` strictly outside `DSH_HOME` (`~/.dsh`), emitting encrypted `peer.revoked` prior to channel teardown and `stream.reset` on replay window invalidation.
 - **Host & Ops CLI (`dsh-community remote`)**:
-  - `dsh-community remote start [--host <ip>] [--port <n>] [--mdns] [--relay-url <url>] [--signaling-url <url>] [--signaling-room <id>] [--stun <urls>] [--session <id>] [--json]`
+  - `dsh-community remote start [--host <ip>] [--port <n>] [--mdns] [--qr] [--relay-url <url>] [--signaling-url <url>] [--signaling-room <id>] [--stun <urls>] [--session <id>] [--json]`
   - `dsh-community remote relay [--host <ip>] [--port <n>] [--allow-wildcard] [--host-secret <secret>] [--json]`
   - `dsh-community remote signaling [--host <ip>] [--port <n>] [--stun-port <n>] [--allow-wildcard] [--host-secret <secret>] [--json]`
   - `dsh-community remote devices [--json]`
   - `dsh-community remote revoke <deviceId>`
   - `dsh-community remote status [--json]`
-- **Android Saved Hosts, Deep-Link & Instrumentation**:
-  - `MainActivity` handles `dsh-remote://pair?data=<base64url>` (`ACTION_VIEW`) through `PairingQrParser`, never passing session IDs or credentials inside the URI.
+- **Android Saved Hosts, Pairing & Instrumentation**:
+  - `MainActivity` handles `dsh-remote://pair?data=<base64url>` (`ACTION_VIEW`), system `ACTION_SEND` (`text/plain`), and one-tap clipboard **Paste** extraction through `PairingInputHelper` + `PairingQrParser` (never embedding session IDs or credentials inside the URI), and requests runtime `POST_NOTIFICATIONS` on Android 13+.
   - `EncryptedTrustedHostStore` (`AndroidKeyStore` AES-256-GCM in `noBackupFilesDir`) persists paired Hosts without `bootstrapToken` for tokenless reconnect, matches mDNS `_dsh-remote._tcp.` discoveries by `hostFingerprint` while preserving `discovery !== trust` for unpaired Hosts, supports Forget Host, clears stale buffers on `stream.reset`, and halts reconnects fail-closed on `peer.revoked`.
-  - `apps/android/app/src/androidTest/.../RemoteClientInstrumentationTest.kt` and `scripts/accept-android-r6-device.mjs` verify `AndroidKeyStore`, `RemoteSessionService` (`dataSync`), `adb reverse` Noise IK E2EE RPC/questions/stream-reset/dead-LAN-to-relay failover/revocation, and `x86_64` KVM emulator instrumentation while leaving `arm64RealDeviceSmoke` fail-closed (`false`) until verified on physical `arm64-v8a` hardware.
+  - `apps/android/app/src/androidTest/.../RemoteClientInstrumentationTest.kt` and `scripts/accept-android-r6-device.mjs` verify `AndroidKeyStore`, `RemoteSessionService` (`dataSync`), native `AndroidWebRtcPeerEngine` (`Dead-LAN -> WebRTC P2P`), `Dead-LAN -> Blind Relay` failover, stream resume/reset, and revocation on `x86_64` KVM emulator while leaving `arm64RealDeviceSmoke` fail-closed (`false`) until verified on physical `arm64-v8a` hardware.

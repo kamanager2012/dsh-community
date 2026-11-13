@@ -2,11 +2,12 @@ import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { homedir, tmpdir } from 'node:os'
+import { homedir, networkInterfaces, tmpdir, type NetworkInterfaceInfo } from 'node:os'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { pathToFileURL } from 'node:url'
 import { officialApiKeyPresent, resolveOfficialDsh } from '@dsh-community/dsh-bridge'
+import { renderTerminalQr } from './terminal-qr.js'
 import {
   BlindRelayServer,
   defaultRemoteConfigDir,
@@ -22,6 +23,7 @@ export const COMMUNITY_REMOTE_HELP = `dsh-community remote — E2EE 远程宿主
     --host <ip>                         监听地址（默认 127.0.0.1；支持私有网段或 loopback）
     --port <n>                          监听端口（默认 0 自动分配）
     --mdns                              发布局域网 mDNS (_dsh-remote._tcp) 提示
+    --qr                                启动后在终端输出可扫码 UTF-8 二维码
     --relay-url <ws(s)://...>           可选社区盲中继地址
     --relay-room <id>                   可选中继房间 ID
     --signaling-url <ws(s)://...>       可选 WebRTC 信令地址
@@ -88,6 +90,7 @@ interface StartFlags {
   readonly host: string
   readonly port: string
   readonly mdns: boolean
+  readonly qr: boolean
   readonly relayUrl?: string | undefined
   readonly relayRoom?: string | undefined
   readonly signalingUrl?: string | undefined
@@ -96,6 +99,53 @@ interface StartFlags {
   readonly sessionId?: string | undefined
   readonly cwd: string
   readonly json: boolean
+}
+
+function isPrivateOrTailscaleIpv4(address: string): boolean {
+  const parts = address.split('.').map((p) => Number(p))
+  if (parts.length !== 4 || parts.some((p) => !Number.isInteger(p) || p < 0 || p > 255)) return false
+  const [a, b] = parts as [number, number, number, number]
+  if (a === 10) return true
+  if (a === 172 && b >= 16 && b <= 31) return true
+  if (a === 192 && b === 168) return true
+  if (a === 100 && b >= 64 && b <= 127) return true
+  return false
+}
+
+export function detectLanIpv4Candidates(
+  ifaces: Record<string, NetworkInterfaceInfo[] | undefined> = networkInterfaces(),
+): string[] {
+  const result = new Set<string>()
+  for (const entries of Object.values(ifaces)) {
+    for (const info of entries ?? []) {
+      if (info.family === 'IPv4' && !info.internal && isPrivateOrTailscaleIpv4(info.address)) {
+        result.add(info.address)
+      }
+    }
+  }
+  return [...result].sort()
+}
+
+export function formatPairingQrBlock(deepLink: string, isTty: boolean): string {
+  if (deepLink.trim().length === 0) return ''
+  try {
+    return `\n${renderTerminalQr(deepLink, { eccLevel: 'L', quietZone: 2, ansiWhiteBackground: isTty })}`
+  } catch {
+    return ''
+  }
+}
+
+export function buildLoopbackPairingWarning(
+  ready: Record<string, unknown>,
+  lanCandidates: readonly string[] = detectLanIpv4Candidates(),
+): string | undefined {
+  const endpointUrl = String(ready.endpointUrl ?? '')
+  const hasRemoteFallback = Boolean(ready.relayUrl) || Boolean(ready.signalingUrl)
+  const isLoopback = /^ws:\/\/(127\.0\.0\.1|localhost|\[::1\])(?::|\/|$)/iu.test(endpointUrl)
+  if (!isLoopback || hasRemoteFallback) return undefined
+  const lanHint =
+    lanCandidates.length > 0 ? `（检测到可用局域网 IP: ${lanCandidates.join(', ')}）` : ''
+  return `  提示: 当前仅监听 loopback${lanHint}；真机局域网配对请改用 --host <局域网IP> --mdns，或配置 --relay-url / --signaling-url。`
 }
 
 function takeFlagValue(args: readonly string[], index: number, flag: string): { value: string; nextIndex: number } {
@@ -126,6 +176,7 @@ function parseStartFlags(args: readonly string[], defaultCwd: string): StartFlag
   let host = '127.0.0.1'
   let port = '0'
   let mdns = false
+  let qr = false
   let relayUrl: string | undefined
   let relayRoom: string | undefined
   let signalingUrl: string | undefined
@@ -145,6 +196,7 @@ function parseStartFlags(args: readonly string[], defaultCwd: string): StartFlag
     if (arg === '--host') host = readVal()
     else if (arg === '--port') port = String(parsePortValue(readVal(), '--port'))
     else if (arg === '--mdns') mdns = true
+    else if (arg === '--qr') qr = true
     else if (arg === '--relay-url') relayUrl = readVal()
     else if (arg === '--relay-room') relayRoom = readVal()
     else if (arg === '--signaling-url') signalingUrl = readVal()
@@ -161,6 +213,7 @@ function parseStartFlags(args: readonly string[], defaultCwd: string): StartFlag
     host,
     port,
     mdns,
+    qr,
     relayUrl,
     relayRoom,
     signalingUrl,
@@ -470,6 +523,13 @@ export async function runRemoteCommand(
           `  配置目录: ${String(ready.configDir ?? '')}`,
           `  配对链接: ${String(ready.deepLink ?? '')}`,
           `  配对 JSON: ${String(ready.pairingJson ?? '')}`,
+          ...((() => {
+            const warning = buildLoopbackPairingWarning(ready)
+            return warning ? [warning] : []
+          })()),
+          ...(flags.qr && typeof ready.deepLink === 'string' && ready.deepLink.length > 0
+            ? [formatPairingQrBlock(ready.deepLink, Boolean(process.stdout.isTTY))]
+            : []),
           `交互命令: confirm <candidateId> | devices | revoke <deviceId> | qr | quit`,
         )
         process.stdout.write(`${lines.join('\n')}\n`)
@@ -541,7 +601,12 @@ export async function runRemoteCommand(
               body: '{}',
             })
             const data = (await res.json()) as { deepLink?: string; pairingJson?: string }
-            process.stdout.write(`新配对链接：${data.deepLink ?? ''}\n`)
+            const deepLink = data.deepLink ?? ''
+            process.stdout.write(`新配对链接：${deepLink}\n`)
+            const qrBlock = formatPairingQrBlock(deepLink, Boolean(process.stdout.isTTY))
+            if (qrBlock.length > 0) {
+              process.stdout.write(`${qrBlock}\n`)
+            }
           } else if (cmd === 'quit' || cmd === 'exit') {
             await requestShutdown()
           }

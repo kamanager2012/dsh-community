@@ -17,6 +17,10 @@
     <string name="action_disconnect">Disconnect</string>
     <string name="action_reconnect">Reconnect</string>
     <string name="action_forget_host">Forget Host</string>
+    <string name="action_paste_pair">Paste</string>
+    <string name="clipboard_empty_pairing">Clipboard is empty — copy dsh-remote://pair link or JSON first</string>
+    <string name="clipboard_invalid_pairing">Clipboard does not contain a DSH pairing URI or JSON</string>
+    <string name="permission_notifications_denied">Notifications denied — approve/reject actions only appear inside app</string>
     <string name="action_sessions">Sessions</string>
     <string name="action_attach">Attach</string>
     <string name="action_approve">Approve</string>

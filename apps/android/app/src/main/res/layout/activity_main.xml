@@ -101,6 +101,13 @@
             android:orientation="horizontal">
 
             <Button
+                android:id="@+id/btn_paste_pair"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/action_paste_pair" />
+
+            <Button
                 android:id="@+id/btn_reconnect"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
