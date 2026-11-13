@@ -7,23 +7,32 @@ import type {
   OfficialSessionEvent,
 } from './protocol.js'
 import type { DeviceTrustStore } from './crypto/device-trust.js'
+import { ConnectionEpochAllocator } from './crypto/epoch.js'
 import type { HostIdentityStore } from './crypto/host-identity.js'
 import type { PairingCoordinator } from './crypto/pairing-coordinator.js'
 import {
   HostLanCarrier,
   type HostLanCarrierOptions,
 } from './carrier/lan-host.js'
+import {
+  HostWebRtcCarrier,
+  type HostWebRtcCarrierOptions,
+} from './carrier/webrtc-host.js'
 
 export interface RemoteHostRuntimeOptions {
   readonly seams: OfficialRemoteSeams
   readonly trustStore: DeviceTrustStore
   readonly hostIdentityStore: HostIdentityStore
-  readonly pairingCoordinator?: PairingCoordinator
-  readonly coreOptions?: Omit<RemoteAdapterOptions, 'trustStore' | 'hostIdentityStore'>
+  readonly pairingCoordinator?: PairingCoordinator | undefined
+  readonly coreOptions?: Omit<RemoteAdapterOptions, 'trustStore' | 'hostIdentityStore'> | undefined
   readonly carrier: Omit<
     HostLanCarrierOptions,
-    'core' | 'trustStore' | 'hostIdentityStore' | 'pairingCoordinator'
+    'core' | 'trustStore' | 'hostIdentityStore' | 'pairingCoordinator' | 'epochAllocator'
   >
+  readonly webrtc?: Omit<
+    HostWebRtcCarrierOptions,
+    'core' | 'trustStore' | 'hostIdentityStore' | 'pairingCoordinator' | 'epochAllocator'
+  > | undefined
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -87,7 +96,9 @@ export class OfficialSessionEventBridge {
 export class RemoteHostRuntime {
   readonly core: RemoteAdapterCore
   readonly carrier: HostLanCarrier
+  readonly webrtc: HostWebRtcCarrier | undefined
   readonly events: OfficialSessionEventBridge
+  private readonly epochAllocator = new ConnectionEpochAllocator()
 
   constructor(options: RemoteHostRuntimeOptions) {
     this.core = new RemoteAdapterCore(options.seams, {
@@ -100,28 +111,57 @@ export class RemoteHostRuntime {
       core: this.core,
       trustStore: options.trustStore,
       hostIdentityStore: options.hostIdentityStore,
+      epochAllocator: this.epochAllocator,
       ...(options.pairingCoordinator === undefined
         ? {}
         : { pairingCoordinator: options.pairingCoordinator }),
     })
+    this.webrtc =
+      options.webrtc !== undefined
+        ? new HostWebRtcCarrier({
+            ...options.webrtc,
+            core: this.core,
+            trustStore: options.trustStore,
+            hostIdentityStore: options.hostIdentityStore,
+            epochAllocator: this.epochAllocator,
+            ...(options.pairingCoordinator === undefined
+              ? {}
+              : { pairingCoordinator: options.pairingCoordinator }),
+          })
+        : undefined
     this.events = new OfficialSessionEventBridge(
       this.core,
       (sessionId, event) => {
-        this.carrier.broadcastEvent({
+        const frame = {
           type: 'stream.event',
           sessionId,
           event,
-        })
+        }
+        this.carrier.broadcastEvent(frame)
+        this.webrtc?.broadcastEvent(frame)
       },
     )
   }
 
-  start(): Promise<void> {
-    return this.carrier.start()
+  async start(): Promise<void> {
+    if (this.carrier.isEnabled() || !this.webrtc?.isEnabled()) {
+      await this.carrier.start()
+    }
+    if (this.webrtc?.isEnabled()) {
+      try {
+        await this.webrtc.start()
+      } catch (err) {
+        await this.carrier.stop().catch(() => {})
+        throw err
+      }
+    }
   }
 
-  stop(): Promise<void> {
-    return this.carrier.stop()
+  async stop(): Promise<void> {
+    await Promise.all([
+      this.carrier.stop(),
+      this.webrtc ? this.webrtc.stop() : Promise.resolve(),
+    ])
   }
 
   ingestSessionEventBatch(sessionId: string, payload: unknown): number {

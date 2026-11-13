@@ -1,0 +1,197 @@
+name: remote-host-webrtc-acceptance
+
+on:
+  pull_request:
+    paths:
+      - 'packages/remote-adapter/**'
+      - 'scripts/r3-webrtc-*.mjs'
+      - '.github/workflows/remote-host-webrtc-acceptance.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dual-nat-webrtc-acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          version: 11.21.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build remote-adapter package
+        run: pnpm --filter @dsh-community/remote-adapter build
+      - name: Install network isolation and packet capture tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y iproute2 iptables tcpdump python3
+      - name: Run R3 Dual-NAT STUN/Signaling/WebRTC E2EE acceptance and capture WAN pcap
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/r3-artifacts
+          rm -f /tmp/r3-artifacts/* /tmp/r3-wan.pcap /tmp/r3-webrtc-evidence.json /tmp/r3-pairing-token.txt
+
+          ALL_NS=(dsh-r3-wan dsh-r3-nata dsh-r3-natb dsh-r3-natc dsh-r3-host dsh-r3-client dsh-r3-sym)
+          cleanup() {
+            rc=$?
+            if [ -n "${TCPDUMP_PID:-}" ]; then
+              sudo kill -TERM "${TCPDUMP_PID}" 2>/dev/null || true
+              wait "${TCPDUMP_PID}" 2>/dev/null || true
+            fi
+            sudo chmod 0644 /tmp/r3-wan.pcap /tmp/r3-webrtc-evidence.json /tmp/r3-tcpdump.log 2>/dev/null || true
+            cp /tmp/r3-webrtc-evidence.json /tmp/r3-wan.pcap /tmp/r3-tcpdump.log /tmp/r3-artifacts/ 2>/dev/null || true
+            if [ "$rc" -ne 0 ] && [ -s /tmp/r3-wan.pcap ]; then
+              echo "--- WAN pcap summary on failure ---"
+              tcpdump -nn -c 80 -r /tmp/r3-wan.pcap 2>/dev/null || true
+            fi
+            for ns in "${ALL_NS[@]}"; do
+              sudo ip netns del "$ns" 2>/dev/null || true
+            done
+          }
+          trap cleanup EXIT
+
+          for ns in "${ALL_NS[@]}"; do
+            sudo ip netns del "$ns" 2>/dev/null || true
+            sudo ip netns add "$ns"
+            sudo ip netns exec "$ns" ip link set lo up
+          done
+
+          # Isolated WAN bridge namespace (free from root Docker FORWARD policies)
+          sudo ip netns exec dsh-r3-wan ip link add br-r3-wan type bridge
+          sudo ip netns exec dsh-r3-wan ip addr add 10.210.0.1/24 dev br-r3-wan
+          sudo ip netns exec dsh-r3-wan ip link set br-r3-wan up
+
+          # NAT-A WAN (10.210.0.11) <-> Host LAN (10.210.1.1 -> 10.210.1.2)
+          sudo ip link add veth-wan-nata netns dsh-r3-wan type veth peer name veth-nata-wan netns dsh-r3-nata
+          sudo ip netns exec dsh-r3-wan ip link set veth-wan-nata master br-r3-wan up
+          sudo ip netns exec dsh-r3-nata ip addr add 10.210.0.11/24 dev veth-nata-wan
+          sudo ip netns exec dsh-r3-nata ip link set veth-nata-wan up
+
+          sudo ip link add veth-nata-lan netns dsh-r3-nata type veth peer name veth-host-lan netns dsh-r3-host
+          sudo ip netns exec dsh-r3-nata ip addr add 10.210.1.1/24 dev veth-nata-lan
+          sudo ip netns exec dsh-r3-nata ip link set veth-nata-lan up
+          sudo ip netns exec dsh-r3-host ip addr add 10.210.1.2/24 dev veth-host-lan
+          sudo ip netns exec dsh-r3-host ip link set veth-host-lan up
+          sudo ip netns exec dsh-r3-host ip route add default via 10.210.1.1
+
+          sudo ip netns exec dsh-r3-nata sysctl -q -w net.ipv4.ip_forward=1
+          sudo ip netns exec dsh-r3-nata iptables -t nat -A POSTROUTING -s 10.210.1.0/24 -o veth-nata-wan -j MASQUERADE
+          sudo ip netns exec dsh-r3-nata iptables -A INPUT -i veth-nata-wan -p udp -j DROP
+          sudo ip netns exec dsh-r3-nata iptables -A FORWARD -d 10.210.2.0/24 -j DROP
+          sudo ip netns exec dsh-r3-nata iptables -A FORWARD -d 10.210.3.0/24 -j DROP
+
+          # NAT-B WAN (10.210.0.22) <-> Client LAN (10.210.2.1 -> 10.210.2.2)
+          sudo ip link add veth-wan-natb netns dsh-r3-wan type veth peer name veth-natb-wan netns dsh-r3-natb
+          sudo ip netns exec dsh-r3-wan ip link set veth-wan-natb master br-r3-wan up
+          sudo ip netns exec dsh-r3-natb ip addr add 10.210.0.22/24 dev veth-natb-wan
+          sudo ip netns exec dsh-r3-natb ip link set veth-natb-wan up
+
+          sudo ip link add veth-natb-lan netns dsh-r3-natb type veth peer name veth-cli-lan netns dsh-r3-client
+          sudo ip netns exec dsh-r3-natb ip addr add 10.210.2.1/24 dev veth-natb-lan
+          sudo ip netns exec dsh-r3-natb ip link set veth-natb-lan up
+          sudo ip netns exec dsh-r3-client ip addr add 10.210.2.2/24 dev veth-cli-lan
+          sudo ip netns exec dsh-r3-client ip link set veth-cli-lan up
+          sudo ip netns exec dsh-r3-client ip route add default via 10.210.2.1
+
+          sudo ip netns exec dsh-r3-natb sysctl -q -w net.ipv4.ip_forward=1
+          sudo ip netns exec dsh-r3-natb iptables -t nat -A POSTROUTING -s 10.210.2.0/24 -o veth-natb-wan -j MASQUERADE
+          sudo ip netns exec dsh-r3-natb iptables -A INPUT -i veth-natb-wan -p udp -j DROP
+          sudo ip netns exec dsh-r3-natb iptables -A FORWARD -d 10.210.1.0/24 -j DROP
+          sudo ip netns exec dsh-r3-natb iptables -A FORWARD -d 10.210.3.0/24 -j DROP
+
+          # NAT-C WAN (10.210.0.33) <-> Firewalled-UDP LAN (10.210.3.1 -> 10.210.3.2)
+          sudo ip link add veth-wan-natc netns dsh-r3-wan type veth peer name veth-natc-wan netns dsh-r3-natc
+          sudo ip netns exec dsh-r3-wan ip link set veth-wan-natc master br-r3-wan up
+          sudo ip netns exec dsh-r3-natc ip addr add 10.210.0.33/24 dev veth-natc-wan
+          sudo ip netns exec dsh-r3-natc ip link set veth-natc-wan up
+
+          sudo ip link add veth-natc-lan netns dsh-r3-natc type veth peer name veth-sym-lan netns dsh-r3-sym
+          sudo ip netns exec dsh-r3-natc ip addr add 10.210.3.1/24 dev veth-natc-lan
+          sudo ip netns exec dsh-r3-natc ip link set veth-natc-lan up
+          sudo ip netns exec dsh-r3-sym ip addr add 10.210.3.2/24 dev veth-sym-lan
+          sudo ip netns exec dsh-r3-sym ip link set veth-sym-lan up
+          sudo ip netns exec dsh-r3-sym ip route add default via 10.210.3.1
+
+          sudo ip netns exec dsh-r3-natc sysctl -q -w net.ipv4.ip_forward=1
+          sudo ip netns exec dsh-r3-natc iptables -t nat -A POSTROUTING -s 10.210.3.0/24 -o veth-natc-wan -j MASQUERADE
+          sudo ip netns exec dsh-r3-natc iptables -A INPUT -i veth-natc-wan -p udp -j DROP
+          sudo ip netns exec dsh-r3-natc iptables -A FORWARD -d 10.210.1.0/24 -j DROP
+          sudo ip netns exec dsh-r3-natc iptables -A FORWARD -d 10.210.2.0/24 -j DROP
+          sudo ip netns exec dsh-r3-natc iptables -A FORWARD -p udp -d 10.210.0.1 -j ACCEPT
+          sudo ip netns exec dsh-r3-natc iptables -A FORWARD -p udp -s 10.210.0.1 -j ACCEPT
+          sudo ip netns exec dsh-r3-natc iptables -A FORWARD -p udp -j DROP
+
+          sudo ip netns exec dsh-r3-wan tcpdump -i br-r3-wan -nn -U -w /tmp/r3-wan.pcap >/tmp/r3-tcpdump.log 2>&1 &
+          TCPDUMP_PID=$!
+          sleep 0.4
+
+          NODE_BIN="$(command -v node)"
+          sudo -E env "PATH=$PATH" \
+            R3_WAN_ADDRESS=10.210.0.1 \
+            R3_HOST_NETNS=dsh-r3-host \
+            R3_HOST_BIND_IP=10.210.1.2 \
+            R3_HOST_NAT_WAN_IP=10.210.0.11 \
+            R3_CLIENT_NETNS=dsh-r3-client \
+            R3_CLIENT_BIND_IP=10.210.2.2 \
+            R3_BLOCKED_CLIENT_NETNS=dsh-r3-sym \
+            R3_BLOCKED_CLIENT_BIND_IP=10.210.3.2 \
+            R3_EVIDENCE_PATH=/tmp/r3-webrtc-evidence.json \
+            R3_PAIRING_TOKEN_PATH=/tmp/r3-pairing-token.txt \
+            ip netns exec dsh-r3-wan "$NODE_BIN" scripts/r3-webrtc-nat-matrix-acceptance.mjs
+
+          sudo kill -TERM "${TCPDUMP_PID}"
+          wait "${TCPDUMP_PID}" || true
+          unset TCPDUMP_PID
+
+          sudo chmod 0644 /tmp/r3-wan.pcap /tmp/r3-webrtc-evidence.json /tmp/r3-tcpdump.log
+          sudo test -s /tmp/r3-wan.pcap
+
+          # Verify P2P UDP flowed directly between NAT-A (10.210.0.11) and NAT-B (10.210.0.22)
+          P2P_COUNT="$(tcpdump -nn -r /tmp/r3-wan.pcap 'udp and ((src host 10.210.0.11 and dst host 10.210.0.22) or (src host 10.210.0.22 and dst host 10.210.0.11))' 2>/dev/null | wc -l)"
+          echo "Direct Dual-NAT UDP P2P packet count: ${P2P_COUNT}"
+          test "${P2P_COUNT}" -gt 0
+
+          # Verify zero plaintext sensitive markers/tokens leaked anywhere on WAN capture
+          TOKEN="$(sudo cat /tmp/r3-pairing-token.txt)"
+          python3 - "$TOKEN" <<'PY'
+          import sys
+          pcap = open('/tmp/r3-wan.pcap', 'rb').read()
+          token = sys.argv[1].encode('utf-8')
+          markers = [
+              b'R3_REAL_SESSION_MARKER',
+              b'R3_REAL_EVENT_1',
+              b'R3_REAL_EVENT_2',
+              b'R3_REAL_EVENT_3',
+              b'R3_REAL_PROMPT_MARKER',
+              b'R3_REAL_APPROVAL_MARKER',
+              b'R3_REAL_APPROVAL_RESULT',
+              b'R3_POST_SIG_PROMPT_MARKER',
+              b'R3_POST_SIG_EVENT_MARKER',
+              token,
+          ]
+          for m in markers:
+              if m in pcap:
+                  raise SystemExit(f'PLAINTEXT LEAK DETECTED IN WAN PCAP: {m!r}')
+          print('PCAP_PLAINTEXT_LEAK_CHECK_OK')
+          PY
+
+          sudo rm -f /tmp/r3-pairing-token.txt
+          cp /tmp/r3-webrtc-evidence.json /tmp/r3-wan.pcap /tmp/r3-tcpdump.log /tmp/r3-artifacts/
+          cat /tmp/r3-webrtc-evidence.json
+      - name: Upload R3 NAT-matrix acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: r3-webrtc-nat-acceptance-${{ github.run_id }}
+          path: /tmp/r3-artifacts/
+          if-no-files-found: ignore
+          retention-days: 7
