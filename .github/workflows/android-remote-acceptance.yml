@@ -103,7 +103,7 @@ jobs:
   android-emulator-r6:
     needs: android-remote-client
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -173,6 +173,10 @@ jobs:
           adb shell settings put global window_animation_scale 0 || true
           adb shell settings put global transition_animation_scale 0 || true
           adb shell settings put global animator_duration_scale 0 || true
+          adb shell svc power stayon true || true
+          adb shell input keyevent 224 || true
+          adb shell wm dismiss-keyguard || true
+          adb shell input keyevent 82 || true
 
       - name: Build host remote-adapter and run R6 instrumentation acceptance on emulator
         if: env.KVM_ENABLED == '1'
@@ -190,9 +194,11 @@ jobs:
             exit 1
           fi
 
-      - name: Stop Android emulator
+      - name: Capture logcat and stop Android emulator
         if: always() && env.KVM_ENABLED == '1'
-        run: adb emu kill || true
+        run: |
+          adb logcat -d -t 250 > apps/android/app/build/r6-evidence/android-logcat.txt || true
+          adb emu kill || true
 
       - name: Upload R6 emulator instrumentation acceptance evidence
         if: always() && env.KVM_ENABLED == '1'
@@ -203,3 +209,4 @@ jobs:
           path: |
             apps/android/app/build/r6-evidence/r6-emulator-acceptance.json
             apps/android/app/build/r6-evidence/android-emulator.log
+            apps/android/app/build/r6-evidence/android-logcat.txt

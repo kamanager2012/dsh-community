@@ -1282,6 +1282,7 @@ export async function createBridgeControlServer(
       if (req.method === 'POST' && reqUrl.pathname === '/shutdown') {
         sendJson(res, 200, { ok: true })
         await bridge.stop()
+        server.closeAllConnections?.()
         await new Promise<void>((r) => server.close(() => r()))
         await options?.onShutdown?.()
         return
@@ -1306,6 +1307,7 @@ export async function createBridgeControlServer(
     url: `http://127.0.0.1:${addr.port}`,
     controlToken,
     close: async () => {
+      server.closeAllConnections?.()
       await new Promise<void>((r) => server.close(() => r()))
     },
   }

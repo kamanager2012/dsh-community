@@ -434,10 +434,12 @@ export class HostLanCarrier {
     this.deviceConnections.clear()
 
     if (this.server) {
-      await new Promise<void>((resolve) => {
-        this.server!.close(() => resolve())
-      })
+      const srv = this.server
       this.server = undefined
+      srv.closeAllConnections?.()
+      await new Promise<void>((resolve) => {
+        srv.close(() => resolve())
+      })
     }
   }
 }

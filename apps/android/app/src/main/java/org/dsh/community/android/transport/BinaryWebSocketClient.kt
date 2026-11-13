@@ -80,6 +80,7 @@ class BinaryWebSocketClient(
         val rawSocket = Socket()
         rawSocket.connect(InetSocketAddress(host, port), connectTimeoutMs)
         rawSocket.tcpNoDelay = true
+        rawSocket.soTimeout = connectTimeoutMs
 
         val activeSocket: Socket = if (scheme == "wss") {
             val ssl = (SSLSocketFactory.getDefault() as SSLSocketFactory)
@@ -139,6 +140,7 @@ class BinaryWebSocketClient(
             activeSocket.close()
             throw IOException("WebSocket Sec-WebSocket-Accept mismatch")
         }
+        activeSocket.soTimeout = 0
 
         socket = activeSocket
         output = out

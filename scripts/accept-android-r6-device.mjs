@@ -7,7 +7,7 @@
  * never forge `arm64RealDeviceSmoke` or promote `apps/android/evidence/reality-gate.json`.
  */
 
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -136,13 +136,79 @@ function inspectApkPurity(apkPath) {
   return { sha256, entryCount: entries.length, containsNodeRuntime: false, containsOfficialDsh: false }
 }
 
+function logStep(message) {
+  process.stderr.write(`[r6] ${new Date().toISOString()} ${message}\n`)
+}
+
 function adb(serial, args, options = {}) {
   const fullArgs = serial ? ['-s', serial, ...args] : [...args]
   return execFileSync('adb', fullArgs, {
     encoding: 'utf8',
     maxBuffer: 16 * 1024 * 1024,
+    timeout: 30_000,
     ...options,
   })
+}
+
+async function adbStreaming(serial, args, timeoutMs = 180_000) {
+  const fullArgs = serial ? ['-s', serial, ...args] : [...args]
+  return await new Promise((resolve, reject) => {
+    const child = spawn('adb', fullArgs, {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    let combined = ''
+    let settled = false
+    const finish = (err) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      if (err) reject(err)
+    }
+
+    const timer = setTimeout(() => {
+      child.kill('SIGTERM')
+      setTimeout(() => child.kill('SIGKILL'), 2_000).unref()
+      finish(new Error(`adb ${args.slice(0, 3).join(' ')} timed out after ${timeoutMs}ms\n${combined}`))
+    }, timeoutMs)
+
+    child.stdout.on('data', (chunk) => {
+      const text = chunk.toString('utf8')
+      combined += text
+      process.stderr.write(text)
+    })
+    child.stderr.on('data', (chunk) => {
+      const text = chunk.toString('utf8')
+      combined += text
+      process.stderr.write(text)
+    })
+    child.on('error', (err) => {
+      finish(err)
+    })
+    child.on('close', (code, signal) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      if (code === 0) {
+        resolve(combined)
+      } else {
+        reject(new Error(`adb exited with code=${code} signal=${signal}\n${combined}`))
+      }
+    })
+  })
+}
+
+function wakeAndUnlockDevice(serial) {
+  const cmds = [
+    ['shell', 'svc', 'power', 'stayon', 'true'],
+    ['shell', 'input', 'keyevent', '224'],
+    ['shell', 'wm', 'dismiss-keyguard'],
+    ['shell', 'input', 'keyevent', '82'],
+  ]
+  for (const cmd of cmds) {
+    try {
+      adb(serial, cmd, { timeout: 10_000 })
+    } catch {}
+  }
 }
 
 function detectTargetSerial(explicitSerial) {
@@ -351,17 +417,17 @@ function createR6InteropCordisContext() {
 
 function installApkResilient(serial, apkPath) {
   try {
-    adb(serial, ['install', '-r', '-d', apkPath])
+    adb(serial, ['install', '-r', '-d', apkPath], { timeout: 90_000 })
   } catch (err) {
     const msg = `${err?.message ?? ''} ${err?.stderr ?? ''}`
     if (msg.includes('INSTALL_FAILED_UPDATE_INCOMPATIBLE')) {
       try {
-        adb(serial, ['uninstall', APP_ID])
+        adb(serial, ['uninstall', APP_ID], { timeout: 30_000 })
       } catch {}
       try {
-        adb(serial, ['uninstall', `${APP_ID}.test`])
+        adb(serial, ['uninstall', `${APP_ID}.test`], { timeout: 30_000 })
       } catch {}
-      adb(serial, ['install', '-r', '-d', apkPath])
+      adb(serial, ['install', '-r', '-d', apkPath], { timeout: 90_000 })
       return
     }
     throw err
@@ -370,14 +436,20 @@ function installApkResilient(serial, apkPath) {
 
 async function main() {
   const opts = parseArgs(process.argv.slice(2))
+  logStep(`Inspecting APK purity (${opts.apk})`)
   const mainApk = inspectApkPurity(opts.apk)
   if (!existsSync(opts.testApk)) {
     throw new Error(`androidTest APK not found: ${opts.testApk}`)
   }
 
+  logStep('Detecting ADB target and awaiting Android boot')
   const serial = detectTargetSerial(opts.serial)
   await waitForAndroidBoot(serial)
+  wakeAndUnlockDevice(serial)
   const deviceInfo = inspectDeviceProperties(serial)
+  logStep(
+    `Connected target=${serial} abi=${deviceInfo.abi} sdk=${deviceInfo.sdk} isEmulator=${deviceInfo.isEmulator} physicalArm64=${deviceInfo.isPhysicalArm64}`,
+  )
 
   const tempRoot = mkdtempSync(join(tmpdir(), 'dsh-android-r6-'))
   const dshHome = join(tempRoot, 'official-dsh-home')
@@ -409,6 +481,7 @@ async function main() {
   let controlServer
 
   try {
+    logStep('Starting OfficialHostCordisBridge + BlindRelayServer')
     await bridge.start()
     const sess = await bridge.createSession({ sessionId: 'r6-accept-session', cwd: ROOT })
     const pairing = await bridge.issuePairingDescriptor()
@@ -421,11 +494,13 @@ async function main() {
       ports.add(new URL(relayUrl).port)
     }
 
+    logStep(`Setting up adb reverse for ports: ${[...ports].join(', ')}`)
     for (const p of ports) {
       adb(serial, ['reverse', `tcp:${p}`, `tcp:${p}`])
       reversedPorts.push(p)
     }
 
+    logStep('Installing debug APK and androidTest APK')
     installApkResilient(serial, opts.apk)
     installApkResilient(serial, opts.testApk)
     if (deviceInfo.sdk >= 33) {
@@ -460,7 +535,8 @@ async function main() {
       shQuote(TEST_RUNNER),
     ]
 
-    const instrOutput = adb(serial, instrArgs)
+    logStep(`Running Android instrumentation (${TEST_CLASS})`)
+    const instrOutput = await adbStreaming(serial, instrArgs, 180_000)
     const okMatch = /OK \((\d+) tests?\)/u.exec(instrOutput)
     const hasFailure = /FAILURES!!!|INSTRUMENTATION_FAILED|Process crashed|INSTRUMENTATION_ABORTED/u.test(
       instrOutput,
@@ -468,6 +544,7 @@ async function main() {
     if (!okMatch || hasFailure) {
       throw new Error(`Android instrumentation failed on ${serial}:\n${instrOutput}`)
     }
+    logStep(`Instrumentation passed (${okMatch[1]} tests)`)
 
     const devicesAfterInstr = await bridge.listTrustedDevices()
     const pairedDevice = devicesAfterInstr.find((d) => d.revokedAt === undefined)
@@ -476,6 +553,7 @@ async function main() {
     }
 
     // Exercise interactive deep-link launch via ADB VIEW Intent
+    logStep('Exercising interactive VIEW deep-link launch via am start -W')
     const deepLinkPairing = await bridge.issuePairingDescriptor()
     const amStartOut = adb(serial, [
       'shell',
@@ -487,12 +565,13 @@ async function main() {
       '-d',
       shQuote(deepLinkPairing.deepLink),
       shQuote(`${APP_ID}/.MainActivity`),
-    ])
+    ], { timeout: 30_000 })
     if (/Error:/iu.test(amStartOut)) {
       throw new Error(`am start deep-link launch failed:\n${amStartOut}`)
     }
 
     // Prove Host device revocation takes effect cleanly
+    logStep(`Revoking paired device ${pairedDevice.deviceId}`)
     const revoked = await bridge.revokeDevice(pairedDevice.deviceId)
     if (!revoked) {
       throw new Error(`Failed to revoke paired device ${pairedDevice.deviceId}`)
@@ -505,7 +584,9 @@ async function main() {
 
     let batteryStatsSample = ''
     try {
-      batteryStatsSample = adb(serial, ['shell', 'dumpsys', 'batterystats', '--checkin', APP_ID])
+      batteryStatsSample = adb(serial, ['shell', 'dumpsys', 'batterystats', '--checkin', APP_ID], {
+        timeout: 15_000,
+      })
         .split('\n')
         .slice(0, 12)
         .join('\n')
@@ -548,19 +629,28 @@ async function main() {
     mkdirSync(dirname(opts.output), { recursive: true })
     writeFileSync(opts.output, `${JSON.stringify(report, null, 2)}\n`, 'utf8')
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`)
-  } finally {
+    logStep(`Report written cleanly to ${opts.output}`)
+  } catch (err) {
     try {
-      adb(serial, ['shell', 'am', 'force-stop', APP_ID])
+      const logTail = adb(serial, ['logcat', '-d', '-t', '120'], { timeout: 10_000 })
+      process.stderr.write(`[r6] Recent adb logcat tail on failure:\n${logTail}\n`)
+    } catch {}
+    throw err
+  } finally {
+    logStep('Cleaning up Android app, adb reverse ports, and Host bridge')
+    try {
+      adb(serial, ['shell', 'am', 'force-stop', APP_ID], { timeout: 10_000 })
     } catch {}
     for (const p of reversedPorts) {
       try {
-        adb(serial, ['reverse', '--remove', `tcp:${p}`])
+        adb(serial, ['reverse', '--remove', `tcp:${p}`], { timeout: 10_000 })
       } catch {}
     }
     await controlServer?.close().catch(() => {})
     await bridge.stop().catch(() => {})
     await relayServer.stop().catch(() => {})
     rmSync(tempRoot, { recursive: true, force: true })
+    logStep('Cleanup complete')
   }
 }
 
