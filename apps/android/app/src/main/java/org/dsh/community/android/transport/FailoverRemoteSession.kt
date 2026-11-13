@@ -106,6 +106,7 @@ class FailoverRemoteSession(
     private val relayFactory: ((String, String, String?) -> RemoteClientTransport)? = null,
     private val requestTimeoutMs: Long = 10_000L,
     private val handshakeTimeoutMs: Long = 10_000L,
+    initialHighestEpoch: Int = 0,
 ) {
     interface Listener {
         fun onPhaseChanged(phase: RemoteConnectionPhase, carrier: TransportKind?, epoch: Int) {}
@@ -122,8 +123,9 @@ class FailoverRemoteSession(
     private val pendingRpc = ConcurrentHashMap<String, CompletableFuture<JsonValue>>()
     private val lastConfirmedSeqBySession = ConcurrentHashMap<String, Long>()
     private val attachedSessionIds = ConcurrentHashMap.newKeySet<String>()
-    private val highestEpoch = AtomicInteger(0)
+    private val highestEpoch = AtomicInteger(initialHighestEpoch.coerceAtLeast(0))
     private val sessionLock = Any()
+    private val sendLock = Any()
 
     @Volatile
     private var activeTransport: RemoteClientTransport? = null
@@ -162,6 +164,8 @@ class FailoverRemoteSession(
     }
 
     fun getLastConfirmedSeq(sessionId: String): Long? = lastConfirmedSeqBySession[sessionId]
+
+    fun isTransportOpen(): Boolean = activeTransport?.isOpen() == true
 
     /**
      * Connects using ordered fallback (`LAN -> WebRTC -> Relay`), or starting from the requested
@@ -426,6 +430,7 @@ class FailoverRemoteSession(
         val handshakeError = AtomicReference<Throwable?>(null)
         val initialPhase = AtomicReference(RemoteConnectionPhase.CONNECTING)
         val revokedThisAttempt = AtomicBoolean(false)
+        val closedNotified = AtomicBoolean(false)
 
         val callbacks = object : RemoteTransportCallbacks {
             override fun onBinaryFrame(frame: ByteArray) {
@@ -503,13 +508,19 @@ class FailoverRemoteSession(
                     }
                     handshakeError.compareAndSet(null, err)
                     latch.countDown()
-                } else if (!revokedThisAttempt.get() && !revokedByHost && activeTransport === transport) {
+                } else if (
+                    !revokedThisAttempt.get() &&
+                    !revokedByHost &&
+                    activeTransport === transport &&
+                    closedNotified.compareAndSet(false, true)
+                ) {
                     val err = IOException("remote channel closed: $reason")
-                    for ((id, future) in pendingRpc.entries) {
-                        if (pendingRpc.remove(id, future)) {
-                            future.completeExceptionally(err)
-                        }
-                    }
+                    closeMatchingTransport(
+                        expectedTransport = transport,
+                        expectedNoise = noise,
+                        reason = reason,
+                        failureError = err,
+                    )
                     listeners.forEach { it.onTransportClosed(transport.kind, reason) }
                 }
             }
@@ -518,12 +529,20 @@ class FailoverRemoteSession(
                 if (stage.get() != HandshakeStage.READY) {
                     handshakeError.compareAndSet(null, error)
                     latch.countDown()
-                } else if (!revokedThisAttempt.get() && activeTransport === transport) {
-                    for ((id, future) in pendingRpc.entries) {
-                        if (pendingRpc.remove(id, future)) {
-                            future.completeExceptionally(error)
-                        }
-                    }
+                } else if (
+                    !revokedThisAttempt.get() &&
+                    !revokedByHost &&
+                    activeTransport === transport &&
+                    closedNotified.compareAndSet(false, true)
+                ) {
+                    val reason = error.message?.takeIf { it.isNotBlank() } ?: error::class.java.simpleName
+                    closeMatchingTransport(
+                        expectedTransport = transport,
+                        expectedNoise = noise,
+                        reason = reason,
+                        failureError = error,
+                    )
+                    listeners.forEach { it.onTransportClosed(transport.kind, reason) }
                 }
             }
         }
@@ -657,13 +676,18 @@ class FailoverRemoteSession(
     }
 
     private fun sendEncryptedAwaitResult(id: String, jsonPayload: String): JsonValue {
-        val transport = activeTransport ?: throw IOException("no active remote transport")
-        val noise = noiseSession ?: throw IOException("no active Noise session")
         val future = CompletableFuture<JsonValue>()
         pendingRpc[id] = future
         try {
-            val ciphertext = noise.encrypt(jsonPayload.toByteArray(StandardCharsets.UTF_8))
-            transport.sendBinary(ciphertext)
+            synchronized(sendLock) {
+                val (transport, noise) = synchronized(sessionLock) {
+                    val t = activeTransport ?: throw IOException("no active remote transport")
+                    val n = noiseSession ?: throw IOException("no active Noise session")
+                    t to n
+                }
+                val ciphertext = noise.encrypt(jsonPayload.toByteArray(StandardCharsets.UTF_8))
+                transport.sendBinary(ciphertext)
+            }
         } catch (t: Throwable) {
             pendingRpc.remove(id)
             throw t

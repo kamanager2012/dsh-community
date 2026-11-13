@@ -17,11 +17,14 @@ import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import org.dsh.community.android.crypto.DeviceIdentity
 import org.dsh.community.android.crypto.TrustedHostRecord
+import org.dsh.community.android.protocol.DisplayTextSanitizer
 import org.dsh.community.android.protocol.JsonObject
 import org.dsh.community.android.protocol.OfficialSessionEvent
 import org.dsh.community.android.protocol.SessionRef
 import org.dsh.community.android.service.BackgroundLifecycleStats
 import org.dsh.community.android.service.DiscoverySelectOutcome
+import org.dsh.community.android.service.PendingApprovalItem
+import org.dsh.community.android.service.PendingQuestionItem
 import org.dsh.community.android.service.RemoteSessionService
 import org.dsh.community.android.transport.DiscoveredLanHost
 import org.dsh.community.android.transport.LanMdnsDiscoverer
@@ -57,12 +60,15 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
 
     private var pendingCallId: String? = null
     private var pendingQuestionId: String? = null
+    private var latestApprovals: List<PendingApprovalItem> = emptyList()
+    private var latestQuestions: List<PendingQuestionItem> = emptyList()
     private var pendingDeepLinkInput: String? = null
     private var stickyStatusError: String? = null
     private var lastHandledIntentRef: Intent? = null
     private var attachedSessionId: String? = null
     private var lastSessions: List<SessionRef> = emptyList()
     private val streamBuffer = StringBuilder()
+    private val seenEventKeys = LinkedHashSet<String>()
     private var inReasoningBlock = false
     private var streamChunkCount = 0
     private var lastIdentity: DeviceIdentity? = null
@@ -137,6 +143,11 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
 
         findViewById<Button>(R.id.btn_disconnect).setOnClickListener {
             stickyStatusError = null
+            attachedSessionId = null
+            seenEventKeys.clear()
+            streamBuffer.setLength(0)
+            inReasoningBlock = false
+            assistantStreamView.text = getString(R.string.assistant_stream_empty)
             service?.disconnect()
         }
 
@@ -151,6 +162,11 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
 
         findViewById<Button>(R.id.btn_forget_host).setOnClickListener {
             stickyStatusError = null
+            attachedSessionId = null
+            seenEventKeys.clear()
+            streamBuffer.setLength(0)
+            inReasoningBlock = false
+            assistantStreamView.text = getString(R.string.assistant_stream_empty)
             service?.forgetHost()
         }
 
@@ -169,23 +185,21 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
             val sid = sessionIdInput.text.toString().trim()
             val prompt = promptInput.text.toString().trim()
             if (sid.isNotEmpty() && prompt.isNotEmpty()) {
+                if (attachedSessionId != sid) {
+                    selectAndAttachSession(sid)
+                }
                 service?.submitPromptAsync(sid, prompt)
-                promptInput.text.clear()
             }
         }
 
         findViewById<Button>(R.id.btn_approve).setOnClickListener {
             val cid = pendingCallId ?: return@setOnClickListener
             service?.respondApprovalAsync(cid, approved = true)
-            pendingCallId = null
-            approvalBanner.text = getString(R.string.no_pending_interaction)
         }
 
         findViewById<Button>(R.id.btn_reject).setOnClickListener {
             val cid = pendingCallId ?: return@setOnClickListener
             service?.respondApprovalAsync(cid, approved = false)
-            pendingCallId = null
-            approvalBanner.text = getString(R.string.no_pending_interaction)
         }
 
         findViewById<Button>(R.id.btn_answer_question).setOnClickListener {
@@ -193,9 +207,6 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
             val ans = answerInput.text.toString().trim()
             if (ans.isNotEmpty()) {
                 service?.respondQuestionAsync(qid, ans)
-                pendingQuestionId = null
-                answerInput.text.clear()
-                approvalBanner.text = getString(R.string.no_pending_interaction)
             }
         }
 
@@ -231,9 +242,10 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
         deviceId: String,
         message: String,
     ) {
+        val cleanMsg = DisplayTextSanitizer.sanitizeSingleLine(message)
         runOnUiThread {
             if (phase == RemoteConnectionPhase.REVOKED) {
-                stickyStatusError = "[REVOKED] carrier=${carrier?.wireName ?: "-"} epoch=$epoch — $message"
+                stickyStatusError = "[REVOKED] carrier=${carrier?.wireName ?: "-"} epoch=$epoch — $cleanMsg"
             } else if (phase != RemoteConnectionPhase.DISCONNECTED) {
                 stickyStatusError = null
             }
@@ -247,7 +259,7 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
             ) {
                 sticky
             } else {
-                "[$phase] carrier=${carrier?.wireName ?: "-"} epoch=$epoch — $message"
+                "[$phase] carrier=${carrier?.wireName ?: "-"} epoch=$epoch — $cleanMsg"
             }
             val backingLabel = lastIdentity?.backing ?: "Keystore-wrapped"
             deviceIdView.text = "Device ID ($backingLabel): $deviceId"
@@ -261,22 +273,27 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
     }
 
     override fun onPeerRevoked(hostFingerprint: String, reason: String) {
+        val cleanReason = DisplayTextSanitizer.sanitizeSingleLine(reason)
         runOnUiThread {
-            val banner = "[REVOKED] ${hostFingerprint.take(12)}...: $reason"
+            val banner = "[REVOKED] ${hostFingerprint.take(12)}...: $cleanReason"
             stickyStatusError = banner
             statusView.text = banner
-            appendLog("Peer revoked by Host (${hostFingerprint.take(12)}...): $reason")
+            appendLog("Peer revoked by Host (${hostFingerprint.take(12)}...): $cleanReason")
         }
     }
 
     override fun onStreamReset(sessionId: String, reason: String) {
+        val cleanSid = DisplayTextSanitizer.sanitizeSingleLine(sessionId)
+        val cleanReason = DisplayTextSanitizer.sanitizeSingleLine(reason)
         runOnUiThread {
+            val prefix = "$sessionId:"
+            seenEventKeys.removeAll { it.startsWith(prefix) }
             if (attachedSessionId == null || attachedSessionId == sessionId) {
                 streamBuffer.setLength(0)
                 inReasoningBlock = false
                 assistantStreamView.text = getString(R.string.assistant_stream_empty)
             }
-            appendLog("[stream.reset #$sessionId] $reason — resyncing from official Host")
+            appendLog("[stream.reset #$cleanSid] $cleanReason — resyncing from official Host")
             service?.attachSessionAsync(sessionId)
         }
     }
@@ -284,8 +301,14 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
     override fun onSessionsUpdated(sessions: List<SessionRef>) {
         runOnUiThread {
             lastSessions = sessions
-            val summary = sessions.joinToString("\n") { "${it.id} (${it.title ?: "untitled"})" }
-            appendLog("Sessions:\n$summary")
+            val summary = sessions.joinToString("\n") {
+                val safeId = DisplayTextSanitizer.sanitizeSingleLine(it.id)
+                val safeTitle = DisplayTextSanitizer.sanitizeSingleLine(it.title ?: "untitled").ifBlank { "untitled" }
+                "$safeId ($safeTitle)"
+            }
+            if (sessions.isNotEmpty()) {
+                appendLog("Sessions:\n$summary")
+            }
             if (sessionIdInput.text.isNullOrBlank() && sessions.isNotEmpty()) {
                 sessionIdInput.setText(sessions.first().id)
             }
@@ -303,66 +326,89 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
 
     override fun onEventReceived(sessionId: String, event: OfficialSessionEvent) {
         runOnUiThread {
+            val eventKey = "$sessionId:${event.seq}:${event.type}"
+            if (!markEventSeen(eventKey)) {
+                return@runOnUiThread
+            }
             val dataObj = event.data as? JsonObject
+            val activeSid = attachedSessionId
+            val isAttachedTarget = activeSid == null || activeSid == sessionId
             if (event.type == "assistant/chunk") {
                 val chunk = dataObj?.obj("chunk")
                 val cType = chunk?.str("type")
                 if (cType == "text-delta" || cType == "text") {
-                    val delta = chunk.str("text") ?: chunk.str("delta") ?: ""
+                    if (isAttachedTarget) {
+                        val delta = DisplayTextSanitizer.sanitizeMultiline(chunk.str("text") ?: chunk.str("delta") ?: "")
+                        if (inReasoningBlock) {
+                            streamBuffer.append('\n')
+                            inReasoningBlock = false
+                        }
+                        appendStreamDelta(delta)
+                    }
+                    return@runOnUiThread
+                } else if (cType == "reasoning-delta" || cType == "reasoning") {
+                    if (isAttachedTarget) {
+                        val delta = DisplayTextSanitizer.sanitizeMultiline(chunk.str("text") ?: chunk.str("delta") ?: "")
+                        if (!inReasoningBlock) {
+                            streamBuffer.append(if (streamBuffer.isEmpty()) "[thinking] " else "\n[thinking] ")
+                            inReasoningBlock = true
+                        }
+                        appendStreamDelta(delta)
+                    }
+                    return@runOnUiThread
+                }
+            } else if (event.type == "text-delta") {
+                if (isAttachedTarget) {
+                    val delta = DisplayTextSanitizer.sanitizeMultiline(dataObj?.str("text") ?: dataObj?.str("delta") ?: "")
                     if (inReasoningBlock) {
                         streamBuffer.append('\n')
                         inReasoningBlock = false
                     }
                     appendStreamDelta(delta)
-                    return@runOnUiThread
-                } else if (cType == "reasoning-delta" || cType == "reasoning") {
-                    val delta = chunk.str("text") ?: chunk.str("delta") ?: ""
+                }
+                return@runOnUiThread
+            } else if (event.type == "reasoning-delta") {
+                if (isAttachedTarget) {
+                    val delta = DisplayTextSanitizer.sanitizeMultiline(dataObj?.str("text") ?: dataObj?.str("delta") ?: "")
                     if (!inReasoningBlock) {
                         streamBuffer.append(if (streamBuffer.isEmpty()) "[thinking] " else "\n[thinking] ")
                         inReasoningBlock = true
                     }
                     appendStreamDelta(delta)
-                    return@runOnUiThread
                 }
-            } else if (event.type == "text-delta") {
-                val delta = dataObj?.str("text") ?: dataObj?.str("delta") ?: ""
-                if (inReasoningBlock) {
-                    streamBuffer.append('\n')
-                    inReasoningBlock = false
-                }
-                appendStreamDelta(delta)
-                return@runOnUiThread
-            } else if (event.type == "reasoning-delta") {
-                val delta = dataObj?.str("text") ?: dataObj?.str("delta") ?: ""
-                if (!inReasoningBlock) {
-                    streamBuffer.append(if (streamBuffer.isEmpty()) "[thinking] " else "\n[thinking] ")
-                    inReasoningBlock = true
-                }
-                appendStreamDelta(delta)
                 return@runOnUiThread
             } else if (event.type == "tool/call" || event.type == "tool.call") {
-                val toolName = dataObj?.str("toolName") ?: dataObj?.str("name") ?: "tool"
-                appendStreamDelta("\n[tool:$toolName] ")
+                if (isAttachedTarget) {
+                    val toolName = DisplayTextSanitizer.sanitizeSingleLine(dataObj?.str("toolName") ?: dataObj?.str("name") ?: "tool")
+                    appendStreamDelta("\n[tool:$toolName] ")
+                }
             } else if (event.type == "tool/result" || event.type == "tool.result") {
-                val toolName = dataObj?.str("toolName") ?: dataObj?.str("name") ?: "tool"
-                appendStreamDelta("[/tool:$toolName]\n")
+                if (isAttachedTarget) {
+                    val toolName = DisplayTextSanitizer.sanitizeSingleLine(dataObj?.str("toolName") ?: dataObj?.str("name") ?: "tool")
+                    appendStreamDelta("[/tool:$toolName]\n")
+                }
             } else if (event.type == "user/message") {
-                val content = dataObj?.str("text") ?: dataObj?.str("content")
-                if (!content.isNullOrBlank()) {
-                    appendStreamDelta(if (streamBuffer.isEmpty()) "> $content\n" else "\n\n> $content\n")
+                if (isAttachedTarget) {
+                    val content = DisplayTextSanitizer.sanitizeMultiline(dataObj?.str("text") ?: dataObj?.str("content"))
+                    if (content.isNotBlank()) {
+                        appendStreamDelta(if (streamBuffer.isEmpty()) "> $content\n" else "\n\n> $content\n")
+                    }
                 }
             } else if (event.type == "approval.resolved") {
-                if (pendingCallId != null && pendingCallId == dataObj?.str("callId")) {
+                if (pendingCallId != null && pendingCallId == dataObj?.str("callId") && latestApprovals.isEmpty()) {
                     pendingCallId = null
-                    approvalBanner.text = getString(R.string.no_pending_interaction)
+                    renderApprovalBanner()
                 }
             } else if (event.type == "question.resolved") {
-                if (pendingQuestionId != null && pendingQuestionId == dataObj?.str("questionId")) {
+                if (pendingQuestionId != null && pendingQuestionId == dataObj?.str("questionId") && latestQuestions.isEmpty()) {
                     pendingQuestionId = null
-                    approvalBanner.text = getString(R.string.no_pending_interaction)
+                    renderApprovalBanner()
                 }
             }
-            appendLog("[#$sessionId seq=${event.seq}] ${event.type}: ${event.data?.stringify() ?: ""}")
+            val cleanSid = DisplayTextSanitizer.sanitizeSingleLine(sessionId)
+            val cleanType = DisplayTextSanitizer.sanitizeSingleLine(event.type)
+            val cleanPayload = DisplayTextSanitizer.sanitizeSingleLine(event.data?.stringify() ?: "")
+            appendLog("[#$cleanSid seq=${event.seq}] $cleanType: $cleanPayload")
         }
     }
 
@@ -453,6 +499,7 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
         sessionIdInput.setText(sessionId)
         if (attachedSessionId != sessionId) {
             attachedSessionId = sessionId
+            seenEventKeys.clear()
             streamBuffer.setLength(0)
             inReasoningBlock = false
             assistantStreamView.text = getString(R.string.assistant_stream_empty)
@@ -469,7 +516,8 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
             container = sessionChipsContainer,
             emptyHintResId = R.string.session_picker_hint,
             chips = sessions.map { session ->
-                val label = session.title?.take(22)?.takeIf { it.isNotBlank() } ?: session.id.take(14)
+                val cleanTitle = DisplayTextSanitizer.sanitizeSingleLine(session.title).take(22)
+                val label = cleanTitle.takeIf { it.isNotBlank() } ?: session.id.take(14)
                 val selected = session.id == selectedId
                 ChipSpec(
                     label = label,
@@ -492,8 +540,9 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
                     host.hostFingerprint == activeFingerprint -> 0xFF00695C.toInt()
                     else -> 0xFF37474F.toInt()
                 }
+                val cleanLabel = DisplayTextSanitizer.sanitizeSingleLine(host.label).take(16).ifBlank { "Host" }
                 ChipSpec(
-                    label = "$prefix${host.label.take(16)}$suffix",
+                    label = "$prefix$cleanLabel$suffix",
                     backgroundColor = bg,
                     onClick = {
                         stickyStatusError = null
@@ -510,8 +559,9 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
             emptyHintResId = R.string.mdns_hosts_hint,
             chips = discoveredHosts.values.map { host ->
                 val fpShort = host.hostFingerprint?.take(8) ?: "?"
+                val cleanLabel = DisplayTextSanitizer.sanitizeSingleLine(host.hostDisplayLabel).take(14).ifBlank { "Host" }
                 ChipSpec(
-                    label = "mDNS: ${host.hostDisplayLabel.take(14)} ($fpShort)",
+                    label = "mDNS: $cleanLabel ($fpShort)",
                     backgroundColor = 0xFF1E3A5F.toInt(),
                     onClick = { onDiscoveredHostChipClicked(host) },
                 )
@@ -602,29 +652,111 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
         }
     }
 
-    override fun onPendingApproval(callId: String, summary: String) {
+    override fun onPendingApprovalsChanged(approvals: List<PendingApprovalItem>) {
         runOnUiThread {
-            pendingCallId = callId
-            approvalBanner.text = "APPROVAL REQUIRED ($callId): $summary"
+            latestApprovals = approvals
+            renderApprovalBanner()
+        }
+    }
+
+    override fun onPendingQuestionsChanged(questions: List<PendingQuestionItem>) {
+        runOnUiThread {
+            latestQuestions = questions
+            renderApprovalBanner()
+        }
+    }
+
+    override fun onActionSucceeded(action: String, refId: String) {
+        runOnUiThread {
+            when (action) {
+                "prompt" -> promptInput.text.clear()
+                "question" -> answerInput.text.clear()
+            }
+        }
+    }
+
+    override fun onActionFailed(action: String, reason: String) {
+        val cleanReason = DisplayTextSanitizer.sanitizeSingleLine(reason)
+        runOnUiThread {
+            appendLog("[${DisplayTextSanitizer.sanitizeSingleLine(action)} failed] $cleanReason")
+            renderApprovalBanner()
+        }
+    }
+
+    override fun onPendingApproval(callId: String, summary: String) {
+        val cleanSummary = DisplayTextSanitizer.sanitizeSingleLine(summary)
+        runOnUiThread {
+            if (latestApprovals.isEmpty()) {
+                pendingCallId = callId
+                val extra = latestQuestions.size
+                val suffix = if (extra > 0) " (+$extra more)" else ""
+                approvalBanner.text = "APPROVAL REQUIRED ($callId): $cleanSummary$suffix"
+            } else {
+                renderApprovalBanner()
+            }
         }
     }
 
     override fun onPendingQuestion(questionId: String, prompt: String) {
+        val cleanPrompt = DisplayTextSanitizer.sanitizeSingleLine(prompt)
         runOnUiThread {
-            pendingQuestionId = questionId
-            approvalBanner.text = "QUESTION ($questionId): $prompt"
+            if (latestApprovals.isEmpty() && latestQuestions.isEmpty()) {
+                pendingQuestionId = questionId
+                approvalBanner.text = "QUESTION ($questionId): $cleanPrompt"
+            } else {
+                renderApprovalBanner()
+            }
         }
     }
 
+    private fun renderApprovalBanner() {
+        val headApproval = latestApprovals.firstOrNull()
+        val headQuestion = latestQuestions.firstOrNull()
+        pendingCallId = headApproval?.callId
+        pendingQuestionId = headQuestion?.questionId
+        when {
+            headApproval != null -> {
+                val extra = (latestApprovals.size - 1) + latestQuestions.size
+                val suffix = if (extra > 0) " (+$extra more)" else ""
+                val cleanSummary = DisplayTextSanitizer.sanitizeSingleLine(headApproval.summary)
+                approvalBanner.text = "APPROVAL REQUIRED (${headApproval.callId}): $cleanSummary$suffix"
+            }
+            headQuestion != null -> {
+                val extra = latestQuestions.size - 1
+                val suffix = if (extra > 0) " (+$extra more)" else ""
+                val cleanPrompt = DisplayTextSanitizer.sanitizeSingleLine(headQuestion.prompt)
+                approvalBanner.text = "QUESTION (${headQuestion.questionId}): $cleanPrompt$suffix"
+            }
+            else -> {
+                approvalBanner.text = getString(R.string.no_pending_interaction)
+            }
+        }
+    }
+
+    private fun markEventSeen(key: String): Boolean {
+        if (!seenEventKeys.add(key)) {
+            return false
+        }
+        while (seenEventKeys.size > 1_000) {
+            val it = seenEventKeys.iterator()
+            if (!it.hasNext()) break
+            it.next()
+            it.remove()
+        }
+        return true
+    }
+
     internal fun handleDiscoveredHostForUi(host: DiscoveredLanHost) {
-        discoveredHosts[host.endpointUrl] = host
         runOnUiThread {
-            appendLog("mDNS Host: ${host.hostDisplayLabel} -> ${host.endpointUrl} fp=${host.hostFingerprint ?: "?"}")
+            discoveredHosts[host.endpointUrl] = host
+            val cleanLabel = DisplayTextSanitizer.sanitizeSingleLine(host.hostDisplayLabel)
+            appendLog("mDNS Host: $cleanLabel -> ${host.endpointUrl} fp=${host.hostFingerprint ?: "?"}")
             renderDiscoveredHostChips()
         }
     }
 
     private fun startMdnsScan() {
+        mdnsDiscoverer?.stop()
         val discoverer = LanMdnsDiscoverer(this)
         mdnsDiscoverer = discoverer
         appendLog("Scanning mDNS ${_DshMdnsServiceLabel}...")
@@ -635,15 +767,17 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
                 }
 
                 override fun onDiscoveryFailed(errorCode: Int, reason: String) {
-                    runOnUiThread { appendLog("mDNS error $errorCode: $reason") }
+                    val cleanReason = DisplayTextSanitizer.sanitizeSingleLine(reason)
+                    runOnUiThread { appendLog("mDNS error $errorCode: $cleanReason") }
                 }
             },
         )
     }
 
     private fun appendLog(line: String) {
+        val cleanLine = DisplayTextSanitizer.sanitizeMultiline(line)
         val existing = eventLogView.text?.toString().orEmpty()
-        val combined = if (existing.isEmpty()) line else "$existing\n$line"
+        val combined = if (existing.isEmpty()) cleanLine else "$existing\n$cleanLine"
         eventLogView.text = combined.takeLast(8000)
     }
 
