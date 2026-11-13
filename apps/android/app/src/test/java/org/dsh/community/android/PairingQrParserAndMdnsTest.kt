@@ -7,7 +7,9 @@ import org.dsh.community.android.transport.PairingQrParser
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
+import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
+import java.util.Base64
 
 class PairingQrParserAndMdnsTest {
     @Test
@@ -57,6 +59,34 @@ class PairingQrParserAndMdnsTest {
         val badFp = validJson.replace(fp, "0".repeat(64))
         assertThrows(SecurityException::class.java) {
             PairingQrParser.parse(badFp)
+        }
+
+        // Deep-link dsh-remote://pair?data=<base64url> and ?descriptor=... must roundtrip
+        val deepLink = PairingQrParser.encodeDeepLink(validJson)
+        val parsedLink = PairingQrParser.parseInput(deepLink)
+        assertEquals(fp, parsedLink.hostFingerprint)
+        assertEquals("ws://192.168.1.10:8443", parsedLink.endpointUrl)
+        assertEquals("wss://relay.example.org/ws", parsedLink.relayUrl)
+
+        val queryDescriptor = "dsh-remote://pair?descriptor=" +
+            URLEncoder.encode(validJson, StandardCharsets.UTF_8.name())
+        val parsedQuery = PairingQrParser.parse(queryDescriptor)
+        assertEquals("tok-abc-123", parsedQuery.bootstrapToken)
+
+        // Forbidden fields hidden inside deep-link base64url payload must fail closed
+        val badLinkData = Base64.getUrlEncoder()
+            .withoutPadding()
+            .encodeToString(withForbidden.toByteArray(StandardCharsets.UTF_8))
+        assertThrows(SecurityException::class.java) {
+            PairingQrParser.parseInput("dsh-remote://pair?data=$badLinkData")
+        }
+
+        // Wrong action or missing payload must fail closed
+        assertThrows(IllegalArgumentException::class.java) {
+            PairingQrParser.parseInput("dsh-remote://exec?data=$badLinkData")
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            PairingQrParser.parseInput("dsh-remote://pair")
         }
     }
 

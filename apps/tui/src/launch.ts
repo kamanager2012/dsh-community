@@ -18,6 +18,7 @@ export type CommunityLaunch =
   | { readonly kind: 'list'; readonly porcelain: boolean }
   | { readonly kind: 'pick' }
   | { readonly kind: 'default' }
+  | { readonly kind: 'remote'; readonly rest: readonly string[] }
   | { readonly kind: 'new'; readonly rest: readonly string[] }
   | { readonly kind: 'resume'; readonly id: string; readonly rest: readonly string[] }
   | { readonly kind: 'run'; readonly rest: readonly string[] }
@@ -31,6 +32,7 @@ export const COMMUNITY_TUI_HELP = `dsh-community — 社区发行层，跑官方
   dsh-community new [任务]          新对话；任务正文不进入子进程 argv
   dsh-community resume last         接着最近一条
   dsh-community sessions            看官方 ~/.dsh 里的对话
+  dsh-community remote <子命令>     E2EE 远程宿主机（start / devices / revoke / status）
   dsh-community version             统一 Dual-Badge（客户端版本 + 官方核心）
   dsh-community doctor              自检（不打印密钥）
   dsh-community plugins             只读插件目录
@@ -39,6 +41,7 @@ export const COMMUNITY_TUI_HELP = `dsh-community — 社区发行层，跑官方
   --new / new
   --resume last|<id>  /  resume last|<id>
   --list-sessions / sessions / -l
+  --remote / remote
   --plugins / plugins
   --version / version
   --doctor / doctor
@@ -61,6 +64,7 @@ export function parseCommunityLaunch(argv: readonly string[]): CommunityLaunch {
   if (head === '--version' || head === '-v' || head === 'version') return { kind: 'version' }
   if (head === '--doctor' || head === 'doctor') return { kind: 'doctor' }
   if (head === '--desktop' || head === 'desktop') return { kind: 'desktop' }
+  if (head === '--remote' || head === 'remote') return { kind: 'remote', rest: args.slice(1) }
   if (head === '--plugins' || head === 'plugins') {
     return { kind: 'plugins', porcelain: args.includes('--porcelain') }
   }

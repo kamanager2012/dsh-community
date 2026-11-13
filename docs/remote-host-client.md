@@ -372,3 +372,15 @@ This architecture is not:
 - a distributed Session database.
 
 It is a secure, minimal remote projection of the official Host runtime.
+
+## 15. R6 Official Host Bridge & Android Instrumentation
+
+- **Official Host Cordis Bridge (`@dsh-community/remote-adapter`)**: `OfficialHostCordisBridge` and `@dsh-community/remote-adapter/cordis-plugin` attach directly inside official `@deepseek-ai/dsh --profile headless --patch ...` via Cordis events (`session/event`, `agent/assistant-stream`, `agent/error`, `approval/request`, `user-questions/request`) while keeping `DSH_REMOTE_CONFIG_DIR` strictly outside `DSH_HOME` (`~/.dsh`).
+- **Host CLI (`dsh-community remote`)**:
+  - `dsh-community remote start [--host <ip>] [--port <n>] [--mdns] [--relay-url <url>] [--session <id>] [--json]`
+  - `dsh-community remote devices [--json]`
+  - `dsh-community remote revoke <deviceId>`
+  - `dsh-community remote status [--json]`
+- **Android Deep-Link & Instrumentation**:
+  - `MainActivity` handles `dsh-remote://pair?data=<base64url>` (`ACTION_VIEW`) through `PairingQrParser`, never passing session IDs or credentials inside the URI.
+  - `apps/android/app/src/androidTest/.../RemoteClientInstrumentationTest.kt` and `scripts/accept-android-r6-device.mjs` verify `AndroidKeyStore`, `RemoteSessionService` (`dataSync`), `adb reverse` Noise IK E2EE RPC/failover, and `x86_64` KVM emulator instrumentation while leaving `arm64RealDeviceSmoke` fail-closed (`false`) until verified on physical `arm64-v8a` hardware.

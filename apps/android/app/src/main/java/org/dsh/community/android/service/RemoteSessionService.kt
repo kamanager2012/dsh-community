@@ -87,6 +87,7 @@ class RemoteSessionService : Service() {
         fun onEventReceived(sessionId: String, event: OfficialSessionEvent)
         fun onPendingApproval(callId: String, summary: String)
         fun onPendingQuestion(questionId: String, prompt: String)
+        fun onMetricsUpdated(identity: DeviceIdentity, stats: BackgroundLifecycleStats) {}
     }
 
     inner class LocalBinder : Binder() {
@@ -191,7 +192,12 @@ class RemoteSessionService : Service() {
             deviceId = id.deviceId,
             message = statusText,
         )
+        observer.onMetricsUpdated(id, currentStats())
     }
+
+    fun currentIdentity(): DeviceIdentity = ensureDeviceIdentity()
+
+    fun currentStatsFile(): File = File(noBackupFilesDir, STATS_FILE)
 
     fun removeObserver(observer: UiObserver) {
         uiObservers.remove(observer)
@@ -206,6 +212,10 @@ class RemoteSessionService : Service() {
         currentEpoch = activeSession?.currentEpoch ?: 0,
         lastUpdatedMs = System.currentTimeMillis(),
     )
+
+    fun connectWithPairingInput(rawInput: String, displayName: String = Build.MODEL ?: "Android") {
+        connectWithPairingJson(rawInput, displayName)
+    }
 
     fun connectWithPairingJson(rawDescriptorJson: String, displayName: String = Build.MODEL ?: "Android") {
         ioExecutor.execute {
@@ -370,6 +380,12 @@ class RemoteSessionService : Service() {
                 )
             } else if (phase == RemoteConnectionPhase.ACTIVE) {
                 val sessions = session.listSessions()
+                updateStatus(
+                    phase,
+                    session.activeCarrier,
+                    session.currentEpoch,
+                    "Connected (${sessions.size} official session${if (sessions.size == 1) "" else "s"})",
+                )
                 uiObservers.forEach { it.onSessionsUpdated(sessions) }
             }
         } catch (t: Throwable) {
@@ -413,14 +429,25 @@ class RemoteSessionService : Service() {
     private fun dispatchEventToObservers(sessionId: String, event: OfficialSessionEvent) {
         uiObservers.forEach { it.onEventReceived(sessionId, event) }
         val dataObj = event.data as? JsonObject ?: return
+        if (event.type == "approval.resolved" || event.type == "question.resolved") {
+            return
+        }
         if (event.type.contains("approval", ignoreCase = true) || event.type.contains("permission", ignoreCase = true)) {
             val callId = dataObj.str("callId") ?: return
-            val summary = dataObj.str("tool") ?: dataObj.str("summary") ?: event.type
+            val toolLabel = dataObj.str("toolName") ?: dataObj.str("tool") ?: dataObj.str("summary") ?: event.type
+            val reason = dataObj.str("reason")
+            val summary = if (!reason.isNullOrBlank()) "$toolLabel — $reason" else toolLabel
             uiObservers.forEach { it.onPendingApproval(callId, summary) }
             postApprovalNotification(callId, summary)
         } else if (event.type.contains("question", ignoreCase = true)) {
             val questionId = dataObj.str("questionId") ?: return
-            val prompt = dataObj.str("prompt") ?: dataObj.str("question") ?: event.type
+            val firstQuestion = dataObj.arr("questions")?.items?.firstOrNull() as? JsonObject
+            val prompt = dataObj.str("prompt")
+                ?: dataObj.str("question")
+                ?: firstQuestion?.str("question")
+                ?: firstQuestion?.str("prompt")
+                ?: firstQuestion?.str("header")
+                ?: event.type
             uiObservers.forEach { it.onPendingQuestion(questionId, prompt) }
         }
     }
@@ -430,7 +457,11 @@ class RemoteSessionService : Service() {
         lastStatusMessage.set(System.currentTimeMillis())
         val id = ensureDeviceIdentity()
         ensureForeground(message)
-        uiObservers.forEach { it.onStatusChanged(phase, carrier, epoch, id.deviceId, message) }
+        val stats = currentStats()
+        uiObservers.forEach {
+            it.onStatusChanged(phase, carrier, epoch, id.deviceId, message)
+            it.onMetricsUpdated(id, stats)
+        }
     }
 
     private fun ensureDeviceIdentity(): DeviceIdentity {
@@ -570,10 +601,15 @@ class RemoteSessionService : Service() {
     }
 
     private fun persistStats() {
+        val stats = currentStats()
         try {
-            File(noBackupFilesDir, STATS_FILE).writeText(currentStats().toJson())
+            File(noBackupFilesDir, STATS_FILE).writeText(stats.toJson())
         } catch (_: Throwable) {
             // Diagnostic telemetry must never crash foreground transport
+        }
+        val id = deviceIdentity
+        if (id != null) {
+            uiObservers.forEach { it.onMetricsUpdated(id, stats) }
         }
     }
 }
