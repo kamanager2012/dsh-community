@@ -196,7 +196,11 @@ export class HostLanCarrier {
       if (this.options.mdnsAdvertiser || this.options.enableMdns) {
         this.activeMdnsAdvertiser =
           this.options.mdnsAdvertiser ??
-          new BonjourMdnsAdvertiser({ networkInterface: bindHost })
+          new BonjourMdnsAdvertiser(
+            bindHost !== '127.0.0.1' && bindHost !== '::1'
+              ? { networkInterface: bindHost }
+              : undefined,
+          )
 
         const bound = this.getBoundAddress()!
         const record: MdnsAdvertisementRecord = {
