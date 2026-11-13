@@ -15,6 +15,10 @@ import {
   type HostLanCarrierOptions,
 } from './carrier/lan-host.js'
 import {
+  HostRelayCarrier,
+  type HostRelayCarrierOptions,
+} from './carrier/relay-host.js'
+import {
   HostWebRtcCarrier,
   type HostWebRtcCarrierOptions,
 } from './carrier/webrtc-host.js'
@@ -31,6 +35,10 @@ export interface RemoteHostRuntimeOptions {
   >
   readonly webrtc?: Omit<
     HostWebRtcCarrierOptions,
+    'core' | 'trustStore' | 'hostIdentityStore' | 'pairingCoordinator' | 'epochAllocator'
+  > | undefined
+  readonly relay?: Omit<
+    HostRelayCarrierOptions,
     'core' | 'trustStore' | 'hostIdentityStore' | 'pairingCoordinator' | 'epochAllocator'
   > | undefined
 }
@@ -97,6 +105,7 @@ export class RemoteHostRuntime {
   readonly core: RemoteAdapterCore
   readonly carrier: HostLanCarrier
   readonly webrtc: HostWebRtcCarrier | undefined
+  readonly relay: HostRelayCarrier | undefined
   readonly events: OfficialSessionEventBridge
   private readonly epochAllocator = new ConnectionEpochAllocator()
 
@@ -106,8 +115,7 @@ export class RemoteHostRuntime {
       trustStore: options.trustStore,
       hostIdentityStore: options.hostIdentityStore,
     })
-    this.carrier = new HostLanCarrier({
-      ...options.carrier,
+    const carrierShared = {
       core: this.core,
       trustStore: options.trustStore,
       hostIdentityStore: options.hostIdentityStore,
@@ -115,18 +123,23 @@ export class RemoteHostRuntime {
       ...(options.pairingCoordinator === undefined
         ? {}
         : { pairingCoordinator: options.pairingCoordinator }),
+    }
+    this.carrier = new HostLanCarrier({
+      ...options.carrier,
+      ...carrierShared,
     })
     this.webrtc =
       options.webrtc !== undefined
         ? new HostWebRtcCarrier({
             ...options.webrtc,
-            core: this.core,
-            trustStore: options.trustStore,
-            hostIdentityStore: options.hostIdentityStore,
-            epochAllocator: this.epochAllocator,
-            ...(options.pairingCoordinator === undefined
-              ? {}
-              : { pairingCoordinator: options.pairingCoordinator }),
+            ...carrierShared,
+          })
+        : undefined
+    this.relay =
+      options.relay !== undefined
+        ? new HostRelayCarrier({
+            ...options.relay,
+            ...carrierShared,
           })
         : undefined
     this.events = new OfficialSessionEventBridge(
@@ -139,12 +152,13 @@ export class RemoteHostRuntime {
         }
         this.carrier.broadcastEvent(frame)
         this.webrtc?.broadcastEvent(frame)
+        this.relay?.broadcastEvent(frame)
       },
     )
   }
 
   async start(): Promise<void> {
-    if (this.carrier.isEnabled() || !this.webrtc?.isEnabled()) {
+    if (this.carrier.isEnabled() || (!this.webrtc?.isEnabled() && !this.relay?.isEnabled())) {
       await this.carrier.start()
     }
     if (this.webrtc?.isEnabled()) {
@@ -155,12 +169,24 @@ export class RemoteHostRuntime {
         throw err
       }
     }
+    if (this.relay?.isEnabled()) {
+      try {
+        await this.relay.start()
+      } catch (err) {
+        await Promise.allSettled([
+          this.carrier.stop(),
+          this.webrtc ? this.webrtc.stop() : Promise.resolve(),
+        ])
+        throw err
+      }
+    }
   }
 
   async stop(): Promise<void> {
     await Promise.all([
       this.carrier.stop(),
       this.webrtc ? this.webrtc.stop() : Promise.resolve(),
+      this.relay ? this.relay.stop() : Promise.resolve(),
     ])
   }
 

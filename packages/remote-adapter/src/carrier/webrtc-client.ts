@@ -44,15 +44,283 @@ export interface WebRtcClientCarrierOptions {
   readonly sleep?: ((delayMs: number) => Promise<void>) | undefined
 }
 
+export interface WebRtcTransportHandles {
+  readonly pc: RTCPeerConnection | undefined
+  readonly dc: RTCDataChannel | undefined
+  readonly signaling: SignalingClient | undefined
+}
+
+export function createWebRtcTransport(
+  options: Omit<WebRtcClientCarrierOptions, 'clientKeyPair' | 'requestTimeoutMs' | 'sleep'>,
+  onHandlesChanged?: (handles: WebRtcTransportHandles) => void,
+): FramedClientTransport {
+  const maxFrameBytes = options.maxFrameBytes ?? LAN_CARRIER_BOUNDS.maxFrameBytes
+  const iceConnectTimeoutMs = options.iceConnectTimeoutMs ?? 10_000
+  validateSelfOwnedStunUrls(options.ice?.stunUrls)
+  const roomId = options.roomId ?? computeFingerprint(options.hostPublicKey)
+
+  let activePc: RTCPeerConnection | undefined = undefined
+  let activeDc: RTCDataChannel | undefined = undefined
+  let activeSignaling: SignalingClient | undefined = undefined
+
+  const publishHandles = () => {
+    onHandlesChanged?.({
+      pc: activePc,
+      dc: activeDc,
+      signaling: activeSignaling,
+    })
+  }
+
+  return {
+    kind: 'webrtc',
+    isOpen: () => activeDc !== undefined && activeDc.readyState === 'open',
+    connect: async (handlers: FramedClientTransportHandlers) => {
+      if (!/^wss?:\/\/[^\s]+$/i.test(options.signalingUrl ?? '')) {
+        throw new RemoteCryptoError(
+          'HANDSHAKE_FAILED',
+          `invalid signalingUrl '${String(options.signalingUrl)}'`,
+        )
+      }
+
+      const signaling = new SignalingClient(options.signalingUrl)
+      activeSignaling = signaling
+
+      const pc = createConfiguredPeerConnection(options.ice)
+      activePc = pc
+      const dc = pc.createDataChannel(DSH_WEBRTC_DATA_CHANNEL_LABEL, { ordered: true })
+      activeDc = dc
+      publishHandles()
+
+      const reassembler = new DataChannelFrameReassembler(maxFrameBytes)
+      const remoteIceQueue: (RtcIceCandidatePayload | null)[] = []
+      const localIceBuffer: (RtcIceCandidatePayload | null)[] = []
+      let offerSent = false
+      let remoteDescSet = false
+      let hostPeerId: string | undefined = undefined
+      let opened = false
+      let closed = false
+
+      const cleanupLocal = () => {
+        closed = true
+        reassembler.reset()
+        if (activeDc === dc) activeDc = undefined
+        if (activePc === pc) activePc = undefined
+        if (activeSignaling === signaling) activeSignaling = undefined
+        publishHandles()
+        try {
+          signaling.close()
+        } catch {}
+        try {
+          dc.close()
+        } catch {}
+        try {
+          void pc.close()
+        } catch {}
+      }
+
+      await new Promise<void>((resolve, reject) => {
+        let settled = false
+        const failConnect = (err: Error) => {
+          if (settled) return
+          settled = true
+          clearTimeout(timer)
+          cleanupLocal()
+          reject(err)
+        }
+
+        const timer = setTimeout(() => {
+          failConnect(
+            new RemoteCryptoError('HANDSHAKE_FAILED', 'WebRTC DataChannel connection timeout'),
+          )
+        }, iceConnectTimeoutMs)
+
+        const flushRemoteIce = async () => {
+          while (remoteIceQueue.length > 0 && !closed) {
+            const cand = remoteIceQueue.shift()!
+            try {
+              await pc.addIceCandidate(toRtcIceCandidateInit(cand))
+            } catch {}
+          }
+        }
+
+        signaling.setHandlers({
+          onAnswer: (msg) => {
+            if (closed) return
+            void (async () => {
+              try {
+                await pc.setRemoteDescription(msg.sdp)
+                remoteDescSet = true
+                await flushRemoteIce()
+              } catch (err) {
+                failConnect(err instanceof Error ? err : new Error(String(err)))
+              }
+            })()
+          },
+          onIceCandidate: (msg) => {
+            if (closed) return
+            remoteIceQueue.push(msg.candidate)
+            if (remoteDescSet) {
+              void flushRemoteIce()
+            }
+          },
+          onClose: (reason) => {
+            if (!opened) {
+              failConnect(new RemoteCryptoError('HANDSHAKE_FAILED', reason))
+            }
+          },
+        })
+
+        pc.onicecandidate = ({ candidate }) => {
+          if (closed) return
+          const payload: RtcIceCandidatePayload | null = candidate ? candidate.toJSON() : null
+          if (!offerSent || !hostPeerId || !signaling.isOpen()) {
+            localIceBuffer.push(payload)
+            return
+          }
+          try {
+            signaling.sendIceCandidate(hostPeerId, payload)
+          } catch {}
+        }
+
+        pc.connectionStateChange.subscribe((state) => {
+          if (state === 'failed' || state === 'closed') {
+            const err = new RemoteCryptoError('HANDSHAKE_FAILED', `WebRTC peer connection ${state}`)
+            if (!opened) {
+              failConnect(err)
+            } else {
+              cleanupLocal()
+              handlers.onClose(`WebRTC peer connection ${state}`)
+            }
+          }
+        })
+
+        dc.onmessage = (evt) => {
+          if (closed) return
+          if (typeof evt.data === 'string') {
+            handlers.onError(new RemoteCryptoError('HANDSHAKE_FAILED', 'text DataChannel frames rejected'))
+            cleanupLocal()
+            return
+          }
+          try {
+            const assembled = reassembler.push(evt.data)
+            if (assembled !== undefined) {
+              handlers.onMessage(assembled)
+            }
+          } catch (err) {
+            handlers.onError(err instanceof Error ? err : new Error(String(err)))
+            cleanupLocal()
+          }
+        }
+
+        dc.onerror = (evt) => {
+          const err = evt.error instanceof Error ? evt.error : new Error('DataChannel error')
+          if (!opened) {
+            failConnect(err)
+          } else {
+            handlers.onError(err)
+          }
+        }
+
+        dc.onclose = () => {
+          if (!opened) {
+            failConnect(new RemoteCryptoError('HANDSHAKE_FAILED', 'DataChannel closed before open'))
+            return
+          }
+          if (!closed) {
+            cleanupLocal()
+            handlers.onClose('WebRTC DataChannel closed')
+          }
+        }
+
+        const markOpen = () => {
+          if (settled || closed) return
+          settled = true
+          opened = true
+          clearTimeout(timer)
+          if (options.keepSignalingOpen !== true) {
+            signaling.close()
+            if (activeSignaling === signaling) {
+              activeSignaling = undefined
+              publishHandles()
+            }
+          }
+          resolve()
+        }
+
+        if (dc.readyState === 'open') {
+          markOpen()
+        } else {
+          dc.onopen = markOpen
+        }
+
+        void (async () => {
+          try {
+            const joined = await signaling.joinRoom({
+              roomId,
+              joinToken: options.joinToken,
+              timeoutMs: options.handshakeTimeoutMs ?? 5_000,
+            })
+            if (closed) return
+            hostPeerId = joined.hostPeerId
+            const offer = await pc.createOffer()
+            await pc.setLocalDescription(offer)
+            if (closed) return
+            signaling.sendOffer(hostPeerId, { type: 'offer', sdp: offer.sdp })
+            offerSent = true
+            for (const cand of localIceBuffer) {
+              try {
+                signaling.sendIceCandidate(hostPeerId, cand)
+              } catch {}
+            }
+            localIceBuffer.length = 0
+          } catch (err) {
+            failConnect(err instanceof Error ? err : new Error(String(err)))
+          }
+        })()
+      })
+    },
+    send: (payload: Uint8Array) => {
+      if (!activeDc || activeDc.readyState !== 'open') {
+        throw new RemoteCryptoError('HANDSHAKE_STATE_INVALID', 'WebRTC DataChannel is not open')
+      }
+      const chunks = encodeDataChannelChunks(payload, maxFrameBytes)
+      for (const chunk of chunks) {
+        activeDc.send(Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength))
+      }
+    },
+    close: () => {
+      const signaling = activeSignaling
+      const dc = activeDc
+      const pc = activePc
+      activeSignaling = undefined
+      activeDc = undefined
+      activePc = undefined
+      publishHandles()
+      if (signaling) {
+        try {
+          signaling.close()
+        } catch {}
+      }
+      if (dc) {
+        try {
+          dc.close()
+        } catch {}
+      }
+      if (pc) {
+        try {
+          void pc.close()
+        } catch {}
+      }
+    },
+  }
+}
+
 /**
  * WebRTC P2P DataChannel client carrier backed by the shared RemoteClientSession.
  */
 export class WebRtcClientCarrier {
   readonly deviceId: string
   private readonly options: WebRtcClientCarrierOptions
-  private readonly roomId: string
-  private readonly maxFrameBytes: number
-  private readonly iceConnectTimeoutMs: number
   private readonly session: RemoteClientSession
   private pc: RTCPeerConnection | undefined = undefined
   private dc: RTCDataChannel | undefined = undefined
@@ -60,10 +328,7 @@ export class WebRtcClientCarrier {
 
   constructor(options: WebRtcClientCarrierOptions) {
     this.options = options
-    this.maxFrameBytes = options.maxFrameBytes ?? LAN_CARRIER_BOUNDS.maxFrameBytes
-    this.iceConnectTimeoutMs = options.iceConnectTimeoutMs ?? 10_000
     validateSelfOwnedStunUrls(options.ice?.stunUrls)
-    this.roomId = options.roomId ?? computeFingerprint(options.hostPublicKey)
     this.session = new RemoteClientSession(options)
     this.deviceId = this.session.deviceId
   }
@@ -110,244 +375,11 @@ export class WebRtcClientCarrier {
   }
 
   private createWebRtcTransport(): FramedClientTransport {
-    return {
-      kind: 'webrtc',
-      isOpen: () => this.dc !== undefined && this.dc.readyState === 'open',
-      connect: async (handlers: FramedClientTransportHandlers) => {
-        if (!/^wss?:\/\/[^\s]+$/i.test(this.options.signalingUrl ?? '')) {
-          throw new RemoteCryptoError(
-            'HANDSHAKE_FAILED',
-            `invalid signalingUrl '${String(this.options.signalingUrl)}'`,
-          )
-        }
-
-        const signaling = new SignalingClient(this.options.signalingUrl)
-        this.signaling = signaling
-
-        const pc = createConfiguredPeerConnection(this.options.ice)
-        this.pc = pc
-        const dc = pc.createDataChannel(DSH_WEBRTC_DATA_CHANNEL_LABEL, { ordered: true })
-        this.dc = dc
-
-        const reassembler = new DataChannelFrameReassembler(this.maxFrameBytes)
-        const remoteIceQueue: (RtcIceCandidatePayload | null)[] = []
-        const localIceBuffer: (RtcIceCandidatePayload | null)[] = []
-        let offerSent = false
-        let remoteDescSet = false
-        let hostPeerId: string | undefined = undefined
-        let opened = false
-        let closed = false
-
-        const cleanupLocal = () => {
-          closed = true
-          reassembler.reset()
-          if (this.dc === dc) this.dc = undefined
-          if (this.pc === pc) this.pc = undefined
-          if (this.signaling === signaling) this.signaling = undefined
-          try {
-            signaling.close()
-          } catch {}
-          try {
-            dc.close()
-          } catch {}
-          try {
-            void pc.close()
-          } catch {}
-        }
-
-        await new Promise<void>((resolve, reject) => {
-          let settled = false
-          const failConnect = (err: Error) => {
-            if (settled) return
-            settled = true
-            clearTimeout(timer)
-            cleanupLocal()
-            reject(err)
-          }
-
-          const timer = setTimeout(() => {
-            failConnect(
-              new RemoteCryptoError('HANDSHAKE_FAILED', 'WebRTC DataChannel connection timeout'),
-            )
-          }, this.iceConnectTimeoutMs)
-
-          const flushRemoteIce = async () => {
-            while (remoteIceQueue.length > 0 && !closed) {
-              const cand = remoteIceQueue.shift()!
-              try {
-                await pc.addIceCandidate(toRtcIceCandidateInit(cand))
-              } catch {}
-            }
-          }
-
-          signaling.setHandlers({
-            onAnswer: (msg) => {
-              if (closed) return
-              void (async () => {
-                try {
-                  await pc.setRemoteDescription(msg.sdp)
-                  remoteDescSet = true
-                  await flushRemoteIce()
-                } catch (err) {
-                  failConnect(err instanceof Error ? err : new Error(String(err)))
-                }
-              })()
-            },
-            onIceCandidate: (msg) => {
-              if (closed) return
-              remoteIceQueue.push(msg.candidate)
-              if (remoteDescSet) {
-                void flushRemoteIce()
-              }
-            },
-            onClose: (reason) => {
-              if (!opened) {
-                failConnect(new RemoteCryptoError('HANDSHAKE_FAILED', reason))
-              }
-            },
-          })
-
-          pc.onicecandidate = ({ candidate }) => {
-            if (closed) return
-            const payload: RtcIceCandidatePayload | null = candidate ? candidate.toJSON() : null
-            if (!offerSent || !hostPeerId || !signaling.isOpen()) {
-              localIceBuffer.push(payload)
-              return
-            }
-            try {
-              signaling.sendIceCandidate(hostPeerId, payload)
-            } catch {}
-          }
-
-          pc.connectionStateChange.subscribe((state) => {
-            if (state === 'failed' || state === 'closed') {
-              const err = new RemoteCryptoError('HANDSHAKE_FAILED', `WebRTC peer connection ${state}`)
-              if (!opened) {
-                failConnect(err)
-              } else {
-                cleanupLocal()
-                handlers.onClose(`WebRTC peer connection ${state}`)
-              }
-            }
-          })
-
-          dc.onmessage = (evt) => {
-            if (closed) return
-            if (typeof evt.data === 'string') {
-              handlers.onError(new RemoteCryptoError('HANDSHAKE_FAILED', 'text DataChannel frames rejected'))
-              cleanupLocal()
-              return
-            }
-            try {
-              const assembled = reassembler.push(evt.data)
-              if (assembled !== undefined) {
-                handlers.onMessage(assembled)
-              }
-            } catch (err) {
-              handlers.onError(err instanceof Error ? err : new Error(String(err)))
-              cleanupLocal()
-            }
-          }
-
-          dc.onerror = (evt) => {
-            const err = evt.error instanceof Error ? evt.error : new Error('DataChannel error')
-            if (!opened) {
-              failConnect(err)
-            } else {
-              handlers.onError(err)
-            }
-          }
-
-          dc.onclose = () => {
-            if (!opened) {
-              failConnect(new RemoteCryptoError('HANDSHAKE_FAILED', 'DataChannel closed before open'))
-              return
-            }
-            if (!closed) {
-              cleanupLocal()
-              handlers.onClose('WebRTC DataChannel closed')
-            }
-          }
-
-          const markOpen = () => {
-            if (settled || closed) return
-            settled = true
-            opened = true
-            clearTimeout(timer)
-            if (this.options.keepSignalingOpen !== true) {
-              signaling.close()
-              if (this.signaling === signaling) {
-                this.signaling = undefined
-              }
-            }
-            resolve()
-          }
-
-          if (dc.readyState === 'open') {
-            markOpen()
-          } else {
-            dc.onopen = markOpen
-          }
-
-          void (async () => {
-            try {
-              const joined = await signaling.joinRoom({
-                roomId: this.roomId,
-                joinToken: this.options.joinToken,
-                timeoutMs: this.options.handshakeTimeoutMs ?? 5_000,
-              })
-              if (closed) return
-              hostPeerId = joined.hostPeerId
-              const offer = await pc.createOffer()
-              await pc.setLocalDescription(offer)
-              if (closed) return
-              signaling.sendOffer(hostPeerId, { type: 'offer', sdp: offer.sdp })
-              offerSent = true
-              for (const cand of localIceBuffer) {
-                try {
-                  signaling.sendIceCandidate(hostPeerId, cand)
-                } catch {}
-              }
-              localIceBuffer.length = 0
-            } catch (err) {
-              failConnect(err instanceof Error ? err : new Error(String(err)))
-            }
-          })()
-        })
-      },
-      send: (payload: Uint8Array) => {
-        if (!this.dc || this.dc.readyState !== 'open') {
-          throw new RemoteCryptoError('HANDSHAKE_STATE_INVALID', 'WebRTC DataChannel is not open')
-        }
-        const chunks = encodeDataChannelChunks(payload, this.maxFrameBytes)
-        for (const chunk of chunks) {
-          this.dc.send(Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength))
-        }
-      },
-      close: () => {
-        const signaling = this.signaling
-        const dc = this.dc
-        const pc = this.pc
-        this.signaling = undefined
-        this.dc = undefined
-        this.pc = undefined
-        if (signaling) {
-          try {
-            signaling.close()
-          } catch {}
-        }
-        if (dc) {
-          try {
-            dc.close()
-          } catch {}
-        }
-        if (pc) {
-          try {
-            void pc.close()
-          } catch {}
-        }
-      },
-    }
+    return createWebRtcTransport(this.options, (handles) => {
+      this.pc = handles.pc
+      this.dc = handles.dc
+      this.signaling = handles.signaling
+    })
   }
 
   async connect(): Promise<void> {
