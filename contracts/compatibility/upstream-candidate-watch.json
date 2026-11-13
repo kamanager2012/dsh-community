@@ -2,47 +2,48 @@
   "schemaVersion": 2,
   "previousAccepted": {
     "package": "@deepseek-ai/dsh",
-    "version": "0.1.2-alpha.4",
-    "upstreamReleaseCommit": "a9e185f205169262ab39cbbda9fc48b16c37bbe9",
-    "upstreamMergeCommit": "4e84901e6471b79ec0338099867ebb4606d12bb5",
-    "acceptedCommunityMain": "c8c2484c0ece2c2cbc506dbb116e97e807def6d8",
-    "disposition": "PREVIOUS_ACCEPTED_BASELINE",
-    "releasedAt": "2026-09-01T15:37:26Z"
-  },
-  "frozenTarget": {
-    "package": "@deepseek-ai/dsh",
     "version": "0.2.2-rc.1",
     "upstreamReleaseCommit": "2f97f60455605e915b8176d9170cae337bfedcc6",
     "upstreamMergeCommit": "66491b05e3f05ad35bcdd4f6cd7ed26041d9e3db",
-    "releasedAt": "2026-11-04T07:54:45Z",
+    "acceptedCommunityMain": "d66c3f0fd9c936d7aaad3da6b31181f410bd922e",
+    "disposition": "PREVIOUS_ACCEPTED_BASELINE",
+    "releasedAt": "2026-11-04T07:54:45Z"
+  },
+  "frozenTarget": {
+    "package": "@deepseek-ai/dsh",
+    "version": "0.2.2-rc.2",
+    "upstreamReleaseCommit": "91319233e1e6ee64da0cb769dd10c9b4c4f95768",
+    "upstreamMergeCommit": "ddac96760b6edf8fa0fe17cbdcf0b512f4c12b2c",
+    "releasedAt": "2026-11-11T02:32:18Z",
     "registryGate": {
       "status": "PASS",
-      "command": "npm view @deepseek-ai/dsh@0.2.2-rc.1 version --registry=https://registry.npmjs.org/",
-      "runId": 43327677647
+      "command": "npm view @deepseek-ai/dsh@0.2.2-rc.2 version --registry=https://registry.npmjs.org/",
+      "runId": 43334043848,
+      "note": "Local npm view returned 0.2.2-rc.2; CI runtime-lock-generate run 43334043848 resolved @deepseek-ai/dsh@0.2.2-rc.2 from npmjs on ubuntu-24.04 with exit 0."
     },
     "comparisonFromPrevious": {
-      "commitsBetweenReleaseMerges": 10163,
-      "changedFiles": 19767,
+      "commitsBetweenReleaseMerges": 1568,
+      "changedFiles": 4645,
       "readinessImplementation": {
         "path": "packages/bundle/web-app/src/index.ts",
-        "previousBlob": "4f0367a44f7db4d234d32721da45abde01681624",
+        "previousBlob": "b93b559620fe9a064b6ff24e0b2ed3bf22b3f6dd",
         "targetBlob": "b93b559620fe9a064b6ff24e0b2ed3bf22b3f6dd",
-        "verdict": "CHANGED",
-        "note": "Internal bundle implementation changed while keeping the dsh web: readiness line and one-time ?token= bootstrap contract verified by official-web.smoke.test.ts."
+        "verdict": "UNCHANGED",
+        "note": "Web bundle entry index.ts unchanged between 0.2.2-rc.1 and 0.2.2-rc.2; official-web.smoke.test.ts verifies dsh web: readiness and one-time ?token= bootstrap contract."
       },
       "cliArgsImplementation": {
         "path": "apps/cli/src/args.ts",
-        "previousBlob": "27d92dcf66de0d657e0d40716e7d271125588890",
+        "previousBlob": "41d4ebeaa832473b25952af1b185e02a7c182844",
         "targetBlob": "41d4ebeaa832473b25952af1b185e02a7c182844",
-        "verdict": "CHANGED",
-        "note": "CLI arg parser updated while preserving web --host/--port/--no-open and --dump-config/--patch flags checked by cli-surface.test.ts."
+        "verdict": "UNCHANGED",
+        "note": "CLI arg parser unchanged between 0.2.2-rc.1 and 0.2.2-rc.2; cli-surface.test.ts verifies web --host/--port/--no-open and --dump-config/--patch flags."
       },
       "cliReference": {
         "path": "apps/cli/reference/README.md",
-        "previousBlob": "b43c147036ad230ed85cebafa3df89d67a802f6b",
-        "targetBlob": "a37545004890b74ad2995c108c3a253e68bb6951",
+        "previousBlob": "a37545004890b74ad2995c108c3a253e68bb6951",
+        "targetBlob": "dc84a267d8bd1f59758ca02b1fde0fee4d0ef825",
         "verdict": "CHANGED",
-        "note": "Command/profile/config surface expanded substantially in 0.2.2-rc.1 and official engines.node moved to >=24.9.0."
+        "note": "Config/package surface expanded modestly in 0.2.2-rc.2 (config-rows 196 -> 202, packages 192 -> 198, agent-team/mcp-manager/office-kit, resolveRgPath extracted to dsh-util-ripgrep); engines.node remains >=24.9.0."
       }
     }
   },

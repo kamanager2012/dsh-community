@@ -1,6 +1,6 @@
 {
   "schemaVersion": 3,
-  "purpose": "Prevent accidental GitHub Actions spend before the 0.2.2-rc.1 integration tree is final.",
+  "purpose": "Prevent accidental GitHub Actions spend before the 0.2.2-rc.2 integration tree is final.",
   "safeRemoteOperation": {
     "operation": "push-to-non-main-branch",
     "actionsExpected": 0,
@@ -8,7 +8,7 @@
   },
   "blockedUntilFinalAcceptance": {
     "operation": "open-pull-request",
-    "reason": "The 0.2.2-rc.1 integration diff fans out into multiple pull_request workflows; open the PR only after consolidated acceptance passes.",
+    "reason": "The 0.2.2-rc.2 integration diff fans out into multiple pull_request workflows; open the PR only after consolidated acceptance passes.",
     "workflows": [
       "ci",
       "dependency-audit",
@@ -27,23 +27,23 @@
     "release"
   ],
   "acceptedBaseline": {
-    "commit": "938979a8d9688e0cbc142e98aa4751606344170a",
-    "branch": "chore/rc1-acceptance-and-ledgers",
+    "commit": "d66c3f0fd9c936d7aaad3da6b31181f410bd922e",
+    "branch": "upgrade/dsh-0.2.2-rc.2",
     "origin": "remote-generated-baseline",
-    "registryGateRunId": 43328060175,
-    "lockContractGeneratorRunId": 43327677647,
-    "note": "Exact 0.2.2-rc.1 Candidate Source merged atop PR #106 (b58b6e97e2050e645f18ee63f7900797f5a489ee) and PR #110 (938979a8d9688e0cbc142e98aa4751606344170a): CI-generated Desktop npm runtime lock (run 43327677647, verified in run 43328060175), complete DSH-family overrides, reviewed lifecycle policy, and official contract snapshots."
+    "registryGateRunId": 43334043848,
+    "lockContractGeneratorRunId": 43334043848,
+    "note": "Exact 0.2.2-rc.2 Candidate Source on upgrade/dsh-0.2.2-rc.2 atop main (d66c3f0fd9c936d7aaad3da6b31181f410bd922e) with CI-generated Desktop npm runtime lock (run 43334043848), complete 327-package DSH-family overrides, reviewed lifecycle policy, and refreshed official contract snapshots."
   },
   "finalAcceptance": {
-    "status": "PASS",
-    "version": "0.2.2-rc.1",
+    "status": "PENDING",
+    "version": "0.2.2-rc.2",
     "execution": "local-consolidated-acceptance",
-    "runHeadCommit": "9f4476d214fc17a341f896635ff2ab0bd9ad1959",
-    "testFiles": "96 passed, 1 skipped (97)",
-    "tests": "468 passed, 1 skipped (469)",
-    "runtimeDshEntries": 320,
-    "marketplaceOffline": "9 plugins verified",
+    "runHeadCommit": null,
+    "testFiles": null,
+    "tests": null,
+    "runtimeDshEntries": 327,
+    "marketplaceOffline": "pending",
     "providerCalls": 0,
-    "disposition": "Promoted latest-tested 0.2.2-rc.1 consolidated local acceptance passed on commit 9f4476d214fc17a341f896635ff2ab0bd9ad1959; post-promotion replay verified before PR CI. Published Latest remains v0.1.1-rc.2."
+    "disposition": "Pre-promotion candidate acceptance pending on upgrade/dsh-0.2.2-rc.2; latest-tested remains 0.2.2-rc.1 and Published Latest remains v0.1.1-rc.2."
   }
 }
