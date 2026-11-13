@@ -4,16 +4,22 @@ import com.google.zxing.BarcodeFormat
 import com.google.zxing.qrcode.QRCodeWriter
 import org.dsh.community.android.protocol.JsonArray
 import org.dsh.community.android.protocol.JsonBool
+import org.dsh.community.android.protocol.JsonNumber
 import org.dsh.community.android.protocol.JsonObject
 import org.dsh.community.android.protocol.JsonString
 import org.dsh.community.android.protocol.OfficialSessionEvent
+import org.dsh.community.android.protocol.PromptImageAttachment
 import org.dsh.community.android.protocol.RemoteFrameCodec
 import org.dsh.community.android.protocol.RemoteProtocol
 import org.dsh.community.android.qr.QrImageDecoder
 import org.dsh.community.android.ui.AssistantTurnItem
 import org.dsh.community.android.ui.ChatMarkdownFormatter
 import org.dsh.community.android.ui.ChatTimelineStore
+import org.dsh.community.android.ui.InlineSpanToken
 import org.dsh.community.android.ui.MarkdownBlock
+import org.dsh.community.android.ui.ParsedSlashCommand
+import org.dsh.community.android.ui.PromptImageHelper
+import org.dsh.community.android.ui.SlashCommandHelper
 import org.dsh.community.android.ui.SystemNoticeItem
 import org.dsh.community.android.ui.ToolExecutionItem
 import org.dsh.community.android.ui.ToolExecutionStatus
@@ -21,6 +27,8 @@ import org.dsh.community.android.ui.UserMessageItem
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -279,5 +287,147 @@ class ChatAndQrUnitTest {
         )
         assertNotNull(decodedInverted)
         assertEquals(payload, decodedInverted)
+    }
+
+    @Test
+    fun wave2ProtocolQrRgbPixelsSlashMarkdownImagesAndTimelineWork() {
+        assertEquals("session.rename", RemoteProtocol.METHOD_SESSION_RENAME)
+
+        val enrichedCatalog = RemoteFrameCodec.parseModelCatalog(
+            JsonObject.of(
+                "current" to JsonObject.of(
+                    "provider" to JsonString("deepseek"),
+                    "model" to JsonString("deepseek-reasoner"),
+                    "reasoningEffort" to JsonString("high"),
+                ),
+                "models" to JsonArray(
+                    listOf(
+                        JsonObject.of(
+                            "provider" to JsonString("deepseek"),
+                            "model" to JsonString("deepseek-reasoner"),
+                            "name" to JsonString("DeepSeek Reasoner"),
+                            "supportsImageInput" to JsonBool(true),
+                            "defaultReasoningEffort" to JsonString("medium"),
+                            "contextWindow" to JsonNumber(131072),
+                            "reasoningEfforts" to JsonArray(
+                                listOf(
+                                    JsonObject.of("value" to JsonString("low"), "label" to JsonString("Low")),
+                                    JsonObject.of("value" to JsonString("high"), "label" to JsonString("High")),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val modelOpt = enrichedCatalog.models.single()
+        assertTrue(modelOpt.supportsImageInput)
+        assertEquals("medium", modelOpt.defaultReasoningEffort)
+        assertEquals(131072, modelOpt.contextWindow)
+        assertEquals(listOf("low", "high"), modelOpt.reasoningEfforts.map { it.value })
+
+        val att = PromptImageHelper.buildAttachment("image/jpeg", byteArrayOf(1, 2, 3, 4), "shot.jpg")
+        val attJson = att.toJson()
+        assertEquals("image", attJson.str("type"))
+        assertEquals("image/jpeg", attJson.str("mediaType"))
+        assertEquals("AQIDBA==", attJson.str("dataBase64"))
+        assertEquals("shot.jpg", attJson.str("name"))
+
+        assertEquals(960 to 480, PromptImageHelper.computeScaledDimensions(1920, 960, 960))
+        assertThrows(IllegalArgumentException::class.java) {
+            PromptImageHelper.buildAttachment("image/jpeg", ByteArray(PromptImageHelper.MAX_TOTAL_IMAGE_BYTES + 1))
+        }
+
+        // Gallery QR RGB pixel decoder (normal + dark-mode inverted)
+        val payload = """{"version":1,"hostPublicKey":"rgbkey","lanUrl":"http://127.0.0.1:9191"}"""
+        val size = 240
+        val matrix = QRCodeWriter().encode(payload, BarcodeFormat.QR_CODE, size, size)
+        val normalPixels = IntArray(size * size)
+        val invertedPixels = IntArray(size * size)
+        for (y in 0 until size) {
+            for (x in 0 until size) {
+                val dark = matrix.get(x, y)
+                normalPixels[y * size + x] = if (dark) 0xFF101010.toInt() else 0xFFF5F5F5.toInt()
+                invertedPixels[y * size + x] = if (dark) 0xFFF5F5F5.toInt() else 0xFF101010.toInt()
+            }
+        }
+        assertEquals(payload, QrImageDecoder.decodeRgbPixels(normalPixels, size, size))
+        assertEquals(payload, QrImageDecoder.decodeRgbPixels(invertedPixels, size, size))
+
+        // SlashCommandHelper
+        assertEquals(ParsedSlashCommand.NewSession("Bug Hunt"), SlashCommandHelper.parse("/new Bug Hunt"))
+        assertEquals(ParsedSlashCommand.RenameSession("New Name"), SlashCommandHelper.parse("/rename New Name"))
+        assertTrue(SlashCommandHelper.parse("/rename") is ParsedSlashCommand.Error)
+        assertEquals(ParsedSlashCommand.StopTurn, SlashCommandHelper.parse("/stop"))
+        assertEquals(ParsedSlashCommand.SteerPrompt("focus tests"), SlashCommandHelper.parse("/steer focus tests"))
+        assertEquals(ParsedSlashCommand.OpenModels, SlashCommandHelper.parse("/model"))
+        assertEquals(ParsedSlashCommand.OpenSessions, SlashCommandHelper.parse("/sessions"))
+        assertEquals(ParsedSlashCommand.ExportChat, SlashCommandHelper.parse("/export"))
+        assertEquals(ParsedSlashCommand.Help, SlashCommandHelper.parse("/help"))
+        assertNull(SlashCommandHelper.parse("/custom-skill arg"))
+        assertEquals(listOf("/rename"), SlashCommandHelper.matchSuggestions("/re").map { it.name })
+        assertTrue(SlashCommandHelper.formatHelpText().contains("/rename <title>"))
+
+        // Markdown helpers: strike, links (only http/https), ordered lists, HR, code block extract
+        val tokens = ChatMarkdownFormatter.tokenizeInline(
+            "See **bold** ~~old~~ [DSH](https://deepseek.com) and [xss](javascript:alert(1))",
+        )
+        assertTrue(tokens.contains(InlineSpanToken.Bold("bold")))
+        assertTrue(tokens.contains(InlineSpanToken.Strike("old")))
+        assertTrue(tokens.contains(InlineSpanToken.Link("DSH", "https://deepseek.com")))
+        assertFalse(tokens.any { it is InlineSpanToken.Link && it.url.startsWith("javascript:") })
+        assertTrue(ChatMarkdownFormatter.isHorizontalRule("---"))
+        assertFalse(ChatMarkdownFormatter.isHorizontalRule("--"))
+        assertEquals("12." to "Run tests", ChatMarkdownFormatter.parseOrderedListPrefix("12. Run tests"))
+        assertEquals("val k = 7", ChatMarkdownFormatter.extractFirstCodeBlock("Text\n```kotlin\nval k = 7\n```\nEnd"))
+
+        // ChatTimelineStore: image attachments + interrupted assistant turn
+        val store = ChatTimelineStore()
+        val sid = "sess-wave2"
+        store.addOptimisticUserPrompt(sid, "", attachmentNames = listOf("shot.jpg"))
+        store.applyEvent(
+            sid,
+            OfficialSessionEvent(
+                seq = 1,
+                type = "user/message",
+                data = JsonObject.of(
+                    "message" to JsonObject.of(
+                        "content" to JsonArray(
+                            listOf(
+                                JsonObject.of(
+                                    "type" to JsonString("image"),
+                                    "attachment" to JsonObject.of("name" to JsonString("shot.jpg")),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        store.applyEvent(
+            sid,
+            OfficialSessionEvent(
+                seq = 2,
+                type = "assistant/message",
+                data = JsonObject.of(
+                    "message" to JsonObject.of(
+                        "stopReason" to JsonString("aborted"),
+                        "content" to JsonArray(
+                            listOf(JsonObject.of("type" to JsonString("text"), "text" to JsonString("Partial reply"))),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val items = store.itemsForSession(sid)
+        assertEquals(2, items.size)
+        val userMsg = items[0] as UserMessageItem
+        assertFalse(userMsg.isOptimistic)
+        assertEquals(listOf("shot.jpg"), userMsg.attachmentLabels)
+        val assistantMsg = items[1] as AssistantTurnItem
+        assertTrue(assistantMsg.interrupted)
+        val mdExport = store.exportAsMarkdown(sid, "Wave2")
+        assertTrue(mdExport.contains("shot.jpg"))
+        assertTrue(mdExport.contains("_Interrupted_"))
     }
 }

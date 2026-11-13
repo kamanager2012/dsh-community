@@ -7,12 +7,24 @@ import android.text.SpannableStringBuilder
 import android.text.style.BackgroundColorSpan
 import android.text.style.ForegroundColorSpan
 import android.text.style.RelativeSizeSpan
+import android.text.style.StrikethroughSpan
 import android.text.style.StyleSpan
 import android.text.style.TypefaceSpan
+import android.text.style.URLSpan
+import android.text.style.UnderlineSpan
 
 sealed interface MarkdownBlock {
     data class CodeFence(val language: String, val code: String) : MarkdownBlock
     data class ParagraphLines(val lines: List<String>) : MarkdownBlock
+}
+
+sealed interface InlineSpanToken {
+    data class Plain(val text: String) : InlineSpanToken
+    data class Bold(val text: String) : InlineSpanToken
+    data class Italic(val text: String) : InlineSpanToken
+    data class Code(val text: String) : InlineSpanToken
+    data class Strike(val text: String) : InlineSpanToken
+    data class Link(val label: String, val url: String) : InlineSpanToken
 }
 
 /**
@@ -27,6 +39,98 @@ object ChatMarkdownFormatter {
     private val COLOR_MUTED = Color.parseColor("#8B949E")
     private val COLOR_BOLD = Color.parseColor("#FFFFFF")
     private val COLOR_QUOTE = Color.parseColor("#A5D6FF")
+    private val COLOR_LINK = Color.parseColor("#58A6FF")
+
+    fun extractFirstCodeBlock(markdown: String): String? =
+        parseBlocks(markdown)
+            .filterIsInstance<MarkdownBlock.CodeFence>()
+            .firstOrNull { it.code.isNotBlank() }
+            ?.code
+
+    fun isHorizontalRule(line: String): Boolean {
+        val compact = line.trim().replace(" ", "")
+        return compact.length >= 3 && (compact.all { it == '-' } || compact.all { it == '*' } || compact.all { it == '_' })
+    }
+
+    fun parseOrderedListPrefix(trimmedLine: String): Pair<String, String>? {
+        val dotIdx = trimmedLine.indexOf('.')
+        if (dotIdx <= 0 || dotIdx > 4) return null
+        val digits = trimmedLine.substring(0, dotIdx)
+        if (!digits.all { it.isDigit() }) return null
+        if (dotIdx + 1 >= trimmedLine.length || trimmedLine[dotIdx + 1] != ' ') return null
+        val rest = trimmedLine.substring(dotIdx + 2)
+        return "$digits." to rest
+    }
+
+    fun tokenizeInline(text: String): List<InlineSpanToken> {
+        val tokens = ArrayList<InlineSpanToken>()
+        val plain = StringBuilder()
+        fun flushPlain() {
+            if (plain.isNotEmpty()) {
+                tokens.add(InlineSpanToken.Plain(plain.toString()))
+                plain.setLength(0)
+            }
+        }
+        var i = 0
+        while (i < text.length) {
+            if (text[i] == '`') {
+                val end = text.indexOf('`', i + 1)
+                if (end > i + 1) {
+                    flushPlain()
+                    tokens.add(InlineSpanToken.Code(text.substring(i + 1, end)))
+                    i = end + 1
+                    continue
+                }
+            }
+            if (text.startsWith("**", i)) {
+                val end = text.indexOf("**", i + 2)
+                if (end > i + 2) {
+                    flushPlain()
+                    tokens.add(InlineSpanToken.Bold(text.substring(i + 2, end)))
+                    i = end + 2
+                    continue
+                }
+            }
+            if (text.startsWith("~~", i)) {
+                val end = text.indexOf("~~", i + 2)
+                if (end > i + 2) {
+                    flushPlain()
+                    tokens.add(InlineSpanToken.Strike(text.substring(i + 2, end)))
+                    i = end + 2
+                    continue
+                }
+            }
+            if (text[i] == '[') {
+                val closeBracket = text.indexOf(']', i + 1)
+                if (closeBracket > i + 1 && closeBracket + 1 < text.length && text[closeBracket + 1] == '(') {
+                    val closeParen = text.indexOf(')', closeBracket + 2)
+                    if (closeParen > closeBracket + 2) {
+                        val label = text.substring(i + 1, closeBracket)
+                        val url = text.substring(closeBracket + 2, closeParen).trim()
+                        if (url.startsWith("https://") || url.startsWith("http://")) {
+                            flushPlain()
+                            tokens.add(InlineSpanToken.Link(label, url))
+                            i = closeParen + 1
+                            continue
+                        }
+                    }
+                }
+            }
+            if (text[i] == '*' && !text.startsWith("**", i) && i + 1 < text.length && text[i + 1] != ' ') {
+                val end = text.indexOf('*', i + 1)
+                if (end > i + 1 && text[end - 1] != ' ') {
+                    flushPlain()
+                    tokens.add(InlineSpanToken.Italic(text.substring(i + 1, end)))
+                    i = end + 1
+                    continue
+                }
+            }
+            plain.append(text[i])
+            i += 1
+        }
+        flushPlain()
+        return tokens
+    }
 
     fun parseBlocks(markdown: String): List<MarkdownBlock> {
         val lines = markdown.replace("\r\n", "\n").replace('\r', '\n').split('\n')
@@ -128,6 +232,10 @@ object ChatMarkdownFormatter {
                     out.setSpan(RelativeSizeSpan(1.22f), lineStart, out.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
                     out.setSpan(ForegroundColorSpan(COLOR_HEADING), lineStart, out.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
                 }
+                isHorizontalRule(trimmed) -> {
+                    out.append("────────────────────────")
+                    out.setSpan(ForegroundColorSpan(COLOR_MUTED), lineStart, out.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                }
                 trimmed.startsWith("> ") -> {
                     out.append("│ ")
                     appendInline(out, trimmed.removePrefix("> "))
@@ -140,54 +248,61 @@ object ChatMarkdownFormatter {
                     out.append("• ")
                     appendInline(out, trimmed.substring(2))
                 }
-                else -> appendInline(out, rawLine)
+                else -> {
+                    val ordered = parseOrderedListPrefix(trimmed)
+                    if (ordered != null) {
+                        val indent = rawLine.length - trimmed.length
+                        if (indent > 0) out.append(" ".repeat(minOf(indent, 6)))
+                        val numStart = out.length
+                        out.append(ordered.first).append(' ')
+                        out.setSpan(ForegroundColorSpan(COLOR_LINK), numStart, out.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                        out.setSpan(StyleSpan(Typeface.BOLD), numStart, out.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                        appendInline(out, ordered.second)
+                    } else {
+                        appendInline(out, rawLine)
+                    }
+                }
             }
         }
     }
 
     private fun appendInline(out: SpannableStringBuilder, text: String) {
-        var i = 0
-        val n = text.length
-        while (i < n) {
-            if (text[i] == '`') {
-                val close = text.indexOf('`', i + 1)
-                if (close > i + 1) {
-                    val spanStart = out.length
-                    out.append(text, i + 1, close)
+        for (token in tokenizeInline(text)) {
+            val spanStart = out.length
+            when (token) {
+                is InlineSpanToken.Plain -> out.append(token.text)
+                is InlineSpanToken.Code -> {
+                    out.append(token.text)
                     val spanEnd = out.length
                     out.setSpan(TypefaceSpan("monospace"), spanStart, spanEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
                     out.setSpan(RelativeSizeSpan(0.92f), spanStart, spanEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
                     out.setSpan(ForegroundColorSpan(COLOR_CODE_FG), spanStart, spanEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
                     out.setSpan(BackgroundColorSpan(COLOR_INLINE_CODE_BG), spanStart, spanEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-                    i = close + 1
-                    continue
                 }
-            }
-            if (i + 1 < n && text[i] == '*' && text[i + 1] == '*') {
-                val close = text.indexOf("**", i + 2)
-                if (close > i + 2) {
-                    val spanStart = out.length
-                    appendInline(out, text.substring(i + 2, close))
+                is InlineSpanToken.Bold -> {
+                    appendInline(out, token.text)
                     val spanEnd = out.length
                     out.setSpan(StyleSpan(Typeface.BOLD), spanStart, spanEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
                     out.setSpan(ForegroundColorSpan(COLOR_BOLD), spanStart, spanEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-                    i = close + 2
-                    continue
                 }
-            }
-            if (text[i] == '*' && (i + 1 < n && text[i + 1] != ' ' && text[i + 1] != '*')) {
-                val close = text.indexOf('*', i + 1)
-                if (close > i + 1 && text[close - 1] != ' ') {
-                    val spanStart = out.length
-                    out.append(text, i + 1, close)
+                is InlineSpanToken.Italic -> {
+                    out.append(token.text)
+                    out.setSpan(StyleSpan(Typeface.ITALIC), spanStart, out.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                }
+                is InlineSpanToken.Strike -> {
+                    out.append(token.text)
                     val spanEnd = out.length
-                    out.setSpan(StyleSpan(Typeface.ITALIC), spanStart, spanEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-                    i = close + 1
-                    continue
+                    out.setSpan(StrikethroughSpan(), spanStart, spanEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    out.setSpan(ForegroundColorSpan(COLOR_MUTED), spanStart, spanEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                }
+                is InlineSpanToken.Link -> {
+                    out.append(token.label)
+                    val spanEnd = out.length
+                    out.setSpan(URLSpan(token.url), spanStart, spanEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    out.setSpan(ForegroundColorSpan(COLOR_LINK), spanStart, spanEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    out.setSpan(UnderlineSpan(), spanStart, spanEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
                 }
             }
-            out.append(text[i])
-            i++
         }
     }
 }

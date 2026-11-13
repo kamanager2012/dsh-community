@@ -3,7 +3,9 @@ package org.dsh.community.android.qr
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.BitmapFactory
 import android.graphics.ImageFormat
+import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import android.widget.Button
@@ -32,6 +34,7 @@ class QrScanActivity : AppCompatActivity() {
     private lateinit var tvHint: TextView
     private lateinit var btnTorch: Button
     private lateinit var btnCancel: Button
+    private lateinit var btnGallery: Button
 
     private val analysisExecutor = Executors.newSingleThreadExecutor { r ->
         Thread(r, "dsh-qr-analyzer").apply { isDaemon = true }
@@ -41,6 +44,14 @@ class QrScanActivity : AppCompatActivity() {
     private var boundCamera: Camera? = null
     private var torchEnabled = false
     private var lastInvalidFeedbackMs = 0L
+
+    private val pickQrImageLauncher = registerForActivityResult(
+        ActivityResultContracts.GetContent(),
+    ) { uri: Uri? ->
+        if (uri != null) {
+            decodeQrFromUri(uri)
+        }
+    }
 
     private val requestCameraPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -60,10 +71,14 @@ class QrScanActivity : AppCompatActivity() {
         tvHint = findViewById(R.id.tv_scan_hint)
         btnTorch = findViewById(R.id.btn_scan_torch)
         btnCancel = findViewById(R.id.btn_scan_cancel)
+        btnGallery = findViewById(R.id.btn_scan_gallery)
 
         btnCancel.setOnClickListener {
             setResult(RESULT_CANCELED)
             finish()
+        }
+        btnGallery.setOnClickListener {
+            pickQrImageLauncher.launch("image/*")
         }
         btnTorch.setOnClickListener {
             val cam = boundCamera ?: return@setOnClickListener
@@ -75,7 +90,7 @@ class QrScanActivity : AppCompatActivity() {
         }
 
         if (!packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)) {
-            tvHint.text = "No camera detected on this device. Go back and paste the pairing URI or JSON."
+            tvHint.text = "No camera detected — tap Photo to scan a pairing QR screenshot, or paste a link."
             return
         }
 
@@ -172,6 +187,77 @@ class QrScanActivity : AppCompatActivity() {
             }
         } finally {
             image.close()
+        }
+    }
+
+    private fun decodeQrFromUri(uri: Uri) {
+        tvHint.text = "Decoding selected QR image..."
+        analysisExecutor.execute {
+            try {
+                val boundsOpts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                contentResolver.openInputStream(uri)?.use { stream ->
+                    BitmapFactory.decodeStream(stream, null, boundsOpts)
+                }
+                var sampleSize = 1
+                val maxSide = maxOf(boundsOpts.outWidth, boundsOpts.outHeight)
+                if (maxSide > 1280) {
+                    while (maxSide / (sampleSize * 2) >= 960) {
+                        sampleSize *= 2
+                    }
+                }
+                val decodeOpts = BitmapFactory.Options().apply {
+                    inSampleSize = sampleSize
+                }
+                val bitmap = contentResolver.openInputStream(uri)?.use { stream ->
+                    BitmapFactory.decodeStream(stream, null, decodeOpts)
+                }
+                if (bitmap == null) {
+                    runOnUiThread {
+                        if (!finishedScan.get()) {
+                            tvHint.text = "Unable to decode selected image."
+                        }
+                    }
+                    return@execute
+                }
+                val w = bitmap.width
+                val h = bitmap.height
+                val pixels = IntArray(w * h)
+                bitmap.getPixels(pixels, 0, w, 0, 0, w, h)
+                bitmap.recycle()
+
+                val decoded = QrImageDecoder.decodeRgbPixels(pixels, w, h)
+                if (decoded == null) {
+                    runOnUiThread {
+                        if (!finishedScan.get()) {
+                            tvHint.text = "No QR code found in selected image. Try cropping closer to the QR."
+                        }
+                    }
+                    return@execute
+                }
+                try {
+                    PairingQrParser.parse(decoded)
+                } catch (_: Throwable) {
+                    runOnUiThread {
+                        if (!finishedScan.get()) {
+                            tvHint.text = "QR found in photo, but not a valid DSH pairing code."
+                        }
+                    }
+                    return@execute
+                }
+                if (finishedScan.compareAndSet(false, true)) {
+                    runOnUiThread {
+                        val out = Intent().putExtra(EXTRA_QR_PAYLOAD, decoded)
+                        setResult(RESULT_OK, out)
+                        finish()
+                    }
+                }
+            } catch (t: Throwable) {
+                runOnUiThread {
+                    if (!finishedScan.get()) {
+                        tvHint.text = "Failed to read image: ${t.message ?: t.javaClass.simpleName}"
+                    }
+                }
+            }
         }
     }
 }

@@ -22,6 +22,7 @@ data class UserMessageItem(
     val seq: Long,
     val text: String,
     val isOptimistic: Boolean = false,
+    val attachmentLabels: List<String> = emptyList(),
 ) : ChatTimelineItem
 
 data class AssistantTurnItem(
@@ -31,6 +32,7 @@ data class AssistantTurnItem(
     val markdownText: String = "",
     val isThinkingExpanded: Boolean = false,
     val isFinalized: Boolean = false,
+    val interrupted: Boolean = false,
 ) : ChatTimelineItem
 
 data class ToolExecutionItem(
@@ -62,9 +64,16 @@ class ChatTimelineStore {
     private var idSeq = 0L
 
     @Synchronized
-    fun addOptimisticUserPrompt(sessionId: String, prompt: String) {
+    fun addOptimisticUserPrompt(
+        sessionId: String,
+        prompt: String,
+        attachmentNames: List<String> = emptyList(),
+    ) {
         val clean = sanitizeMultiline(prompt, MAX_MESSAGE_CHARS).trim()
-        if (clean.isEmpty()) return
+        val cleanAttachments = attachmentNames
+            .mapNotNull { DisplayTextSanitizer.sanitizeSingleLine(it).takeIf { s -> s.isNotEmpty() } }
+            .take(2)
+        if (clean.isEmpty() && cleanAttachments.isEmpty()) return
         val list = itemsBySession.getOrPut(sessionId) { ArrayList() }
         val localSeq = (highestSeqBySession[sessionId] ?: 0L)
         list.add(
@@ -73,6 +82,7 @@ class ChatTimelineStore {
                 seq = localSeq,
                 text = clean,
                 isOptimistic = true,
+                attachmentLabels = cleanAttachments,
             ),
         )
     }
@@ -97,15 +107,26 @@ class ChatTimelineStore {
 
         when {
             evtType == "user/message" || evtType == "user.message" || evtType == "prompt" -> {
-                val text = extractUserText(dataObj) ?: return
+                val (text, attachments) = extractUserContent(dataObj) ?: return
                 val optimisticIdx = list.indexOfLast {
                     it is UserMessageItem && it.isOptimistic && it.text.trim() == text.trim()
                 }
                 if (optimisticIdx >= 0) {
                     val existing = list[optimisticIdx] as UserMessageItem
-                    list[optimisticIdx] = existing.copy(seq = event.seq, isOptimistic = false)
+                    list[optimisticIdx] = existing.copy(
+                        seq = event.seq,
+                        isOptimistic = false,
+                        attachmentLabels = if (attachments.isNotEmpty()) attachments else existing.attachmentLabels,
+                    )
                 } else {
-                    list.add(UserMessageItem(stableId = "u-${++idSeq}", seq = event.seq, text = text))
+                    list.add(
+                        UserMessageItem(
+                            stableId = "u-${++idSeq}",
+                            seq = event.seq,
+                            text = text,
+                            attachmentLabels = attachments,
+                        ),
+                    )
                 }
             }
 
@@ -147,6 +168,10 @@ class ChatTimelineStore {
 
             evtType == "assistant/message" || evtType == "assistant.message" -> {
                 val (finalThinking, finalText) = extractFinalAssistantMessage(dataObj)
+                val msgObj = dataObj?.obj("message")
+                val isInterrupted = msgObj?.bool("interrupted") == true ||
+                    dataObj?.str("stopReason") == "aborted" ||
+                    msgObj?.str("stopReason") == "aborted"
                 val openIdx = findLastOpenAssistantIndex(list)
                 if (openIdx >= 0) {
                     val open = list[openIdx] as AssistantTurnItem
@@ -160,6 +185,7 @@ class ChatTimelineStore {
                             thinkingText = resolvedThinking,
                             markdownText = resolvedText,
                             isFinalized = true,
+                            interrupted = isInterrupted || open.interrupted,
                         )
                     }
                 } else if (finalThinking.isNotBlank() || finalText.isNotBlank()) {
@@ -171,6 +197,7 @@ class ChatTimelineStore {
                             markdownText = finalText,
                             isThinkingExpanded = false,
                             isFinalized = true,
+                            interrupted = isInterrupted,
                         ),
                     )
                 }
@@ -263,6 +290,14 @@ class ChatTimelineStore {
                 val reasonObj = dataObj?.obj("reason")
                 val kind = reasonObj?.str("kind")?.lowercase() ?: dataObj?.str("reason")?.lowercase()
                 if (kind == "aborted") {
+                    for (i in list.lastIndex downTo 0) {
+                        val tail = list[i]
+                        if (tail is AssistantTurnItem) {
+                            list[i] = tail.copy(isFinalized = true, interrupted = true)
+                            break
+                        }
+                        if (tail is UserMessageItem) break
+                    }
                     list.add(
                         SystemNoticeItem(
                             stableId = "n-${++idSeq}",
@@ -371,7 +406,18 @@ class ChatTimelineStore {
         for (item in items) {
             when (item) {
                 is UserMessageItem -> {
-                    sb.append("## User\n\n").append(item.text).append("\n\n")
+                    sb.append("## User\n\n")
+                    if (item.attachmentLabels.isNotEmpty()) {
+                        for (label in item.attachmentLabels) {
+                            sb.append("- _Image attachment_: `").append(label).append("`\n")
+                        }
+                        if (item.text.isNotBlank()) sb.append('\n')
+                    }
+                    if (item.text.isNotBlank()) {
+                        sb.append(item.text).append("\n\n")
+                    } else {
+                        sb.append('\n')
+                    }
                 }
                 is AssistantTurnItem -> {
                     sb.append("## Assistant\n\n")
@@ -382,6 +428,9 @@ class ChatTimelineStore {
                     }
                     if (item.markdownText.isNotBlank()) {
                         sb.append(item.markdownText).append("\n\n")
+                    }
+                    if (item.interrupted) {
+                        sb.append("_Interrupted_\n\n")
                     }
                 }
                 is ToolExecutionItem -> {
@@ -430,14 +479,44 @@ class ChatTimelineStore {
         return -1
     }
 
-    private fun extractUserText(dataObj: JsonObject?): String? {
+    private fun extractUserContent(dataObj: JsonObject?): Pair<String, List<String>>? {
         if (dataObj == null) return null
+        val contentVal = dataObj.obj("message")?.fields?.get("content") ?: dataObj.fields["content"]
+        val imageNames = ArrayList<String>()
+        if (contentVal is JsonArray) {
+            for (part in contentVal.items) {
+                val partObj = part as? JsonObject ?: continue
+                if (partObj.str("type") == "image") {
+                    val attObj = partObj.obj("attachment")
+                    val name = attObj?.str("name")
+                        ?: partObj.str("name")
+                        ?: attObj?.str("mediaType")
+                        ?: partObj.str("mediaType")
+                        ?: "image"
+                    imageNames.add(DisplayTextSanitizer.sanitizeSingleLine(name).ifBlank { "image" })
+                }
+            }
+        }
+        val directAtts = dataObj.arr("attachments")
+        if (directAtts != null) {
+            for (att in directAtts.items) {
+                val attObj = att as? JsonObject ?: continue
+                val name = attObj.str("name") ?: attObj.str("mediaType") ?: "image"
+                imageNames.add(DisplayTextSanitizer.sanitizeSingleLine(name).ifBlank { "image" })
+            }
+        }
         val direct = dataObj.str("text") ?: dataObj.str("prompt")
-        if (!direct.isNullOrBlank()) return sanitizeMultiline(direct, MAX_MESSAGE_CHARS)
-        val msgContent = dataObj.obj("message")?.fields?.get("content") ?: dataObj.fields["content"]
-        val extracted = extractTextFromContentValue(msgContent) ?: return null
-        return sanitizeMultiline(extracted, MAX_MESSAGE_CHARS).takeIf { it.isNotBlank() }
+        val text = if (!direct.isNullOrBlank()) {
+            sanitizeMultiline(direct, MAX_MESSAGE_CHARS).trim()
+        } else {
+            extractTextFromContentValue(contentVal)?.let { sanitizeMultiline(it, MAX_MESSAGE_CHARS).trim() }.orEmpty()
+        }
+        if (text.isEmpty() && imageNames.isEmpty()) return null
+        return text to imageNames.take(4)
     }
+
+    private fun extractUserText(dataObj: JsonObject?): String? =
+        extractUserContent(dataObj)?.first?.takeIf { it.isNotBlank() }
 
     private fun extractChunkDelta(evtType: String, dataObj: JsonObject): Pair<Boolean, String> {
         val chunkObj = dataObj.obj("frame")?.obj("chunk") ?: dataObj.obj("chunk") ?: dataObj

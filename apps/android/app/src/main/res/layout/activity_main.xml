@@ -618,25 +618,94 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="6dp"
         android:background="@drawable/bg_card_surface"
-        android:gravity="bottom"
-        android:orientation="horizontal"
+        android:orientation="vertical"
         android:padding="8dp">
 
-        <EditText
-            android:id="@+id/et_prompt"
-            android:layout_width="0dp"
+        <HorizontalScrollView
+            android:id="@+id/hsv_slash_suggestions"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
+            android:layout_marginBottom="6dp"
+            android:scrollbars="none"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:id="@+id/ll_slash_suggestions"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal" />
+        </HorizontalScrollView>
+
+        <LinearLayout
+            android:id="@+id/ll_attachment_bar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="6dp"
             android:background="@drawable/bg_input_field"
-            android:hint="@string/hint_prompt"
-            android:inputType="textMultiLine|textCapSentences"
-            android:maxLines="4"
-            android:minHeight="40dp"
-            android:paddingHorizontal="12dp"
-            android:paddingVertical="8dp"
-            android:textColor="@color/dsh_text_primary"
-            android:textColorHint="@color/dsh_text_secondary"
-            android:textSize="13sp" />
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="4dp"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/tv_attachment_summary"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="@color/dsh_text_accent"
+                android:textSize="11sp" />
+
+            <Button
+                android:id="@+id/btn_clear_attachments"
+                android:layout_width="wrap_content"
+                android:layout_height="26dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/bg_button_secondary"
+                android:minWidth="0dp"
+                android:paddingHorizontal="8dp"
+                android:text="Clear"
+                android:textAllCaps="false"
+                android:textColor="@color/dsh_text_secondary"
+                android:textSize="10sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="bottom"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/btn_attach_image"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:layout_marginEnd="6dp"
+                android:background="@drawable/bg_button_secondary"
+                android:minWidth="0dp"
+                android:paddingHorizontal="9dp"
+                android:text="+Img"
+                android:textAllCaps="false"
+                android:textColor="@color/dsh_text_accent"
+                android:textSize="11sp" />
+
+            <EditText
+                android:id="@+id/et_prompt"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:background="@drawable/bg_input_field"
+                android:hint="@string/hint_prompt"
+                android:inputType="textMultiLine|textCapSentences"
+                android:maxLines="4"
+                android:minHeight="40dp"
+                android:paddingHorizontal="12dp"
+                android:paddingVertical="8dp"
+                android:textColor="@color/dsh_text_primary"
+                android:textColorHint="@color/dsh_text_secondary"
+                android:textSize="13sp" />
 
         <Button
             android:id="@+id/btn_steer_mode"
@@ -677,5 +746,6 @@
             android:textAllCaps="false"
             android:textColor="@color/dsh_text_primary"
             android:textSize="12sp" />
+        </LinearLayout>
     </LinearLayout>
 </LinearLayout>

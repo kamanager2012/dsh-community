@@ -52,9 +52,21 @@ class FakeRootContext implements OfficialCordisContextLike {
     | ((agent: FakeAgent, message: Record<string, unknown>, ctx: FakeRootContext) => Promise<void> | void)
     | undefined
   public disposedHandles = 0
+  public savedImages: Array<{ mediaType: string; bytesLength: number; name?: string }> = []
 
   readonly agentDefaultModel = {
     currentSelection: () => ({ provider: 'deepseek-official', model: 'deepseek-flash' }),
+  }
+
+  readonly attachments = {
+    saveImage: async (input: { readonly mediaType: string; readonly bytes: Uint8Array; readonly name?: string }) => {
+      this.savedImages.push({
+        mediaType: input.mediaType,
+        bytesLength: input.bytes.byteLength,
+        ...(input.name !== undefined ? { name: input.name } : {}),
+      })
+      return { id: `img-${this.savedImages.length}`, mediaType: input.mediaType, bytes: input.bytes.byteLength }
+    },
   }
 
   readonly llm = {
@@ -62,9 +74,29 @@ class FakeRootContext implements OfficialCordisContextLike {
       { id: 'deepseek-official', name: 'DeepSeek Official' },
     ],
     listModels: async (_provider: string) => [
-      { id: 'deepseek-flash', name: 'DeepSeek Chat', description: 'Fast general model' },
-      { id: 'deepseek-reasoner', name: 'DeepSeek Reasoner', description: 'Reasoning model' },
+      { id: 'deepseek-flash', name: 'DeepSeek Chat', description: 'Fast general model', inputModalities: ['text', 'image'] },
+      { id: 'deepseek-reasoner', name: 'DeepSeek Reasoner', description: 'Reasoning model', inputModalities: ['text'] },
     ],
+    resolveModel: async (_provider: string, model: string) => {
+      if (model === 'deepseek-reasoner') {
+        return {
+          inputModalities: ['text'],
+          context: { contextWindow: 131_072 },
+          reasoning: {
+            defaultEffort: 'medium',
+            efforts: [
+              { id: 'low', name: 'Low', description: 'Fast answers' },
+              { id: 'medium', name: 'Medium', description: 'Balanced reasoning' },
+              { id: 'high', name: 'High', description: 'Deep reasoning' },
+            ],
+          },
+        }
+      }
+      return {
+        inputModalities: ['text', 'image'],
+        context: { contextWindow: 65_536 },
+      }
+    },
     resolveCallConfig: async (config: { readonly provider: string; readonly model: string }) => {
       if (
         config.provider !== 'deepseek-official' ||
@@ -905,6 +937,211 @@ describe('OfficialHostCordisBridge & Persistent Community Storage', () => {
       obsClient.close()
     } finally {
       await bridge.stop()
+    }
+  })
+
+  it('supports session.rename, persisted session/title lookup, model reasoningEfforts/vision discovery, and bounded image prompt.submit', async () => {
+    const root = mkTempRoot()
+    const dshHome = join(root, 'dsh-home')
+    const configDir = join(root, 'remote-cfg')
+    const persistedSid = 's-persisted-titled'
+    mkdirSync(join(dshHome, 'sessions', persistedSid), { recursive: true })
+    writeFileSync(
+      join(dshHome, 'sessions', persistedSid, 'session.jsonl'),
+      [
+        JSON.stringify({ id: persistedSid, meta: { cwd: '/workspace/app' } }),
+        JSON.stringify({ seq: 1, type: 'session/title', data: { title: 'Persisted Custom Title', source: 'user' } }),
+      ].join('\n') + '\n',
+      'utf8',
+    )
+
+    const ctx = new FakeRootContext()
+    const receivedMessages: Record<string, unknown>[] = []
+    ctx.followupHandler = (_agent, message) => {
+      receivedMessages.push(message)
+    }
+
+    const bridge = new OfficialHostCordisBridge({
+      ctx,
+      configDir,
+      dshHome,
+      carrier: { enabled: true, host: '127.0.0.1', port: 0 },
+    })
+    await bridge.start()
+
+    try {
+      const pairing = await bridge.issuePairingDescriptor()
+      const parsed = parsePairingInput(pairing.deepLink)
+      const clientIdentity = await new InMemoryHostIdentityStore().loadOrCreate()
+      const client = new FailoverRemoteClient({
+        clientKeyPair: {
+          publicKey: clientIdentity.identity.publicKey,
+          secretKey: clientIdentity.secretKey,
+        },
+        hostPublicKey: Uint8Array.from(Buffer.from(parsed.hostPublicKeyHex, 'hex')),
+        lan: { endpointUrl: parsed.endpointUrl },
+      })
+
+      const streamEvents: Array<{ seq: number; type: string; data?: any }> = []
+      client.onEvent((ev: any) => {
+        if (ev?.type === 'stream.event' && ev.event) {
+          streamEvents.push(ev.event)
+        }
+      })
+
+      await client.connect()
+      const candidate = await client.request('pairing.request', {
+        token: parsed.bootstrapToken,
+        displayName: 'Wave2 Phone',
+      })
+      await bridge.pairingCoordinator.confirmPairing({
+        candidateId: candidate.candidateId,
+        grantedCapabilities: ['observe', 'prompt', 'approve', 'answer-question'],
+      })
+      client.close()
+      await client.reconnectWithBackoff({ initialDelayMs: 5, maxDelayMs: 10, maxAttempts: 2 })
+
+      const initialSessions = await client.request('session.list')
+      expect(initialSessions.find((s: any) => s.id === persistedSid)?.title).toBe('Persisted Custom Title')
+
+      await client.request(
+        'session.create',
+        { sessionId: 's-wave2-1', title: 'Initial Title' },
+        { idempotencyKey: 'wave2-create-1' },
+      )
+      await client.resumeSession('s-wave2-1')
+
+      const renamed1 = await client.request(
+        'session.rename',
+        { sessionId: 's-wave2-1', title: 'Refactored Mobile UX' },
+        { idempotencyKey: 'wave2-rename-1' },
+      )
+      const renamed2 = await client.request(
+        'session.rename',
+        { sessionId: 's-wave2-1', title: 'Refactored Mobile UX' },
+        { idempotencyKey: 'wave2-rename-1' },
+      )
+      expect(renamed1).toEqual({ id: 's-wave2-1', title: 'Refactored Mobile UX' })
+      expect(renamed2).toEqual(renamed1)
+      await expect
+        .poll(() =>
+          streamEvents.some(
+            (e) => e.type === 'session/title' && e.data?.title === 'Refactored Mobile UX',
+          ),
+        )
+        .toBe(true)
+
+      const sessionsAfterRename = await client.request('session.list')
+      expect(sessionsAfterRename.find((s: any) => s.id === 's-wave2-1')?.title).toBe('Refactored Mobile UX')
+
+      const models = await client.request('model.list', { sessionId: 's-wave2-1' })
+      const flash = models.models.find((m: any) => m.model === 'deepseek-flash')
+      const reasoner = models.models.find((m: any) => m.model === 'deepseek-reasoner')
+      expect(flash?.supportsImageInput).toBe(true)
+      expect(flash?.contextWindow).toBe(65_536)
+      expect(reasoner?.supportsImageInput).toBe(false)
+      expect(reasoner?.defaultReasoningEffort).toBe('medium')
+      expect(reasoner?.reasoningEfforts?.map((e: any) => e.id)).toEqual(['low', 'medium', 'high'])
+
+      const selectedReasoner = await client.request(
+        'model.select',
+        {
+          sessionId: 's-wave2-1',
+          provider: 'deepseek-official',
+          model: 'deepseek-reasoner',
+          reasoningEffort: 'high',
+        },
+        { idempotencyKey: 'wave2-select-1' },
+      )
+      expect(selectedReasoner.selection).toEqual({
+        provider: 'deepseek-official',
+        model: 'deepseek-reasoner',
+        reasoningEffort: 'high',
+      })
+
+      // Valid bounded PNG attachment routes through ctx.attachments.saveImage
+      const samplePngBase64 = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).toString('base64')
+      await client.request(
+        'prompt.submit',
+        {
+          sessionId: 's-wave2-1',
+          prompt: 'Describe this screenshot',
+          attachments: [
+            {
+              type: 'image',
+              mediaType: 'image/png',
+              dataBase64: samplePngBase64,
+              name: 'screen.png',
+            },
+          ],
+        },
+        { idempotencyKey: 'wave2-img-1' },
+      )
+      expect(ctx.savedImages).toHaveLength(1)
+      expect(ctx.savedImages[0]).toEqual({ mediaType: 'image/png', bytesLength: 8, name: 'screen.png' })
+      expect(receivedMessages[0]?.content).toEqual([
+        { type: 'text', text: 'Describe this screenshot' },
+        { type: 'image', attachment: { id: 'img-1', mediaType: 'image/png', bytes: 8 } },
+      ])
+
+      // Oversized (> 32 KiB decoded) and SVG image mediaTypes are rejected fail-closed
+      const oversizedB64 = Buffer.alloc(32_769, 0x41).toString('base64')
+      await expect(
+        client.request(
+          'prompt.submit',
+          {
+            sessionId: 's-wave2-1',
+            prompt: 'Too big',
+            attachments: [{ type: 'image', mediaType: 'image/png', dataBase64: oversizedB64 }],
+          },
+          { idempotencyKey: 'wave2-img-oversize' },
+        ),
+      ).rejects.toThrow()
+      await expect(
+        client.request(
+          'prompt.submit',
+          {
+            sessionId: 's-wave2-1',
+            prompt: 'Bad mime',
+            attachments: [{ type: 'image', mediaType: 'image/svg+xml' as any, dataBase64: samplePngBase64 }],
+          },
+          { idempotencyKey: 'wave2-img-svg' },
+        ),
+      ).rejects.toThrow()
+
+      // Read-only observe device is denied session.rename
+      const obsIdentity = await new InMemoryHostIdentityStore().loadOrCreate()
+      const obsPair = await bridge.issuePairingDescriptor({ allowedCapabilities: ['observe'] })
+      const obsParsed = parsePairingInput(obsPair.deepLink)
+      const obsClient = new FailoverRemoteClient({
+        clientKeyPair: { publicKey: obsIdentity.identity.publicKey, secretKey: obsIdentity.secretKey },
+        hostPublicKey: Uint8Array.from(Buffer.from(obsParsed.hostPublicKeyHex, 'hex')),
+        lan: { endpointUrl: obsParsed.endpointUrl },
+      })
+      await obsClient.connect()
+      const obsCand = await obsClient.request('pairing.request', {
+        token: obsParsed.bootstrapToken,
+        displayName: 'Observer Watch',
+      })
+      await bridge.pairingCoordinator.confirmPairing({
+        candidateId: obsCand.candidateId,
+        grantedCapabilities: ['observe'],
+      })
+      obsClient.close()
+      await obsClient.reconnectWithBackoff({ initialDelayMs: 5, maxDelayMs: 10, maxAttempts: 2 })
+      await expect(
+        obsClient.request(
+          'session.rename',
+          { sessionId: 's-wave2-1', title: 'Unauthorized Rename' },
+          { idempotencyKey: 'obs-rename-1' },
+        ),
+      ).rejects.toThrow()
+
+      client.close()
+      obsClient.close()
+    } finally {
+      await bridge.stop()
+      rmSync(root, { recursive: true, force: true })
     }
   })
 })

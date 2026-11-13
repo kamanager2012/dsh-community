@@ -13,6 +13,7 @@ object RemoteProtocol {
     const val METHOD_SESSION_LIST = "session.list"
     const val METHOD_SESSION_ATTACH = "session.attach"
     const val METHOD_SESSION_CREATE = "session.create"
+    const val METHOD_SESSION_RENAME = "session.rename"
     const val METHOD_STREAM_ACK = "stream.ack"
     const val METHOD_PROMPT_SUBMIT = "prompt.submit"
     const val METHOD_TURN_ABORT = "turn.abort"
@@ -25,7 +26,28 @@ object RemoteProtocol {
 data class SessionRef(
     val id: String,
     val title: String?,
+    val updatedAtMs: Long? = null,
+    val cwd: String? = null,
 )
+
+data class ReasoningEffortOption(
+    val value: String,
+    val label: String,
+    val description: String? = null,
+)
+
+data class PromptImageAttachment(
+    val mediaType: String,
+    val dataBase64: String,
+    val name: String? = null,
+) {
+    fun toJson(): JsonObject = JsonObject.of(
+        "type" to JsonString("image"),
+        "mediaType" to JsonString(mediaType),
+        "dataBase64" to JsonString(dataBase64),
+        "name" to name?.trim()?.takeIf { it.isNotEmpty() }?.take(120)?.let { JsonString(it) },
+    )
+}
 
 data class ModelOptionRef(
     val provider: String,
@@ -33,6 +55,10 @@ data class ModelOptionRef(
     val model: String,
     val name: String,
     val description: String? = null,
+    val supportsImageInput: Boolean = false,
+    val reasoningEfforts: List<ReasoningEffortOption> = emptyList(),
+    val defaultReasoningEffort: String? = null,
+    val contextWindow: Int? = null,
 )
 
 data class ModelCatalogResult(
@@ -207,6 +233,8 @@ object RemoteFrameCodec {
         return SessionRef(
             id = obj.str("id") ?: throw IllegalArgumentException("session item missing id"),
             title = obj.str("title"),
+            updatedAtMs = obj.longVal("updatedAtMs"),
+            cwd = obj.str("cwd"),
         )
     }
 
@@ -218,12 +246,25 @@ object RemoteFrameCodec {
             val mObj = item as? JsonObject ?: return@mapNotNull null
             val provider = mObj.str("provider")?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
             val model = mObj.str("model")?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val efforts = mObj.arr("reasoningEfforts")?.items.orEmpty().mapNotNull { effortItem ->
+                val eObj = effortItem as? JsonObject ?: return@mapNotNull null
+                val value = eObj.str("value")?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                ReasoningEffortOption(
+                    value = value,
+                    label = eObj.str("label")?.takeIf { it.isNotBlank() } ?: value,
+                    description = eObj.str("description"),
+                )
+            }
             ModelOptionRef(
                 provider = provider,
                 providerName = mObj.str("providerName"),
                 model = model,
                 name = mObj.str("name")?.takeIf { it.isNotBlank() } ?: model,
                 description = mObj.str("description"),
+                supportsImageInput = mObj.bool("supportsImageInput") == true,
+                reasoningEfforts = efforts,
+                defaultReasoningEffort = mObj.str("defaultReasoningEffort"),
+                contextWindow = mObj.intVal("contextWindow"),
             )
         }
         return ModelCatalogResult(
