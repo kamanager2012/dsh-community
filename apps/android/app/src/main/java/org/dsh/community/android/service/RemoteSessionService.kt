@@ -30,6 +30,7 @@ import org.dsh.community.android.protocol.JsonString
 import org.dsh.community.android.protocol.JsonValue
 import org.dsh.community.android.protocol.ModelCatalogResult
 import org.dsh.community.android.protocol.OfficialSessionEvent
+import org.dsh.community.android.protocol.PromptImageAttachment
 import org.dsh.community.android.protocol.RemoteFrameCodec
 import org.dsh.community.android.protocol.SessionRef
 import org.dsh.community.android.transport.AndroidWebRtcPeerEngine
@@ -107,6 +108,7 @@ class RemoteSessionService : Service() {
         )
         fun onSessionsUpdated(sessions: List<SessionRef>)
         fun onSessionCreated(session: SessionRef) {}
+        fun onSessionRenamed(session: SessionRef) {}
         fun onSessionAttached(sessionId: String) {}
         fun onEventReceived(sessionId: String, event: OfficialSessionEvent)
         fun onStreamReset(sessionId: String, reason: String) {}
@@ -434,6 +436,13 @@ class RemoteSessionService : Service() {
     /**
      * Removes a saved Host profile (and tears down the live connection if active).
      */
+    fun renameSavedHost(hostFingerprint: String, newLabel: String): Boolean {
+        val updated = trustedHostStore.renameHost(hostFingerprint, newLabel) ?: return false
+        notifyTrustedHosts()
+        uiObservers.forEach { it.onActionSucceeded("host.rename", updated.hostFingerprint) }
+        return true
+    }
+
     fun forgetHost(hostFingerprint: String? = null) {
         ioExecutor.execute {
             val targetFp = hostFingerprint?.takeIf { it.isNotBlank() }
@@ -586,7 +595,45 @@ class RemoteSessionService : Service() {
         }
     }
 
-    fun submitPromptAsync(sessionId: String, prompt: String, mode: String? = null) {
+    fun renameSessionAsync(sessionId: String, newTitle: String) {
+        ioExecutor.execute {
+            val cleanTitle = newTitle.trim()
+            if (cleanTitle.isEmpty()) {
+                uiObservers.forEach { it.onActionFailed("session.rename", "Session title must not be empty") }
+                return@execute
+            }
+            val session = activeSession ?: run {
+                uiObservers.forEach { it.onActionFailed("session.rename", "Not connected to Host") }
+                return@execute
+            }
+            val opKey = session.newOperationKey("session-rename")
+            try {
+                val renamed = session.renameSession(sessionId, cleanTitle, opKey)
+                val updatedList = lastSessions.let { existing ->
+                    if (existing.any { it.id == renamed.id }) {
+                        existing.map { if (it.id == renamed.id) it.copy(title = renamed.title ?: cleanTitle) else it }
+                    } else {
+                        listOf(renamed) + existing
+                    }
+                }
+                lastSessions = updatedList
+                uiObservers.forEach { it.onSessionsUpdated(updatedList) }
+                uiObservers.forEach { it.onSessionRenamed(renamed) }
+                uiObservers.forEach { it.onActionSucceeded("session.rename", renamed.id) }
+            } catch (t: Throwable) {
+                val reason = sanitizeErr(t)
+                updateStatus(session.phase, session.activeCarrier, session.currentEpoch, "session.rename failed: $reason")
+                uiObservers.forEach { it.onActionFailed("session.rename", reason) }
+            }
+        }
+    }
+
+    fun submitPromptAsync(
+        sessionId: String,
+        prompt: String,
+        mode: String? = null,
+        attachments: List<PromptImageAttachment> = emptyList(),
+    ) {
         ioExecutor.execute {
             val session = activeSession ?: run {
                 uiObservers.forEach { it.onActionFailed("prompt", "Not connected to Host") }
@@ -594,7 +641,7 @@ class RemoteSessionService : Service() {
             }
             val opKey = session.newOperationKey("prompt")
             try {
-                session.submitPrompt(sessionId, prompt, opKey, mode)
+                session.submitPrompt(sessionId, prompt, opKey, mode, attachments)
                 uiObservers.forEach { it.onActionSucceeded("prompt", sessionId) }
             } catch (t: Throwable) {
                 val reason = sanitizeErr(t)
@@ -1088,6 +1135,21 @@ class RemoteSessionService : Service() {
         if (event.type == "turn/end") {
             agentStatusBySession[sessionId] = "idle"
             uiObservers.forEach { it.onAgentStatusChanged(sessionId, "idle") }
+            return
+        }
+        if (event.type == "session/title") {
+            val title = dataObj.str("title")?.trim()?.takeIf { it.isNotEmpty() } ?: return
+            val existingList = lastSessions
+            val idx = existingList.indexOfFirst { it.id == sessionId }
+            val updatedRef = if (idx >= 0) existingList[idx].copy(title = title) else SessionRef(id = sessionId, title = title)
+            val updatedList = if (idx >= 0) {
+                existingList.toMutableList().apply { set(idx, updatedRef) }
+            } else {
+                listOf(updatedRef) + existingList
+            }
+            lastSessions = updatedList
+            uiObservers.forEach { it.onSessionsUpdated(updatedList) }
+            uiObservers.forEach { it.onSessionRenamed(updatedRef) }
             return
         }
         if (event.type == "session.model" || event.type == "model.selected") {

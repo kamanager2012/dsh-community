@@ -46,6 +46,19 @@
             android:textStyle="bold" />
 
         <Button
+            android:id="@+id/btn_scan_gallery"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:layout_marginEnd="6dp"
+            android:background="@drawable/bg_button_secondary"
+            android:minWidth="0dp"
+            android:paddingHorizontal="10dp"
+            android:text="Photo"
+            android:textAllCaps="false"
+            android:textColor="@color/dsh_text_primary"
+            android:textSize="12sp" />
+
+        <Button
             android:id="@+id/btn_scan_torch"
             android:layout_width="wrap_content"
             android:layout_height="40dp"

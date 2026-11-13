@@ -163,6 +163,19 @@ class EncryptedTrustedHostStore(
     }
 
     @Synchronized
+    fun renameHost(hostFingerprint: String, newLabel: String): TrustedHostRecord? {
+        val fp = hostFingerprint.trim().lowercase()
+        val clean = newLabel.trim()
+        if (fp.isEmpty() || clean.isEmpty()) return null
+        val map = readMapLocked()
+        val existing = map[fp] ?: return null
+        val updated = existing.copy(label = clean)
+        map[fp] = updated
+        writeMapLocked(map)
+        return updated
+    }
+
+    @Synchronized
     fun forget(hostFingerprint: String): Boolean {
         val fp = hostFingerprint.trim().lowercase()
         if (fp.isEmpty()) return false

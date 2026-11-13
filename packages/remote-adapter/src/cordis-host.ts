@@ -3,6 +3,7 @@ import {
   chmodSync,
   closeSync,
   existsSync,
+  fstatSync,
   mkdirSync,
   openSync,
   readdirSync,
@@ -35,6 +36,8 @@ import {
   type ModelOptionRef,
   type ModelSelectionParams,
   type OfficialRemoteSeams,
+  type PromptImageAttachment,
+  type ReasoningEffortOption,
   type SessionRef,
 } from './protocol.js'
 import {
@@ -69,6 +72,7 @@ export interface OfficialAgentLike {
   readonly session?: {
     readonly id?: string
     readonly log?: readonly unknown[]
+    append?(type: string, data: unknown): unknown
   }
   readonly ctx: OfficialAgentContextLike
   followup(message: Record<string, unknown>): void
@@ -333,6 +337,43 @@ function readHeaderTitleFromJsonl(filePath: string): string | undefined {
   let fd: number | undefined
   try {
     fd = openSync(filePath, 'r')
+    const fileSize = fstatSync(fd).size
+
+    // Prefer the latest logged session/title update near the tail if present.
+    if (fileSize > 0) {
+      const tailLen = Math.min(fileSize, 32 * 1024)
+      const tailOffset = fileSize - tailLen
+      const tailBuf = Buffer.allocUnsafe(tailLen)
+      const tailRead = readSync(fd, tailBuf, 0, tailLen, tailOffset)
+      if (tailRead > 0) {
+        const tailText = tailBuf.subarray(0, tailRead).toString('utf8')
+        if (tailText.includes('"session/title"')) {
+          const lines = tailText.split('\n')
+          for (let i = lines.length - 1; i >= 0; i -= 1) {
+            const line = lines[i]?.trim()
+            if (!line || !line.startsWith('{')) continue
+            try {
+              const ev = JSON.parse(line) as Record<string, unknown>
+              if (ev.type === 'session/title') {
+                const data = asRecord(ev.data)
+                const renamed =
+                  typeof data?.title === 'string'
+                    ? data.title.trim()
+                    : typeof ev.title === 'string'
+                      ? ev.title.trim()
+                      : undefined
+                if (renamed && renamed.length > 0) {
+                  return renamed
+                }
+              }
+            } catch {
+              // Ignore partial first line when reading from tailOffset > 0.
+            }
+          }
+        }
+      }
+    }
+
     const buf = Buffer.allocUnsafe(16 * 1024)
     const bytesRead = readSync(fd, buf, 0, buf.byteLength, 0)
     if (bytesRead <= 0) return undefined
@@ -487,6 +528,7 @@ export class OfficialHostCordisBridge {
   private readonly options: OfficialHostCordisBridgeOptions
   private readonly bridgedSessions = new Map<string, BridgedSessionState>()
   private readonly ownedHandles = new Map<string, OfficialAgentHandleLike>()
+  private readonly sessionTitleOverrides = new Map<string, string>()
   private readonly pendingApprovals = new Map<string, PendingApproval>()
   private readonly pendingQuestions = new Map<string, PendingQuestion>()
   private readonly rootUnsubscribes: Array<() => void> = []
@@ -546,6 +588,7 @@ export class OfficialHostCordisBridge {
       respondApproval: (callId, decision) => this.respondApproval(callId, decision),
       respondQuestion: (questionId, answer) => this.respondQuestion(questionId, answer),
       createSession: (options) => this.createSession(options),
+      renameSession: (sessionId, title) => this.renameSession(sessionId, title),
       abortTurn: (sessionId, options) => this.abortTurn(sessionId, options),
       listModels: (sessionId) => this.listModels(sessionId),
       selectModel: (sessionId, selection) => this.selectModel(sessionId, selection),
@@ -890,8 +933,49 @@ export class OfficialHostCordisBridge {
       } else {
         title = options.title
       }
+      this.sessionTitleOverrides.set(sessionId, title)
     }
     return { id: sessionId, title }
+  }
+
+  async renameSession(sessionId: string, title: string): Promise<SessionRef> {
+    const cleanTitle = title.trim()
+    if (cleanTitle.length === 0 || cleanTitle.length > 120) {
+      throw new RemoteProtocolError('INVALID_REQUEST', 'title must be a 1..120 character string')
+    }
+    const agent = await this.ensureLiveAgent(sessionId)
+    let resolvedTitle = cleanTitle
+    const titleSvc = readOptionalService<{
+      rename?(session: unknown, nextTitle: string): { title?: string } | string
+    }>(this.ctx, 'sessionTitle')
+    if (titleSvc?.rename && agent.session) {
+      try {
+        const res = titleSvc.rename(agent.session, cleanTitle)
+        if (typeof res === 'string' && res.trim().length > 0) {
+          resolvedTitle = res.trim()
+        } else if (res && typeof res === 'object' && typeof res.title === 'string' && res.title.trim().length > 0) {
+          resolvedTitle = res.title.trim()
+        }
+      } catch (err) {
+        throw new RemoteProtocolError(
+          'INVALID_REQUEST',
+          err instanceof Error ? err.message : String(err),
+        )
+      }
+    } else if (typeof agent.session?.append === 'function') {
+      try {
+        agent.session.append('session/title', { title: cleanTitle, source: 'user' })
+      } catch {
+        // Fallback to local override when test stub session log does not support append.
+      }
+    }
+    this.sessionTitleOverrides.set(sessionId, resolvedTitle)
+    this.emitNormalizedEvent(sessionId, 'session/title', {
+      sessionId,
+      title: resolvedTitle,
+      source: 'user',
+    })
+    return { id: sessionId, title: resolvedTitle }
   }
 
   async ensureLiveAgent(sessionId: string): Promise<OfficialAgentLike> {
@@ -936,19 +1020,58 @@ export class OfficialHostCordisBridge {
     return all.find((s) => s.id === sessionId)
   }
 
+  private readLiveAgentTitle(agent: OfficialAgentLike): string | undefined {
+    const log = agent.session?.log
+    if (Array.isArray(log)) {
+      for (let i = log.length - 1; i >= 0; i -= 1) {
+        const rec = asRecord(log[i])
+        if (rec?.type === 'session/title') {
+          const data = asRecord(rec.data)
+          const t =
+            typeof data?.title === 'string'
+              ? data.title.trim()
+              : typeof rec.title === 'string'
+                ? rec.title.trim()
+                : undefined
+          if (t && t.length > 0) return t
+        }
+      }
+    }
+    return this.sessionTitleOverrides.get(agent.id)
+  }
+
   async listSessions(): Promise<readonly SessionRef[]> {
     const merged = new Map<string, SessionRef>()
+    const persisted = await this.listPersistedRefs()
+    const persistedTitleById = new Map<string, string>()
+    for (const ref of persisted) {
+      if (ref.title !== undefined) {
+        persistedTitleById.set(ref.id, ref.title)
+      }
+    }
     for (const agent of this.ctx.agents.list()) {
-      merged.set(agent.id, { id: agent.id })
+      const title =
+        this.sessionTitleOverrides.get(agent.id) ??
+        this.readLiveAgentTitle(agent) ??
+        persistedTitleById.get(agent.id)
+      merged.set(agent.id, title !== undefined ? { id: agent.id, title } : { id: agent.id })
     }
     for (const state of this.bridgedSessions.values()) {
       if (!merged.has(state.id)) {
-        merged.set(state.id, { id: state.id })
+        const title =
+          this.sessionTitleOverrides.get(state.id) ??
+          this.readLiveAgentTitle(state.agent) ??
+          persistedTitleById.get(state.id)
+        merged.set(state.id, title !== undefined ? { id: state.id, title } : { id: state.id })
       }
     }
-    for (const ref of await this.listPersistedRefs()) {
+    for (const ref of persisted) {
       if (!merged.has(ref.id)) {
-        merged.set(ref.id, ref)
+        const override = this.sessionTitleOverrides.get(ref.id)
+        merged.set(
+          ref.id,
+          override !== undefined ? { ...ref, title: override } : ref,
+        )
       }
     }
     return Object.freeze([...merged.values()])
@@ -958,6 +1081,45 @@ export class OfficialHostCordisBridge {
     await this.ensureLiveAgent(sessionId)
   }
 
+  private async buildPromptContentParts(
+    prompt: string,
+    attachments: readonly PromptImageAttachment[] | undefined,
+  ): Promise<readonly Record<string, unknown>[]> {
+    const parts: Record<string, unknown>[] = []
+    if (prompt.length > 0) {
+      parts.push({ type: 'text', text: prompt })
+    }
+    if (attachments && attachments.length > 0) {
+      const attachmentsSvc = readOptionalService<{
+        saveImage?(input: {
+          readonly mediaType: string
+          readonly bytes: Uint8Array
+          readonly name?: string
+        }): Promise<unknown>
+      }>(this.ctx, 'attachments')
+
+      for (const att of attachments) {
+        const bytes = Buffer.from(att.dataBase64, 'base64')
+        if (attachmentsSvc?.saveImage) {
+          const ref = await attachmentsSvc.saveImage({
+            mediaType: att.mediaType,
+            bytes,
+            ...(att.name !== undefined ? { name: att.name } : {}),
+          })
+          parts.push({ type: 'image', attachment: ref })
+        } else {
+          parts.push({
+            type: 'image',
+            mediaType: att.mediaType,
+            dataBase64: att.dataBase64,
+            ...(att.name !== undefined ? { name: att.name } : {}),
+          })
+        }
+      }
+    }
+    return Object.freeze(parts)
+  }
+
   async followup(
     sessionId: string,
     prompt: string,
@@ -965,10 +1127,11 @@ export class OfficialHostCordisBridge {
   ): Promise<{ sessionId: string; messageId: string }> {
     const agent = await this.ensureLiveAgent(sessionId)
     const messageId = randomUUID()
+    const content = await this.buildPromptContentParts(prompt, options?.attachments)
     const message = Object.freeze({
       id: messageId,
       role: 'user',
-      content: Object.freeze([{ type: 'text', text: prompt }]),
+      content,
       source: Object.freeze({ kind: 'user' }),
     })
     if (options?.mode === 'steer' && typeof agent.steer === 'function') {
@@ -1054,21 +1217,79 @@ export class OfficialHostCordisBridge {
           readonly id: string
           readonly name?: string
           readonly description?: string
+          readonly inputModalities?: readonly string[]
         }>
       >
+      resolveModel?(
+        provider: string,
+        model: string,
+      ): Promise<{
+        readonly inputModalities?: readonly string[]
+        readonly context?: { readonly contextWindow?: number }
+        readonly reasoning?: {
+          readonly efforts?: ReadonlyArray<{
+            readonly id: string
+            readonly name?: string
+            readonly description?: string
+          }>
+          readonly defaultEffort?: string
+        }
+      }>
     }>(this.ctx, 'llm')
     const models: ModelOptionRef[] = []
     if (llmSvc?.listProviders && llmSvc?.listModels) {
       for (const provider of llmSvc.listProviders()) {
         try {
           const items = await llmSvc.listModels(provider.id)
-          for (const m of items) {
+          const resolvedList = llmSvc.resolveModel
+            ? await Promise.allSettled(
+                items.map((m) => llmSvc.resolveModel!(provider.id, m.id)),
+              )
+            : []
+          for (let idx = 0; idx < items.length; idx += 1) {
+            const m = items[idx]!
+            const settled = resolvedList[idx]
+            const resolved =
+              settled?.status === 'fulfilled' ? settled.value : undefined
+            const modalities = resolved?.inputModalities ?? m.inputModalities
+            const supportsImageInput = Array.isArray(modalities)
+              ? modalities.includes('image')
+              : undefined
+            const rawEfforts = resolved?.reasoning?.efforts
+            const reasoningEfforts: ReasoningEffortOption[] | undefined =
+              Array.isArray(rawEfforts) && rawEfforts.length > 0
+                ? rawEfforts
+                    .filter((e) => typeof e?.id === 'string' && e.id.length > 0)
+                    .map((e) => ({
+                      id: e.id,
+                      name: typeof e.name === 'string' && e.name.length > 0 ? e.name : e.id,
+                      ...(typeof e.description === 'string' && e.description.length > 0
+                        ? { description: e.description }
+                        : {}),
+                    }))
+                : undefined
+            const defaultReasoningEffort =
+              typeof resolved?.reasoning?.defaultEffort === 'string' &&
+              resolved.reasoning.defaultEffort.length > 0
+                ? resolved.reasoning.defaultEffort
+                : undefined
+            const contextWindow =
+              typeof resolved?.context?.contextWindow === 'number' &&
+              resolved.context.contextWindow > 0
+                ? resolved.context.contextWindow
+                : undefined
             models.push({
               provider: provider.id,
               ...(provider.name ? { providerName: provider.name } : {}),
               model: m.id,
               name: m.name ?? m.id,
               ...(m.description ? { description: m.description } : {}),
+              ...(supportsImageInput !== undefined ? { supportsImageInput } : {}),
+              ...(reasoningEfforts !== undefined && reasoningEfforts.length > 0
+                ? { reasoningEfforts }
+                : {}),
+              ...(defaultReasoningEffort !== undefined ? { defaultReasoningEffort } : {}),
+              ...(contextWindow !== undefined ? { contextWindow } : {}),
             })
           }
         } catch {

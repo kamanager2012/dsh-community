@@ -12,6 +12,7 @@ export type RemoteMethod =
   | 'session.list'
   | 'session.attach'
   | 'session.create'
+  | 'session.rename'
   | 'prompt.submit'
   | 'turn.abort'
   | 'approval.respond'
@@ -25,6 +26,7 @@ const REMOTE_METHODS = new Set<RemoteMethod>([
   'session.list',
   'session.attach',
   'session.create',
+  'session.rename',
   'prompt.submit',
   'turn.abort',
   'approval.respond',
@@ -54,6 +56,8 @@ export interface AuthenticatedPeer {
 export interface SessionRef {
   readonly id: string
   readonly title?: string
+  readonly updatedAtMs?: number | undefined
+  readonly cwd?: string | undefined
 }
 
 export interface OfficialSessionEvent {
@@ -62,10 +66,24 @@ export interface OfficialSessionEvent {
   readonly data?: unknown
 }
 
+export type PromptImageMediaType =
+  | 'image/jpeg'
+  | 'image/png'
+  | 'image/webp'
+  | 'image/gif'
+
+export interface PromptImageAttachment {
+  readonly type: 'image'
+  readonly mediaType: PromptImageMediaType
+  readonly dataBase64: string
+  readonly name?: string | undefined
+}
+
 export interface PromptSubmitParams {
   readonly sessionId: string
   readonly prompt: string
   readonly mode?: PromptSubmitMode | undefined
+  readonly attachments?: readonly PromptImageAttachment[] | undefined
 }
 
 export interface ApprovalRespondParams {
@@ -92,6 +110,7 @@ export type PromptSubmitMode = 'followup' | 'steer'
 
 export interface FollowupOptions {
   readonly mode?: PromptSubmitMode | undefined
+  readonly attachments?: readonly PromptImageAttachment[] | undefined
 }
 
 export interface CreateSessionParams {
@@ -99,9 +118,20 @@ export interface CreateSessionParams {
   readonly title?: string | undefined
 }
 
+export interface RenameSessionParams {
+  readonly sessionId: string
+  readonly title: string
+}
+
 export interface TurnAbortParams {
   readonly sessionId: string
   readonly keepInbox?: boolean | undefined
+}
+
+export interface ReasoningEffortOption {
+  readonly id: string
+  readonly name: string
+  readonly description?: string | undefined
 }
 
 export interface ModelSelectionParams {
@@ -116,6 +146,10 @@ export interface ModelOptionRef {
   readonly model: string
   readonly name: string
   readonly description?: string | undefined
+  readonly supportsImageInput?: boolean | undefined
+  readonly reasoningEfforts?: readonly ReasoningEffortOption[] | undefined
+  readonly defaultReasoningEffort?: string | undefined
+  readonly contextWindow?: number | undefined
 }
 
 export interface ModelCatalogResult {
@@ -130,6 +164,7 @@ export interface OfficialRemoteSeams {
   respondApproval(callId: string, decision: 'approved' | 'rejected'): Promise<unknown>
   respondQuestion(questionId: string, answer: unknown): Promise<unknown>
   createSession?(options?: CreateSessionParams): Promise<SessionRef>
+  renameSession?(sessionId: string, title: string): Promise<SessionRef>
   abortTurn?(sessionId: string, options?: { readonly keepInbox?: boolean | undefined }): Promise<unknown>
   listModels?(sessionId?: string): Promise<ModelCatalogResult>
   selectModel?(sessionId: string, selection: ModelSelectionParams): Promise<unknown>

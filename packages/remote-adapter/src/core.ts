@@ -12,9 +12,12 @@ import {
   type ModelSelectionParams,
   type OfficialRemoteSeams,
   type OfficialSessionEvent,
+  type PromptImageAttachment,
+  type PromptImageMediaType,
   type PromptSubmitParams,
   type QuestionRespondParams,
   type RemoteRequest,
+  type RenameSessionParams,
   type SessionAttachParams,
   type StreamAckParams,
   type TurnAbortParams,
@@ -51,16 +54,103 @@ function requiredString(
   return value
 }
 
+const ALLOWED_IMAGE_MEDIA_TYPES = new Set<PromptImageMediaType>([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+])
+const MAX_PROMPT_IMAGE_COUNT = 2
+const MAX_PROMPT_IMAGE_DECODED_BYTES = 32_768
+const BASE64_PATTERN = /^[A-Za-z0-9+/]+={0,2}$/u
+
+function parsePromptAttachments(raw: unknown): PromptImageAttachment[] | undefined {
+  if (raw === undefined) return undefined
+  if (!Array.isArray(raw)) {
+    throw new RemoteProtocolError('INVALID_REQUEST', 'attachments must be an array')
+  }
+  if (raw.length === 0) return undefined
+  if (raw.length > MAX_PROMPT_IMAGE_COUNT) {
+    throw new RemoteProtocolError(
+      'INVALID_REQUEST',
+      `at most ${MAX_PROMPT_IMAGE_COUNT} image attachments are permitted per prompt`,
+    )
+  }
+  let totalDecodedBytes = 0
+  return raw.map((item) => {
+    const rec = asObject(item)
+    if (rec.type !== 'image') {
+      throw new RemoteProtocolError('INVALID_REQUEST', 'attachment type must be image')
+    }
+    const mediaType = rec.mediaType
+    if (typeof mediaType !== 'string' || !ALLOWED_IMAGE_MEDIA_TYPES.has(mediaType as PromptImageMediaType)) {
+      throw new RemoteProtocolError('INVALID_REQUEST', 'unsupported image attachment mediaType')
+    }
+    const rawB64 = requiredString(rec, 'dataBase64').replace(/\s+/gu, '')
+    if (rawB64.length % 4 !== 0 || !BASE64_PATTERN.test(rawB64)) {
+      throw new RemoteProtocolError('INVALID_REQUEST', 'image attachment dataBase64 is malformed')
+    }
+    const decoded = Buffer.from(rawB64, 'base64')
+    if (decoded.byteLength === 0 || decoded.byteLength > MAX_PROMPT_IMAGE_DECODED_BYTES) {
+      throw new RemoteProtocolError(
+        'INVALID_REQUEST',
+        `image attachment decoded size must be 1..${MAX_PROMPT_IMAGE_DECODED_BYTES} bytes`,
+      )
+    }
+    totalDecodedBytes += decoded.byteLength
+    if (totalDecodedBytes > MAX_PROMPT_IMAGE_DECODED_BYTES) {
+      throw new RemoteProtocolError(
+        'INVALID_REQUEST',
+        `combined image attachments exceed ${MAX_PROMPT_IMAGE_DECODED_BYTES} byte transport budget`,
+      )
+    }
+    let name: string | undefined
+    if (rec.name !== undefined) {
+      if (typeof rec.name !== 'string' || rec.name.trim().length === 0 || rec.name.length > 120) {
+        throw new RemoteProtocolError('INVALID_REQUEST', 'attachment name must be 1..120 characters')
+      }
+      name = rec.name.trim()
+    }
+    return {
+      type: 'image',
+      mediaType: mediaType as PromptImageMediaType,
+      dataBase64: rawB64,
+      ...(name !== undefined ? { name } : {}),
+    }
+  })
+}
+
 function parsePrompt(value: unknown): PromptSubmitParams {
   const object = asObject(value)
   const rawMode = object.mode
   if (rawMode !== undefined && rawMode !== 'followup' && rawMode !== 'steer') {
     throw new RemoteProtocolError('INVALID_REQUEST', 'invalid prompt mode')
   }
+  const attachments = parsePromptAttachments(object.attachments)
+  const rawPrompt = object.prompt
+  if (typeof rawPrompt !== 'string') {
+    throw new RemoteProtocolError('INVALID_REQUEST', 'prompt must be a string')
+  }
+  if (rawPrompt.length === 0 && (!attachments || attachments.length === 0)) {
+    throw new RemoteProtocolError('INVALID_REQUEST', 'prompt must be a non-empty string')
+  }
   return {
     sessionId: requiredString(object, 'sessionId'),
-    prompt: requiredString(object, 'prompt'),
+    prompt: rawPrompt,
     ...(rawMode !== undefined ? { mode: rawMode } : {}),
+    ...(attachments !== undefined ? { attachments } : {}),
+  }
+}
+
+function parseRenameSession(value: unknown): RenameSessionParams {
+  const object = asObject(value)
+  const title = requiredString(object, 'title').trim()
+  if (title.length === 0 || title.length > 120) {
+    throw new RemoteProtocolError('INVALID_REQUEST', 'title must be a 1..120 character string')
+  }
+  return {
+    sessionId: requiredString(object, 'sessionId'),
+    title,
   }
 }
 
@@ -260,6 +350,21 @@ export class RemoteAdapterCore {
             return this.seams.createSession(params)
           },
         )
+      case 'session.rename':
+        return this.mutate(
+          peer,
+          request,
+          parseRenameSession(request.params),
+          async (params) => {
+            if (!this.seams.renameSession) {
+              throw new RemoteProtocolError(
+                'INVALID_REQUEST',
+                'session.rename is not supported by this host',
+              )
+            }
+            return this.seams.renameSession(params.sessionId, params.title)
+          },
+        )
       case 'session.attach':
         return this.attach(parseAttach(request.params))
       case 'stream.ack': {
@@ -274,10 +379,15 @@ export class RemoteAdapterCore {
           peer,
           request,
           parsePrompt(request.params),
-          async (params) =>
-            params.mode !== undefined
-              ? this.seams.followup(params.sessionId, params.prompt, { mode: params.mode })
-              : this.seams.followup(params.sessionId, params.prompt),
+          async (params) => {
+            if (params.mode === undefined && params.attachments === undefined) {
+              return this.seams.followup(params.sessionId, params.prompt)
+            }
+            return this.seams.followup(params.sessionId, params.prompt, {
+              ...(params.mode !== undefined ? { mode: params.mode } : {}),
+              ...(params.attachments !== undefined ? { attachments: params.attachments } : {}),
+            })
+          },
         )
       case 'turn.abort':
         return this.mutate(

@@ -3,7 +3,9 @@ package org.dsh.community.android.qr
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.BinaryBitmap
 import com.google.zxing.DecodeHintType
+import com.google.zxing.LuminanceSource
 import com.google.zxing.PlanarYUVLuminanceSource
+import com.google.zxing.RGBLuminanceSource
 import com.google.zxing.common.HybridBinarizer
 import com.google.zxing.qrcode.QRCodeReader
 import java.nio.ByteBuffer
@@ -86,6 +88,26 @@ object QrImageDecoder {
             height,
             false,
         )
+        return decodeLuminance(source)
+    }
+
+    /**
+     * Decodes a QR payload from packed ARGB `0xAARRGGBB` pixels (e.g. from Bitmap.getPixels).
+     * Pure JVM safe (does not reference android.graphics.Bitmap).
+     */
+    fun decodeRgbPixels(
+        pixels: IntArray,
+        width: Int,
+        height: Int,
+    ): String? {
+        if (width <= 0 || height <= 0 || pixels.size < width * height) {
+            return null
+        }
+        val source = RGBLuminanceSource(width, height, pixels)
+        return decodeLuminance(source)
+    }
+
+    private fun decodeLuminance(source: LuminanceSource): String? {
         val reader = QRCodeReader()
         val candidates = listOf(source, source.invert())
         for (candidate in candidates) {

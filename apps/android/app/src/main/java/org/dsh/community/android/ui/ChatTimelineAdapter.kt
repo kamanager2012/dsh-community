@@ -1,5 +1,6 @@
 package org.dsh.community.android.ui
 
+import android.text.method.LinkMovementMethod
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -14,6 +15,7 @@ import org.dsh.community.android.R
 class ChatTimelineAdapter(
     private val onToggleThinking: (String) -> Unit,
     private val onToggleTool: (String) -> Unit,
+    private val onLongPressItem: ((ChatTimelineItem) -> Unit)? = null,
 ) : ListAdapter<ChatTimelineItem, RecyclerView.ViewHolder>(DIFF_CALLBACK) {
 
     override fun getItemViewType(position: Int): Int = when (getItem(position)) {
@@ -26,16 +28,24 @@ class ChatTimelineAdapter(
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
         val inflater = LayoutInflater.from(parent.context)
         return when (viewType) {
-            VIEW_TYPE_USER -> UserViewHolder(inflater.inflate(R.layout.item_chat_user, parent, false))
+            VIEW_TYPE_USER -> UserViewHolder(
+                inflater.inflate(R.layout.item_chat_user, parent, false),
+                onLongPressItem,
+            )
             VIEW_TYPE_ASSISTANT -> AssistantViewHolder(
                 inflater.inflate(R.layout.item_chat_assistant, parent, false),
                 onToggleThinking,
+                onLongPressItem,
             )
             VIEW_TYPE_TOOL -> ToolViewHolder(
                 inflater.inflate(R.layout.item_chat_tool, parent, false),
                 onToggleTool,
+                onLongPressItem,
             )
-            else -> NoticeViewHolder(inflater.inflate(R.layout.item_chat_notice, parent, false))
+            else -> NoticeViewHolder(
+                inflater.inflate(R.layout.item_chat_notice, parent, false),
+                onLongPressItem,
+            )
         }
     }
 
@@ -48,24 +58,47 @@ class ChatTimelineAdapter(
         }
     }
 
-    private class UserViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+    private class UserViewHolder(
+        view: View,
+        private val onLongPressItem: ((ChatTimelineItem) -> Unit)?,
+    ) : RecyclerView.ViewHolder(view) {
         private val tvUserText: TextView = view.findViewById(R.id.tv_user_text)
         private val tvUserMeta: TextView = view.findViewById(R.id.tv_user_meta)
 
         fun bind(item: UserMessageItem) {
-            tvUserText.text = item.text
+            if (item.text.isNotBlank()) {
+                tvUserText.visibility = View.VISIBLE
+                tvUserText.text = item.text
+            } else {
+                tvUserText.visibility = View.VISIBLE
+                tvUserText.text = item.attachmentLabels.joinToString(", ") { "[Image: $it]" }.ifBlank { "(Image)" }
+            }
+            val metaParts = ArrayList<String>(2)
+            if (item.attachmentLabels.isNotEmpty()) {
+                metaParts.add(item.attachmentLabels.joinToString(", ") { "📷 $it" })
+            }
             if (item.isOptimistic) {
+                metaParts.add("Sending…")
+            }
+            if (metaParts.isNotEmpty()) {
                 tvUserMeta.visibility = View.VISIBLE
-                tvUserMeta.text = "Sending…"
+                tvUserMeta.text = metaParts.joinToString(" · ")
             } else {
                 tvUserMeta.visibility = View.GONE
             }
+            val longClick = View.OnLongClickListener {
+                onLongPressItem?.invoke(item)
+                onLongPressItem != null
+            }
+            itemView.setOnLongClickListener(longClick)
+            tvUserText.setOnLongClickListener(longClick)
         }
     }
 
     private class AssistantViewHolder(
         view: View,
         private val onToggleThinking: (String) -> Unit,
+        private val onLongPressItem: ((ChatTimelineItem) -> Unit)?,
     ) : RecyclerView.ViewHolder(view) {
         private val tvStreamingBadge: TextView = view.findViewById(R.id.tv_streaming_badge)
         private val tvThinkingToggle: TextView = view.findViewById(R.id.tv_thinking_toggle)
@@ -73,7 +106,27 @@ class ChatTimelineAdapter(
         private val tvAssistantBody: TextView = view.findViewById(R.id.tv_assistant_body)
 
         fun bind(item: AssistantTurnItem) {
-            tvStreamingBadge.visibility = if (item.isFinalized) View.GONE else View.VISIBLE
+            when {
+                !item.isFinalized -> {
+                    tvStreamingBadge.visibility = View.VISIBLE
+                    tvStreamingBadge.text = "Streaming…"
+                    tvStreamingBadge.setTextColor(ContextCompat.getColor(itemView.context, R.color.dsh_text_accent))
+                }
+                item.interrupted -> {
+                    tvStreamingBadge.visibility = View.VISIBLE
+                    tvStreamingBadge.text = "Interrupted"
+                    tvStreamingBadge.setTextColor(ContextCompat.getColor(itemView.context, R.color.dsh_status_warn))
+                }
+                else -> {
+                    tvStreamingBadge.visibility = View.GONE
+                }
+            }
+            val longClick = View.OnLongClickListener {
+                onLongPressItem?.invoke(item)
+                onLongPressItem != null
+            }
+            itemView.setOnLongClickListener(longClick)
+            tvAssistantBody.setOnLongClickListener(longClick)
 
             if (item.thinkingText.isNotBlank()) {
                 tvThinkingToggle.visibility = View.VISIBLE
@@ -94,6 +147,7 @@ class ChatTimelineAdapter(
 
             if (item.markdownText.isNotBlank()) {
                 tvAssistantBody.visibility = View.VISIBLE
+                tvAssistantBody.movementMethod = LinkMovementMethod.getInstance()
                 tvAssistantBody.text = ChatMarkdownFormatter.format(item.markdownText)
             } else {
                 tvAssistantBody.visibility = View.GONE
@@ -104,6 +158,7 @@ class ChatTimelineAdapter(
     private class ToolViewHolder(
         view: View,
         private val onToggleTool: (String) -> Unit,
+        private val onLongPressItem: ((ChatTimelineItem) -> Unit)?,
     ) : RecyclerView.ViewHolder(view) {
         private val llToolHeader: LinearLayout = view.findViewById(R.id.ll_tool_header)
         private val tvToolHeader: TextView = view.findViewById(R.id.tv_tool_header)
@@ -117,6 +172,12 @@ class ChatTimelineAdapter(
             val arrow = if (item.isExpanded) "▾" else "▸"
             tvToolHeader.text = "$arrow Tool · ${item.toolName}"
             llToolHeader.setOnClickListener { onToggleTool(item.stableId) }
+            val longClick = View.OnLongClickListener {
+                onLongPressItem?.invoke(item)
+                onLongPressItem != null
+            }
+            itemView.setOnLongClickListener(longClick)
+            llToolHeader.setOnLongClickListener(longClick)
 
             val (statusLabel, colorRes) = when (item.status) {
                 ToolExecutionStatus.RUNNING -> "Running" to R.color.dsh_status_warn
@@ -146,13 +207,20 @@ class ChatTimelineAdapter(
         }
     }
 
-    private class NoticeViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+    private class NoticeViewHolder(
+        view: View,
+        private val onLongPressItem: ((ChatTimelineItem) -> Unit)?,
+    ) : RecyclerView.ViewHolder(view) {
         private val tvNoticeText: TextView = view.findViewById(R.id.tv_notice_text)
 
         fun bind(item: SystemNoticeItem) {
             tvNoticeText.text = item.text
             val colorRes = if (item.isError) R.color.dsh_status_danger else R.color.dsh_text_secondary
             tvNoticeText.setTextColor(ContextCompat.getColor(itemView.context, colorRes))
+            itemView.setOnLongClickListener {
+                onLongPressItem?.invoke(item)
+                onLongPressItem != null
+            }
         }
     }
 

@@ -486,8 +486,16 @@ describe('Real Official @deepseek-ai/dsh Live Subprocess Host Acceptance (R6)', 
       { idempotencyKey: 'live-dsh-create-1' },
     )
     expect(liveCreated.id).toBe('session-r6-created-remote')
+    const liveRenamed = await phoneAfterRestart.request(
+      'session.rename',
+      { sessionId: 'session-r6-created-remote', title: 'Renamed Live Session' },
+      { idempotencyKey: 'live-dsh-rename-1' },
+    )
+    expect(liveRenamed).toEqual({ id: 'session-r6-created-remote', title: 'Renamed Live Session' })
     const listAfterCreate = await phoneAfterRestart.request('session.list')
-    expect(listAfterCreate.some((s: any) => s.id === 'session-r6-created-remote')).toBe(true)
+    expect(listAfterCreate.find((s: any) => s.id === 'session-r6-created-remote')?.title).toBe(
+      'Renamed Live Session',
+    )
 
     await phoneAfterRestart.resumeSession('session-r6-created-remote')
     const abortRes = await phoneAfterRestart.request(

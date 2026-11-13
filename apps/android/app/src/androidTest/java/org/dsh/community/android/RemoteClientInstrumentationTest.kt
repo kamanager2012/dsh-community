@@ -4,18 +4,23 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.graphics.Bitmap
 import android.net.Uri
 import android.os.IBinder
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
+import android.view.View
 import android.widget.Button
 import android.widget.EditText
+import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.qrcode.QRCodeWriter
 import org.dsh.community.android.crypto.AndroidKeystoreMasterCipher
 import org.dsh.community.android.crypto.CryptoUtils
 import org.dsh.community.android.crypto.Curve25519
@@ -26,6 +31,7 @@ import org.dsh.community.android.protocol.JsonCodec
 import org.dsh.community.android.protocol.JsonObject
 import org.dsh.community.android.protocol.JsonString
 import org.dsh.community.android.protocol.OfficialSessionEvent
+import org.dsh.community.android.qr.QrImageDecoder
 import org.dsh.community.android.service.RemoteSessionService
 import org.dsh.community.android.transport.AndroidWebRtcPeerEngine
 import org.dsh.community.android.transport.DiscoveredLanHost
@@ -740,6 +746,62 @@ class RemoteClientInstrumentationTest {
         } finally {
             revokeCipher.deleteMasterKey()
             revokeTempDir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun wave2BitmapQrHelperHostRenameAndSlashSuggestionsWorkOnAndroid() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val qrPayload = """{"version":1,"hostPublicKey":"wave2testkey","lanUrl":"http://127.0.0.1:8787"}"""
+        val size = 220
+        val matrix = QRCodeWriter().encode(qrPayload, BarcodeFormat.QR_CODE, size, size)
+        val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        for (y in 0 until size) {
+            for (x in 0 until size) {
+                bmp.setPixel(x, y, if (matrix.get(x, y)) 0xFF000000.toInt() else 0xFFFFFFFF.toInt())
+            }
+        }
+        val pixels = IntArray(size * size)
+        bmp.getPixels(pixels, 0, size, 0, 0, size, size)
+        bmp.recycle()
+        assertEquals(qrPayload, QrImageDecoder.decodeRgbPixels(pixels, size, size))
+
+        val hostStore = EncryptedTrustedHostStore.createForAndroid(context)
+        val pubKey = Curve25519.generateKeyPair().publicKey
+        var fp: String? = null
+        try {
+            val saved = hostStore.upsertTrustedHost(
+                hostPublicKey = pubKey,
+                label = "Initial Host",
+                lanUrl = "ws://127.0.0.1:8787",
+            )
+            fp = saved.hostFingerprint
+            val renamed = hostStore.renameHost(saved.hostFingerprint, "Renamed Lab Host")
+            assertNotNull(renamed)
+            assertEquals("Renamed Lab Host", renamed?.label)
+            val reloaded = EncryptedTrustedHostStore.createForAndroid(context).get(saved.hostFingerprint)
+            assertEquals("Renamed Lab Host", reloaded?.label)
+        } finally {
+            fp?.let { hostStore.forget(it) }
+        }
+
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                val attachImgBtn = activity.findViewById<Button>(R.id.btn_attach_image)
+                assertEquals(View.VISIBLE, attachImgBtn.visibility)
+
+                val etPrompt = activity.findViewById<EditText>(R.id.et_prompt)
+                val slashScroll = activity.findViewById<HorizontalScrollView>(R.id.hsv_slash_suggestions)
+                val slashRow = activity.findViewById<LinearLayout>(R.id.ll_slash_suggestions)
+
+                etPrompt.setText("/re")
+                assertEquals(View.VISIBLE, slashScroll.visibility)
+                assertEquals(1, slashRow.childCount)
+
+                etPrompt.setText("")
+                assertEquals(View.GONE, slashScroll.visibility)
+                assertEquals(0, slashRow.childCount)
+            }
         }
     }
 

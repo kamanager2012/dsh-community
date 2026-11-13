@@ -6,6 +6,7 @@ import org.dsh.community.android.crypto.TrustedHostRecord
 import org.dsh.community.android.protocol.AttachResumeResult
 import org.dsh.community.android.protocol.ClientOperationFactory
 import org.dsh.community.android.protocol.InboundHostFrame
+import org.dsh.community.android.protocol.JsonArray
 import org.dsh.community.android.protocol.JsonBool
 import org.dsh.community.android.protocol.JsonCodec
 import org.dsh.community.android.protocol.JsonNumber
@@ -15,6 +16,7 @@ import org.dsh.community.android.protocol.JsonValue
 import org.dsh.community.android.protocol.ModelCatalogResult
 import org.dsh.community.android.protocol.ModelOptionRef
 import org.dsh.community.android.protocol.OfficialSessionEvent
+import org.dsh.community.android.protocol.PromptImageAttachment
 import org.dsh.community.android.protocol.RemoteFrameCodec
 import org.dsh.community.android.protocol.RemoteProtocol
 import org.dsh.community.android.protocol.RpcErrorPayload
@@ -249,6 +251,21 @@ class FailoverRemoteSession(
         return RemoteFrameCodec.parseSessionRef(res)
     }
 
+    fun renameSession(
+        sessionId: String,
+        title: String,
+        idempotencyKey: String = newOperationKey("rename"),
+    ): SessionRef {
+        val cleanTitle = title.trim()
+        require(cleanTitle.isNotEmpty()) { "title must not be blank" }
+        val params = JsonObject.of(
+            "sessionId" to JsonString(sessionId),
+            "title" to JsonString(cleanTitle),
+        )
+        val res = dispatchRpc(RemoteProtocol.METHOD_SESSION_RENAME, params, idempotencyKey = idempotencyKey)
+        return RemoteFrameCodec.parseSessionRef(res)
+    }
+
     fun attachSession(sessionId: String, explicitAfterSeq: Long? = null): AttachResumeResult {
         attachedSessionIds.add(sessionId)
         val resumeAfter = explicitAfterSeq ?: lastConfirmedSeqBySession[sessionId]
@@ -282,11 +299,14 @@ class FailoverRemoteSession(
         prompt: String,
         idempotencyKey: String = newOperationKey("prompt"),
         mode: String? = null,
+        attachments: List<PromptImageAttachment> = emptyList(),
     ): JsonValue {
+        require(attachments.size <= 2) { "at most 2 image attachments per prompt" }
         val params = JsonObject.of(
             "sessionId" to JsonString(sessionId),
             "prompt" to JsonString(prompt),
             "mode" to mode?.takeIf { it.isNotBlank() }?.let { JsonString(it) },
+            "attachments" to if (attachments.isEmpty()) null else JsonArray(attachments.map { it.toJson() }),
         )
         return dispatchRpc(RemoteProtocol.METHOD_PROMPT_SUBMIT, params, idempotencyKey = idempotencyKey)
     }

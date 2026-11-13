@@ -12,6 +12,7 @@ import org.dsh.community.android.transport.PairingQrParser
 import org.dsh.community.android.transport.RemoteConnectionPhase
 import org.dsh.community.android.transport.RemoteEndpointProfile
 import org.dsh.community.android.transport.TransportKind
+import org.dsh.community.android.ui.PromptImageHelper
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertThrows
@@ -201,6 +202,20 @@ class LiveNodeInteropTest {
             activeSession.ackStream(sessionId, lastLanSeq)
             assertEquals(lastLanSeq, activeSession.getLastConfirmedSeq(sessionId))
 
+            // 2b. Wave 2 RPCs over LAN: model catalog + reasoning effort + live session.rename
+            val catalog = activeSession.listModels(sessionId)
+            assertTrue("expected >= 2 models in catalog", catalog.models.size >= 2)
+            val reasoner = catalog.models.firstOrNull { it.model == "deepseek-reasoner" }
+            assertNotNull("deepseek-reasoner should be listed", reasoner)
+            assertTrue("deepseek-reasoner should advertise image input", reasoner!!.supportsImageInput)
+            assertEquals(131072, reasoner.contextWindow)
+            assertEquals(listOf("low", "medium", "high"), reasoner.reasoningEfforts.map { it.value })
+
+            activeSession.selectModel(sessionId, "deepseek", "deepseek-reasoner", reasoningEffort = "high")
+            val renamed = activeSession.renameSession(sessionId, "Renamed R5 Live Session")
+            assertEquals("Renamed R5 Live Session", renamed.title)
+            assertEquals("Renamed R5 Live Session", activeSession.listSessions().first { it.id == sessionId }.title)
+
             // 3. Kill LAN on Host -> failover LAN(down) -> WebRTC(unattached) -> BlindRelayServer!
             httpJson("$controlUrl/drop-lan", method = "POST", body = JsonObject.of())
 
@@ -210,18 +225,35 @@ class LiveNodeInteropTest {
             assertEquals(TransportKind.RELAY, activeSession.activeCarrier)
             val epoch2 = activeSession.currentEpoch
             assertTrue("epoch2 ($epoch2) must advance past epoch1 ($epoch1)", epoch2 > epoch1)
-            assertTrue(resumedMap[sessionId] is AttachResumeResult.Events)
+            val relayResumed = resumedMap[sessionId] as AttachResumeResult.Events
+            assertTrue(
+                "Relay replay should include session/title event missed after lastLanSeq",
+                relayResumed.events.any { it.type == "session/title" },
+            )
             // Verify ordered fallback errors recorded LAN and WebRTC before Relay succeeded
             assertEquals(listOf(TransportKind.LAN, TransportKind.WEBRTC), activeSession.attemptErrors.map { it.kind })
 
-            // 4. Approve over Blind Relay with idempotent retry -> approvalCalls stays 1, blind relay saw ciphertext only
+            // 4. Approve + multimodal image prompt over Blind Relay with idempotent retry -> approvalCalls stays 1, blind relay saw ciphertext only
             val approvalKey = activeSession.newOperationKey("approval-interop")
             activeSession.respondApproval("call-r5-1", approved = true, idempotencyKey = approvalKey)
             activeSession.respondApproval("call-r5-1", approved = true, idempotencyKey = approvalKey)
 
+            val imagePayload = PromptImageHelper.buildAttachment(
+                mediaType = "image/jpeg",
+                rawBytes = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte(), 0xFF.toByte(), 0xD9.toByte()),
+                name = "cam-test.jpg",
+            )
+            activeSession.submitPrompt(sessionId, "", attachments = listOf(imagePayload))
+
             val status = httpJson("$controlUrl/status")
-            assertEquals(1L, status.longVal("followupCalls"))
+            assertEquals(2L, status.longVal("followupCalls"))
             assertEquals(1L, status.longVal("approvalCalls"))
+            assertEquals(1L, status.longVal("renameCalls"))
+            assertEquals(1L, status.longVal("modelListCalls"))
+            assertEquals(1L, status.longVal("modelSelectCalls"))
+            assertEquals(1L, status.longVal("lastPromptAttachments"))
+            assertEquals("high", status.str("lastSelectedReasoningEffort"))
+            assertEquals("Renamed R5 Live Session", status.str("sessionTitle"))
             assertTrue("relay should audit blind ciphertext frames", (status.longVal("blindFramesAudited") ?: 0L) > 0L)
             assertEquals(0L, status.longVal("plaintextLeaks"))
 
