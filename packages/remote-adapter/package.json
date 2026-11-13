@@ -8,6 +8,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./cordis-plugin": {
+      "types": "./dist/cordis-plugin.d.ts",
+      "import": "./dist/cordis-plugin.js"
     }
   },
   "scripts": {

@@ -6,6 +6,10 @@ import org.dsh.community.android.protocol.JsonCodec
 import org.dsh.community.android.protocol.JsonObject
 import org.dsh.community.android.protocol.JsonString
 import org.dsh.community.android.protocol.JsonValue
+import java.net.URI
+import java.net.URLDecoder
+import java.nio.charset.StandardCharsets
+import java.util.Base64
 
 data class PairingBootstrapDescriptor(
     val protocolVersion: Int,
@@ -45,8 +49,77 @@ object PairingQrParser {
     private val HEX_64_RE = Regex("^[0-9a-fA-F]{64}$")
     private val ROOM_ID_RE = Regex("^[a-zA-Z0-9_-]{8,128}$")
     private val STUN_URL_RE = Regex("^stun:[^\\s]+$", RegexOption.IGNORE_CASE)
+    const val DEEP_LINK_PREFIX = "dsh-remote://pair"
+    private const val MAX_PAIRING_INPUT_CHARS = 32_768
 
-    fun parse(rawJson: String): PairingBootstrapDescriptor {
+    fun parseInput(rawInput: String): PairingBootstrapDescriptor = parse(rawInput)
+
+    fun encodeDeepLink(rawJson: String): String {
+        parseJsonDescriptor(rawJson)
+        val encoded = Base64.getUrlEncoder()
+            .withoutPadding()
+            .encodeToString(rawJson.trim().toByteArray(StandardCharsets.UTF_8))
+        return "$DEEP_LINK_PREFIX?data=$encoded"
+    }
+
+    fun parse(rawInput: String): PairingBootstrapDescriptor {
+        val trimmed = rawInput.trim()
+        if (trimmed.isEmpty()) {
+            throw IllegalArgumentException("empty pairing input")
+        }
+        if (trimmed.length > MAX_PAIRING_INPUT_CHARS) {
+            throw IllegalArgumentException("pairing input exceeds max size")
+        }
+        if (trimmed.startsWith("dsh-remote://", ignoreCase = true)) {
+            val uri = try {
+                URI(trimmed)
+            } catch (e: Exception) {
+                throw IllegalArgumentException("invalid dsh-remote pairing URI: ${e.message}", e)
+            }
+            if (!"dsh-remote".equals(uri.scheme, ignoreCase = true)) {
+                throw IllegalArgumentException("unsupported pairing URI scheme")
+            }
+            val host = uri.host ?: ""
+            val path = uri.path ?: ""
+            if (host != "pair" && path != "/pair") {
+                throw IllegalArgumentException("unsupported dsh-remote action")
+            }
+            val params = parseQueryParams(uri.rawQuery)
+            val base64Data = params["data"]
+            if (!base64Data.isNullOrEmpty()) {
+                val decodedBytes = try {
+                    Base64.getUrlDecoder().decode(base64Data)
+                } catch (e: IllegalArgumentException) {
+                    throw IllegalArgumentException("invalid base64url payload in dsh-remote URI", e)
+                }
+                val jsonText = String(decodedBytes, StandardCharsets.UTF_8)
+                return parseJsonDescriptor(jsonText)
+            }
+            val descriptorParam = params["descriptor"]
+            if (!descriptorParam.isNullOrEmpty()) {
+                return parseJsonDescriptor(descriptorParam)
+            }
+            throw IllegalArgumentException("missing data parameter in dsh-remote pairing URI")
+        }
+        return parseJsonDescriptor(trimmed)
+    }
+
+    private fun parseQueryParams(rawQuery: String?): Map<String, String> {
+        if (rawQuery.isNullOrEmpty()) return emptyMap()
+        val result = LinkedHashMap<String, String>()
+        for (part in rawQuery.split('&')) {
+            if (part.isEmpty()) continue
+            val eqIdx = part.indexOf('=')
+            val keyRaw = if (eqIdx >= 0) part.substring(0, eqIdx) else part
+            val valRaw = if (eqIdx >= 0) part.substring(eqIdx + 1) else ""
+            val key = URLDecoder.decode(keyRaw, StandardCharsets.UTF_8.name())
+            val value = URLDecoder.decode(valRaw, StandardCharsets.UTF_8.name())
+            result[key] = value
+        }
+        return result
+    }
+
+    private fun parseJsonDescriptor(rawJson: String): PairingBootstrapDescriptor {
         val root = JsonCodec.parseObject(rawJson)
         assertNoSessionOrCredentials(root)
 

@@ -37,6 +37,14 @@
             android:textColor="#B0BEC5"
             android:textSize="11sp" />
 
+        <TextView
+            android:id="@+id/tv_metrics"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:textColor="#90CAF9"
+            android:textSize="11sp" />
+
         <EditText
             android:id="@+id/et_pairing_json"
             android:layout_width="match_parent"
@@ -116,6 +124,29 @@
                 android:layout_height="wrap_content"
                 android:text="@string/action_attach" />
         </LinearLayout>
+
+        <HorizontalScrollView
+            android:id="@+id/hsv_session_chips"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:scrollbars="none">
+
+            <LinearLayout
+                android:id="@+id/ll_session_chips"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:padding="4dp"
+                    android:text="@string/session_picker_hint"
+                    android:textColor="#78909C"
+                    android:textSize="11sp" />
+            </LinearLayout>
+        </HorizontalScrollView>
 
         <TextView
             android:id="@+id/tv_approval"
@@ -198,6 +229,18 @@
                 android:layout_height="wrap_content"
                 android:text="@string/action_send" />
         </LinearLayout>
+
+        <TextView
+            android:id="@+id/tv_assistant_stream"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:background="#16202A"
+            android:minLines="3"
+            android:padding="8dp"
+            android:text="@string/assistant_stream_empty"
+            android:textColor="#E8F5E9"
+            android:textSize="13sp" />
 
         <TextView
             android:id="@+id/tv_events"

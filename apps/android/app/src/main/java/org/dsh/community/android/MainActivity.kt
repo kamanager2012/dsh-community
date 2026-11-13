@@ -9,21 +9,26 @@ import android.os.Bundle
 import android.os.IBinder
 import android.widget.Button
 import android.widget.EditText
+import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import org.dsh.community.android.crypto.DeviceIdentity
+import org.dsh.community.android.protocol.JsonObject
 import org.dsh.community.android.protocol.OfficialSessionEvent
 import org.dsh.community.android.protocol.SessionRef
+import org.dsh.community.android.service.BackgroundLifecycleStats
 import org.dsh.community.android.service.RemoteSessionService
 import org.dsh.community.android.transport.DiscoveredLanHost
 import org.dsh.community.android.transport.LanMdnsDiscoverer
+import org.dsh.community.android.transport.PairingQrParser
 import org.dsh.community.android.transport.RemoteConnectionPhase
 import org.dsh.community.android.transport.TransportKind
 
 /**
- * Pure native Android thin Remote Client UI (R5):
+ * Pure native Android thin Remote Client UI (R6):
  *  - No embedded Node runtime, no local HTTP loop, no WebView hosting local DSH.
- *  - Pairs via PairingBootstrapDescriptor JSON or secret-free mDNS `_dsh-remote._tcp.`.
- *  - Lists official Host sessions, streams events, submits idempotent prompts, approvals, and questions.
+ *  - Pairs via PairingBootstrapDescriptor JSON, `dsh-remote://pair` deep links, or mDNS `_dsh-remote._tcp.`.
+ *  - Lists official Host sessions, streams events & token chunks, submits idempotent prompts, approvals, and questions.
  */
 class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
     private var service: RemoteSessionService? = null
@@ -32,15 +37,28 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
 
     private lateinit var statusView: TextView
     private lateinit var deviceIdView: TextView
+    private lateinit var metricsView: TextView
     private lateinit var pairingInput: EditText
     private lateinit var sessionIdInput: EditText
+    private lateinit var sessionChipsContainer: LinearLayout
     private lateinit var promptInput: EditText
+    private lateinit var assistantStreamView: TextView
     private lateinit var eventLogView: TextView
     private lateinit var approvalBanner: TextView
     private lateinit var answerInput: EditText
 
     private var pendingCallId: String? = null
     private var pendingQuestionId: String? = null
+    private var pendingDeepLinkInput: String? = null
+    private var stickyStatusError: String? = null
+    private var lastHandledIntentRef: Intent? = null
+    private var attachedSessionId: String? = null
+    private var lastSessions: List<SessionRef> = emptyList()
+    private val streamBuffer = StringBuilder()
+    private var inReasoningBlock = false
+    private var streamChunkCount = 0
+    private var lastIdentity: DeviceIdentity? = null
+    private var lastStats: BackgroundLifecycleStats? = null
     private val discoveredHosts = LinkedHashMap<String, DiscoveredLanHost>()
 
     private val connection = object : ServiceConnection {
@@ -49,6 +67,11 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
             service = local
             bound = true
             local.addObserver(this@MainActivity)
+            val queued = pendingDeepLinkInput
+            if (queued != null) {
+                pendingDeepLinkInput = null
+                local.connectWithPairingInput(queued)
+            }
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
@@ -63,9 +86,12 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
 
         statusView = findViewById(R.id.tv_status)
         deviceIdView = findViewById(R.id.tv_device_id)
+        metricsView = findViewById(R.id.tv_metrics)
         pairingInput = findViewById(R.id.et_pairing_json)
         sessionIdInput = findViewById(R.id.et_session_id)
+        sessionChipsContainer = findViewById(R.id.ll_session_chips)
         promptInput = findViewById(R.id.et_prompt)
+        assistantStreamView = findViewById(R.id.tv_assistant_stream)
         eventLogView = findViewById(R.id.tv_events)
         approvalBanner = findViewById(R.id.tv_approval)
         answerInput = findViewById(R.id.et_answer)
@@ -80,7 +106,8 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
         findViewById<Button>(R.id.btn_connect).setOnClickListener {
             val raw = pairingInput.text.toString().trim()
             if (raw.isNotEmpty()) {
-                service?.connectWithPairingJson(raw)
+                stickyStatusError = null
+                service?.connectWithPairingInput(raw)
             }
         }
 
@@ -103,7 +130,7 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
         findViewById<Button>(R.id.btn_attach).setOnClickListener {
             val sid = sessionIdInput.text.toString().trim()
             if (sid.isNotEmpty()) {
-                service?.attachSessionAsync(sid)
+                selectAndAttachSession(sid)
             }
         }
 
@@ -140,6 +167,14 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
                 approvalBanner.text = getString(R.string.no_pending_interaction)
             }
         }
+
+        handleIncomingIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIncomingIntent(intent)
     }
 
     override fun onStart() {
@@ -165,24 +200,201 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
         message: String,
     ) {
         runOnUiThread {
-            statusView.text = "[$phase] carrier=${carrier?.wireName ?: "-"} epoch=$epoch — $message"
-            deviceIdView.text = "Device ID (Keystore-wrapped): $deviceId"
+            if (phase != RemoteConnectionPhase.DISCONNECTED) {
+                stickyStatusError = null
+            }
+            val sticky = stickyStatusError
+            statusView.text = if (phase == RemoteConnectionPhase.DISCONNECTED && sticky != null) {
+                sticky
+            } else {
+                "[$phase] carrier=${carrier?.wireName ?: "-"} epoch=$epoch — $message"
+            }
+            val backingLabel = lastIdentity?.backing ?: "Keystore-wrapped"
+            deviceIdView.text = "Device ID ($backingLabel): $deviceId"
         }
     }
 
     override fun onSessionsUpdated(sessions: List<SessionRef>) {
         runOnUiThread {
+            lastSessions = sessions
             val summary = sessions.joinToString("\n") { "${it.id} (${it.title ?: "untitled"})" }
             appendLog("Sessions:\n$summary")
             if (sessionIdInput.text.isNullOrBlank() && sessions.isNotEmpty()) {
                 sessionIdInput.setText(sessions.first().id)
             }
+            renderSessionChips(sessions)
+        }
+    }
+
+    override fun onMetricsUpdated(identity: DeviceIdentity, stats: BackgroundLifecycleStats) {
+        runOnUiThread {
+            lastIdentity = identity
+            lastStats = stats
+            refreshMetricsUi()
         }
     }
 
     override fun onEventReceived(sessionId: String, event: OfficialSessionEvent) {
         runOnUiThread {
+            val dataObj = event.data as? JsonObject
+            if (event.type == "assistant/chunk") {
+                val chunk = dataObj?.obj("chunk")
+                val cType = chunk?.str("type")
+                if (cType == "text-delta" || cType == "text") {
+                    val delta = chunk.str("text") ?: chunk.str("delta") ?: ""
+                    if (inReasoningBlock) {
+                        streamBuffer.append('\n')
+                        inReasoningBlock = false
+                    }
+                    appendStreamDelta(delta)
+                    return@runOnUiThread
+                } else if (cType == "reasoning-delta" || cType == "reasoning") {
+                    val delta = chunk.str("text") ?: chunk.str("delta") ?: ""
+                    if (!inReasoningBlock) {
+                        streamBuffer.append(if (streamBuffer.isEmpty()) "[thinking] " else "\n[thinking] ")
+                        inReasoningBlock = true
+                    }
+                    appendStreamDelta(delta)
+                    return@runOnUiThread
+                }
+            } else if (event.type == "text-delta") {
+                val delta = dataObj?.str("text") ?: dataObj?.str("delta") ?: ""
+                if (inReasoningBlock) {
+                    streamBuffer.append('\n')
+                    inReasoningBlock = false
+                }
+                appendStreamDelta(delta)
+                return@runOnUiThread
+            } else if (event.type == "reasoning-delta") {
+                val delta = dataObj?.str("text") ?: dataObj?.str("delta") ?: ""
+                if (!inReasoningBlock) {
+                    streamBuffer.append(if (streamBuffer.isEmpty()) "[thinking] " else "\n[thinking] ")
+                    inReasoningBlock = true
+                }
+                appendStreamDelta(delta)
+                return@runOnUiThread
+            } else if (event.type == "tool/call" || event.type == "tool.call") {
+                val toolName = dataObj?.str("toolName") ?: dataObj?.str("name") ?: "tool"
+                appendStreamDelta("\n[tool:$toolName] ")
+            } else if (event.type == "tool/result" || event.type == "tool.result") {
+                val toolName = dataObj?.str("toolName") ?: dataObj?.str("name") ?: "tool"
+                appendStreamDelta("[/tool:$toolName]\n")
+            } else if (event.type == "user/message") {
+                val content = dataObj?.str("text") ?: dataObj?.str("content")
+                if (!content.isNullOrBlank()) {
+                    appendStreamDelta(if (streamBuffer.isEmpty()) "> $content\n" else "\n\n> $content\n")
+                }
+            } else if (event.type == "approval.resolved") {
+                if (pendingCallId != null && pendingCallId == dataObj?.str("callId")) {
+                    pendingCallId = null
+                    approvalBanner.text = getString(R.string.no_pending_interaction)
+                }
+            } else if (event.type == "question.resolved") {
+                if (pendingQuestionId != null && pendingQuestionId == dataObj?.str("questionId")) {
+                    pendingQuestionId = null
+                    approvalBanner.text = getString(R.string.no_pending_interaction)
+                }
+            }
             appendLog("[#$sessionId seq=${event.seq}] ${event.type}: ${event.data?.stringify() ?: ""}")
+        }
+    }
+
+    private fun handleIncomingIntent(incoming: Intent?) {
+        if (incoming == null || incoming === lastHandledIntentRef) return
+        if (incoming.action != Intent.ACTION_VIEW) return
+        val uri = incoming.data ?: return
+        if (!"dsh-remote".equals(uri.scheme, ignoreCase = true)) return
+        lastHandledIntentRef = incoming
+        val uriString = uri.toString()
+        try {
+            val descriptor = PairingQrParser.parseInput(uriString)
+            stickyStatusError = null
+            pairingInput.setText(uriString)
+            appendLog("Deep-link validated (fp=${descriptor.hostFingerprint.take(12)}..., endpoint=${descriptor.endpointUrl})")
+            val svc = service
+            if (svc != null) {
+                pendingDeepLinkInput = null
+                svc.connectWithPairingInput(uriString)
+            } else {
+                pendingDeepLinkInput = uriString
+            }
+        } catch (t: Throwable) {
+            val rejectedBanner = "[REJECTED] Invalid dsh-remote link: ${t.message}"
+            stickyStatusError = rejectedBanner
+            statusView.text = rejectedBanner
+            appendLog("Rejected dsh-remote link: ${t.message}")
+        }
+    }
+
+    private fun selectAndAttachSession(sessionId: String) {
+        sessionIdInput.setText(sessionId)
+        if (attachedSessionId != sessionId) {
+            attachedSessionId = sessionId
+            streamBuffer.setLength(0)
+            inReasoningBlock = false
+            assistantStreamView.text = getString(R.string.assistant_stream_empty)
+        }
+        if (lastSessions.isNotEmpty()) {
+            renderSessionChips(lastSessions)
+        }
+        service?.attachSessionAsync(sessionId)
+    }
+
+    private fun renderSessionChips(sessions: List<SessionRef>) {
+        sessionChipsContainer.removeAllViews()
+        if (sessions.isEmpty()) {
+            val hint = TextView(this).apply {
+                text = getString(R.string.session_picker_hint)
+                setTextColor(0xFF78909C.toInt())
+                textSize = 11f
+            }
+            sessionChipsContainer.addView(hint)
+            return
+        }
+        val selectedId = sessionIdInput.text?.toString()?.trim()
+        for (session in sessions) {
+            val btn = Button(this).apply {
+                val label = session.title?.take(22)?.takeIf { it.isNotBlank() } ?: session.id.take(14)
+                text = label
+                textSize = 11f
+                isAllCaps = false
+                val selected = session.id == selectedId
+                setBackgroundColor(if (selected) 0xFF00695C.toInt() else 0xFF263238.toInt())
+                setTextColor(0xFFFFFFFF.toInt())
+                setOnClickListener { selectAndAttachSession(session.id) }
+            }
+            val lp = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                marginEnd = 12
+            }
+            sessionChipsContainer.addView(btn, lp)
+        }
+    }
+
+    private fun appendStreamDelta(delta: String) {
+        if (delta.isEmpty()) return
+        streamBuffer.append(delta)
+        if (streamBuffer.length > 12_000) {
+            streamBuffer.delete(0, streamBuffer.length - 10_000)
+        }
+        assistantStreamView.text = streamBuffer.toString()
+        streamChunkCount += 1
+        refreshMetricsUi()
+    }
+
+    private fun refreshMetricsUi() {
+        val id = lastIdentity
+        val stats = lastStats
+        if (id != null) {
+            deviceIdView.text = "Device ID (${id.backing}): ${id.deviceId}"
+        }
+        if (stats != null) {
+            metricsView.text =
+                "starts=${stats.serviceStartCount} reconnects=${stats.reconnectAttempts} " +
+                    "netLoss=${stats.networkLossCount} notif=${stats.approvalNotificationsPosted} " +
+                    "carrier=${stats.activeCarrier ?: "-"} epoch=${stats.currentEpoch} chunks=$streamChunkCount"
         }
     }
 

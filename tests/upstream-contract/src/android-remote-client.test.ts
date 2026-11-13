@@ -68,6 +68,17 @@ describe('Android R5 pure thin Remote Client contract', () => {
       expect(existsSync(join(testJava, rel)), rel).toBe(true)
     }
 
+    const instrTestPath = join(
+      ANDROID_ROOT,
+      'app/src/androidTest/java/org/dsh/community/android/RemoteClientInstrumentationTest.kt',
+    )
+    expect(existsSync(instrTestPath), 'RemoteClientInstrumentationTest.kt').toBe(true)
+    const instrKotlin = readFileSync(instrTestPath, 'utf8')
+    expect(instrKotlin).toContain('AndroidKeyStore')
+    expect(instrKotlin).toContain('RemoteSessionService')
+    expect(instrKotlin).toContain('dsh-remote://pair')
+    expect(instrKotlin).toContain('dshPairingInput')
+
     const appKotlin = readFileSync(join(mainJava, 'DshApp.kt'), 'utf8')
     expect(appKotlin).toContain('REMOTE_CLIENT_MODE = true')
     expect(appKotlin).toContain('EMBEDDED_NODE_RUNTIME = false')
@@ -80,6 +91,9 @@ describe('Android R5 pure thin Remote Client contract', () => {
 
     const manifest = readFileSync(join(ANDROID_ROOT, 'app/src/main/AndroidManifest.xml'), 'utf8')
     expect(manifest).toContain('android:allowBackup="false"')
+    expect(manifest).toContain('android:launchMode="singleTop"')
+    expect(manifest).toContain('android:scheme="dsh-remote"')
+    expect(manifest).toContain('android:host="pair"')
     expect(manifest).toContain('.service.RemoteSessionService')
     expect(manifest).toContain('foregroundServiceType="dataSync"')
     expect(manifest).not.toContain('RuntimeService')
@@ -87,22 +101,43 @@ describe('Android R5 pure thin Remote Client contract', () => {
     const gradleApp = readFileSync(join(ANDROID_ROOT, 'app/build.gradle.kts'), 'utf8')
     expect(gradleApp).not.toContain('webkit')
     expect(gradleApp).toContain('junit:junit')
+    expect(gradleApp).toContain('androidx.test.runner.AndroidJUnitRunner')
+    expect(gradleApp).toContain('androidx.test.ext:junit')
 
     const layout = readFileSync(join(ANDROID_ROOT, 'app/src/main/res/layout/activity_main.xml'), 'utf8')
     expect(layout).not.toContain('WebView')
     expect(layout).toContain('btn_approve')
     expect(layout).toContain('btn_reject')
     expect(layout).toContain('btn_send_prompt')
+    expect(layout).toContain('ll_session_chips')
+    expect(layout).toContain('tv_assistant_stream')
   })
 
-  it('provides live Kotlin-vs-Node E2EE interop host and CI acceptance workflow', () => {
+  it('provides live Kotlin-vs-Node E2EE interop host, R6 ADB runner, fail-closed gate, and CI acceptance workflow', () => {
     expect(existsSync(join(ROOT, 'scripts/r5-android-interop-host.mjs'))).toBe(true)
+    const r6RunnerPath = join(ROOT, 'scripts/accept-android-r6-device.mjs')
+    expect(existsSync(r6RunnerPath)).toBe(true)
+    const r6Runner = readFileSync(r6RunnerPath, 'utf8')
+    expect(r6Runner).toContain('ro.product.cpu.abi')
+    expect(r6Runner).toContain('ro.kernel.qemu')
+    expect(r6Runner).toContain('isPhysicalArm64')
+    expect(r6Runner).toContain('arm64RealDeviceSmoke')
+
+    const realityGate = JSON.parse(
+      readFileSync(join(ANDROID_ROOT, 'evidence/reality-gate.json'), 'utf8'),
+    ) as { status: string; apk: { arm64RealDeviceSmoke: boolean } }
+    expect(realityGate.status).toBe('NOT_RUN')
+    expect(realityGate.apk.arm64RealDeviceSmoke).toBe(false)
+
     const workflowPath = join(ROOT, '.github/workflows/android-remote-acceptance.yml')
     expect(existsSync(workflowPath)).toBe(true)
     const wf = readFileSync(workflowPath, 'utf8')
     expect(wf).toContain('DSH_ANDROID_REQUIRE_LIVE_INTEROP')
     expect(wf).toContain('testDebugUnitTest')
     expect(wf).toContain('assembleDebug')
+    expect(wf).toContain('assembleDebugAndroidTest')
+    expect(wf).toContain('android-emulator-r6')
+    expect(wf).toContain('accept-android-r6-device.mjs')
     expect(wf).toContain('libnode')
     expect(wf).toContain('deepseek-ai')
   })

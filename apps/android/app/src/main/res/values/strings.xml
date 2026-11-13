@@ -2,8 +2,10 @@
     <string name="app_name">DSH Remote</string>
     <string name="remote_client_header">DSH Remote Client [LABS / UNVERIFIED]</string>
     <string name="status_disconnected">[DISCONNECTED] Remote-only thin client</string>
-    <string name="hint_pairing_json">Paste PairingBootstrapDescriptor JSON from Host</string>
+    <string name="hint_pairing_json">Paste Pairing JSON or dsh-remote://pair URI from Host</string>
     <string name="hint_session_id">Official Session ID</string>
+    <string name="assistant_stream_empty">Assistant stream idle</string>
+    <string name="session_picker_hint">No Host sessions loaded yet — tap Sessions after Connect</string>
     <string name="hint_prompt">Follow-up prompt for attached official session</string>
     <string name="hint_answer">Reply to Host question</string>
     <string name="no_pending_interaction">No pending approval or question</string>

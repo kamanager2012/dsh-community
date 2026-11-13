@@ -33,6 +33,7 @@ import {
 } from './launch.js'
 import { communityClientVersion, formatClientIdentity } from './version.js'
 import { ensureCommunityTuiProfile } from './profile.js'
+import { runRemoteCommand } from './remote.js'
 import { desktopSourceRequiredMessage, findPackagedDesktopExecutable } from './desktop-launch.js'
 import {
   formatHumanSessions,
@@ -98,6 +99,10 @@ if (launch.kind === 'version') {
   const install = resolveOfficialDsh({ from: import.meta.url })
   process.stdout.write(formatClientIdentity(install.packageName, install.version))
   process.exit(0)
+}
+
+if (launch.kind === 'remote') {
+  process.exit(await runRemoteCommand(launch.rest, process.env, dshHome))
 }
 
 const sessionRoot = officialSessionRoot(dshHome)

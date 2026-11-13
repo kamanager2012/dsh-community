@@ -239,3 +239,50 @@ export function parsePairingBootstrapDescriptor(raw: string): PairingBootstrapDe
 
   return Object.freeze(result)
 }
+
+export const DSH_REMOTE_DEEP_LINK_PREFIX = 'dsh-remote://pair'
+
+/**
+ * Encodes a PairingBootstrapDescriptor into a sanitized `dsh-remote://pair?data=<base64url>`
+ * deep-link URI without session or credential material.
+ */
+export function encodePairingDeepLink(descriptor: PairingBootstrapDescriptor): string {
+  assertNoSessionOrCredentialsInDescriptor(descriptor as unknown as Record<string, unknown>)
+  const encoded = Buffer.from(JSON.stringify(descriptor), 'utf8').toString('base64url')
+  return `${DSH_REMOTE_DEEP_LINK_PREFIX}?data=${encoded}`
+}
+
+/**
+ * Parses either raw QR descriptor JSON or a `dsh-remote://pair?...` deep-link URI.
+ */
+export function parsePairingInput(raw: string): PairingBootstrapDescriptor {
+  const trimmed = raw.trim()
+  if (trimmed.length === 0) {
+    throw new RemoteCryptoError('HANDSHAKE_FAILED', 'empty pairing input')
+  }
+  if (trimmed.startsWith('dsh-remote://')) {
+    let parsedUrl: URL
+    try {
+      parsedUrl = new URL(trimmed)
+    } catch (err) {
+      throw new RemoteCryptoError(
+        'HANDSHAKE_FAILED',
+        `invalid dsh-remote pairing URI: ${(err as Error).message}`,
+      )
+    }
+    if (parsedUrl.hostname !== 'pair' && parsedUrl.pathname !== '/pair') {
+      throw new RemoteCryptoError('HANDSHAKE_FAILED', 'unsupported dsh-remote action')
+    }
+    const base64Data = parsedUrl.searchParams.get('data')
+    if (base64Data !== null && base64Data.length > 0) {
+      const jsonText = Buffer.from(base64Data, 'base64url').toString('utf8')
+      return parsePairingBootstrapDescriptor(jsonText)
+    }
+    const descriptorParam = parsedUrl.searchParams.get('descriptor')
+    if (descriptorParam !== null && descriptorParam.length > 0) {
+      return parsePairingBootstrapDescriptor(descriptorParam)
+    }
+    throw new RemoteCryptoError('HANDSHAKE_FAILED', 'missing data parameter in dsh-remote pairing URI')
+  }
+  return parsePairingBootstrapDescriptor(trimmed)
+}

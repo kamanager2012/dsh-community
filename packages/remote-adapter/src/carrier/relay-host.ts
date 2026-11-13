@@ -513,13 +513,29 @@ export class HostRelayCarrier {
     const ws = this.ws
     this.ws = undefined
     if (ws) {
-      try {
+      await new Promise<void>((resolve) => {
+        if (ws.readyState === WebSocket.CLOSED) {
+          resolve()
+          return
+        }
+        const timer = setTimeout(() => {
+          ws.onclose = null
+          resolve()
+        }, 300)
         ws.onopen = null
         ws.onmessage = null
         ws.onerror = null
-        ws.onclose = null
-        ws.close()
-      } catch {}
+        ws.onclose = () => {
+          clearTimeout(timer)
+          resolve()
+        }
+        try {
+          ws.close(1000, 'host shutting down')
+        } catch {
+          clearTimeout(timer)
+          resolve()
+        }
+      })
     }
   }
 }

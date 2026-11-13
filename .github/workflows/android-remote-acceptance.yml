@@ -51,33 +51,44 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm --filter @dsh-community/shared-types --filter @dsh-community/dsh-bridge --filter @dsh-community/remote-adapter build
 
-      - name: Run Android JVM unit tests and live Kotlin-to-Node E2EE interop
+      - name: Run Android JVM unit tests, assemble debug APK and androidTest APK
         env:
           DSH_ANDROID_REQUIRE_LIVE_INTEROP: '1'
           DSH_ANDROID_INTEROP_HOST_SCRIPT: ${{ github.workspace }}/scripts/r5-android-interop-host.mjs
         run: |
           cd apps/android
-          gradle --no-daemon testDebugUnitTest --info
+          gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest --info
 
-      - name: Assemble debug APK and prove zero embedded Node or official DSH
+      - name: Prove zero embedded Node or official DSH in assembled APKs
         run: |
           cd apps/android
-          gradle --no-daemon assembleDebug
           APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
+          TEST_APK_PATH="app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
           test -f "$APK_PATH"
+          test -f "$TEST_APK_PATH"
           unzip -l "$APK_PATH" | tee /tmp/android-apk-entries.txt
-          if grep -iE 'libnode\.so|nodejs-mobile|nodejs-project|@deepseek-ai/dsh|deepseek-ai' /tmp/android-apk-entries.txt; then
+          unzip -l "$TEST_APK_PATH" | tee /tmp/android-test-apk-entries.txt
+          if grep -iE 'libnode\.so|nodejs-mobile|nodejs-project|@deepseek-ai/dsh|deepseek-ai' /tmp/android-apk-entries.txt /tmp/android-test-apk-entries.txt; then
             echo "ERROR: APK contains forbidden embedded Node or official DSH runtime entry" >&2
             exit 1
           fi
-          sha256sum "$APK_PATH" | tee /tmp/android-apk-sha256.txt
+          sha256sum "$APK_PATH" "$TEST_APK_PATH" | tee /tmp/android-apk-sha256.txt
           cd "${{ github.workspace }}"
           if node scripts/verify-android-release-ready.mjs; then
-            echo "ERROR: verify-android-release-ready must stay fail-closed prior to R6 real-device acceptance" >&2
+            echo "ERROR: verify-android-release-ready must stay fail-closed prior to physical arm64 R6 acceptance" >&2
             exit 1
           fi
 
-      - name: Upload Android R5 build and interop evidence logs
+      - name: Upload assembled R6 APKs for emulator acceptance
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: android-r6-debug-apks
+          retention-days: 1
+          path: |
+            apps/android/app/build/outputs/apk/debug/app-debug.apk
+            apps/android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+
+      - name: Upload Android R5/R6 build and interop evidence logs
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
@@ -85,5 +96,117 @@ jobs:
           retention-days: 3
           path: |
             /tmp/android-apk-entries.txt
+            /tmp/android-test-apk-entries.txt
             /tmp/android-apk-sha256.txt
             apps/android/app/build/test-results/testDebugUnitTest/*.xml
+
+  android-emulator-r6:
+    needs: android-remote-client
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          version: 11.21.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: android-r6-debug-apks
+          path: apps/android/app/build/outputs/apk
+
+      - name: Detect KVM support on runner
+        run: |
+          if [ -e /dev/kvm ]; then
+            sudo chmod 666 /dev/kvm || true
+          fi
+          if [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
+            echo "KVM_ENABLED=1" >> "$GITHUB_ENV"
+          else
+            echo "KVM_ENABLED=0" >> "$GITHUB_ENV"
+            echo "WARNING: /dev/kvm is not accessible; x86_64 emulator instrumentation skipped on this runner."
+          fi
+
+      - name: Install Android API 34 x86_64 emulator image and boot AVD
+        if: env.KVM_ENABLED == '1'
+        run: |
+          echo "${ANDROID_HOME}/platform-tools" >> "$GITHUB_PATH"
+          echo "${ANDROID_HOME}/emulator" >> "$GITHUB_PATH"
+          export PATH="${ANDROID_HOME}/platform-tools:${ANDROID_HOME}/emulator:${PATH}"
+          mkdir -p "${HOME}/.android/avd" "${{ github.workspace }}/apps/android/app/build/r6-evidence"
+          export ANDROID_USER_HOME="${HOME}/.android"
+          export ANDROID_AVD_HOME="${HOME}/.android/avd"
+          echo "ANDROID_USER_HOME=${HOME}/.android" >> "$GITHUB_ENV"
+          echo "ANDROID_AVD_HOME=${HOME}/.android/avd" >> "$GITHUB_ENV"
+          SDK_TOOLS="${ANDROID_HOME}/cmdline-tools/latest/bin"
+          yes | "${SDK_TOOLS}/sdkmanager" --licenses >/dev/null || true
+          "${SDK_TOOLS}/sdkmanager" "platform-tools" "emulator" "system-images;android-34;default;x86_64"
+          echo "no" | "${SDK_TOOLS}/avdmanager" create avd --force -n dsh-r6-api34 -k "system-images;android-34;default;x86_64" --abi x86_64
+          ls -la "${ANDROID_AVD_HOME}"
+          "${ANDROID_HOME}/emulator/emulator" -list-avds
+          nohup "${ANDROID_HOME}/emulator/emulator" -avd dsh-r6-api34 -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot > apps/android/app/build/r6-evidence/android-emulator.log 2>&1 &
+          EMU_PID=$!
+          for i in $(seq 1 90); do
+            if ! kill -0 "$EMU_PID" 2>/dev/null; then
+              echo "ERROR: Android emulator process exited prematurely" >&2
+              cat apps/android/app/build/r6-evidence/android-emulator.log || true
+              exit 1
+            fi
+            BOOTED="$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
+            if [ "$BOOTED" = "1" ]; then
+              break
+            fi
+            sleep 2
+          done
+          if [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)" != "1" ]; then
+            cat apps/android/app/build/r6-evidence/android-emulator.log || true
+            exit 1
+          fi
+          adb shell settings put global window_animation_scale 0 || true
+          adb shell settings put global transition_animation_scale 0 || true
+          adb shell settings put global animator_duration_scale 0 || true
+          adb shell svc power stayon true || true
+          adb shell input keyevent 224 || true
+          adb shell wm dismiss-keyguard || true
+          adb shell input keyevent 82 || true
+
+      - name: Build host remote-adapter and run R6 instrumentation acceptance on emulator
+        if: env.KVM_ENABLED == '1'
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --filter @dsh-community/shared-types --filter @dsh-community/dsh-bridge --filter @dsh-community/remote-adapter build
+          APK_PATH="$(find apps/android/app/build/outputs/apk -name 'app-debug.apk' | head -n 1)"
+          TEST_APK_PATH="$(find apps/android/app/build/outputs/apk -name 'app-debug-androidTest.apk' | head -n 1)"
+          test -n "$APK_PATH"
+          test -n "$TEST_APK_PATH"
+          node scripts/accept-android-r6-device.mjs --apk "$APK_PATH" --test-apk "$TEST_APK_PATH" --output apps/android/app/build/r6-evidence/r6-emulator-acceptance.json
+          node -e "const r=JSON.parse(require('fs').readFileSync('apps/android/app/build/r6-evidence/r6-emulator-acceptance.json','utf8')); if (r.apk.arm64RealDeviceSmoke !== false || r.apk.x86_64EmulatorSmoke !== true || r.remoteAcceptance.pairing !== 'PASS') process.exit(1);"
+          if node scripts/verify-android-release-ready.mjs; then
+            echo "ERROR: emulator acceptance must never unlock physical arm64 release gate" >&2
+            exit 1
+          fi
+
+      - name: Capture logcat and stop Android emulator
+        if: always() && env.KVM_ENABLED == '1'
+        run: |
+          adb logcat -d -t 250 > apps/android/app/build/r6-evidence/android-logcat.txt || true
+          adb emu kill || true
+
+      - name: Upload R6 emulator instrumentation acceptance evidence
+        if: always() && env.KVM_ENABLED == '1'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: android-r6-emulator-acceptance
+          retention-days: 3
+          path: |
+            apps/android/app/build/r6-evidence/r6-emulator-acceptance.json
+            apps/android/app/build/r6-evidence/android-emulator.log
+            apps/android/app/build/r6-evidence/android-logcat.txt
