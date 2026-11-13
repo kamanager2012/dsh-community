@@ -26,12 +26,28 @@ export const SHELL_DATA_PREFIX = 'data:text/html;charset=utf-8,'
 /** Preload bridge every generated chrome document references. */
 const SHELL_BRIDGE_MARKER = 'window.dshCommunity'
 
+export function shellIpcMarker(token: string): string {
+  return `<!-- dsh-shell:${token} -->`
+}
+
+export function stampShellDocument(html: string, token: string): string {
+  const marker = shellIpcMarker(token)
+  if (html.includes(marker)) return html
+  const closingIndex = html.lastIndexOf('</html>')
+  if (closingIndex === -1) return `${html}\n${marker}`
+  return `${html.slice(0, closingIndex)}${marker}\n${html.slice(closingIndex)}`
+}
+
 /** True only for our own generated chrome documents, not arbitrary data:* URLs. */
-export function isDataHtmlUrl(raw: string): boolean {
+export function isDataHtmlUrl(raw: string, expectedToken?: string): boolean {
   if (!raw.startsWith(SHELL_DATA_PREFIX)) return false
   try {
     const html = decodeURIComponent(raw.slice(SHELL_DATA_PREFIX.length))
-    return html.includes(SHELL_BRIDGE_MARKER)
+    if (!html.includes(SHELL_BRIDGE_MARKER)) return false
+    if (expectedToken !== undefined && expectedToken !== '' && !html.includes(shellIpcMarker(expectedToken))) {
+      return false
+    }
+    return true
   } catch {
     return false
   }
@@ -54,9 +70,12 @@ export function decideOfficialViewNavigation(raw: string, origin: string): Navig
 
 /**
  * Fail-closed origin check for IPC calls: only shell chrome documents
- * bearing our bridge marker are permitted to trigger desktop IPC.
+ * bearing our bridge marker (and per-boot token when provided) may invoke desktop IPC.
  */
-export function isAuthorizedIpcSender(senderFrame: { url: string } | null | undefined): boolean {
+export function isAuthorizedIpcSender(
+  senderFrame: { url: string } | null | undefined,
+  expectedToken?: string,
+): boolean {
   if (senderFrame == null || typeof senderFrame.url !== 'string') return false
-  return isDataHtmlUrl(senderFrame.url)
+  return isDataHtmlUrl(senderFrame.url, expectedToken)
 }

@@ -1,3 +1,5 @@
+import { randomBytes } from 'node:crypto'
+
 export const CHROME_HEIGHT = 48
 
 export type ChromeActive =
@@ -44,12 +46,25 @@ function escapeHtml(value: string): string {
 /** Thin bar that stays up while official `dsh web` fills the rest of the window. */
 export function renderChromePage(model: ChromeBarModel): string {
   const status = `${model.phase}${model.isolated ? ' · 独立数据目录' : ' · 共用 ~/.dsh'}`
+  const nonce = randomBytes(16).toString('base64')
+  const csp = [
+    "default-src 'none'",
+    `style-src 'nonce-${nonce}'`,
+    `script-src 'nonce-${nonce}'`,
+    "img-src 'none'",
+    "connect-src 'none'",
+    "frame-src 'none'",
+    "object-src 'none'",
+    "base-uri 'none'",
+    "form-action 'none'",
+  ].join('; ')
   return `<!doctype html>
 <html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="${csp}" />
     <title>${escapeHtml(model.product)}</title>
-    <style>
+    <style nonce="${nonce}">
       :root { color-scheme: dark; }
       html, body { height: 100%; margin: 0; background: #101218; color: #d9dee8;
         font: 13px/1.4 ui-sans-serif, system-ui, sans-serif; overflow: hidden; }
@@ -78,7 +93,7 @@ export function renderChromePage(model: ChromeBarModel): string {
         <button data-go="diagnostics" data-active="${String(model.active === 'diagnostics')}">诊断</button>
       </nav>
     </div>
-    <script>
+    <script nonce="${nonce}">
       const go = {
         official: () => window.dshCommunity?.openOfficial(),
         sessions: () => window.dshCommunity?.showSessions(),

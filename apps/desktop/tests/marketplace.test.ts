@@ -283,4 +283,76 @@ describe('marketplace page', () => {
     expect(html).toMatch(/&lt;img src=x/)
     expect(html).toMatch(/a&amp;b/)
   })
+
+  it('accepts 0.2.x-rc.N, security metadata, and npm package name checks', () => {
+    const withSecurity = parseMarketplaceCatalog({
+      ...VALID_CATALOG,
+      plugins: [{
+        ...VALID_CATALOG.plugins[0]!,
+        versions: [{
+          version: '0.2.0',
+          testedDsh: '0.2.2-rc.2',
+          integrity: 'sha512-abc',
+          provenance: true,
+          security: {
+            risk: 'high',
+            requiresConfirmation: true,
+            network: 'lan',
+            dataEgress: 'none',
+            credentials: 'none',
+            filesystem: 'profile',
+            processExecution: 'none',
+            persistence: 'config',
+            manualReviewStatus: 'reviewed',
+            manualReviewNote: '仅限可信内网使用',
+            lastReviewedAt: '2026-09-10',
+          },
+        }],
+      }],
+    })
+    expect(withSecurity?.plugins[0]?.versions[0]?.testedDsh).toBe('0.2.2-rc.2')
+    expect(withSecurity?.plugins[0]?.versions[0]?.security?.risk).toBe('high')
+    expect(withSecurity?.plugins[0]?.versions[0]?.integrity).toBe('sha512-abc')
+    expect(withSecurity?.plugins[0]?.versions[0]?.provenance).toBe(true)
+
+    const html = renderMarketplacePage(marketplacePageModel({ catalog: withSecurity, installed: [] }))
+    expect(html).toMatch(/高风险/)
+    expect(html).toMatch(/仅限可信内网使用/)
+    expect(html).toMatch(/data-plugin-confirm="true"/)
+    expect(html).toMatch(/window\.confirm/)
+
+    // Rejects broken security invariant
+    const badSecurity = parseMarketplaceCatalog({
+      ...VALID_CATALOG,
+      plugins: [{
+        ...VALID_CATALOG.plugins[0]!,
+        versions: [{
+          version: '0.2.0',
+          testedDsh: '0.2.2-rc.2',
+          security: {
+            risk: 'high',
+            requiresConfirmation: false,
+            network: 'lan',
+            dataEgress: 'none',
+            credentials: 'none',
+            filesystem: 'profile',
+            processExecution: 'none',
+            persistence: 'config',
+            manualReviewStatus: 'reviewed',
+            manualReviewNote: 'note',
+            lastReviewedAt: '2026-09-10',
+          },
+        }],
+      }],
+    })
+    expect(badSecurity).toBeUndefined()
+
+    // Rejects CLI flag injection in action requests and catalog names
+    expect(parsePluginActionRequest({ name: '--all', action: 'install' })).toBeUndefined()
+    expect(parsePluginActionRequest({ name: '../evil', action: 'install' })).toBeUndefined()
+    expect(parsePluginActionRequest({ name: '@scope/valid-plugin', action: 'install' })).toEqual({
+      name: '@scope/valid-plugin',
+      action: 'install',
+    })
+  })
 })

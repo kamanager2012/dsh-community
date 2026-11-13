@@ -30,5 +30,10 @@ describe('desktop chrome around official dsh web', () => {
     expect(html).toMatch(/showMarketplace/)
     expect(html).toMatch(/data-active="true"/)
     expect(html).not.toMatch(/agent loop/)
+    const cspMatch = /content="[^"]*script-src 'nonce-([^']+)'/.exec(html)
+    expect(cspMatch?.[1]).toBeTruthy()
+    const nonce = cspMatch?.[1] ?? ''
+    expect(html).toContain(`<style nonce="${nonce}">`)
+    expect(html).toContain(`<script nonce="${nonce}">`)
   })
 })

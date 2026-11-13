@@ -12,11 +12,16 @@ function bindNavigation(
   decide: (url: string, origin: string) => ReturnType<typeof decideNavigation>,
   getOrigin: () => string,
 ): void {
-  contents.on('will-navigate', (event, url) => {
+  const enforce = (event: Electron.Event, url: string): void => {
     const decision = decide(url, getOrigin())
     if (decision === 'allow') return
     event.preventDefault()
     if (decision === 'open-external') void shell.openExternal(url)
+  }
+  contents.on('will-navigate', enforce)
+  contents.on('will-redirect', enforce)
+  contents.on('will-attach-webview', (event) => {
+    event.preventDefault()
   })
   contents.setWindowOpenHandler(({ url }) => {
     if (decide(url, getOrigin()) === 'open-external') {

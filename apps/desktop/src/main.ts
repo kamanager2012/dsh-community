@@ -3,9 +3,11 @@
  * the published official CLI. This file does not contain an agent loop.
  */
 
+import { randomBytes } from 'node:crypto'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawn } from 'node:child_process'
+import { StringDecoder } from 'node:string_decoder'
 import {
   app,
   clipboard,
@@ -41,9 +43,10 @@ import { resolveLatestTestedPath } from './contracts-path.ts'
 import { appendHostDiagnostics } from './host-log.ts'
 
 import { readJsonFile, writeJsonFile } from './json-file.ts'
-import { isAuthorizedIpcSender } from './navigation.ts'
+import { isAuthorizedIpcSender, stampShellDocument } from './navigation.ts'
 import { DESKTOP_IPC, LIFECYCLE_IPC } from './ipc-channels.ts'
 import {
+  isValidNpmPackageName,
   MARKETPLACE_CATALOG_URL,
   MARKETPLACE_REGISTRY_URL,
   marketplaceSnapshot,
@@ -116,6 +119,9 @@ let pluginChild: ReturnType<typeof spawn> | undefined
 
 const MARKETPLACE_CACHE_TTL_MS = 10 * 60 * 1000
 const MARKETPLACE_PROFILE = 'web'
+const MAX_PLUGIN_LOG_CHARS = 65_536
+const PLUGIN_ACTION_TIMEOUT_MS = 120_000
+const SHELL_IPC_TOKEN = randomBytes(16).toString('hex')
 
 function trayAvailable(): boolean {
   return tray !== undefined && !tray.isDestroyed()
@@ -197,7 +203,7 @@ function persistWindowState(): void {
 }
 
 function dataUrl(html: string): string {
-  return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`
+  return `data:text/html;charset=utf-8,${encodeURIComponent(stampShellDocument(html, SHELL_IPC_TOKEN))}`
 }
 
 function layoutOfficial(): void {
@@ -384,6 +390,7 @@ function installedPluginNames(): readonly string[] {
 
 async function runPluginAction(request: { name: string; action: PluginAction }): Promise<void> {
   if (pluginTask !== undefined || quitting) return
+  if (!isValidNpmPackageName(request.name)) return
   const known = (marketplace?.catalog?.plugins ?? []).some((plugin) => plugin.name === request.name)
   if (!known) return
   pluginTask = { plugin: request.name, action: request.action }
@@ -394,9 +401,10 @@ async function runPluginAction(request: { name: string; action: PluginAction }):
   const env = paths.electronRunAsNode
     ? { ...paths.env, ELECTRON_RUN_AS_NODE: '1' }
     : paths.env
+  const nodePrefix = paths.electronRunAsNode ? ['--expose-internals'] : []
   const child = spawn(
     paths.nodeExecutable,
-    [install.binPath, ...pluginActionArgv({ profile: MARKETPLACE_PROFILE, action: request.action, name: request.name })],
+    [...nodePrefix, install.binPath, ...pluginActionArgv({ profile: MARKETPLACE_PROFILE, action: request.action, name: request.name })],
     {
       cwd: paths.cwd,
       env,
@@ -405,20 +413,65 @@ async function runPluginAction(request: { name: string; action: PluginAction }):
     },
   )
   pluginChild = child
-  const chunks: string[] = []
-  child.stdout?.on('data', (chunk: Buffer | string) => chunks.push(chunk.toString()))
-  child.stderr?.on('data', (chunk: Buffer | string) => chunks.push(chunk.toString()))
-  const finish = (ok: boolean, log: string): void => {
-    pluginResult = { plugin: request.name, action: request.action, ok, log }
+  const stdoutDecoder = new StringDecoder('utf8')
+  const stderrDecoder = new StringDecoder('utf8')
+  let logOutput = ''
+  let truncated = false
+  let timedOut = false
+  let settled = false
+  let killTimer: ReturnType<typeof setTimeout> | undefined
+
+  const appendLog = (text: string): void => {
+    if (text === '' || truncated) return
+    const remaining = MAX_PLUGIN_LOG_CHARS - logOutput.length
+    if (text.length <= remaining) {
+      logOutput += text
+    } else {
+      logOutput += `${text.slice(0, remaining)}\n... (log truncated at 64 KiB)`
+      truncated = true
+    }
+  }
+
+  child.stdout?.on('data', (chunk: Buffer | string) => {
+    appendLog(typeof chunk === 'string' ? chunk : stdoutDecoder.write(chunk))
+  })
+  child.stderr?.on('data', (chunk: Buffer | string) => {
+    appendLog(typeof chunk === 'string' ? chunk : stderrDecoder.write(chunk))
+  })
+
+  const timeoutTimer = setTimeout(() => {
+    timedOut = true
+    child.kill('SIGTERM')
+    killTimer = setTimeout(() => {
+      if (!settled) child.kill('SIGKILL')
+    }, 3_000)
+    killTimer.unref()
+  }, PLUGIN_ACTION_TIMEOUT_MS)
+  timeoutTimer.unref()
+
+  const finish = (ok: boolean, extra = ''): void => {
+    if (settled) return
+    settled = true
+    clearTimeout(timeoutTimer)
+    if (killTimer !== undefined) clearTimeout(killTimer)
+    appendLog(stdoutDecoder.end())
+    appendLog(stderrDecoder.end())
+    const fullLog = extra === '' ? logOutput : logOutput === '' ? extra : `${logOutput}\n${extra}`
+    pluginResult = { plugin: request.name, action: request.action, ok, log: fullLog }
     pluginTask = undefined
     pluginChild = undefined
     if (!quitting) void showHtml(renderMarketplacePage(marketplaceModel()))
   }
+
   child.on('error', (error) => finish(false, error.message))
-  child.on('exit', (code, signal) => finish(
-    code === 0,
-    signal === null ? chunks.join('') : `${chunks.join('')}\n终止于 ${signal}`,
-  ))
+  child.on('exit', (code, signal) => {
+    const suffix = timedOut
+      ? '执行超时，已终止子进程'
+      : signal === null
+        ? ''
+        : `终止于 ${signal}`
+    finish(code === 0 && !timedOut, suffix)
+  })
 }
 
 async function fetchLiveMarketplace(): Promise<
@@ -537,7 +590,7 @@ async function applySettings(raw: unknown): Promise<void> {
 }
 
 function copyDesktopText(text: unknown): boolean {
-  if (typeof text !== 'string' || text.length === 0 || text.length > 16_384) return false
+  if (typeof text !== 'string' || text.length === 0 || text.length > MAX_PLUGIN_LOG_CHARS) return false
   clipboard.writeText(text)
   return true
 }
@@ -645,7 +698,7 @@ function installMenu(): void {
 }
 
 function assertAuthorizedSender(event: Electron.IpcMainInvokeEvent): void {
-  if (!isAuthorizedIpcSender(event.senderFrame)) {
+  if (!isAuthorizedIpcSender(event.senderFrame, SHELL_IPC_TOKEN)) {
     const callerUrl = event.senderFrame?.url ?? 'unknown'
     throw new Error(`Unauthorized IPC sender rejected: ${callerUrl}`)
   }
@@ -743,6 +796,21 @@ async function boot(): Promise<void> {
   attachOfficialWebView(window, officialView)
   layoutOfficial()
   window.setTitle(WINDOW_TITLE)
+  window.on('unresponsive', () => {
+    process.stderr.write('dsh-community window became unresponsive\n')
+  })
+  window.webContents.on('render-process-gone', (_event, details) => {
+    process.stderr.write(`desktop renderer exited: ${details.reason}\n`)
+    if (!quitting && details.reason !== 'clean-exit') {
+      void showHtml(renderErrorPage(`桌面壳渲染进程异常退出（${details.reason}）。点击下方按钮或菜单可重新恢复。`))
+    }
+  })
+  officialView.webContents.on('render-process-gone', (_event, details) => {
+    process.stderr.write(`official view renderer exited: ${details.reason}\n`)
+    if (!quitting && details.reason !== 'clean-exit') {
+      void showHtml(renderErrorPage(`官方 Web 视图渲染进程异常退出（${details.reason}），可重新启动官方运行时。`))
+    }
+  })
   window.on('resize', () => {
     persistWindowState()
     layoutOfficial()
@@ -826,15 +894,23 @@ if (!gotLock) {
       app.quit()
     }
   })
+  process.on('unhandledRejection', (reason) => {
+    const message = reason instanceof Error ? reason.stack ?? reason.message : String(reason)
+    process.stderr.write(`dsh-community unhandled rejection: ${message}\n`)
+  })
+  process.on('uncaughtException', (error) => {
+    const message = error instanceof Error ? error.stack ?? error.message : String(error)
+    process.stderr.write(`dsh-community uncaught exception: ${message}\n`)
+  })
   app.on('before-quit', (event) => {
     persistWindowState()
+    pluginChild?.kill('SIGTERM')
     if (quitting || host === undefined) {
       quitting = true
       return
     }
     event.preventDefault()
     quitting = true
-    pluginChild?.kill('SIGTERM')
     void host.shutdown().finally(() => {
       app.quit()
     })

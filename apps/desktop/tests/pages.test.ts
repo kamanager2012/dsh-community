@@ -126,4 +126,23 @@ describe('shell pages', () => {
     expect(html).toMatch(/GitHub Published Latest/)
     expect(html).toMatch(/runtime-versions\.json/)
   })
+
+  it('escapes diagnostics logs against </script> breakout and enforces nonce CSP', () => {
+    const payload = '</script><img src=x onerror=alert(1)>'
+    const html = renderDiagnosticsPage({
+      product: 'DSH Community',
+      officialHome: '/home/dev/.dsh',
+      isolated: false,
+      origin: 'http://127.0.0.1:4310',
+      phase: 'ready',
+      pid: '12',
+      logs: payload,
+    })
+    expect(html).not.toContain('</script><img')
+    expect(html).not.toContain(JSON.stringify(payload))
+    expect(html).toContain('<template id="copy-logs-data">&lt;/script&gt;&lt;img src=x onerror=alert(1)&gt;</template>')
+    const cspMatch = /content="[^"]*script-src 'nonce-([^']+)'/.exec(html)
+    expect(cspMatch?.[1]).toBeTruthy()
+    expect(html).toContain(`<script nonce="${cspMatch?.[1] ?? ''}">`)
+  })
 })

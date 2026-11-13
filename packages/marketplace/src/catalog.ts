@@ -94,7 +94,12 @@ export interface PluginCatalog {
   plugins: PluginEntry[]
 }
 
-const DSH_RC_LINE = /^0\.1\.\d+-rc\.\d+$/u
+const DSH_RC_LINE = /^0\.[12]\.\d+-rc\.\d+$/u
+const NPM_PACKAGE_NAME_RE = /^(@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/u
+
+export function isValidNpmPackageName(name: string): boolean {
+  return name.length > 0 && name.length <= 214 && !name.startsWith('-') && NPM_PACKAGE_NAME_RE.test(name)
+}
 
 /** Only https: repositories are accepted into the catalog (rejects javascript:, data:, http:, etc.). */
 export function isValidPluginRepoUrl(raw: string): boolean {
@@ -118,7 +123,7 @@ export function parseCatalog(raw: unknown): PluginCatalog | undefined {
     const plugin = item as Record<string, unknown>
     const { name, description, author, repo, category } = plugin
     if (
-      typeof name !== 'string' || name === '' || names.has(name)
+      typeof name !== 'string' || !isValidNpmPackageName(name) || names.has(name)
       || typeof description !== 'string' || description === ''
       || typeof author !== 'string' || author === ''
       || typeof repo !== 'string' || !isValidPluginRepoUrl(repo)
