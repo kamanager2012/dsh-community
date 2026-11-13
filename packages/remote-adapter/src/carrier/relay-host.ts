@@ -13,7 +13,7 @@ import {
   RELAY_FRAME_CONTROL,
   RELAY_FRAME_DATA,
 } from './relay-server.js'
-import { RemoteServerChannel } from './remote-channel.js'
+import { RemoteServerChannel, revokeDeviceChannels } from './remote-channel.js'
 import {
   normalizeBinaryPayload,
   type FramedMessageTransport,
@@ -470,14 +470,7 @@ export class HostRelayCarrier {
   }
 
   private handleRevocation(deviceId: string): void {
-    const set = this.deviceChannels.get(deviceId)
-    if (!set) return
-    for (const ch of Array.from(set)) {
-      try {
-        ch.terminate(1008, 'device revoked')
-      } catch {}
-    }
-    this.deviceChannels.delete(deviceId)
+    revokeDeviceChannels(this.deviceChannels, deviceId, 'device revoked', 1008)
   }
 
   broadcastEvent(event: unknown): void {

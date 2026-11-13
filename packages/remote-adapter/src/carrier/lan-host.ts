@@ -9,6 +9,7 @@ import type { PairingCoordinator } from '../crypto/pairing-coordinator.js'
 import type { PairingTokenRegistry } from '../crypto/pairing-token.js'
 import type { RemoteAdapterCore } from '../core.js'
 import { LanConnection } from './lan-connection.js'
+import { revokeDeviceChannels } from './remote-channel.js'
 import { LAN_CARRIER_BOUNDS, validateLanCarrierBounds, type LanCarrierBounds } from './constants.js'
 import { validateLanBindingAddress } from './address-validator.js'
 import {
@@ -357,17 +358,7 @@ export class HostLanCarrier {
   }
 
   private handleRevocation(deviceId: string): void {
-    const conns = this.deviceConnections.get(deviceId)
-    if (!conns) return
-
-    for (const conn of Array.from(conns)) {
-      try {
-        conn.terminate(1008, 'device revoked')
-      } catch {
-        // Fault isolation: one connection error does not stop others
-      }
-    }
-    this.deviceConnections.delete(deviceId)
+    revokeDeviceChannels(this.deviceConnections, deviceId, 'device revoked', 1008)
   }
 
   private removeConnection(conn: LanConnection): void {

@@ -57,6 +57,7 @@ export class OfficialSessionEventBridge {
       sessionId: string,
       event: OfficialSessionEvent,
     ) => void,
+    private readonly onResetSession?: (sessionId: string, reason: string) => void,
   ) {}
 
   ingest(sessionId: string, payload: unknown): number {
@@ -95,9 +96,10 @@ export class OfficialSessionEventBridge {
     return accepted
   }
 
-  forget(sessionId: string): void {
+  forget(sessionId: string, reason = 'window-unavailable'): void {
     this.lastSeqBySession.delete(sessionId)
     this.core.forgetSession(sessionId)
+    this.onResetSession?.(sessionId, reason)
   }
 }
 
@@ -145,14 +147,14 @@ export class RemoteHostRuntime {
     this.events = new OfficialSessionEventBridge(
       this.core,
       (sessionId, event) => {
-        const frame = {
+        this.broadcastFrame({
           type: 'stream.event',
           sessionId,
           event,
-        }
-        this.carrier.broadcastEvent(frame)
-        this.webrtc?.broadcastEvent(frame)
-        this.relay?.broadcastEvent(frame)
+        })
+      },
+      (sessionId, reason) => {
+        this.broadcastStreamReset(sessionId, reason)
       },
     )
   }
@@ -194,7 +196,26 @@ export class RemoteHostRuntime {
     return this.events.ingest(sessionId, payload)
   }
 
-  forgetSession(sessionId: string): void {
-    this.events.forget(sessionId)
+  forgetSession(sessionId: string, reason = 'window-unavailable'): void {
+    this.events.forget(sessionId, reason)
+  }
+
+  /**
+   * Emits an encrypted `stream.reset` notification to all active clients
+   * across enabled carriers so stale buffered events can be discarded cleanly.
+   */
+  broadcastStreamReset(sessionId: string, reason = 'window-unavailable'): void {
+    if (typeof sessionId !== 'string' || sessionId.length === 0) return
+    this.broadcastFrame({
+      type: 'stream.reset',
+      sessionId,
+      reason,
+    })
+  }
+
+  private broadcastFrame(frame: unknown): void {
+    this.carrier.broadcastEvent(frame)
+    this.webrtc?.broadcastEvent(frame)
+    this.relay?.broadcastEvent(frame)
   }
 }

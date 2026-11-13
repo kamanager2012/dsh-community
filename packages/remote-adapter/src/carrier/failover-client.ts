@@ -3,7 +3,7 @@ import type { NoiseInitiatorSession } from '../crypto/noise.js'
 import { RemoteProtocolError } from '../errors.js'
 import { createLanTransport } from './lan-client.js'
 import { createRelayTransport, type RelayClientCarrierOptions } from './relay-client.js'
-import { RemoteClientSession } from './remote-client-session.js'
+import { isRevocationError, RemoteClientSession } from './remote-client-session.js'
 import {
   defaultSleep,
   reconnectDelayMs,
@@ -227,6 +227,10 @@ export class FailoverRemoteClient {
     return this.session.isOpen()
   }
 
+  isRevoked(): boolean {
+    return this.session.isRevoked()
+  }
+
   private async connectSingleOrderedPass(): Promise<void> {
     if (this.session.isOpen()) return
     let lastError: Error | undefined
@@ -256,6 +260,9 @@ export class FailoverRemoteClient {
           }),
         )
         this.session.close()
+        if (this.session.isRevoked() || isRevocationError(error)) {
+          throw lastError
+        }
       }
     }
 
@@ -285,6 +292,9 @@ export class FailoverRemoteClient {
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error))
         this.session.close()
+        if (this.session.isRevoked() || isRevocationError(error)) {
+          throw lastError
+        }
       }
     }
 
@@ -324,6 +334,9 @@ export class FailoverRemoteClient {
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error))
         this.session.close()
+        if (this.session.isRevoked() || isRevocationError(error)) {
+          throw lastError
+        }
       }
     }
 

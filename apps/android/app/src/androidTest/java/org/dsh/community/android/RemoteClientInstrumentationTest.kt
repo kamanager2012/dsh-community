@@ -8,22 +8,27 @@ import android.net.Uri
 import android.os.IBinder
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
+import android.widget.Button
 import android.widget.EditText
+import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import org.dsh.community.android.crypto.AndroidKeystoreMasterCipher
 import org.dsh.community.android.crypto.CryptoUtils
 import org.dsh.community.android.crypto.Curve25519
 import org.dsh.community.android.crypto.EncryptedDeviceIdentityStore
+import org.dsh.community.android.crypto.EncryptedTrustedHostStore
 import org.dsh.community.android.protocol.AttachResumeResult
 import org.dsh.community.android.protocol.JsonCodec
 import org.dsh.community.android.protocol.JsonObject
 import org.dsh.community.android.protocol.JsonString
 import org.dsh.community.android.protocol.OfficialSessionEvent
-import org.dsh.community.android.service.RemoteSessionService
+import org.dsh.community.android.transport.DiscoveredLanHost
 import org.dsh.community.android.transport.FailoverRemoteSession
 import org.dsh.community.android.transport.PairingQrParser
+import org.dsh.community.android.transport.PeerRevokedException
 import org.dsh.community.android.transport.RemoteConnectionPhase
 import org.dsh.community.android.transport.RemoteEndpointProfile
 import org.dsh.community.android.transport.TransportKind
@@ -358,6 +363,283 @@ class RemoteClientInstrumentationTest {
                     }
                 }
             }
+        }
+    }
+
+    @Test
+    fun liveStage2QuestionsTrustedStoreMdnsResetDeadLanRelayAndRevocation() {
+        val args = InstrumentationRegistry.getArguments()
+        val requireLive = args.getString("dshRequireLiveInterop") == "1"
+        val pairingInput = args.getString("dshPairingInput")?.trim().orEmpty()
+        if (!requireLive && pairingInput.isEmpty()) {
+            assumeTrue("dshPairingInput not supplied; run scripts/accept-android-r6-device.mjs", false)
+            return
+        }
+        assertFalse("dshPairingInput must be provided when dshRequireLiveInterop=1", pairingInput.isEmpty())
+
+        val controlUrl = args.getString("dshControlUrl")?.trim().orEmpty()
+        val controlToken = args.getString("dshControlToken")?.trim().orEmpty()
+        val explicitSessionId = args.getString("dshSessionId")?.trim().orEmpty().ifEmpty { "r6-accept-session" }
+        assertFalse("dshControlUrl required", controlUrl.isEmpty())
+        assertFalse("dshControlToken required", controlToken.isEmpty())
+
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val trustedStore = EncryptedTrustedHostStore.createForAndroid(context)
+        trustedStore.clearAll()
+
+        // Ensure primary hardware-backed identity is paired (independent of JUnit execution order)
+        val primaryIdentity = EncryptedDeviceIdentityStore.createForAndroid(context).loadOrCreate()
+        assertTrue(primaryIdentity.backing.startsWith("android-keystore-"))
+        val mintedForUi = postControlJson("$controlUrl/pairing-token", controlToken, "{}")
+        assertTrue("pairing-token mint failed", mintedForUi.first in 200..299)
+        val freshDeepLink = JsonCodec.parseObject(mintedForUi.second).str("deepLink")!!
+        val freshDescriptor = PairingQrParser.parseInput(freshDeepLink)
+
+        val confirmIfPending = {
+            val bootstrap = FailoverRemoteSession(primaryIdentity, RemoteEndpointProfile.fromDescriptor(freshDescriptor))
+            try {
+                if (bootstrap.connect() == RemoteConnectionPhase.PAIRING_PENDING) {
+                    val req = bootstrap.requestPairing("R6-Stage2-UI", freshDescriptor.bootstrapToken)
+                    val cid = req.str("candidateId")!!
+                    val res = postControlJson(
+                        url = "$controlUrl/pairing/confirm",
+                        token = controlToken,
+                        bodyJson = JsonObject.of("candidateId" to JsonString(cid)).stringify(),
+                    )
+                    assertTrue("pairing/confirm failed: ${res.second}", res.first in 200..299)
+                }
+            } finally {
+                bootstrap.close("pre-ui confirm check")
+            }
+        }
+        confirmIfPending()
+
+        // 1) Launch MainActivity, connect via UI, verify TrustedHostStore tokenless persistence & mDNS matching,
+        //    answer user-questions/request via UI, and clear/resync via stream.reset
+        val launchIntent = Intent(Intent.ACTION_VIEW, Uri.parse(freshDeepLink)).apply {
+            setClass(context, MainActivity::class.java)
+        }
+        ActivityScenario.launch<MainActivity>(launchIntent).use { scenario ->
+            fun waitUntil(timeoutMs: Long, checkName: String, predicate: (MainActivity) -> Boolean) {
+                val deadline = System.currentTimeMillis() + timeoutMs
+                var satisfied = false
+                while (System.currentTimeMillis() < deadline && !satisfied) {
+                    scenario.onActivity { activity ->
+                        if (predicate(activity)) {
+                            satisfied = true
+                        }
+                    }
+                    if (!satisfied) Thread.sleep(100)
+                }
+                assertTrue("Timed out waiting for: $checkName", satisfied)
+            }
+
+            waitUntil(15_000, "MainActivity [ACTIVE] & TrustedHostStore saved host") { activity ->
+                val status = activity.findViewById<TextView>(R.id.tv_status).text.toString()
+                val savedCount = activity.findViewById<LinearLayout>(R.id.ll_saved_hosts).childCount
+                val firstChildIsBtn = activity.findViewById<LinearLayout>(R.id.ll_saved_hosts).getChildAt(0) is Button
+                status.contains("[ACTIVE]") && savedCount >= 1 && firstChildIsBtn &&
+                    trustedStore.get(freshDescriptor.hostFingerprint) != null
+            }
+
+            val savedRecord = trustedStore.get(freshDescriptor.hostFingerprint)
+            assertNotNull("TrustedHostRecord must be persisted in Keystore store", savedRecord)
+            assertTrue(
+                "Trusted hosts file must live in noBackupFilesDir",
+                File(context.noBackupFilesDir, EncryptedTrustedHostStore.TRUSTED_HOSTS_FILE_NAME).exists(),
+            )
+
+            // Verify discovery !== trust for unknown mDNS Host, and fingerprint-matched tokenless LAN refresh for saved Host
+            val lanPort = Uri.parse(freshDescriptor.endpointUrl).port
+            scenario.onActivity { activity ->
+                activity.handleDiscoveredHostForUi(
+                    DiscoveredLanHost(
+                        serviceName = "untrusted-stranger",
+                        hostAddress = "127.0.0.1",
+                        port = 1,
+                        hostFingerprint = "0".repeat(64),
+                        hostDisplayLabel = "Evil Stranger",
+                        protocolVersion = 1,
+                        txtAttributes = emptyMap(),
+                    ),
+                )
+            }
+            waitUntil(5_000, "Unpaired mDNS chip rendered") { activity ->
+                activity.findViewById<LinearLayout>(R.id.ll_discovered_hosts).getChildAt(0) is Button
+            }
+            scenario.onActivity { activity ->
+                val chip = activity.findViewById<LinearLayout>(R.id.ll_discovered_hosts).getChildAt(0) as Button
+                chip.performClick()
+            }
+            waitUntil(5_000, "Discovery !== trust [UNPAIRED] banner") { activity ->
+                activity.findViewById<TextView>(R.id.tv_status).text.toString().contains("[UNPAIRED]")
+            }
+
+            scenario.onActivity { activity ->
+                activity.handleDiscoveredHostForUi(
+                    DiscoveredLanHost(
+                        serviceName = "studio-host",
+                        hostAddress = "127.0.0.1",
+                        port = lanPort,
+                        hostFingerprint = freshDescriptor.hostFingerprint,
+                        hostDisplayLabel = "Matched Studio Host",
+                        protocolVersion = 1,
+                        txtAttributes = mapOf("hostFingerprint" to freshDescriptor.hostFingerprint),
+                    ),
+                )
+            }
+            waitUntil(5_000, "Trusted mDNS chip rendered") { activity ->
+                activity.findViewById<LinearLayout>(R.id.ll_discovered_hosts).childCount >= 2
+            }
+            scenario.onActivity { activity ->
+                val chip = activity.findViewById<LinearLayout>(R.id.ll_discovered_hosts).getChildAt(1) as Button
+                chip.performClick()
+            }
+            waitUntil(15_000, "Tokenless reconnect via matched mDNS [ACTIVE]") { activity ->
+                val status = activity.findViewById<TextView>(R.id.tv_status).text.toString()
+                val sessionsRow = activity.findViewById<LinearLayout>(R.id.ll_session_chips)
+                status.contains("[ACTIVE]") && sessionsRow.childCount >= 1 && sessionsRow.getChildAt(0) is Button
+            }
+
+            // Click Session chip and submit ASK_QUESTION prompt -> answer via UI
+            scenario.onActivity { activity ->
+                (activity.findViewById<LinearLayout>(R.id.ll_session_chips).getChildAt(0) as Button).performClick()
+            }
+            Thread.sleep(250)
+            scenario.onActivity { activity ->
+                activity.findViewById<EditText>(R.id.et_session_id).setText(explicitSessionId)
+                activity.findViewById<EditText>(R.id.et_prompt).setText("R6_STAGE2_ASK_QUESTION")
+                activity.findViewById<Button>(R.id.btn_send_prompt).performClick()
+            }
+            waitUntil(15_000, "QUESTION banner displayed on UI") { activity ->
+                activity.findViewById<TextView>(R.id.tv_approval).text.toString().startsWith("QUESTION (")
+            }
+            scenario.onActivity { activity ->
+                activity.findViewById<EditText>(R.id.et_answer).setText("thorough")
+                activity.findViewById<Button>(R.id.btn_answer_question).performClick()
+            }
+            waitUntil(15_000, "R6_QUESTION_ANSWERED streamed to tv_assistant_stream") { activity ->
+                activity.findViewById<TextView>(R.id.tv_assistant_stream).text.toString()
+                    .contains("R6_QUESTION_ANSWERED:thorough")
+            }
+
+            // Trigger Host stream.reset via /sessions/reset -> stale assistant stream buffer clears & logs resync
+            val resetResp = postControlJson(
+                url = "$controlUrl/sessions/reset",
+                token = controlToken,
+                bodyJson = JsonObject.of(
+                    "sessionId" to JsonString(explicitSessionId),
+                    "reason" to JsonString("history-compacted"),
+                ).stringify(),
+            )
+            assertTrue("sessions/reset failed: ${resetResp.second}", resetResp.first in 200..299)
+            waitUntil(10_000, "stream.reset clears stale stream buffer & logs resync") { activity ->
+                val stream = activity.findViewById<TextView>(R.id.tv_assistant_stream).text.toString()
+                val events = activity.findViewById<TextView>(R.id.tv_events).text.toString()
+                !stream.contains("R6_QUESTION_ANSWERED:thorough") && events.contains("stream.reset")
+            }
+
+            // Test Forget Host removes persisted TrustedHostRecord cleanly
+            scenario.onActivity { activity ->
+                activity.findViewById<Button>(R.id.btn_forget_host).performClick()
+            }
+            waitUntil(5_000, "Forget Host removes record from TrustedHostStore") { activity ->
+                trustedStore.get(freshDescriptor.hostFingerprint) == null &&
+                    activity.findViewById<LinearLayout>(R.id.ll_saved_hosts).getChildAt(0) is TextView
+            }
+        }
+
+        // 2) Real Dead-LAN -> BlindRelayServer E2EE Failover via adb reverse without bootstrapToken
+        val descriptor = PairingQrParser.parseInput(pairingInput)
+        assertFalse("descriptor.relayUrl required for Stage 2 relay failover test", descriptor.relayUrl.isNullOrBlank())
+        val deadLanToRelayProfile = RemoteEndpointProfile(
+            hostPublicKey = descriptor.hostPublicKeyBytes,
+            hostFingerprint = descriptor.hostFingerprint,
+            lanUrl = "ws://127.0.0.1:1",
+            relayUrl = descriptor.relayUrl,
+            relayRoomId = descriptor.relayRoomId ?: descriptor.hostFingerprint,
+            bootstrapToken = null,
+        )
+        val relayOnlySession = FailoverRemoteSession(primaryIdentity, deadLanToRelayProfile)
+        try {
+            assertEquals(RemoteConnectionPhase.ACTIVE, relayOnlySession.connect())
+            assertEquals(TransportKind.RELAY, relayOnlySession.activeCarrier)
+            assertTrue(
+                "Expected recorded LAN failure before Relay fallback",
+                relayOnlySession.attemptErrors.any { it.kind == TransportKind.LAN },
+            )
+            assertTrue("Relay E2EE ping must succeed", relayOnlySession.ping())
+            assertTrue(
+                "Relay attachSession must succeed",
+                relayOnlySession.attachSession(explicitSessionId) is AttachResumeResult.Events,
+            )
+        } finally {
+            relayOnlySession.close("stage2 dead-lan relay check done")
+        }
+
+        // 3) Isolated live peer.revoked notification & retry halt (keeps primaryIdentity unrevoked for host harness)
+        val revokeTempDir = File(context.noBackupFilesDir, "r6-stage2-revoke-id")
+        val revokeAlias = "dsh_instr_stage2_revoke_master_v1"
+        val revokeCipher = AndroidKeystoreMasterCipher(revokeAlias)
+        try {
+            val revokeIdStore = EncryptedDeviceIdentityStore(revokeTempDir, revokeCipher)
+            val revokedIdentity = revokeIdStore.resetIdentity()
+            val mintedForRevoke = postControlJson("$controlUrl/pairing-token", controlToken, "{}")
+            assertTrue("pairing-token for revoke check failed", mintedForRevoke.first in 200..299)
+            val revokeDescriptor = PairingQrParser.parseInput(
+                JsonCodec.parseObject(mintedForRevoke.second).str("deepLink")!!,
+            )
+
+            val pairBoot = FailoverRemoteSession(revokedIdentity, RemoteEndpointProfile.fromDescriptor(revokeDescriptor))
+            try {
+                assertEquals(RemoteConnectionPhase.PAIRING_PENDING, pairBoot.connect())
+                val req = pairBoot.requestPairing("R6-Ephemeral-Revoke", revokeDescriptor.bootstrapToken)
+                val cid = req.str("candidateId")!!
+                val conf = postControlJson(
+                    url = "$controlUrl/pairing/confirm",
+                    token = controlToken,
+                    bodyJson = JsonObject.of("candidateId" to JsonString(cid)).stringify(),
+                )
+                assertTrue("confirm failed: ${conf.second}", conf.first in 200..299)
+            } finally {
+                pairBoot.close("ephemeral pair complete")
+            }
+
+            val tokenlessProfile = RemoteEndpointProfile.fromDescriptor(revokeDescriptor).copy(bootstrapToken = null)
+            val liveRevokeSession = FailoverRemoteSession(revokedIdentity, tokenlessProfile)
+            val revokedLatch = CountDownLatch(1)
+            val revokeReasonRef = AtomicReference<String?>(null)
+            liveRevokeSession.addListener(object : FailoverRemoteSession.Listener {
+                override fun onPeerRevoked(reason: String) {
+                    revokeReasonRef.set(reason)
+                    revokedLatch.countDown()
+                }
+            })
+            try {
+                assertEquals(RemoteConnectionPhase.ACTIVE, liveRevokeSession.connect())
+                val revokeRes = postControlJson(
+                    url = "$controlUrl/devices/revoke",
+                    token = controlToken,
+                    bodyJson = JsonObject.of("deviceId" to JsonString(revokedIdentity.deviceId)).stringify(),
+                )
+                assertTrue("devices/revoke failed: ${revokeRes.second}", revokeRes.first in 200..299)
+                assertTrue("Did not receive live peer.revoked frame", revokedLatch.await(10, TimeUnit.SECONDS))
+                assertTrue(liveRevokeSession.revokedByHost)
+                assertEquals(RemoteConnectionPhase.REVOKED, liveRevokeSession.phase)
+                assertFalse(revokeReasonRef.get().isNullOrBlank())
+
+                // Offline reconnect after revocation must immediately fail with PeerRevokedException without trying Relay fallback
+                assertThrows(PeerRevokedException::class.java) {
+                    liveRevokeSession.connect()
+                }
+                assertEquals(RemoteConnectionPhase.REVOKED, liveRevokeSession.phase)
+                assertEquals(1, liveRevokeSession.attemptErrors.size)
+            } finally {
+                liveRevokeSession.close("revoke check done")
+            }
+        } finally {
+            revokeCipher.deleteMasterKey()
+            revokeTempDir.deleteRecursively()
         }
     }
 

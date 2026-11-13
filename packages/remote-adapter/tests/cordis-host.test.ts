@@ -464,4 +464,143 @@ describe('OfficialHostCordisBridge & Persistent Community Storage', () => {
     await bridge.stop()
     await expect(outcomePromise).resolves.toBe('cancelled')
   })
+
+  it('emits encrypted peer.revoked before close across LAN and Relay, aborts retry loops, and pushes stream.reset', async () => {
+    const root = mkTempRoot()
+    const dshHome = join(root, '.dsh')
+    const configDir = join(root, 'remote-cfg')
+    const relay = new BlindRelayServer({ enabled: true, host: '127.0.0.1', port: 0 })
+    await relay.start()
+    const relayUrl = relay.getEndpointUrl()!
+
+    const ctx = new FakeRootContext()
+    const sessionId = 's-r6-stage2-signals'
+    const bridge = new OfficialHostCordisBridge({
+      ctx,
+      configDir,
+      dshHome,
+      carrier: { enabled: true, host: '127.0.0.1', port: 0 },
+      relay: { enabled: true, relayUrl, roomId: 'room-stage2-signals' },
+    })
+    await bridge.start()
+    const control = await createBridgeControlServer(bridge)
+
+    try {
+      await bridge.createSession({ sessionId, cwd: root })
+      const agent = ctx.agents.get(sessionId)! as FakeAgent
+      const status = await bridge.getStatus()
+      const issued = await bridge.issuePairingDescriptor()
+      const parsed = parsePairingInput(issued.deepLink)
+
+      const makePairedClient = async (
+        name: string,
+        priorityOrder: readonly ('lan' | 'relay')[],
+      ): Promise<FailoverRemoteClient> => {
+        const kp = await new InMemoryHostIdentityStore().loadOrCreate()
+        const cli = new FailoverRemoteClient({
+          clientKeyPair: { publicKey: kp.identity.publicKey, secretKey: kp.secretKey },
+          hostPublicKey: Uint8Array.from(Buffer.from(parsed.hostPublicKeyHex, 'hex')),
+          priorityOrder,
+          lan: { endpointUrl: status.lanEndpointUrl! },
+          relay: { relayUrl, roomId: status.relayRoomId! },
+        })
+        await cli.connect()
+        const pairing = await bridge.issuePairingDescriptor()
+        const cand = await cli.request('pairing.request', {
+          token: pairing.descriptor.bootstrapToken,
+          displayName: name,
+        })
+        await bridge.pairingCoordinator.confirmPairing({
+          candidateId: cand.candidateId,
+          grantedCapabilities: cand.maxAllowedCapabilities,
+        })
+        cli.close()
+        await cli.connect()
+        return cli
+      }
+
+      const lanClient = await makePairedClient('LAN Phone', ['lan'])
+      const relayClient = await makePairedClient('Relay Tablet', ['relay'])
+
+      const lanFrames: any[] = []
+      const relayFrames: any[] = []
+      lanClient.onEvent((ev) => lanFrames.push(ev))
+      relayClient.onEvent((ev) => relayFrames.push(ev))
+
+      // Attach on LAN and emit one event
+      await lanClient.request('session.attach', { sessionId })
+      agent.emitAssistantDelta('BEFORE_RESET')
+      await new Promise((r) => setTimeout(r, 40))
+      expect(
+        lanFrames.some(
+          (f) => f?.type === 'stream.event' && f?.event?.data?.chunk?.text === 'BEFORE_RESET',
+        ),
+      ).toBe(true)
+
+      // Trigger stream.reset via operator control server -> verify both LAN and Relay receive it
+      const resetRes = await fetch(`${control.url}/sessions/reset`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${control.controlToken}`,
+        },
+        body: JSON.stringify({ sessionId, reason: 'history-compacted' }),
+      })
+      expect(resetRes.status).toBe(200)
+
+      await new Promise((r) => setTimeout(r, 50))
+      expect(
+        lanFrames.some(
+          (f) => f?.type === 'stream.reset' && f?.sessionId === sessionId && f?.reason === 'history-compacted',
+        ),
+      ).toBe(true)
+      expect(
+        relayFrames.some(
+          (f) => f?.type === 'stream.reset' && f?.sessionId === sessionId && f?.reason === 'history-compacted',
+        ),
+      ).toBe(true)
+
+      // New event after reset still streams monotonically and attach returns window-exceeded/new events cleanly
+      agent.emitAssistantDelta('AFTER_RESET')
+      await new Promise((r) => setTimeout(r, 40))
+      expect(
+        lanFrames.some(
+          (f) => f?.type === 'stream.event' && f?.event?.data?.chunk?.text === 'AFTER_RESET',
+        ),
+      ).toBe(true)
+
+      // Live revoke LAN client -> encrypted peer.revoked arrives before socket teardown
+      await bridge.revokeDevice(lanClient.deviceId)
+      await new Promise((r) => setTimeout(r, 80))
+      expect(lanFrames.some((f) => f?.type === 'peer.revoked')).toBe(true)
+      expect(lanClient.isRevoked()).toBe(true)
+      expect(lanClient.isOpen()).toBe(false)
+
+      // Live revoke Relay client -> encrypted peer.revoked arrives through blind relay before kick
+      await bridge.revokeDevice(relayClient.deviceId)
+      await new Promise((r) => setTimeout(r, 120))
+      expect(relayFrames.some((f) => f?.type === 'peer.revoked')).toBe(true)
+      expect(relayClient.isRevoked()).toBe(true)
+      expect(relayClient.isOpen()).toBe(false)
+
+      // Offline revoked client reconnectWithBackoff fails fast on attempt 1 without waiting through backoff
+      const startedAt = Date.now()
+      await expect(
+        lanClient.reconnectWithBackoff({
+          maxAttempts: 4,
+          initialDelayMs: 500,
+          maxDelayMs: 1000,
+        }),
+      ).rejects.toThrow(/revoked/i)
+      expect(Date.now() - startedAt).toBeLessThan(400)
+      expect(lanClient.getFailoverHistory().filter((h) => h.status === 'failed').length).toBeGreaterThanOrEqual(1)
+
+      lanClient.close()
+      relayClient.close()
+    } finally {
+      await control.close()
+      await bridge.stop()
+      await relay.stop()
+    }
+  })
 })

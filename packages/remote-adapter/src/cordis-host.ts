@@ -995,6 +995,17 @@ export class OfficialHostCordisBridge {
     return this.stores.trustStore.revoke(deviceId)
   }
 
+  /**
+   * Drops the in-memory replay buffer for `sessionId` and pushes a `stream.reset`
+   * notification to all connected remote clients across enabled carriers.
+   */
+  resetSessionStream(sessionId: string, reason = 'window-unavailable'): void {
+    if (typeof sessionId !== 'string' || sessionId.length === 0) {
+      throw new RemoteProtocolError('INVALID_REQUEST', 'sessionId is required')
+    }
+    this.runtime.forgetSession(sessionId, reason)
+  }
+
   async getStatus(): Promise<{
     readonly started: boolean
     readonly configDir: string
@@ -1208,6 +1219,20 @@ export async function createBridgeControlServer(
           ...(typeof body.cwd === 'string' ? { cwd: body.cwd } : {}),
         })
         sendJson(res, 200, { session })
+        return
+      }
+      if (req.method === 'POST' && reqUrl.pathname === '/sessions/reset') {
+        const body = await readJsonBody(req)
+        if (typeof body.sessionId !== 'string' || body.sessionId.length === 0) {
+          sendJson(res, 400, { error: 'sessionId is required' })
+          return
+        }
+        const reason =
+          typeof body.reason === 'string' && body.reason.length > 0
+            ? body.reason
+            : 'window-unavailable'
+        bridge.resetSessionStream(body.sessionId, reason)
+        sendJson(res, 200, { ok: true, sessionId: body.sessionId, reason })
         return
       }
       if (req.method === 'POST' && reqUrl.pathname === '/pairing-token') {

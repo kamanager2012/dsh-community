@@ -2,6 +2,7 @@ package org.dsh.community.android.transport
 
 import org.dsh.community.android.crypto.DeviceIdentity
 import org.dsh.community.android.crypto.NoiseIkClient
+import org.dsh.community.android.crypto.TrustedHostRecord
 import org.dsh.community.android.protocol.AttachResumeResult
 import org.dsh.community.android.protocol.ClientOperationFactory
 import org.dsh.community.android.protocol.InboundHostFrame
@@ -52,6 +53,25 @@ data class RemoteEndpointProfile(
                 relayRoomId = descriptor.relayRoomId ?: descriptor.hostFingerprint,
                 bootstrapToken = descriptor.bootstrapToken,
             )
+
+        /**
+         * Constructs a tokenless reconnect profile from a verified persisted [TrustedHostRecord].
+         */
+        fun fromTrustedRecord(
+            record: TrustedHostRecord,
+            lanUrlOverride: String? = null,
+        ): RemoteEndpointProfile =
+            RemoteEndpointProfile(
+                hostPublicKey = record.hostPublicKeyBytes,
+                hostFingerprint = record.hostFingerprint,
+                lanUrl = lanUrlOverride?.takeIf { it.isNotBlank() } ?: record.lanUrl,
+                signalingUrl = record.signalingUrl,
+                signalingRoomId = record.signalingRoomId ?: record.hostFingerprint,
+                stunUrls = record.stunUrls,
+                relayUrl = record.relayUrl,
+                relayRoomId = record.relayRoomId ?: record.hostFingerprint,
+                bootstrapToken = null,
+            )
     }
 }
 
@@ -61,7 +81,11 @@ enum class RemoteConnectionPhase {
     PAIRING_PENDING,
     ACTIVE,
     FAILED,
+    REVOKED,
 }
+
+class PeerRevokedException(val reason: String) :
+    SecurityException("device revoked by host: $reason")
 
 data class TransportFailureRecord(
     val kind: TransportKind,
@@ -85,6 +109,8 @@ class FailoverRemoteSession(
     interface Listener {
         fun onPhaseChanged(phase: RemoteConnectionPhase, carrier: TransportKind?, epoch: Int) {}
         fun onStreamEvent(sessionId: String, event: OfficialSessionEvent) {}
+        fun onStreamReset(sessionId: String, reason: String) {}
+        fun onPeerRevoked(reason: String) {}
         fun onTransportClosed(carrier: TransportKind, reason: String) {}
     }
 
@@ -116,6 +142,14 @@ class FailoverRemoteSession(
     var currentEpoch: Int = 0
         private set
 
+    @Volatile
+    var revokedByHost: Boolean = false
+        private set
+
+    @Volatile
+    var revokedReason: String? = null
+        private set
+
     val attemptErrors: MutableList<TransportFailureRecord> = CopyOnWriteArrayList()
 
     fun addListener(listener: Listener) {
@@ -134,6 +168,8 @@ class FailoverRemoteSession(
      */
     fun connect(allowedKinds: List<TransportKind> = listOf(TransportKind.LAN, TransportKind.WEBRTC, TransportKind.RELAY)): RemoteConnectionPhase {
         attemptErrors.clear()
+        revokedByHost = false
+        revokedReason = null
         val candidates = buildCandidateTransports(allowedKinds)
         if (candidates.isEmpty()) {
             phase = RemoteConnectionPhase.FAILED
@@ -152,6 +188,11 @@ class FailoverRemoteSession(
                         t.message ?: t.javaClass.simpleName,
                     ),
                 )
+                if (t is PeerRevokedException || revokedByHost) {
+                    phase = RemoteConnectionPhase.REVOKED
+                    notifyPhase()
+                    throw t
+                }
             }
         }
 
@@ -375,6 +416,13 @@ class FailoverRemoteSession(
                         try {
                             val pt = noise.decrypt(frame)
                             val parsed = RemoteFrameCodec.decodeHostFrame(String(pt, StandardCharsets.UTF_8))
+                            if (parsed is InboundHostFrame.PeerRevoked) {
+                                applyPeerRevoked(parsed.reason)
+                                val err = PeerRevokedException(parsed.reason)
+                                handshakeError.compareAndSet(null, err)
+                                latch.countDown()
+                                return
+                            }
                             if (parsed !is InboundHostFrame.HandshakeComplete) {
                                 throw SecurityException("expected handshake.complete after Noise Msg2")
                             }
@@ -412,7 +460,7 @@ class FailoverRemoteSession(
                 if (stage.get() != HandshakeStage.READY) {
                     handshakeError.compareAndSet(null, IOException("closed during handshake: $reason"))
                     latch.countDown()
-                } else {
+                } else if (!revokedByHost) {
                     val err = IOException("remote channel closed: $reason")
                     for ((id, future) in pendingRpc.entries) {
                         if (pendingRpc.remove(id, future)) {
@@ -475,7 +523,14 @@ class FailoverRemoteSession(
             }
             is InboundHostFrame.RpcFailure -> {
                 val id = decoded.id
-                if (id != null) {
+                if (decoded.error.name == "DEVICE_REVOKED") {
+                    val err = PeerRevokedException(decoded.error.message)
+                    if (id != null) {
+                        pendingRpc.remove(id)?.completeExceptionally(err)
+                    }
+                    applyPeerRevoked(decoded.error.message)
+                    closeCurrentTransportOnly("peer revoked")
+                } else if (id != null) {
                     pendingRpc.remove(id)?.completeExceptionally(decoded.error)
                 }
             }
@@ -483,8 +538,31 @@ class FailoverRemoteSession(
                 advanceConfirmedSeq(decoded.sessionId, decoded.event.seq)
                 listeners.forEach { it.onStreamEvent(decoded.sessionId, decoded.event) }
             }
+            is InboundHostFrame.StreamReset -> {
+                lastConfirmedSeqBySession.remove(decoded.sessionId)
+                listeners.forEach { it.onStreamReset(decoded.sessionId, decoded.reason) }
+            }
+            is InboundHostFrame.PeerRevoked -> {
+                val err = PeerRevokedException(decoded.reason)
+                for ((id, future) in pendingRpc.entries) {
+                    if (pendingRpc.remove(id, future)) {
+                        future.completeExceptionally(err)
+                    }
+                }
+                applyPeerRevoked(decoded.reason)
+                closeCurrentTransportOnly("peer revoked")
+            }
             is InboundHostFrame.HandshakeComplete -> Unit
         }
+    }
+
+    private fun applyPeerRevoked(reason: String) {
+        val resolved = reason.ifBlank { "device revoked by host" }
+        revokedByHost = true
+        revokedReason = resolved
+        phase = RemoteConnectionPhase.REVOKED
+        notifyPhase()
+        listeners.forEach { it.onPeerRevoked(resolved) }
     }
 
     private fun dispatchRpc(

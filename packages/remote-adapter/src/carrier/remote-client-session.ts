@@ -23,6 +23,10 @@ export interface RemoteClientSessionOptions {
 const textEncoder = new TextEncoder()
 const textDecoder = new TextDecoder()
 
+export function isRevocationError(error: unknown): boolean {
+  return error instanceof RemoteCryptoError && error.code === 'DEVICE_REVOKED'
+}
+
 /**
  * Transport-independent Noise IK initiator + JSON-RPC 2.0 remote client session.
  * Survives carrier switches (LAN <-> WebRTC <-> Relay) while preserving identity,
@@ -34,6 +38,8 @@ export class RemoteClientSession {
   private transport: FramedClientTransport | undefined = undefined
   private noiseSession: NoiseInitiatorSession | undefined = undefined
   private isConnected = false
+  private revoked = false
+  private revokedReason: string | undefined = undefined
   private requestSeq = 0
   private connectionEpoch = 1
   private readonly pendingRequests = new Map<
@@ -76,6 +82,14 @@ export class RemoteClientSession {
     return this.isConnected && this.transport !== undefined && this.transport.isOpen()
   }
 
+  isRevoked(): boolean {
+    return this.revoked
+  }
+
+  getRevokedReason(): string | undefined {
+    return this.revokedReason
+  }
+
   async connectWithTransport(
     transportFactory: () => FramedClientTransport,
   ): Promise<void> {
@@ -83,6 +97,8 @@ export class RemoteClientSession {
     if (this.isConnected || this.transport) {
       this.handleClose(this.transport)
     }
+    this.revoked = false
+    this.revokedReason = undefined
 
     const noise = new NoiseInitiatorSession(
       this.options.clientKeyPair,
@@ -156,7 +172,15 @@ export class RemoteClientSession {
               try {
                 const compPt = noise.decrypt(raw)
                 const compParsed = JSON.parse(textDecoder.decode(compPt)) as {
+                  type?: unknown
+                  reason?: unknown
                   connectionEpoch?: unknown
+                }
+                if (compParsed?.type === 'peer.revoked') {
+                  const reason = this.markRevoked(compParsed.reason)
+                  this.notifyEventListeners({ type: 'peer.revoked', reason })
+                  finishFailure(new RemoteCryptoError('DEVICE_REVOKED', reason))
+                  return
                 }
                 if (
                   !Number.isSafeInteger(compParsed?.connectionEpoch) ||
@@ -240,6 +264,9 @@ export class RemoteClientSession {
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error))
         this.close()
+        if (this.revoked || isRevocationError(error)) {
+          throw lastError
+        }
       }
     }
 
@@ -295,6 +322,9 @@ export class RemoteClientSession {
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error))
         this.close()
+        if (this.revoked || isRevocationError(error)) {
+          throw lastError
+        }
       }
     }
 
@@ -394,17 +424,29 @@ export class RemoteClientSession {
 
     let parsed: {
       id?: string | number
+      type?: unknown
+      reason?: unknown
+      sessionId?: unknown
       error?: { name?: string; message?: string }
       result?: unknown
     }
     try {
-      parsed = JSON.parse(textDecoder.decode(plaintext)) as {
-        id?: string | number
-        error?: { name?: string; message?: string }
-        result?: unknown
-      }
+      parsed = JSON.parse(textDecoder.decode(plaintext)) as typeof parsed
     } catch {
       return
+    }
+
+    if (parsed?.type === 'peer.revoked') {
+      const reason = this.markRevoked(parsed.reason)
+      const revErr = new RemoteCryptoError('DEVICE_REVOKED', reason)
+      this.notifyEventListeners({ type: 'peer.revoked', reason })
+      this.failPendingRequests(revErr)
+      this.close()
+      return
+    }
+
+    if (parsed?.type === 'stream.reset' && typeof parsed.sessionId === 'string') {
+      this.clearResumeState(parsed.sessionId)
     }
 
     const id = parsed?.id
@@ -424,11 +466,33 @@ export class RemoteClientSession {
       return
     }
 
+    this.notifyEventListeners(parsed)
+  }
+
+  private markRevoked(rawReason: unknown): string {
+    const reason =
+      typeof rawReason === 'string' && rawReason.length > 0
+        ? rawReason
+        : 'device revoked by host'
+    this.revoked = true
+    this.revokedReason = reason
+    return reason
+  }
+
+  private notifyEventListeners(payload: unknown): void {
     for (const listener of this.eventListeners) {
       try {
-        listener(parsed)
+        listener(payload)
       } catch {}
     }
+  }
+
+  private failPendingRequests(err: Error): void {
+    for (const pending of this.pendingRequests.values()) {
+      clearTimeout(pending.timer)
+      pending.reject(err)
+    }
+    this.pendingRequests.clear()
   }
 
   private handleClose(source?: FramedClientTransport): void {
@@ -437,11 +501,7 @@ export class RemoteClientSession {
     if (source === undefined || this.transport === source) {
       this.transport = undefined
     }
-    for (const pending of this.pendingRequests.values()) {
-      clearTimeout(pending.timer)
-      pending.reject(new RemoteCryptoError('HANDSHAKE_FAILED', 'connection closed'))
-    }
-    this.pendingRequests.clear()
+    this.failPendingRequests(new RemoteCryptoError('HANDSHAKE_FAILED', 'connection closed'))
     if (this.noiseSession) {
       try {
         this.noiseSession.close()

@@ -197,12 +197,7 @@ class EncryptedDeviceIdentityStore(
             CryptoUtils.zeroize(combined)
         }
 
-        val tmpFile = File(storageDir, "$IDENTITY_FILE_NAME.tmp")
-        tmpFile.writeBytes(wrapped)
-        if (!tmpFile.renameTo(identityFile)) {
-            identityFile.writeBytes(wrapped)
-            tmpFile.delete()
-        }
+        writeEncryptedBlobAtomically(storageDir, identityFile, wrapped)
 
         val deviceId = CryptoUtils.sha256Hex(pair.publicKey)
         return DeviceIdentity(pair, deviceId, masterCipher.backingLabel)
@@ -213,5 +208,17 @@ class EncryptedDeviceIdentityStore(
         if (identityFile.exists()) identityFile.delete()
         masterCipher.deleteMasterKey()
         return loadOrCreate()
+    }
+}
+
+internal fun writeEncryptedBlobAtomically(storageDir: File, targetFile: File, wrapped: ByteArray) {
+    if (!storageDir.exists()) {
+        storageDir.mkdirs()
+    }
+    val tmpFile = File(storageDir, "${targetFile.name}.tmp")
+    tmpFile.writeBytes(wrapped)
+    if (!tmpFile.renameTo(targetFile)) {
+        targetFile.writeBytes(wrapped)
+        tmpFile.delete()
     }
 }

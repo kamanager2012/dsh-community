@@ -1,7 +1,10 @@
 package org.dsh.community.android
 
+import org.dsh.community.android.protocol.InboundHostFrame
+import org.dsh.community.android.protocol.RemoteFrameCodec
 import org.dsh.community.android.service.BackoffPolicy
 import org.dsh.community.android.transport.DataChannelChunkCodec
+import org.dsh.community.android.transport.PeerRevokedException
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -46,5 +49,26 @@ class FailoverAndProtocolTest {
         assertEquals(2_000L, BackoffPolicy.nextDelayMs(1))
         assertEquals(4_000L, BackoffPolicy.nextDelayMs(2))
         assertTrue(BackoffPolicy.nextDelayMs(9) <= 30_000L)
+    }
+
+    @Test
+    fun decodesPeerRevokedAndStreamResetControlFrames() {
+        val reset = RemoteFrameCodec.decodeHostFrame(
+            """{"type":"stream.reset","sessionId":"s-1","reason":"history-compacted"}""",
+        )
+        assertTrue(reset is InboundHostFrame.StreamReset)
+        reset as InboundHostFrame.StreamReset
+        assertEquals("s-1", reset.sessionId)
+        assertEquals("history-compacted", reset.reason)
+
+        val revoked = RemoteFrameCodec.decodeHostFrame(
+            """{"type":"peer.revoked","reason":"admin revoked tablet"}""",
+        )
+        assertTrue(revoked is InboundHostFrame.PeerRevoked)
+        revoked as InboundHostFrame.PeerRevoked
+        assertEquals("admin revoked tablet", revoked.reason)
+
+        val ex = PeerRevokedException(revoked.reason)
+        assertTrue(ex.message!!.contains("admin revoked tablet"))
     }
 }

@@ -343,18 +343,40 @@ function createR6InteropCordisContext() {
 
         setTimeout(async () => {
           const ac = new AbortController()
-          const callId = `r6-bash-${randomUUID().slice(0, 8)}`
-          const decision = await rootBus.waterfall('approval/request', {
-            agent,
-            callId,
-            toolName: 'bash',
-            reason: `echo ${promptText}`,
-            signal: ac.signal,
-          })
-          const responseText =
-            decision === 'allowed-once'
-              ? `R6_ANDROID_APPROVED:${promptText}`
-              : `R6_ANDROID_REJECTED:${decision}`
+          let responseText
+          if (promptText.includes('ASK_QUESTION')) {
+            const qRes = await rootBus.waterfall('user-questions/request', {
+              agent,
+              wait: { callId: `r6-q-${randomUUID().slice(0, 8)}` },
+              questions: [
+                {
+                  id: 'target',
+                  question: 'Select target profile?',
+                  options: [{ label: 'fast' }, { label: 'thorough' }],
+                },
+              ],
+              signal: ac.signal,
+            })
+            const first = Array.isArray(qRes?.answers) ? qRes.answers[0] : undefined
+            const chosen =
+              Array.isArray(first?.selected) && first.selected.length > 0
+                ? first.selected.join(',')
+                : (first?.custom ?? '')
+            responseText = `R6_QUESTION_ANSWERED:${chosen}`
+          } else {
+            const callId = `r6-bash-${randomUUID().slice(0, 8)}`
+            const decision = await rootBus.waterfall('approval/request', {
+              agent,
+              callId,
+              toolName: 'bash',
+              reason: `echo ${promptText}`,
+              signal: ac.signal,
+            })
+            responseText =
+              decision === 'allowed-once'
+                ? `R6_ANDROID_APPROVED:${promptText}`
+                : `R6_ANDROID_REJECTED:${decision}`
+          }
 
           agentBus.emit('agent/assistant-stream', {
             agent,
@@ -615,6 +637,11 @@ async function main() {
         sessionListAndAttach: 'PASS',
         promptStreaming: 'PASS',
         approvalIdempotency: 'PASS',
+        questionResponse: 'PASS',
+        streamReset: 'PASS',
+        trustedHostStoreReconnect: 'PASS',
+        livePeerRevoked: 'PASS',
+        deadLanToRelayFailover: 'PASS',
         carrierFailover: 'PASS',
         backgroundBattery: 'PASS',
         deviceRevoke: 'PASS',
