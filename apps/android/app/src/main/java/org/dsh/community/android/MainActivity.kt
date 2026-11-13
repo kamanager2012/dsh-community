@@ -7,20 +7,34 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
+import android.provider.Settings
+import android.view.View
 import android.widget.Button
 import android.widget.EditText
+import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import org.dsh.community.android.crypto.DeviceIdentity
 import org.dsh.community.android.crypto.TrustedHostRecord
 import org.dsh.community.android.protocol.DisplayTextSanitizer
+import org.dsh.community.android.protocol.JsonArray
 import org.dsh.community.android.protocol.JsonObject
+import org.dsh.community.android.protocol.JsonString
+import org.dsh.community.android.protocol.ModelCatalogResult
 import org.dsh.community.android.protocol.OfficialSessionEvent
+import org.dsh.community.android.protocol.QuestionSpec
 import org.dsh.community.android.protocol.SessionRef
+import org.dsh.community.android.qr.QrScanActivity
 import org.dsh.community.android.service.BackgroundLifecycleStats
 import org.dsh.community.android.service.DiscoverySelectOutcome
 import org.dsh.community.android.service.PendingApprovalItem
@@ -32,12 +46,15 @@ import org.dsh.community.android.transport.PairingInputHelper
 import org.dsh.community.android.transport.PairingQrParser
 import org.dsh.community.android.transport.RemoteConnectionPhase
 import org.dsh.community.android.transport.TransportKind
+import org.dsh.community.android.ui.ChatTimelineAdapter
+import org.dsh.community.android.ui.ChatTimelineStore
 
 /**
- * Pure native Android thin Remote Client UI (R6):
- *  - No embedded Node runtime, no local HTTP loop, no WebView hosting local DSH.
- *  - Pairs via PairingBootstrapDescriptor JSON, `dsh-remote://pair` deep links, or mDNS `_dsh-remote._tcp.`.
- *  - Lists official Host sessions, streams events & token chunks, submits idempotent prompts, approvals, and questions.
+ * Pure native Android thin Remote Client UI:
+ *  - Zero embedded Node runtime, zero local HTTP loop, zero WebView hosting local DSH.
+ *  - Pairs via built-in CameraX QR scanner, Pairing JSON, `dsh-remote://pair` deep links, or mDNS `_dsh-remote._tcp.`.
+ *  - Native RecyclerView conversation timeline with Markdown rendering, collapsible thinking/tool cards,
+ *    turn abort/steer controls, session creation, model selection, and interactive question chips.
  */
 class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
     private var service: RemoteSessionService? = null
@@ -45,8 +62,14 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
     private var mdnsDiscoverer: LanMdnsDiscoverer? = null
 
     private lateinit var statusView: TextView
+    private lateinit var agentStatusView: TextView
     private lateinit var deviceIdView: TextView
     private lateinit var metricsView: TextView
+    private lateinit var connectionPanel: LinearLayout
+    private lateinit var logsPanel: LinearLayout
+    private lateinit var pendingCard: LinearLayout
+    private lateinit var questionOptionsScroll: HorizontalScrollView
+    private lateinit var questionOptionsContainer: LinearLayout
     private lateinit var pairingInput: EditText
     private lateinit var savedHostsContainer: LinearLayout
     private lateinit var discoveredHostsContainer: LinearLayout
@@ -57,6 +80,20 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
     private lateinit var eventLogView: TextView
     private lateinit var approvalBanner: TextView
     private lateinit var answerInput: EditText
+    private lateinit var chatEmptyView: TextView
+    private lateinit var chatRecyclerView: RecyclerView
+
+    private lateinit var btnToggleConnection: Button
+    private lateinit var btnToggleLogs: Button
+    private lateinit var btnModelPicker: Button
+    private lateinit var btnSteerMode: Button
+    private lateinit var btnStopTurn: Button
+    private lateinit var btnApprove: Button
+    private lateinit var btnReject: Button
+    private lateinit var btnAnswerQuestion: Button
+
+    private val timelineStore = ChatTimelineStore()
+    private lateinit var timelineAdapter: ChatTimelineAdapter
 
     private var pendingCallId: String? = null
     private var pendingQuestionId: String? = null
@@ -66,10 +103,18 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
     private var stickyStatusError: String? = null
     private var lastHandledIntentRef: Intent? = null
     private var attachedSessionId: String? = null
+    private var lastEventSessionId: String? = null
     private var lastSessions: List<SessionRef> = emptyList()
-    private val streamBuffer = StringBuilder()
+    private var lastModelCatalog: ModelCatalogResult? = null
+    private var currentPhase: RemoteConnectionPhase = RemoteConnectionPhase.DISCONNECTED
+    private var userPinnedConnectionDrawer: Boolean? = null
+    private var logsPanelVisible = false
+    private var steerEnabled = false
+    private var isAgentRunning = false
+    private var pendingOpenModelPicker = false
+    private val selectedQuestionChoices = LinkedHashMap<String, LinkedHashSet<String>>()
+    private var renderedQuestionSignature: String? = null
     private val seenEventKeys = LinkedHashSet<String>()
-    private var inReasoningBlock = false
     private var streamChunkCount = 0
     private var lastIdentity: DeviceIdentity? = null
     private var lastStats: BackgroundLifecycleStats? = null
@@ -77,9 +122,21 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
 
     private data class ChipSpec(
         val label: String,
-        val backgroundColor: Int,
+        val backgroundRes: Int,
+        val textColorRes: Int = R.color.dsh_text_primary,
         val onClick: () -> Unit,
     )
+
+    private val qrScanLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        if (result.resultCode == RESULT_OK) {
+            val payload = result.data?.getStringExtra(QrScanActivity.EXTRA_QR_PAYLOAD)
+            if (!payload.isNullOrBlank()) {
+                acceptPairingPayload(payload, sourceLabel = "Camera QR")
+            }
+        }
+    }
 
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
@@ -105,8 +162,14 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
         setContentView(R.layout.activity_main)
 
         statusView = findViewById(R.id.tv_status)
+        agentStatusView = findViewById(R.id.tv_agent_status)
         deviceIdView = findViewById(R.id.tv_device_id)
         metricsView = findViewById(R.id.tv_metrics)
+        connectionPanel = findViewById(R.id.ll_connection_panel)
+        logsPanel = findViewById(R.id.ll_logs_panel)
+        pendingCard = findViewById(R.id.ll_pending_card)
+        questionOptionsScroll = findViewById(R.id.hsv_question_options)
+        questionOptionsContainer = findViewById(R.id.ll_question_options)
         pairingInput = findViewById(R.id.et_pairing_json)
         savedHostsContainer = findViewById(R.id.ll_saved_hosts)
         discoveredHostsContainer = findViewById(R.id.ll_discovered_hosts)
@@ -117,6 +180,35 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
         eventLogView = findViewById(R.id.tv_events)
         approvalBanner = findViewById(R.id.tv_approval)
         answerInput = findViewById(R.id.et_answer)
+        chatEmptyView = findViewById(R.id.tv_chat_empty)
+        chatRecyclerView = findViewById(R.id.rv_chat_timeline)
+
+        btnToggleConnection = findViewById(R.id.btn_toggle_connection)
+        btnToggleLogs = findViewById(R.id.btn_toggle_logs)
+        btnModelPicker = findViewById(R.id.btn_model_picker)
+        btnSteerMode = findViewById(R.id.btn_steer_mode)
+        btnStopTurn = findViewById(R.id.btn_stop_turn)
+        btnApprove = findViewById(R.id.btn_approve)
+        btnReject = findViewById(R.id.btn_reject)
+        btnAnswerQuestion = findViewById(R.id.btn_answer_question)
+
+        timelineAdapter = ChatTimelineAdapter(
+            onToggleThinking = { itemId ->
+                val sid = activeTimelineSessionId() ?: return@ChatTimelineAdapter
+                timelineStore.toggleThinkingExpanded(sid, itemId)
+                refreshTimelineUi(scrollToBottom = false)
+            },
+            onToggleTool = { itemId ->
+                val sid = activeTimelineSessionId() ?: return@ChatTimelineAdapter
+                timelineStore.toggleToolExpanded(sid, itemId)
+                refreshTimelineUi(scrollToBottom = false)
+            },
+        )
+        chatRecyclerView.layoutManager = LinearLayoutManager(this).apply {
+            stackFromEnd = false
+        }
+        chatRecyclerView.adapter = timelineAdapter
+        chatRecyclerView.itemAnimator = null
 
         val startIntent = Intent(this, RemoteSessionService::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -125,10 +217,40 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
             startService(startIntent)
         }
 
+        btnToggleConnection.setOnClickListener {
+            val nextVisible = connectionPanel.visibility != View.VISIBLE
+            userPinnedConnectionDrawer = nextVisible
+            applyConnectionPanelVisibility(nextVisible)
+        }
+
+        btnToggleLogs.setOnClickListener {
+            logsPanelVisible = !logsPanelVisible
+            logsPanel.visibility = if (logsPanelVisible) View.VISIBLE else View.GONE
+            btnToggleLogs.setTextColor(
+                ContextCompat.getColor(
+                    this,
+                    if (logsPanelVisible) R.color.dsh_text_accent else R.color.dsh_text_primary,
+                ),
+            )
+        }
+
+        findViewById<Button>(R.id.btn_export_chat).setOnClickListener {
+            exportCurrentSessionMarkdown()
+        }
+
+        findViewById<Button>(R.id.btn_scan_qr).setOnClickListener {
+            qrScanLauncher.launch(Intent(this, QrScanActivity::class.java))
+        }
+
+        findViewById<Button>(R.id.btn_battery_settings).setOnClickListener {
+            openBatteryOptimizationSettings()
+        }
+
         findViewById<Button>(R.id.btn_connect).setOnClickListener {
             val raw = pairingInput.text.toString().trim()
             if (raw.isNotEmpty()) {
                 stickyStatusError = null
+                userPinnedConnectionDrawer = null
                 service?.connectWithPairingInput(raw)
             }
         }
@@ -142,12 +264,9 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
         }
 
         findViewById<Button>(R.id.btn_disconnect).setOnClickListener {
-            stickyStatusError = null
-            attachedSessionId = null
-            seenEventKeys.clear()
-            streamBuffer.setLength(0)
-            inReasoningBlock = false
-            assistantStreamView.text = getString(R.string.assistant_stream_empty)
+            resetUiConversationState()
+            userPinnedConnectionDrawer = true
+            applyConnectionPanelVisibility(true)
             service?.disconnect()
         }
 
@@ -157,21 +276,30 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
 
         findViewById<Button>(R.id.btn_reconnect).setOnClickListener {
             stickyStatusError = null
+            userPinnedConnectionDrawer = null
             service?.reconnectSavedHost()
         }
 
         findViewById<Button>(R.id.btn_forget_host).setOnClickListener {
-            stickyStatusError = null
-            attachedSessionId = null
-            seenEventKeys.clear()
-            streamBuffer.setLength(0)
-            inReasoningBlock = false
-            assistantStreamView.text = getString(R.string.assistant_stream_empty)
+            resetUiConversationState()
+            userPinnedConnectionDrawer = true
+            applyConnectionPanelVisibility(true)
             service?.forgetHost()
         }
 
         findViewById<Button>(R.id.btn_sessions).setOnClickListener {
             service?.refreshSessionsAsync()
+        }
+
+        findViewById<Button>(R.id.btn_new_session).setOnClickListener {
+            stickyStatusError = null
+            service?.createSessionAsync(title = null, autoAttach = true)
+        }
+
+        btnModelPicker.setOnClickListener {
+            val targetSid = activeTimelineSessionId()
+            pendingOpenModelPicker = true
+            service?.refreshModelsAsync(targetSid, silentOnError = false)
         }
 
         findViewById<Button>(R.id.btn_attach).setOnClickListener {
@@ -181,6 +309,16 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
             }
         }
 
+        btnSteerMode.setOnClickListener {
+            steerEnabled = !steerEnabled
+            updateSteerButtonUi()
+        }
+
+        btnStopTurn.setOnClickListener {
+            val sid = activeTimelineSessionId() ?: return@setOnClickListener
+            service?.abortTurnAsync(sid)
+        }
+
         findViewById<Button>(R.id.btn_send_prompt).setOnClickListener {
             val sid = sessionIdInput.text.toString().trim()
             val prompt = promptInput.text.toString().trim()
@@ -188,28 +326,31 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
                 if (attachedSessionId != sid) {
                     selectAndAttachSession(sid)
                 }
-                service?.submitPromptAsync(sid, prompt)
+                lastEventSessionId = sid
+                timelineStore.addOptimisticUserPrompt(sid, prompt)
+                refreshTimelineUi(scrollToBottom = true)
+                val mode = if (steerEnabled) "steer" else null
+                service?.submitPromptAsync(sid, prompt, mode)
             }
         }
 
-        findViewById<Button>(R.id.btn_approve).setOnClickListener {
+        btnApprove.setOnClickListener {
             val cid = pendingCallId ?: return@setOnClickListener
             service?.respondApprovalAsync(cid, approved = true)
         }
 
-        findViewById<Button>(R.id.btn_reject).setOnClickListener {
+        btnReject.setOnClickListener {
             val cid = pendingCallId ?: return@setOnClickListener
             service?.respondApprovalAsync(cid, approved = false)
         }
 
-        findViewById<Button>(R.id.btn_answer_question).setOnClickListener {
+        btnAnswerQuestion.setOnClickListener {
             val qid = pendingQuestionId ?: return@setOnClickListener
-            val ans = answerInput.text.toString().trim()
-            if (ans.isNotEmpty()) {
-                service?.respondQuestionAsync(qid, ans)
-            }
+            submitQuestionResponse(qid)
         }
 
+        updateSteerButtonUi()
+        updateAgentStatusUi("idle")
         requestNotificationPermissionIfNeeded()
         handleIncomingIntent(intent)
     }
@@ -244,6 +385,7 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
     ) {
         val cleanMsg = DisplayTextSanitizer.sanitizeSingleLine(message)
         runOnUiThread {
+            currentPhase = phase
             if (phase == RemoteConnectionPhase.REVOKED) {
                 stickyStatusError = "[REVOKED] carrier=${carrier?.wireName ?: "-"} epoch=$epoch — $cleanMsg"
             } else if (phase != RemoteConnectionPhase.DISCONNECTED) {
@@ -261,6 +403,23 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
             } else {
                 "[$phase] carrier=${carrier?.wireName ?: "-"} epoch=$epoch — $cleanMsg"
             }
+
+            val statusColor = when (phase) {
+                RemoteConnectionPhase.ACTIVE -> R.color.dsh_status_active
+                RemoteConnectionPhase.REVOKED, RemoteConnectionPhase.FAILED -> R.color.dsh_status_danger
+                else -> R.color.dsh_status_warn
+            }
+            statusView.setTextColor(ContextCompat.getColor(this, statusColor))
+
+            if (phase != RemoteConnectionPhase.ACTIVE) {
+                updateAgentStatusUi("idle")
+            }
+
+            val pinned = userPinnedConnectionDrawer
+            if (pinned == null) {
+                applyConnectionPanelVisibility(phase != RemoteConnectionPhase.ACTIVE)
+            }
+
             val backingLabel = lastIdentity?.backing ?: "Keystore-wrapped"
             deviceIdView.text = "Device ID ($backingLabel): $deviceId"
         }
@@ -278,6 +437,10 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
             val banner = "[REVOKED] ${hostFingerprint.take(12)}...: $cleanReason"
             stickyStatusError = banner
             statusView.text = banner
+            statusView.setTextColor(ContextCompat.getColor(this, R.color.dsh_status_danger))
+            if (userPinnedConnectionDrawer == null) {
+                applyConnectionPanelVisibility(true)
+            }
             appendLog("Peer revoked by Host (${hostFingerprint.take(12)}...): $cleanReason")
         }
     }
@@ -288,11 +451,12 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
         runOnUiThread {
             val prefix = "$sessionId:"
             seenEventKeys.removeAll { it.startsWith(prefix) }
+            timelineStore.clearSession(sessionId)
+            updateAgentStatusUi("idle")
             if (attachedSessionId == null || attachedSessionId == sessionId) {
-                streamBuffer.setLength(0)
-                inReasoningBlock = false
                 assistantStreamView.text = getString(R.string.assistant_stream_empty)
             }
+            refreshTimelineUi(scrollToBottom = false)
             appendLog("[stream.reset #$cleanSid] $cleanReason — resyncing from official Host")
             service?.attachSessionAsync(sessionId)
         }
@@ -316,6 +480,51 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
         }
     }
 
+    override fun onSessionCreated(session: SessionRef) {
+        runOnUiThread {
+            val cleanTitle = DisplayTextSanitizer.sanitizeSingleLine(session.title).ifBlank { session.id }
+            appendLog("Created session ${session.id} ($cleanTitle)")
+            sessionIdInput.setText(session.id)
+        }
+    }
+
+    override fun onSessionAttached(sessionId: String) {
+        runOnUiThread {
+            attachedSessionId = sessionId
+            lastEventSessionId = sessionId
+            if (sessionIdInput.text?.toString()?.trim() != sessionId) {
+                sessionIdInput.setText(sessionId)
+            }
+            renderSessionChips(lastSessions)
+            updateAgentStatusUi(service?.currentAgentStatus(sessionId) ?: "idle")
+            refreshTimelineUi(scrollToBottom = true)
+        }
+    }
+
+    override fun onAgentStatusChanged(sessionId: String, status: String) {
+        runOnUiThread {
+            val activeSid = activeTimelineSessionId()
+            if (activeSid == null || activeSid == sessionId) {
+                updateAgentStatusUi(status)
+            }
+        }
+    }
+
+    override fun onModelCatalogUpdated(sessionId: String?, catalog: ModelCatalogResult) {
+        runOnUiThread {
+            lastModelCatalog = catalog
+            val modelLabel = catalog.currentModel?.takeIf { it.isNotBlank() }?.let { m ->
+                DisplayTextSanitizer.sanitizeSingleLine(m).take(16)
+            } ?: getString(R.string.action_model)
+            btnModelPicker.text = modelLabel
+            if (pendingOpenModelPicker) {
+                pendingOpenModelPicker = false
+                val targetSid = sessionId ?: activeTimelineSessionId()
+                showModelPickerDialog(targetSid, catalog)
+            }
+        }
+    }
+
     override fun onMetricsUpdated(identity: DeviceIdentity, stats: BackgroundLifecycleStats) {
         runOnUiThread {
             lastIdentity = identity
@@ -330,81 +539,28 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
             if (!markEventSeen(eventKey)) {
                 return@runOnUiThread
             }
-            val dataObj = event.data as? JsonObject
-            val activeSid = attachedSessionId
-            val isAttachedTarget = activeSid == null || activeSid == sessionId
-            if (event.type == "assistant/chunk") {
-                val chunk = dataObj?.obj("chunk")
-                val cType = chunk?.str("type")
-                if (cType == "text-delta" || cType == "text") {
-                    if (isAttachedTarget) {
-                        val delta = DisplayTextSanitizer.sanitizeMultiline(chunk.str("text") ?: chunk.str("delta") ?: "")
-                        if (inReasoningBlock) {
-                            streamBuffer.append('\n')
-                            inReasoningBlock = false
-                        }
-                        appendStreamDelta(delta)
-                    }
-                    return@runOnUiThread
-                } else if (cType == "reasoning-delta" || cType == "reasoning") {
-                    if (isAttachedTarget) {
-                        val delta = DisplayTextSanitizer.sanitizeMultiline(chunk.str("text") ?: chunk.str("delta") ?: "")
-                        if (!inReasoningBlock) {
-                            streamBuffer.append(if (streamBuffer.isEmpty()) "[thinking] " else "\n[thinking] ")
-                            inReasoningBlock = true
-                        }
-                        appendStreamDelta(delta)
-                    }
-                    return@runOnUiThread
-                }
-            } else if (event.type == "text-delta") {
-                if (isAttachedTarget) {
-                    val delta = DisplayTextSanitizer.sanitizeMultiline(dataObj?.str("text") ?: dataObj?.str("delta") ?: "")
-                    if (inReasoningBlock) {
-                        streamBuffer.append('\n')
-                        inReasoningBlock = false
-                    }
-                    appendStreamDelta(delta)
-                }
-                return@runOnUiThread
-            } else if (event.type == "reasoning-delta") {
-                if (isAttachedTarget) {
-                    val delta = DisplayTextSanitizer.sanitizeMultiline(dataObj?.str("text") ?: dataObj?.str("delta") ?: "")
-                    if (!inReasoningBlock) {
-                        streamBuffer.append(if (streamBuffer.isEmpty()) "[thinking] " else "\n[thinking] ")
-                        inReasoningBlock = true
-                    }
-                    appendStreamDelta(delta)
-                }
-                return@runOnUiThread
-            } else if (event.type == "tool/call" || event.type == "tool.call") {
-                if (isAttachedTarget) {
-                    val toolName = DisplayTextSanitizer.sanitizeSingleLine(dataObj?.str("toolName") ?: dataObj?.str("name") ?: "tool")
-                    appendStreamDelta("\n[tool:$toolName] ")
-                }
-            } else if (event.type == "tool/result" || event.type == "tool.result") {
-                if (isAttachedTarget) {
-                    val toolName = DisplayTextSanitizer.sanitizeSingleLine(dataObj?.str("toolName") ?: dataObj?.str("name") ?: "tool")
-                    appendStreamDelta("[/tool:$toolName]\n")
-                }
-            } else if (event.type == "user/message") {
-                if (isAttachedTarget) {
-                    val content = DisplayTextSanitizer.sanitizeMultiline(dataObj?.str("text") ?: dataObj?.str("content"))
-                    if (content.isNotBlank()) {
-                        appendStreamDelta(if (streamBuffer.isEmpty()) "> $content\n" else "\n\n> $content\n")
-                    }
-                }
+            lastEventSessionId = sessionId
+            timelineStore.applyEvent(sessionId, event)
+
+            if (event.type == "assistant/chunk" || event.type == "text-delta" || event.type == "reasoning-delta") {
+                streamChunkCount += 1
+                refreshMetricsUi()
             } else if (event.type == "approval.resolved") {
+                val dataObj = event.data as? JsonObject
                 if (pendingCallId != null && pendingCallId == dataObj?.str("callId") && latestApprovals.isEmpty()) {
                     pendingCallId = null
                     renderApprovalBanner()
                 }
             } else if (event.type == "question.resolved") {
+                val dataObj = event.data as? JsonObject
                 if (pendingQuestionId != null && pendingQuestionId == dataObj?.str("questionId") && latestQuestions.isEmpty()) {
                     pendingQuestionId = null
                     renderApprovalBanner()
                 }
             }
+
+            refreshTimelineUi(scrollToBottom = true)
+
             val cleanSid = DisplayTextSanitizer.sanitizeSingleLine(sessionId)
             val cleanType = DisplayTextSanitizer.sanitizeSingleLine(event.type)
             val cleanPayload = DisplayTextSanitizer.sanitizeSingleLine(event.data?.stringify() ?: "")
@@ -466,6 +622,7 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
         try {
             val descriptor = PairingQrParser.parseInput(rawInput)
             stickyStatusError = null
+            userPinnedConnectionDrawer = null
             pairingInput.setText(rawInput)
             appendLog("$sourceLabel validated (fp=${descriptor.hostFingerprint.take(12)}..., endpoint=${descriptor.endpointUrl})")
             val svc = service
@@ -479,6 +636,7 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
             val rejectedBanner = "[REJECTED] Invalid $sourceLabel pairing: ${t.message}"
             stickyStatusError = rejectedBanner
             statusView.text = rejectedBanner
+            statusView.setTextColor(ContextCompat.getColor(this, R.color.dsh_status_danger))
             appendLog("Rejected $sourceLabel pairing: ${t.message}")
         }
     }
@@ -497,21 +655,173 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
 
     private fun selectAndAttachSession(sessionId: String) {
         sessionIdInput.setText(sessionId)
-        if (attachedSessionId != sessionId) {
-            attachedSessionId = sessionId
+        val changed = attachedSessionId != sessionId
+        attachedSessionId = sessionId
+        lastEventSessionId = sessionId
+        if (changed) {
             seenEventKeys.clear()
-            streamBuffer.setLength(0)
-            inReasoningBlock = false
-            assistantStreamView.text = getString(R.string.assistant_stream_empty)
+            for (evt in service?.replayEventsForSession(sessionId).orEmpty()) {
+                val key = "$sessionId:${evt.seq}:${evt.type}"
+                markEventSeen(key)
+                timelineStore.applyEvent(sessionId, evt)
+            }
         }
         if (lastSessions.isNotEmpty()) {
             renderSessionChips(lastSessions)
         }
+        updateAgentStatusUi(service?.currentAgentStatus(sessionId) ?: "idle")
+        refreshTimelineUi(scrollToBottom = true)
         service?.attachSessionAsync(sessionId)
     }
 
+    private fun activeTimelineSessionId(): String? {
+        val explicitAttached = attachedSessionId?.takeIf { it.isNotBlank() }
+        if (explicitAttached != null) return explicitAttached
+        val fieldSid = sessionIdInput.text?.toString()?.trim()?.takeIf { it.isNotBlank() }
+        if (fieldSid != null) return fieldSid
+        return lastEventSessionId
+    }
+
+    private fun refreshTimelineUi(scrollToBottom: Boolean) {
+        val targetSid = activeTimelineSessionId()
+        val items = if (targetSid != null) timelineStore.itemsForSession(targetSid) else emptyList()
+        chatEmptyView.visibility = if (items.isEmpty()) View.VISIBLE else View.GONE
+        timelineAdapter.submitList(ArrayList(items)) {
+            if (scrollToBottom && items.isNotEmpty()) {
+                chatRecyclerView.scrollToPosition(items.size - 1)
+            }
+        }
+
+        val summary = if (targetSid != null) timelineStore.streamSummaryText(targetSid) else ""
+        assistantStreamView.text = summary.ifBlank { getString(R.string.assistant_stream_empty) }
+    }
+
+    private fun resetUiConversationState() {
+        stickyStatusError = null
+        attachedSessionId = null
+        lastEventSessionId = null
+        lastModelCatalog = null
+        btnModelPicker.text = getString(R.string.action_model)
+        seenEventKeys.clear()
+        timelineStore.clearAll()
+        selectedQuestionChoices.clear()
+        renderedQuestionSignature = null
+        updateAgentStatusUi("idle")
+        assistantStreamView.text = getString(R.string.assistant_stream_empty)
+        refreshTimelineUi(scrollToBottom = false)
+    }
+
+    private fun applyConnectionPanelVisibility(visible: Boolean) {
+        connectionPanel.visibility = if (visible) View.VISIBLE else View.GONE
+        btnToggleConnection.setTextColor(
+            ContextCompat.getColor(
+                this,
+                if (visible) R.color.dsh_text_accent else R.color.dsh_text_primary,
+            ),
+        )
+    }
+
+    private fun updateSteerButtonUi() {
+        btnSteerMode.text = getString(if (steerEnabled) R.string.action_steer_on else R.string.action_steer_off)
+        btnSteerMode.setBackgroundResource(
+            if (steerEnabled) R.drawable.bg_chip_accent else R.drawable.bg_button_secondary,
+        )
+        btnSteerMode.setTextColor(
+            ContextCompat.getColor(
+                this,
+                if (steerEnabled) R.color.dsh_text_primary else R.color.dsh_text_secondary,
+            ),
+        )
+    }
+
+    private fun updateAgentStatusUi(rawStatus: String) {
+        val normalized = rawStatus.trim().lowercase()
+        isAgentRunning = normalized == "running"
+        btnStopTurn.visibility = if (isAgentRunning) View.VISIBLE else View.GONE
+        agentStatusView.text = if (isAgentRunning) "Running" else "Idle"
+        agentStatusView.setTextColor(
+            ContextCompat.getColor(
+                this,
+                if (isAgentRunning) R.color.dsh_status_active else R.color.dsh_text_secondary,
+            ),
+        )
+    }
+
+    private fun showModelPickerDialog(sessionId: String?, catalog: ModelCatalogResult) {
+        val targetSid = sessionId?.takeIf { it.isNotBlank() }
+        if (targetSid == null) {
+            AlertDialog.Builder(this)
+                .setTitle("Select Model")
+                .setMessage("Attach or create a session first before switching the active model.")
+                .setPositiveButton("OK", null)
+                .show()
+            return
+        }
+        if (catalog.models.isEmpty()) {
+            AlertDialog.Builder(this)
+                .setTitle("Host Model Catalog")
+                .setMessage(
+                    "Current: ${catalog.currentProvider ?: "-"}/${catalog.currentModel ?: "-"}\n\n" +
+                        "No selectable models returned by Host.",
+                )
+                .setPositiveButton("OK", null)
+                .show()
+            return
+        }
+        val labels = catalog.models.map { opt ->
+            val selected = opt.provider == catalog.currentProvider && opt.model == catalog.currentModel
+            val mark = if (selected) "✓ " else ""
+            val providerDisplay = opt.providerName?.takeIf { it.isNotBlank() } ?: opt.provider
+            "$mark${opt.name} ($providerDisplay)"
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Select Host Model")
+            .setItems(labels.toTypedArray()) { _, which ->
+                val chosen = catalog.models[which]
+                service?.selectModelAsync(targetSid, chosen.provider, chosen.model)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun exportCurrentSessionMarkdown() {
+        val sid = activeTimelineSessionId()
+        if (sid.isNullOrBlank()) {
+            appendLog("Select or attach a session first before exporting chat")
+            return
+        }
+        val title = lastSessions.firstOrNull { it.id == sid }?.title
+        val md = timelineStore.exportAsMarkdown(sid, title)
+        if (md.isBlank()) {
+            appendLog("No messages to export yet for session $sid")
+            return
+        }
+        val sendIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_SUBJECT, "DSH Session ${title ?: sid}")
+            putExtra(Intent.EXTRA_TEXT, md)
+        }
+        startActivity(Intent.createChooser(sendIntent, "Export DSH Conversation"))
+    }
+
+    private fun openBatteryOptimizationSettings() {
+        val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+        try {
+            startActivity(intent)
+        } catch (_: Throwable) {
+            val fallback = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = Uri.fromParts("package", packageName, null)
+            }
+            try {
+                startActivity(fallback)
+            } catch (_: Throwable) {
+                appendLog("Unable to open battery optimization settings on this device")
+            }
+        }
+    }
+
     private fun renderSessionChips(sessions: List<SessionRef>) {
-        val selectedId = sessionIdInput.text?.toString()?.trim()
+        val selectedId = attachedSessionId ?: sessionIdInput.text?.toString()?.trim()
         renderChipRow(
             container = sessionChipsContainer,
             emptyHintResId = R.string.session_picker_hint,
@@ -521,7 +831,7 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
                 val selected = session.id == selectedId
                 ChipSpec(
                     label = label,
-                    backgroundColor = if (selected) 0xFF00695C.toInt() else 0xFF263238.toInt(),
+                    backgroundRes = if (selected) R.drawable.bg_chip_accent else R.drawable.bg_chip_neutral,
                     onClick = { selectAndAttachSession(session.id) },
                 )
             },
@@ -536,16 +846,17 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
                 val prefix = if (host.isRevoked) "[REVOKED] " else "Saved: "
                 val suffix = " (${host.hostFingerprint.take(8)})"
                 val bg = when {
-                    host.isRevoked -> 0xFF7F1D1D.toInt()
-                    host.hostFingerprint == activeFingerprint -> 0xFF00695C.toInt()
-                    else -> 0xFF37474F.toInt()
+                    host.isRevoked -> R.drawable.bg_button_danger
+                    host.hostFingerprint == activeFingerprint -> R.drawable.bg_chip_accent
+                    else -> R.drawable.bg_chip_neutral
                 }
                 val cleanLabel = DisplayTextSanitizer.sanitizeSingleLine(host.label).take(16).ifBlank { "Host" }
                 ChipSpec(
                     label = "$prefix$cleanLabel$suffix",
-                    backgroundColor = bg,
+                    backgroundRes = bg,
                     onClick = {
                         stickyStatusError = null
+                        userPinnedConnectionDrawer = null
                         service?.reconnectSavedHost(host.hostFingerprint)
                     },
                 )
@@ -562,7 +873,7 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
                 val cleanLabel = DisplayTextSanitizer.sanitizeSingleLine(host.hostDisplayLabel).take(14).ifBlank { "Host" }
                 ChipSpec(
                     label = "mDNS: $cleanLabel ($fpShort)",
-                    backgroundColor = 0xFF1E3A5F.toInt(),
+                    backgroundRes = R.drawable.bg_chip_neutral,
                     onClick = { onDiscoveredHostChipClicked(host) },
                 )
             },
@@ -578,26 +889,34 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
         if (chips.isEmpty()) {
             val hint = TextView(this).apply {
                 text = getString(emptyHintResId)
-                setTextColor(0xFF78909C.toInt())
+                setTextColor(ContextCompat.getColor(this@MainActivity, R.color.dsh_text_secondary))
                 textSize = 11f
             }
             container.addView(hint)
             return
         }
+        val padH = dpToPx(12)
+        val padV = dpToPx(6)
+        val marginPx = dpToPx(6)
         for (chip in chips) {
             val btn = Button(this).apply {
                 text = chip.label
                 textSize = 11f
                 isAllCaps = false
-                setBackgroundColor(chip.backgroundColor)
-                setTextColor(0xFFFFFFFF.toInt())
+                minHeight = 0
+                minimumHeight = 0
+                minWidth = 0
+                minimumWidth = 0
+                setPadding(padH, padV, padH, padV)
+                setBackgroundResource(chip.backgroundRes)
+                setTextColor(ContextCompat.getColor(this@MainActivity, chip.textColorRes))
                 setOnClickListener { chip.onClick() }
             }
             val lp = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
             ).apply {
-                marginEnd = 12
+                marginEnd = marginPx
             }
             container.addView(btn, lp)
         }
@@ -613,29 +932,20 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
                 val msg = "[UNPAIRED] mDNS host ${host.hostDisplayLabel} is untrusted — scan QR or paste dsh-remote:// URI (discovery !== trust)"
                 stickyStatusError = msg
                 statusView.text = msg
+                statusView.setTextColor(ContextCompat.getColor(this, R.color.dsh_status_warn))
                 appendLog(msg)
             }
             DiscoverySelectOutcome.REVOKED_HOST -> {
                 val msg = "[REVOKED] Discovered host ${host.hostFingerprint?.take(12)}... is revoked — Forget & re-pair after Host re-trusts"
                 stickyStatusError = msg
                 statusView.text = msg
+                statusView.setTextColor(ContextCompat.getColor(this, R.color.dsh_status_danger))
                 appendLog(msg)
             }
             DiscoverySelectOutcome.MISSING_FINGERPRINT, null -> {
                 appendLog("Discovered mDNS host ${host.hostDisplayLabel} missing hostFingerprint")
             }
         }
-    }
-
-    private fun appendStreamDelta(delta: String) {
-        if (delta.isEmpty()) return
-        streamBuffer.append(delta)
-        if (streamBuffer.length > 12_000) {
-            streamBuffer.delete(0, streamBuffer.length - 10_000)
-        }
-        assistantStreamView.text = streamBuffer.toString()
-        streamChunkCount += 1
-        refreshMetricsUi()
     }
 
     private fun refreshMetricsUi() {
@@ -670,7 +980,11 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
         runOnUiThread {
             when (action) {
                 "prompt" -> promptInput.text.clear()
-                "question" -> answerInput.text.clear()
+                "question" -> {
+                    answerInput.text.clear()
+                    selectedQuestionChoices.clear()
+                    renderedQuestionSignature = null
+                }
             }
         }
     }
@@ -691,6 +1005,10 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
                 val extra = latestQuestions.size
                 val suffix = if (extra > 0) " (+$extra more)" else ""
                 approvalBanner.text = "APPROVAL REQUIRED ($callId): $cleanSummary$suffix"
+                pendingCard.visibility = View.VISIBLE
+                btnApprove.visibility = View.VISIBLE
+                btnReject.visibility = View.VISIBLE
+                questionOptionsScroll.visibility = View.GONE
             } else {
                 renderApprovalBanner()
             }
@@ -703,6 +1021,10 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
             if (latestApprovals.isEmpty() && latestQuestions.isEmpty()) {
                 pendingQuestionId = questionId
                 approvalBanner.text = "QUESTION ($questionId): $cleanPrompt"
+                pendingCard.visibility = View.VISIBLE
+                btnApprove.visibility = View.GONE
+                btnReject.visibility = View.GONE
+                questionOptionsScroll.visibility = View.GONE
             } else {
                 renderApprovalBanner()
             }
@@ -720,16 +1042,127 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
                 val suffix = if (extra > 0) " (+$extra more)" else ""
                 val cleanSummary = DisplayTextSanitizer.sanitizeSingleLine(headApproval.summary)
                 approvalBanner.text = "APPROVAL REQUIRED (${headApproval.callId}): $cleanSummary$suffix"
+                pendingCard.visibility = View.VISIBLE
+                btnApprove.visibility = View.VISIBLE
+                btnReject.visibility = View.VISIBLE
+                etAnswerVisibility(visible = headQuestion != null)
+                questionOptionsScroll.visibility = View.GONE
             }
             headQuestion != null -> {
                 val extra = latestQuestions.size - 1
                 val suffix = if (extra > 0) " (+$extra more)" else ""
                 val cleanPrompt = DisplayTextSanitizer.sanitizeSingleLine(headQuestion.prompt)
                 approvalBanner.text = "QUESTION (${headQuestion.questionId}): $cleanPrompt$suffix"
+                pendingCard.visibility = View.VISIBLE
+                btnApprove.visibility = View.GONE
+                btnReject.visibility = View.GONE
+                etAnswerVisibility(visible = true)
+                renderQuestionOptionChips(headQuestion)
             }
             else -> {
                 approvalBanner.text = getString(R.string.no_pending_interaction)
+                pendingCard.visibility = View.GONE
+                questionOptionsScroll.visibility = View.GONE
+                questionOptionsContainer.removeAllViews()
+                selectedQuestionChoices.clear()
+                renderedQuestionSignature = null
             }
+        }
+    }
+
+    private fun etAnswerVisibility(visible: Boolean) {
+        val vis = if (visible) View.VISIBLE else View.GONE
+        answerInput.visibility = vis
+        btnAnswerQuestion.visibility = vis
+    }
+
+    private fun renderQuestionOptionChips(item: PendingQuestionItem) {
+        val specsWithOptions = item.questions.filter { it.options.isNotEmpty() }
+        if (specsWithOptions.isEmpty()) {
+            questionOptionsScroll.visibility = View.GONE
+            questionOptionsContainer.removeAllViews()
+            renderedQuestionSignature = item.questionId
+            return
+        }
+        val sig = item.questionId + ":" + specsWithOptions.joinToString("|") { spec ->
+            spec.id + "=" + spec.options.joinToString(",") { it.label }
+        }
+        if (renderedQuestionSignature != sig) {
+            selectedQuestionChoices.clear()
+            renderedQuestionSignature = sig
+        }
+        val singleSpecMode = specsWithOptions.size == 1
+        val quickSingleTap = singleSpecMode && !specsWithOptions.first().multiSelect
+
+        questionOptionsScroll.visibility = View.VISIBLE
+        questionOptionsContainer.removeAllViews()
+        val padH = dpToPx(12)
+        val padV = dpToPx(6)
+        val marginPx = dpToPx(6)
+
+        for (spec in specsWithOptions) {
+            val specChoices = selectedQuestionChoices.getOrPut(spec.id) { LinkedHashSet() }
+            val specPrefix = if (singleSpecMode) "" else "${spec.header ?: spec.id}: "
+            for (opt in spec.options) {
+                val isSelected = specChoices.contains(opt.label)
+                val btn = Button(this).apply {
+                    text = DisplayTextSanitizer.sanitizeSingleLine("$specPrefix${opt.label}")
+                    textSize = 11f
+                    isAllCaps = false
+                    minHeight = 0
+                    minimumHeight = 0
+                    minWidth = 0
+                    minimumWidth = 0
+                    setPadding(padH, padV, padH, padV)
+                    setBackgroundResource(if (isSelected) R.drawable.bg_chip_accent else R.drawable.bg_chip_neutral)
+                    setTextColor(ContextCompat.getColor(this@MainActivity, R.color.dsh_text_primary))
+                    setOnClickListener {
+                        if (quickSingleTap) {
+                            service?.respondQuestionAsync(item.questionId, opt.label)
+                        } else {
+                            if (specChoices.contains(opt.label)) {
+                                specChoices.remove(opt.label)
+                            } else {
+                                if (!spec.multiSelect) specChoices.clear()
+                                specChoices.add(opt.label)
+                            }
+                            renderQuestionOptionChips(item)
+                        }
+                    }
+                }
+                val lp = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                ).apply {
+                    marginEnd = marginPx
+                }
+                questionOptionsContainer.addView(btn, lp)
+            }
+        }
+    }
+
+    private fun submitQuestionResponse(questionId: String) {
+        val ansText = answerInput.text.toString().trim()
+        val head = latestQuestions.firstOrNull { it.questionId == questionId }
+        val nonEmptySelections = selectedQuestionChoices.entries.filter { it.value.isNotEmpty() }
+        if (head != null && head.questions.isNotEmpty() && nonEmptySelections.isNotEmpty()) {
+            val answersJson = head.questions.mapIndexed { idx, spec ->
+                val chosen = selectedQuestionChoices[spec.id]?.toList().orEmpty()
+                val includeCustom = idx == 0 && ansText.isNotEmpty()
+                JsonObject.of(
+                    "id" to JsonString(spec.id),
+                    "selected" to JsonArray(chosen.map { JsonString(it) }),
+                    "custom" to if (includeCustom) JsonString(ansText) else null,
+                )
+            }
+            service?.respondQuestionStructuredAsync(
+                questionId = questionId,
+                answerValue = JsonObject.of("answers" to JsonArray(answersJson)),
+            )
+            return
+        }
+        if (ansText.isNotEmpty()) {
+            service?.respondQuestionAsync(questionId, ansText)
         }
     }
 
@@ -759,7 +1192,7 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
         mdnsDiscoverer?.stop()
         val discoverer = LanMdnsDiscoverer(this)
         mdnsDiscoverer = discoverer
-        appendLog("Scanning mDNS ${_DshMdnsServiceLabel}...")
+        appendLog("Scanning mDNS $_DshMdnsServiceLabel...")
         discoverer.start(
             object : LanMdnsDiscoverer.Listener {
                 override fun onHostFound(host: DiscoveredLanHost) {
@@ -780,6 +1213,9 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
         val combined = if (existing.isEmpty()) cleanLine else "$existing\n$cleanLine"
         eventLogView.text = combined.takeLast(8000)
     }
+
+    private fun dpToPx(dp: Int): Int =
+        (dp * resources.displayMetrics.density + 0.5f).toInt()
 
     private companion object {
         const val _DshMdnsServiceLabel = "_dsh-remote._tcp."

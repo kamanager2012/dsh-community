@@ -6,9 +6,13 @@ import { RemoteProtocolError } from '../errors.js'
 const AUTHORITATIVE_REQUIRED_CAPABILITIES: Readonly<Partial<Record<RemoteMethod, Capability>>> = Object.freeze({
   'session.list': 'observe',
   'session.attach': 'observe',
+  'session.create': 'prompt',
   'prompt.submit': 'prompt',
+  'turn.abort': 'prompt',
   'approval.respond': 'approve',
   'question.respond': 'answer-question',
+  'model.list': 'observe',
+  'model.select': 'prompt',
   'stream.ack': 'observe',
 })
 

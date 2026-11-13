@@ -8,6 +8,8 @@ import {
   parseRemoteRequest,
   type ApprovalRespondParams,
   type AuthenticatedPeer,
+  type CreateSessionParams,
+  type ModelSelectionParams,
   type OfficialRemoteSeams,
   type OfficialSessionEvent,
   type PromptSubmitParams,
@@ -15,6 +17,7 @@ import {
   type RemoteRequest,
   type SessionAttachParams,
   type StreamAckParams,
+  type TurnAbortParams,
 } from './protocol.js'
 import { BoundedReplayBuffer } from './replay.js'
 
@@ -50,9 +53,71 @@ function requiredString(
 
 function parsePrompt(value: unknown): PromptSubmitParams {
   const object = asObject(value)
+  const rawMode = object.mode
+  if (rawMode !== undefined && rawMode !== 'followup' && rawMode !== 'steer') {
+    throw new RemoteProtocolError('INVALID_REQUEST', 'invalid prompt mode')
+  }
   return {
     sessionId: requiredString(object, 'sessionId'),
     prompt: requiredString(object, 'prompt'),
+    ...(rawMode !== undefined ? { mode: rawMode } : {}),
+  }
+}
+
+function parseCreateSession(value: unknown): CreateSessionParams {
+  if (value === undefined) return {}
+  const object = asObject(value)
+  let sessionId: string | undefined
+  if (object.sessionId !== undefined) {
+    sessionId = requiredString(object, 'sessionId')
+    if (!/^[a-zA-Z0-9_-]{1,128}$/u.test(sessionId)) {
+      throw new RemoteProtocolError('INVALID_REQUEST', 'sessionId must match [a-zA-Z0-9_-]{1,128}')
+    }
+  }
+  let title: string | undefined
+  if (object.title !== undefined) {
+    if (typeof object.title !== 'string' || object.title.trim().length === 0 || object.title.length > 200) {
+      throw new RemoteProtocolError('INVALID_REQUEST', 'title must be a 1..200 character string')
+    }
+    title = object.title.trim()
+  }
+  return {
+    ...(sessionId !== undefined ? { sessionId } : {}),
+    ...(title !== undefined ? { title } : {}),
+  }
+}
+
+function parseTurnAbort(value: unknown): TurnAbortParams {
+  const object = asObject(value)
+  if (object.keepInbox !== undefined && typeof object.keepInbox !== 'boolean') {
+    throw new RemoteProtocolError('INVALID_REQUEST', 'keepInbox must be a boolean')
+  }
+  return {
+    sessionId: requiredString(object, 'sessionId'),
+    ...(object.keepInbox !== undefined ? { keepInbox: object.keepInbox } : {}),
+  }
+}
+
+function parseModelList(value: unknown): string | undefined {
+  if (value === undefined) return undefined
+  const object = asObject(value)
+  if (object.sessionId === undefined) return undefined
+  return requiredString(object, 'sessionId')
+}
+
+function parseModelSelect(value: unknown): { readonly sessionId: string; readonly selection: ModelSelectionParams } {
+  const object = asObject(value)
+  let reasoningEffort: string | undefined
+  if (object.reasoningEffort !== undefined) {
+    reasoningEffort = requiredString(object, 'reasoningEffort')
+  }
+  return {
+    sessionId: requiredString(object, 'sessionId'),
+    selection: {
+      provider: requiredString(object, 'provider'),
+      model: requiredString(object, 'model'),
+      ...(reasoningEffort !== undefined ? { reasoningEffort } : {}),
+    },
   }
 }
 
@@ -180,6 +245,21 @@ export class RemoteAdapterCore {
         return { ok: true }
       case 'session.list':
         return this.seams.listSessions()
+      case 'session.create':
+        return this.mutate(
+          peer,
+          request,
+          parseCreateSession(request.params),
+          async (params) => {
+            if (!this.seams.createSession) {
+              throw new RemoteProtocolError(
+                'INVALID_REQUEST',
+                'session.create is not supported by this host',
+              )
+            }
+            return this.seams.createSession(params)
+          },
+        )
       case 'session.attach':
         return this.attach(parseAttach(request.params))
       case 'stream.ack': {
@@ -194,7 +274,50 @@ export class RemoteAdapterCore {
           peer,
           request,
           parsePrompt(request.params),
-          async (params) => this.seams.followup(params.sessionId, params.prompt),
+          async (params) =>
+            params.mode !== undefined
+              ? this.seams.followup(params.sessionId, params.prompt, { mode: params.mode })
+              : this.seams.followup(params.sessionId, params.prompt),
+        )
+      case 'turn.abort':
+        return this.mutate(
+          peer,
+          request,
+          parseTurnAbort(request.params),
+          async (params) => {
+            if (!this.seams.abortTurn) {
+              throw new RemoteProtocolError(
+                'INVALID_REQUEST',
+                'turn.abort is not supported by this host',
+              )
+            }
+            return this.seams.abortTurn(
+              params.sessionId,
+              params.keepInbox !== undefined ? { keepInbox: params.keepInbox } : undefined,
+            )
+          },
+        )
+      case 'model.list': {
+        const sessionId = parseModelList(request.params)
+        if (!this.seams.listModels) {
+          return { models: [] }
+        }
+        return this.seams.listModels(sessionId)
+      }
+      case 'model.select':
+        return this.mutate(
+          peer,
+          request,
+          parseModelSelect(request.params),
+          async (params) => {
+            if (!this.seams.selectModel) {
+              throw new RemoteProtocolError(
+                'INVALID_REQUEST',
+                'model.select is not supported by this host',
+              )
+            }
+            return this.seams.selectModel(params.sessionId, params.selection)
+          },
         )
       case 'approval.respond':
         return this.mutate(

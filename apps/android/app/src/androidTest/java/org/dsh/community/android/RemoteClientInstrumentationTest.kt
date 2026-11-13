@@ -12,6 +12,7 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.recyclerview.widget.RecyclerView
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -514,19 +515,23 @@ class RemoteClientInstrumentationTest {
                 activity.findViewById<EditText>(R.id.et_prompt).setText("R6_STAGE2_ASK_QUESTION")
                 activity.findViewById<Button>(R.id.btn_send_prompt).performClick()
             }
-            waitUntil(15_000, "QUESTION banner displayed on UI") { activity ->
-                activity.findViewById<TextView>(R.id.tv_approval).text.toString().startsWith("QUESTION (")
+            waitUntil(15_000, "QUESTION banner & option chips displayed on UI") { activity ->
+                val bannerOk = activity.findViewById<TextView>(R.id.tv_approval).text.toString().startsWith("QUESTION (")
+                val optionsRow = activity.findViewById<LinearLayout>(R.id.ll_question_options)
+                bannerOk && optionsRow.childCount >= 2 && optionsRow.getChildAt(0) is Button
             }
             scenario.onActivity { activity ->
                 activity.findViewById<EditText>(R.id.et_answer).setText("thorough")
                 activity.findViewById<Button>(R.id.btn_answer_question).performClick()
             }
-            waitUntil(15_000, "R6_QUESTION_ANSWERED streamed to tv_assistant_stream") { activity ->
-                activity.findViewById<TextView>(R.id.tv_assistant_stream).text.toString()
+            waitUntil(15_000, "R6_QUESTION_ANSWERED streamed to tv_assistant_stream & RecyclerView timeline") { activity ->
+                val streamOk = activity.findViewById<TextView>(R.id.tv_assistant_stream).text.toString()
                     .contains("R6_QUESTION_ANSWERED:thorough")
+                val timelineCount = activity.findViewById<RecyclerView>(R.id.rv_chat_timeline).adapter?.itemCount ?: 0
+                streamOk && timelineCount >= 2
             }
 
-            // Trigger Host stream.reset via /sessions/reset -> stale assistant stream buffer clears & logs resync
+            // Trigger Host stream.reset via /sessions/reset -> stale assistant stream buffer & timeline clear & log resync
             val resetResp = postControlJson(
                 url = "$controlUrl/sessions/reset",
                 token = controlToken,
@@ -536,10 +541,24 @@ class RemoteClientInstrumentationTest {
                 ).stringify(),
             )
             assertTrue("sessions/reset failed: ${resetResp.second}", resetResp.first in 200..299)
-            waitUntil(10_000, "stream.reset clears stale stream buffer & logs resync") { activity ->
+            waitUntil(10_000, "stream.reset clears stale stream buffer, clears timeline & logs resync") { activity ->
                 val stream = activity.findViewById<TextView>(R.id.tv_assistant_stream).text.toString()
                 val events = activity.findViewById<TextView>(R.id.tv_events).text.toString()
-                !stream.contains("R6_QUESTION_ANSWERED:thorough") && events.contains("stream.reset")
+                val timelineCount = activity.findViewById<RecyclerView>(R.id.rv_chat_timeline).adapter?.itemCount ?: -1
+                !stream.contains("R6_QUESTION_ANSWERED:thorough") &&
+                    events.contains("stream.reset") &&
+                    timelineCount == 0
+            }
+
+            // Verify live New Session button creates & attaches a second Host session
+            var initialChipCount = 0
+            scenario.onActivity { activity ->
+                initialChipCount = activity.findViewById<LinearLayout>(R.id.ll_session_chips).childCount
+                activity.findViewById<Button>(R.id.btn_new_session).performClick()
+            }
+            waitUntil(15_000, "New Session creates & displays additional live session chip") { activity ->
+                val chipsRow = activity.findViewById<LinearLayout>(R.id.ll_session_chips)
+                chipsRow.childCount >= maxOf(2, initialChipCount + 1) && chipsRow.getChildAt(0) is Button
             }
 
             // Test Forget Host removes persisted TrustedHostRecord cleanly

@@ -1,129 +1,289 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#121212"
-    android:fillViewport="true">
+    android:background="@color/dsh_bg_canvas"
+    android:orientation="vertical"
+    android:padding="10dp">
 
+    <!-- Top Navigation & Status Bar -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:background="@drawable/bg_card_surface"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="10dp"
+        android:paddingVertical="8dp">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:paddingEnd="8dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/remote_client_header"
+                    android:textColor="@color/dsh_text_primary"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tv_agent_status"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:background="@drawable/bg_chip_neutral"
+                    android:paddingHorizontal="7dp"
+                    android:paddingVertical="2dp"
+                    android:text="Idle"
+                    android:textColor="@color/dsh_text_secondary"
+                    android:textSize="10sp" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/tv_status"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:ellipsize="end"
+                android:maxLines="2"
+                android:text="@string/status_disconnected"
+                android:textColor="@color/dsh_status_warn"
+                android:textSize="11sp" />
+        </LinearLayout>
+
+        <Button
+            android:id="@+id/btn_toggle_connection"
+            android:layout_width="wrap_content"
+            android:layout_height="34dp"
+            android:background="@drawable/bg_button_secondary"
+            android:minWidth="0dp"
+            android:paddingHorizontal="10dp"
+            android:text="@string/action_setup"
+            android:textAllCaps="false"
+            android:textColor="@color/dsh_text_primary"
+            android:textSize="11sp" />
+
+        <Button
+            android:id="@+id/btn_toggle_logs"
+            android:layout_width="wrap_content"
+            android:layout_height="34dp"
+            android:layout_marginStart="6dp"
+            android:background="@drawable/bg_button_secondary"
+            android:minWidth="0dp"
+            android:paddingHorizontal="10dp"
+            android:text="@string/action_logs"
+            android:textAllCaps="false"
+            android:textColor="@color/dsh_text_primary"
+            android:textSize="11sp" />
+
+        <Button
+            android:id="@+id/btn_export_chat"
+            android:layout_width="wrap_content"
+            android:layout_height="34dp"
+            android:layout_marginStart="6dp"
+            android:background="@drawable/bg_button_secondary"
+            android:minWidth="0dp"
+            android:paddingHorizontal="10dp"
+            android:text="@string/action_share"
+            android:textAllCaps="false"
+            android:textColor="@color/dsh_text_accent"
+            android:textSize="11sp" />
+    </LinearLayout>
+
+    <!-- Collapsible Pairing & Transport Setup Drawer -->
+    <LinearLayout
+        android:id="@+id/ll_connection_panel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:background="@drawable/bg_card_surface"
         android:orientation="vertical"
-        android:padding="16dp">
-
-        <TextView
-            android:id="@+id/tv_title"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/remote_client_header"
-            android:textColor="#FFFFFF"
-            android:textSize="18sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/tv_status"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:text="@string/status_disconnected"
-            android:textColor="#80CBC4"
-            android:textSize="13sp" />
+        android:padding="10dp">
 
         <TextView
             android:id="@+id/tv_device_id"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:textColor="#B0BEC5"
-            android:textSize="11sp" />
+            android:fontFamily="monospace"
+            android:text="Device ID: loading..."
+            android:textColor="@color/dsh_text_secondary"
+            android:textSize="10sp" />
 
         <TextView
             android:id="@+id/tv_metrics"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="2dp"
-            android:textColor="#90CAF9"
-            android:textSize="11sp" />
-
-        <EditText
-            android:id="@+id/et_pairing_json"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:background="#1E1E1E"
-            android:hint="@string/hint_pairing_json"
-            android:inputType="textMultiLine"
-            android:minLines="2"
-            android:padding="8dp"
-            android:textColor="#FFFFFF"
-            android:textColorHint="#78909C"
-            android:textSize="12sp" />
+            android:fontFamily="monospace"
+            android:text="Lifecycle metrics: -"
+            android:textColor="@color/dsh_text_secondary"
+            android:textSize="10sp" />
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
+            android:layout_marginTop="6dp"
+            android:gravity="center_vertical"
             android:orientation="horizontal">
 
-            <Button
-                android:id="@+id/btn_connect"
+            <EditText
+                android:id="@+id/et_pairing_json"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="@string/action_connect" />
+                android:background="@drawable/bg_input_field"
+                android:hint="@string/hint_pairing_json"
+                android:inputType="textMultiLine"
+                android:maxLines="2"
+                android:minHeight="40dp"
+                android:paddingHorizontal="10dp"
+                android:paddingVertical="6dp"
+                android:textColor="@color/dsh_text_primary"
+                android:textColorHint="@color/dsh_text_secondary"
+                android:textSize="12sp" />
 
             <Button
-                android:id="@+id/btn_scan_lan"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="@string/action_scan_lan" />
-
-            <Button
-                android:id="@+id/btn_failover"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="@string/action_failover" />
-
-            <Button
-                android:id="@+id/btn_disconnect"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="@string/action_disconnect" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:orientation="horizontal">
+                android:id="@+id/btn_scan_qr"
+                android:layout_width="wrap_content"
+                android:layout_height="38dp"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/bg_button_primary"
+                android:minWidth="0dp"
+                android:paddingHorizontal="10dp"
+                android:text="@string/action_scan_qr"
+                android:textAllCaps="false"
+                android:textColor="@color/dsh_text_primary"
+                android:textSize="11sp" />
 
             <Button
                 android:id="@+id/btn_paste_pair"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="@string/action_paste_pair" />
-
-            <Button
-                android:id="@+id/btn_reconnect"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="@string/action_reconnect" />
-
-            <Button
-                android:id="@+id/btn_forget_host"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="@string/action_forget_host" />
+                android:layout_width="wrap_content"
+                android:layout_height="38dp"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/bg_button_secondary"
+                android:minWidth="0dp"
+                android:paddingHorizontal="10dp"
+                android:text="@string/action_paste_pair"
+                android:textAllCaps="false"
+                android:textColor="@color/dsh_text_primary"
+                android:textSize="11sp" />
         </LinearLayout>
 
         <HorizontalScrollView
-            android:id="@+id/hsv_saved_hosts"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:scrollbars="none">
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/btn_connect"
+                    android:layout_width="wrap_content"
+                    android:layout_height="34dp"
+                    android:background="@drawable/bg_button_primary"
+                    android:minWidth="0dp"
+                    android:paddingHorizontal="12dp"
+                    android:text="@string/action_connect"
+                    android:textAllCaps="false"
+                    android:textColor="@color/dsh_text_primary"
+                    android:textSize="11sp" />
+
+                <Button
+                    android:id="@+id/btn_reconnect"
+                    android:layout_width="wrap_content"
+                    android:layout_height="34dp"
+                    android:layout_marginStart="6dp"
+                    android:background="@drawable/bg_button_secondary"
+                    android:minWidth="0dp"
+                    android:paddingHorizontal="10dp"
+                    android:text="@string/action_reconnect"
+                    android:textAllCaps="false"
+                    android:textColor="@color/dsh_text_primary"
+                    android:textSize="11sp" />
+
+                <Button
+                    android:id="@+id/btn_scan_lan"
+                    android:layout_width="wrap_content"
+                    android:layout_height="34dp"
+                    android:layout_marginStart="6dp"
+                    android:background="@drawable/bg_button_secondary"
+                    android:minWidth="0dp"
+                    android:paddingHorizontal="10dp"
+                    android:text="@string/action_scan_lan"
+                    android:textAllCaps="false"
+                    android:textColor="@color/dsh_text_primary"
+                    android:textSize="11sp" />
+
+                <Button
+                    android:id="@+id/btn_failover"
+                    android:layout_width="wrap_content"
+                    android:layout_height="34dp"
+                    android:layout_marginStart="6dp"
+                    android:background="@drawable/bg_button_secondary"
+                    android:minWidth="0dp"
+                    android:paddingHorizontal="10dp"
+                    android:text="@string/action_failover"
+                    android:textAllCaps="false"
+                    android:textColor="@color/dsh_text_primary"
+                    android:textSize="11sp" />
+
+                <Button
+                    android:id="@+id/btn_disconnect"
+                    android:layout_width="wrap_content"
+                    android:layout_height="34dp"
+                    android:layout_marginStart="6dp"
+                    android:background="@drawable/bg_button_secondary"
+                    android:minWidth="0dp"
+                    android:paddingHorizontal="10dp"
+                    android:text="@string/action_disconnect"
+                    android:textAllCaps="false"
+                    android:textColor="@color/dsh_text_primary"
+                    android:textSize="11sp" />
+
+                <Button
+                    android:id="@+id/btn_forget_host"
+                    android:layout_width="wrap_content"
+                    android:layout_height="34dp"
+                    android:layout_marginStart="6dp"
+                    android:background="@drawable/bg_button_danger"
+                    android:minWidth="0dp"
+                    android:paddingHorizontal="10dp"
+                    android:text="@string/action_forget_host"
+                    android:textAllCaps="false"
+                    android:textColor="@color/dsh_text_primary"
+                    android:textSize="11sp" />
+
+                <Button
+                    android:id="@+id/btn_battery_settings"
+                    android:layout_width="wrap_content"
+                    android:layout_height="34dp"
+                    android:layout_marginStart="6dp"
+                    android:background="@drawable/bg_button_secondary"
+                    android:minWidth="0dp"
+                    android:paddingHorizontal="10dp"
+                    android:text="@string/action_battery"
+                    android:textAllCaps="false"
+                    android:textColor="@color/dsh_text_secondary"
+                    android:textSize="11sp" />
+            </LinearLayout>
+        </HorizontalScrollView>
+
+        <HorizontalScrollView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
@@ -133,20 +293,19 @@
                 android:id="@+id/ll_saved_hosts"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:gravity="center_vertical"
                 android:orientation="horizontal">
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:padding="4dp"
                     android:text="@string/saved_hosts_hint"
-                    android:textColor="#78909C"
+                    android:textColor="@color/dsh_text_secondary"
                     android:textSize="11sp" />
             </LinearLayout>
         </HorizontalScrollView>
 
         <HorizontalScrollView
-            android:id="@+id/hsv_discovered_hosts"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
@@ -156,51 +315,103 @@
                 android:id="@+id/ll_discovered_hosts"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:gravity="center_vertical"
                 android:orientation="horizontal">
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:padding="4dp"
                     android:text="@string/mdns_hosts_hint"
-                    android:textColor="#78909C"
+                    android:textColor="@color/dsh_text_secondary"
                     android:textSize="11sp" />
             </LinearLayout>
         </HorizontalScrollView>
+    </LinearLayout>
+
+    <!-- Session Switcher & Model Ribbon -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:background="@drawable/bg_card_surface"
+        android:orientation="vertical"
+        android:padding="8dp">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
+            android:gravity="center_vertical"
             android:orientation="horizontal">
 
             <EditText
                 android:id="@+id/et_session_id"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="2"
-                android:background="#1E1E1E"
+                android:layout_height="36dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_input_field"
                 android:hint="@string/hint_session_id"
-                android:padding="8dp"
-                android:textColor="#FFFFFF"
-                android:textColorHint="#78909C"
-                android:textSize="13sp" />
-
-            <Button
-                android:id="@+id/btn_sessions"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/action_sessions" />
+                android:inputType="text"
+                android:paddingHorizontal="10dp"
+                android:textColor="@color/dsh_text_primary"
+                android:textColorHint="@color/dsh_text_secondary"
+                android:textSize="12sp" />
 
             <Button
                 android:id="@+id/btn_attach"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/action_attach" />
+                android:layout_height="36dp"
+                android:layout_marginStart="5dp"
+                android:background="@drawable/bg_button_secondary"
+                android:minWidth="0dp"
+                android:paddingHorizontal="10dp"
+                android:text="@string/action_attach"
+                android:textAllCaps="false"
+                android:textColor="@color/dsh_text_primary"
+                android:textSize="11sp" />
+
+            <Button
+                android:id="@+id/btn_sessions"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:layout_marginStart="5dp"
+                android:background="@drawable/bg_button_secondary"
+                android:minWidth="0dp"
+                android:paddingHorizontal="10dp"
+                android:text="@string/action_sessions"
+                android:textAllCaps="false"
+                android:textColor="@color/dsh_text_primary"
+                android:textSize="11sp" />
+
+            <Button
+                android:id="@+id/btn_new_session"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:layout_marginStart="5dp"
+                android:background="@drawable/bg_button_primary"
+                android:minWidth="0dp"
+                android:paddingHorizontal="10dp"
+                android:text="@string/action_new_session"
+                android:textAllCaps="false"
+                android:textColor="@color/dsh_text_primary"
+                android:textSize="11sp" />
+
+            <Button
+                android:id="@+id/btn_model_picker"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:layout_marginStart="5dp"
+                android:background="@drawable/bg_button_secondary"
+                android:maxWidth="120dp"
+                android:minWidth="0dp"
+                android:paddingHorizontal="10dp"
+                android:singleLine="true"
+                android:text="@string/action_model"
+                android:textAllCaps="false"
+                android:textColor="@color/dsh_text_accent"
+                android:textSize="11sp" />
         </LinearLayout>
 
         <HorizontalScrollView
-            android:id="@+id/hsv_session_chips"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
@@ -210,123 +421,261 @@
                 android:id="@+id/ll_session_chips"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:gravity="center_vertical"
                 android:orientation="horizontal">
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:padding="4dp"
                     android:text="@string/session_picker_hint"
-                    android:textColor="#78909C"
+                    android:textColor="@color/dsh_text_secondary"
                     android:textSize="11sp" />
             </LinearLayout>
         </HorizontalScrollView>
+    </LinearLayout>
+
+    <!-- Primary Native Chat Timeline -->
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="6dp"
+        android:layout_weight="1">
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rv_chat_timeline"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clipToPadding="false"
+            android:paddingVertical="4dp" />
+
+        <TextView
+            android:id="@+id/tv_chat_empty"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:gravity="center"
+            android:padding="24dp"
+            android:text="@string/chat_timeline_empty"
+            android:textColor="@color/dsh_text_secondary"
+            android:textSize="13sp" />
+    </FrameLayout>
+
+    <!-- Toggleable Stream & Diagnostics Drawer (keeps tv_assistant_stream & tv_events synced) -->
+    <LinearLayout
+        android:id="@+id/ll_logs_panel"
+        android:layout_width="match_parent"
+        android:layout_height="170dp"
+        android:layout_marginTop="6dp"
+        android:background="@drawable/bg_card_surface"
+        android:orientation="vertical"
+        android:padding="8dp"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Raw Stream &amp; Event Log"
+            android:textColor="@color/dsh_text_accent"
+            android:textSize="11sp"
+            android:textStyle="bold" />
+
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_marginTop="4dp"
+            android:layout_weight="1">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/tv_assistant_stream"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/bg_code_surface"
+                    android:padding="8dp"
+                    android:text="@string/assistant_stream_empty"
+                    android:textColor="@color/dsh_text_primary"
+                    android:textIsSelectable="true"
+                    android:textSize="12sp" />
+
+                <TextView
+                    android:id="@+id/tv_events"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:background="@drawable/bg_code_surface"
+                    android:fontFamily="monospace"
+                    android:padding="8dp"
+                    android:text="Events:"
+                    android:textColor="@color/dsh_text_secondary"
+                    android:textSize="11sp" />
+            </LinearLayout>
+        </ScrollView>
+    </LinearLayout>
+
+    <!-- Pending Approval / Interactive Question Card -->
+    <LinearLayout
+        android:id="@+id/ll_pending_card"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:background="@drawable/bg_alert_card"
+        android:orientation="vertical"
+        android:padding="10dp"
+        android:visibility="gone">
 
         <TextView
             android:id="@+id/tv_approval"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:background="#263238"
-            android:padding="8dp"
             android:text="@string/no_pending_interaction"
-            android:textColor="#FFD54F"
-            android:textSize="13sp" />
+            android:textColor="@color/dsh_status_warn"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
+        <HorizontalScrollView
+            android:id="@+id/hsv_question_options"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:scrollbars="none"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:id="@+id/ll_question_options"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal" />
+        </HorizontalScrollView>
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
+            android:gravity="center_vertical"
             android:orientation="horizontal">
 
             <Button
                 android:id="@+id/btn_approve"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="@string/action_approve" />
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:background="@drawable/bg_button_primary"
+                android:minWidth="0dp"
+                android:paddingHorizontal="12dp"
+                android:text="@string/action_approve"
+                android:textAllCaps="false"
+                android:textColor="@color/dsh_text_primary"
+                android:textSize="11sp" />
 
             <Button
                 android:id="@+id/btn_reject"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="@string/action_reject" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:orientation="horizontal">
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/bg_button_danger"
+                android:minWidth="0dp"
+                android:paddingHorizontal="12dp"
+                android:text="@string/action_reject"
+                android:textAllCaps="false"
+                android:textColor="@color/dsh_text_primary"
+                android:textSize="11sp" />
 
             <EditText
                 android:id="@+id/et_answer"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="2"
-                android:background="#1E1E1E"
+                android:layout_height="36dp"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_input_field"
                 android:hint="@string/hint_answer"
-                android:padding="8dp"
-                android:textColor="#FFFFFF"
-                android:textColorHint="#78909C"
-                android:textSize="13sp" />
+                android:inputType="text"
+                android:paddingHorizontal="10dp"
+                android:textColor="@color/dsh_text_primary"
+                android:textColorHint="@color/dsh_text_secondary"
+                android:textSize="12sp" />
 
             <Button
                 android:id="@+id/btn_answer_question"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/action_answer" />
+                android:layout_height="36dp"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/bg_button_primary"
+                android:minWidth="0dp"
+                android:paddingHorizontal="12dp"
+                android:text="@string/action_answer"
+                android:textAllCaps="false"
+                android:textColor="@color/dsh_text_primary"
+                android:textSize="11sp" />
         </LinearLayout>
+    </LinearLayout>
 
-        <LinearLayout
-            android:layout_width="match_parent"
+    <!-- Bottom Prompt Composer -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:background="@drawable/bg_card_surface"
+        android:gravity="bottom"
+        android:orientation="horizontal"
+        android:padding="8dp">
+
+        <EditText
+            android:id="@+id/et_prompt"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:orientation="horizontal">
-
-            <EditText
-                android:id="@+id/et_prompt"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="3"
-                android:background="#1E1E1E"
-                android:hint="@string/hint_prompt"
-                android:padding="8dp"
-                android:textColor="#FFFFFF"
-                android:textColorHint="#78909C"
-                android:textSize="13sp" />
-
-            <Button
-                android:id="@+id/btn_send_prompt"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/action_send" />
-        </LinearLayout>
-
-        <TextView
-            android:id="@+id/tv_assistant_stream"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:background="#16202A"
-            android:minLines="3"
-            android:padding="8dp"
-            android:text="@string/assistant_stream_empty"
-            android:textColor="#E8F5E9"
+            android:layout_weight="1"
+            android:background="@drawable/bg_input_field"
+            android:hint="@string/hint_prompt"
+            android:inputType="textMultiLine|textCapSentences"
+            android:maxLines="4"
+            android:minHeight="40dp"
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="8dp"
+            android:textColor="@color/dsh_text_primary"
+            android:textColorHint="@color/dsh_text_secondary"
             android:textSize="13sp" />
 
-        <TextView
-            android:id="@+id/tv_events"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:background="#1A1A1A"
-            android:fontFamily="monospace"
-            android:minHeight="220dp"
-            android:padding="8dp"
-            android:textColor="#E0E0E0"
+        <Button
+            android:id="@+id/btn_steer_mode"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:layout_marginStart="6dp"
+            android:background="@drawable/bg_button_secondary"
+            android:minWidth="0dp"
+            android:paddingHorizontal="10dp"
+            android:text="@string/action_steer_off"
+            android:textAllCaps="false"
+            android:textColor="@color/dsh_text_secondary"
             android:textSize="11sp" />
 
+        <Button
+            android:id="@+id/btn_stop_turn"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:layout_marginStart="6dp"
+            android:background="@drawable/bg_button_danger"
+            android:minWidth="0dp"
+            android:paddingHorizontal="12dp"
+            android:text="@string/action_stop"
+            android:textAllCaps="false"
+            android:textColor="@color/dsh_text_primary"
+            android:textSize="11sp"
+            android:visibility="gone" />
+
+        <Button
+            android:id="@+id/btn_send_prompt"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:layout_marginStart="6dp"
+            android:background="@drawable/bg_button_primary"
+            android:minWidth="0dp"
+            android:paddingHorizontal="14dp"
+            android:text="@string/action_send"
+            android:textAllCaps="false"
+            android:textColor="@color/dsh_text_primary"
+            android:textSize="12sp" />
     </LinearLayout>
-</ScrollView>
+</LinearLayout>

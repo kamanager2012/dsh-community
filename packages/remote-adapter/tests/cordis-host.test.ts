@@ -57,6 +57,25 @@ class FakeRootContext implements OfficialCordisContextLike {
     currentSelection: () => ({ provider: 'deepseek-official', model: 'deepseek-flash' }),
   }
 
+  readonly llm = {
+    listProviders: () => [
+      { id: 'deepseek-official', name: 'DeepSeek Official' },
+    ],
+    listModels: async (_provider: string) => [
+      { id: 'deepseek-flash', name: 'DeepSeek Chat', description: 'Fast general model' },
+      { id: 'deepseek-reasoner', name: 'DeepSeek Reasoner', description: 'Reasoning model' },
+    ],
+    resolveCallConfig: async (config: { readonly provider: string; readonly model: string }) => {
+      if (
+        config.provider !== 'deepseek-official' ||
+        (config.model !== 'deepseek-flash' && config.model !== 'deepseek-reasoner')
+      ) {
+        throw new Error(`unknown model ${config.provider}/${config.model}`)
+      }
+      return config
+    },
+  }
+
   readonly agents = {
     create: async (options: {
       readonly sessionId: string
@@ -124,6 +143,18 @@ class FakeAgent implements OfficialAgentLike {
   readonly ctx = new FakeAgentContext()
   readonly session: { readonly id: string; readonly log: Array<{ seq: number; type: string; data?: unknown }> }
   readonly followups: Array<Record<string, unknown>> = []
+  readonly steers: Array<Record<string, unknown>> = []
+  readonly cancellations: Array<{ cause: unknown; options?: unknown }> = []
+  private currentModel: { provider: string; model: string; reasoningEffort?: string } = {
+    provider: 'deepseek-official',
+    model: 'deepseek-flash',
+  }
+  readonly model = {
+    current: () => ({ ...this.currentModel }),
+    select: (selection: { provider: string; model: string; reasoningEffort?: string }) => {
+      this.currentModel = { ...selection }
+    },
+  }
 
   constructor(
     readonly id: string,
@@ -138,6 +169,18 @@ class FakeAgent implements OfficialAgentLike {
     queueMicrotask(() => {
       void this.root.followupHandler?.(this, message, this.root)
     })
+  }
+
+  steer(message: Record<string, unknown>): void {
+    this.steers.push(message)
+    queueMicrotask(() => {
+      void this.root.followupHandler?.(this, message, this.root)
+    })
+  }
+
+  cancel(cause: unknown, options?: unknown): void {
+    this.cancellations.push({ cause, options })
+    this.ctx.emit('agent/status', { agent: this, status: 'idle' })
   }
 
   emitOfficialSessionEvent(type: string, data?: unknown): void {
@@ -655,6 +698,213 @@ describe('OfficialHostCordisBridge & Persistent Community Storage', () => {
       await control.close()
       await bridge.stop()
       rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('supports session.create, turn.abort, prompt steer mode, model.list/select, and agent/status with capability gates', async () => {
+    const root = mkTempRoot()
+    const dshHome = join(root, 'dsh-home')
+    const configDir = join(root, 'remote-cfg')
+    const ctx = new FakeRootContext()
+    let pendingApprovalOutcome: string | undefined
+
+    ctx.followupHandler = async (agent, message, rootCtx) => {
+      agent.ctx.emit('agent/status', { agent, status: 'running' })
+      const content = Array.isArray(message.content) ? message.content : []
+      const text = String((content[0] as { text?: string } | undefined)?.text ?? '')
+      if (text === 'WAIT_APPROVAL') {
+        pendingApprovalOutcome = await rootCtx.dispatchWaterfall(
+          'approval/request',
+          { agent, callId: 'call-abort-1', toolName: 'bash', reason: 'long command' },
+          async () => 'allowed-once',
+        )
+      }
+    }
+
+    const bridge = new OfficialHostCordisBridge({
+      ctx,
+      configDir,
+      dshHome,
+      carrier: { enabled: true, host: '127.0.0.1', port: 0 },
+    })
+    await bridge.start()
+
+    try {
+      const pairing = await bridge.issuePairingDescriptor()
+      const parsed = parsePairingInput(pairing.deepLink)
+      const clientIdentity = await new InMemoryHostIdentityStore().loadOrCreate()
+      const client = new FailoverRemoteClient({
+        clientKeyPair: {
+          publicKey: clientIdentity.identity.publicKey,
+          secretKey: clientIdentity.secretKey,
+        },
+        hostPublicKey: Uint8Array.from(Buffer.from(parsed.hostPublicKeyHex, 'hex')),
+        lan: { endpointUrl: parsed.endpointUrl },
+      })
+
+      const streamEvents: Array<{ seq: number; type: string; data?: any }> = []
+      client.onEvent((ev: any) => {
+        if (ev?.type === 'stream.event' && ev.event) {
+          streamEvents.push(ev.event)
+        }
+      })
+
+      await client.connect()
+      const candidate = await client.request('pairing.request', {
+        token: parsed.bootstrapToken,
+        displayName: 'Pixel Phone',
+      })
+      await bridge.pairingCoordinator.confirmPairing({
+        candidateId: candidate.candidateId,
+        grantedCapabilities: ['observe', 'prompt', 'approve', 'answer-question'],
+      })
+      client.close()
+      await client.reconnectWithBackoff({ initialDelayMs: 5, maxDelayMs: 10, maxAttempts: 2 })
+
+      // Idempotent remote session.create
+      const created1 = await client.request(
+        'session.create',
+        { sessionId: 's-remote-new', title: 'Mobile Thread' },
+        { idempotencyKey: 'create-key-1' },
+      )
+      const created2 = await client.request(
+        'session.create',
+        { sessionId: 's-remote-new', title: 'Mobile Thread' },
+        { idempotencyKey: 'create-key-1' },
+      )
+      expect(created1).toEqual({ id: 's-remote-new', title: 'Mobile Thread' })
+      expect(created2).toEqual(created1)
+
+      const sessions = await client.request('session.list')
+      expect(sessions.some((s: any) => s.id === 's-remote-new')).toBe(true)
+
+      await client.resumeSession('s-remote-new')
+
+      // Model catalog & switching
+      const catalog = await client.request('model.list', { sessionId: 's-remote-new' })
+      expect(catalog.current).toEqual({ provider: 'deepseek-official', model: 'deepseek-flash' })
+      expect(catalog.models).toHaveLength(2)
+
+      await expect(
+        client.request(
+          'model.select',
+          {
+            sessionId: 's-remote-new',
+            provider: 'deepseek-official',
+            model: 'does-not-exist',
+          },
+          { idempotencyKey: 'model-invalid-1' },
+        ),
+      ).rejects.toThrow(/unknown model/i)
+
+      const selected = await client.request(
+        'model.select',
+        {
+          sessionId: 's-remote-new',
+          provider: 'deepseek-official',
+          model: 'deepseek-reasoner',
+        },
+        { idempotencyKey: 'model-valid-1' },
+      )
+      expect(selected.selection).toEqual({
+        provider: 'deepseek-official',
+        model: 'deepseek-reasoner',
+      })
+
+      // Steer mode hits agent.steer(message)
+      await client.request(
+        'prompt.submit',
+        { sessionId: 's-remote-new', prompt: 'STEER_ME', mode: 'steer' },
+        { idempotencyKey: 'steer-1' },
+      )
+      const fakeAgent = ctx.agents.get('s-remote-new')! as FakeAgent
+      expect(fakeAgent.steers).toHaveLength(1)
+
+      // Blocking turn approval -> turn.abort cancels agent & clears pending approval cleanly
+      await client.request(
+        'prompt.submit',
+        { sessionId: 's-remote-new', prompt: 'WAIT_APPROVAL' },
+        { idempotencyKey: 'wait-approval-1' },
+      )
+      await expect
+        .poll(() => streamEvents.some((e) => e.type === 'approval.request'))
+        .toBe(true)
+      expect(streamEvents.some((e) => e.type === 'agent/status' && e.data?.status === 'running')).toBe(true)
+
+      const aborted = await client.request(
+        'turn.abort',
+        { sessionId: 's-remote-new' },
+        { idempotencyKey: 'abort-1' },
+      )
+      expect(aborted).toEqual({ sessionId: 's-remote-new', aborted: true })
+      expect(fakeAgent.cancellations).toEqual([{ cause: { kind: 'user' }, options: undefined }])
+      expect(pendingApprovalOutcome).toBe('cancelled')
+      await expect
+        .poll(() =>
+          streamEvents.some(
+            (e) => e.type === 'approval.resolved' && e.data?.decision === 'cancelled',
+          ) &&
+          streamEvents.some((e) => e.type === 'agent/status' && e.data?.status === 'idle'),
+        )
+        .toBe(true)
+
+      // Read-only observe device must be denied session.create, turn.abort, and model.select
+      const observerIdentity = await new InMemoryHostIdentityStore().loadOrCreate()
+      const pairingObs = await bridge.issuePairingDescriptor({
+        allowedCapabilities: ['observe'],
+      })
+      const obsParsed = parsePairingInput(pairingObs.deepLink)
+      const obsClient = new FailoverRemoteClient({
+        clientKeyPair: {
+          publicKey: observerIdentity.identity.publicKey,
+          secretKey: observerIdentity.secretKey,
+        },
+        hostPublicKey: Uint8Array.from(Buffer.from(obsParsed.hostPublicKeyHex, 'hex')),
+        lan: { endpointUrl: obsParsed.endpointUrl },
+      })
+      await obsClient.connect()
+      const obsCand = await obsClient.request('pairing.request', {
+        token: obsParsed.bootstrapToken,
+        displayName: 'Read Only Watch',
+      })
+      await bridge.pairingCoordinator.confirmPairing({
+        candidateId: obsCand.candidateId,
+        grantedCapabilities: ['observe'],
+      })
+      obsClient.close()
+      await obsClient.reconnectWithBackoff({ initialDelayMs: 5, maxDelayMs: 10, maxAttempts: 2 })
+
+      expect(Array.isArray((await obsClient.request('model.list')).models)).toBe(true)
+      await expect(
+        obsClient.request(
+          'session.create',
+          { sessionId: 'forbidden-create' },
+          { idempotencyKey: 'obs-create-1' },
+        ),
+      ).rejects.toThrow()
+      await expect(
+        obsClient.request(
+          'turn.abort',
+          { sessionId: 's-remote-new' },
+          { idempotencyKey: 'obs-abort-1' },
+        ),
+      ).rejects.toThrow()
+      await expect(
+        obsClient.request(
+          'model.select',
+          {
+            sessionId: 's-remote-new',
+            provider: 'deepseek-official',
+            model: 'deepseek-flash',
+          },
+          { idempotencyKey: 'obs-model-1' },
+        ),
+      ).rejects.toThrow()
+
+      client.close()
+      obsClient.close()
+    } finally {
+      await bridge.stop()
     }
   })
 })

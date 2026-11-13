@@ -12,6 +12,8 @@ import org.dsh.community.android.protocol.JsonNumber
 import org.dsh.community.android.protocol.JsonObject
 import org.dsh.community.android.protocol.JsonString
 import org.dsh.community.android.protocol.JsonValue
+import org.dsh.community.android.protocol.ModelCatalogResult
+import org.dsh.community.android.protocol.ModelOptionRef
 import org.dsh.community.android.protocol.OfficialSessionEvent
 import org.dsh.community.android.protocol.RemoteFrameCodec
 import org.dsh.community.android.protocol.RemoteProtocol
@@ -234,6 +236,19 @@ class FailoverRemoteSession(
         return RemoteFrameCodec.parseSessionList(res)
     }
 
+    fun createSession(
+        title: String? = null,
+        sessionId: String? = null,
+        idempotencyKey: String = newOperationKey("create"),
+    ): SessionRef {
+        val params = JsonObject.of(
+            "sessionId" to sessionId?.takeIf { it.isNotBlank() }?.let { JsonString(it) },
+            "title" to title?.takeIf { it.isNotBlank() }?.let { JsonString(it) },
+        )
+        val res = dispatchRpc(RemoteProtocol.METHOD_SESSION_CREATE, params, idempotencyKey = idempotencyKey)
+        return RemoteFrameCodec.parseSessionRef(res)
+    }
+
     fun attachSession(sessionId: String, explicitAfterSeq: Long? = null): AttachResumeResult {
         attachedSessionIds.add(sessionId)
         val resumeAfter = explicitAfterSeq ?: lastConfirmedSeqBySession[sessionId]
@@ -266,12 +281,27 @@ class FailoverRemoteSession(
         sessionId: String,
         prompt: String,
         idempotencyKey: String = newOperationKey("prompt"),
+        mode: String? = null,
     ): JsonValue {
         val params = JsonObject.of(
             "sessionId" to JsonString(sessionId),
             "prompt" to JsonString(prompt),
+            "mode" to mode?.takeIf { it.isNotBlank() }?.let { JsonString(it) },
         )
         return dispatchRpc(RemoteProtocol.METHOD_PROMPT_SUBMIT, params, idempotencyKey = idempotencyKey)
+    }
+
+    fun abortTurn(
+        sessionId: String,
+        keepInbox: Boolean = false,
+        idempotencyKey: String = newOperationKey("abort"),
+    ): Boolean {
+        val params = JsonObject.of(
+            "sessionId" to JsonString(sessionId),
+            "keepInbox" to if (keepInbox) JsonBool(true) else null,
+        )
+        val res = dispatchRpc(RemoteProtocol.METHOD_TURN_ABORT, params, idempotencyKey = idempotencyKey)
+        return (res as? JsonObject)?.bool("aborted") ?: true
     }
 
     fun respondApproval(
@@ -291,12 +321,43 @@ class FailoverRemoteSession(
         questionId: String,
         answer: String,
         idempotencyKey: String = newOperationKey("question"),
+    ): JsonValue = respondQuestionJson(questionId, JsonString(answer), idempotencyKey)
+
+    fun respondQuestionJson(
+        questionId: String,
+        answerValue: JsonValue,
+        idempotencyKey: String = newOperationKey("question"),
     ): JsonValue {
         val params = JsonObject.of(
             "questionId" to JsonString(questionId),
-            "answer" to JsonString(answer),
+            "answer" to answerValue,
         )
         return dispatchRpc(RemoteProtocol.METHOD_QUESTION_RESPOND, params, idempotencyKey = idempotencyKey)
+    }
+
+    fun listModels(sessionId: String? = null): ModelCatalogResult {
+        val params = JsonObject.of(
+            "sessionId" to sessionId?.takeIf { it.isNotBlank() }?.let { JsonString(it) },
+        )
+        val res = dispatchRpc(RemoteProtocol.METHOD_MODEL_LIST, params)
+        return RemoteFrameCodec.parseModelCatalog(res)
+    }
+
+    fun selectModel(
+        sessionId: String,
+        provider: String,
+        model: String,
+        reasoningEffort: String? = null,
+        idempotencyKey: String = newOperationKey("model"),
+    ): ModelOptionRef {
+        val params = JsonObject.of(
+            "sessionId" to JsonString(sessionId),
+            "provider" to JsonString(provider),
+            "model" to JsonString(model),
+            "reasoningEffort" to reasoningEffort?.takeIf { it.isNotBlank() }?.let { JsonString(it) },
+        )
+        dispatchRpc(RemoteProtocol.METHOD_MODEL_SELECT, params, idempotencyKey = idempotencyKey)
+        return ModelOptionRef(provider = provider, model = model, name = model)
     }
 
     /**
