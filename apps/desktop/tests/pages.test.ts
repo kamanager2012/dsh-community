@@ -92,6 +92,19 @@ describe('shell pages', () => {
     expect(html).toMatch(/isolated-dsh/)
     expect(html).toMatch(/不再共用/)
     expect(html).toMatch(/data-go="settings"/)
+    expect(html).not.toMatch(/settings-tray-unavailable/)
+
+    const noTrayHtml = renderSettingsPage({
+      product: 'DSH Community',
+      hideToTray: true,
+      trayAvailable: false,
+      isolated: false,
+      envIsolated: false,
+      officialHome: '/home/dev/.dsh',
+      isolatedHome: '/home/dev/.config/dsh-community/isolated-dsh',
+    })
+    expect(noTrayHtml).toMatch(/settings-tray-unavailable/)
+    expect(noTrayHtml).toMatch(/直接退出应用/)
   })
 
   it('shows host logs as diagnostics only', () => {

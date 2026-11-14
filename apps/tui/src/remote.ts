@@ -293,6 +293,51 @@ async function fetchControl(url: string, init?: RequestInit): Promise<Response> 
   })
 }
 
+export const REMOTE_REPL_COMMAND_SUMMARY =
+  'status | sessions | devices | confirm <id> | revoke <deviceId> | qr | help | quit'
+
+export type RemoteReplAction =
+  | { readonly kind: 'empty' }
+  | { readonly kind: 'status' }
+  | { readonly kind: 'sessions' }
+  | { readonly kind: 'devices' }
+  | { readonly kind: 'qr' }
+  | { readonly kind: 'help' }
+  | { readonly kind: 'quit' }
+  | { readonly kind: 'confirm'; readonly candidateId: string }
+  | { readonly kind: 'revoke'; readonly deviceId: string }
+  | { readonly kind: 'usage'; readonly usage: string }
+  | { readonly kind: 'unknown'; readonly command: string }
+
+/** Parses a single line entered into the interactive `remote start` TTY control REPL. */
+export function parseRemoteReplLine(line: string): RemoteReplAction {
+  const trimmed = line.trim()
+  if (!trimmed) return { kind: 'empty' }
+  const [cmd = '', arg] = trimmed.split(/\s+/, 2)
+  switch (cmd) {
+    case 'confirm':
+      return arg ? { kind: 'confirm', candidateId: arg } : { kind: 'usage', usage: '用法: confirm <candidateId>' }
+    case 'revoke':
+      return arg ? { kind: 'revoke', deviceId: arg } : { kind: 'usage', usage: '用法: revoke <deviceId>' }
+    case 'devices':
+      return { kind: 'devices' }
+    case 'sessions':
+      return { kind: 'sessions' }
+    case 'status':
+      return { kind: 'status' }
+    case 'qr':
+      return { kind: 'qr' }
+    case 'help':
+    case '?':
+      return { kind: 'help' }
+    case 'quit':
+    case 'exit':
+      return { kind: 'quit' }
+    default:
+      return { kind: 'unknown', command: cmd }
+  }
+}
+
 export function resolveRemoteCordisPluginUrl(): string {
   return import.meta.resolve('@dsh-community/remote-adapter/cordis-plugin')
 }
@@ -319,6 +364,11 @@ export async function runRemoteCommand(
   const configDir = defaultRemoteConfigDir(env, homedir())
 
   if (sub === 'devices') {
+    const unknown = args.slice(1).find((arg) => arg !== '--json')
+    if (unknown !== undefined) {
+      process.stderr.write(`未知参数: ${unknown}\n`)
+      return 2
+    }
     const asJson = args.includes('--json')
     const stores = openPersistentRemoteStores({ configDir, dshHome })
     const list = await stores.trustStore.list()
@@ -351,6 +401,10 @@ export async function runRemoteCommand(
       process.stderr.write('用法：dsh-community remote revoke <deviceId>\n')
       return 2
     }
+    if (args.length > 2) {
+      process.stderr.write(`未知参数: ${args[2]}\n`)
+      return 2
+    }
     const stores = openPersistentRemoteStores({ configDir, dshHome })
     const live = readLiveControlEndpoint(stores.configDir)
     if (live) {
@@ -372,6 +426,11 @@ export async function runRemoteCommand(
           process.stdout.write(`已吊销设备：${targetId}（在线会话已断开）\n`)
           return 0
         }
+        if (res.status !== 404) {
+          const text = (await res.text().catch(() => '')).trim()
+          process.stderr.write(`在线控制接口吊销失败 (${String(res.status)})${text ? `: ${text}` : ''}\n`)
+          return 1
+        }
       } catch {
         // Fallback to offline durable trust store below when live control is unreachable
       }
@@ -386,6 +445,11 @@ export async function runRemoteCommand(
   }
 
   if (sub === 'status') {
+    const unknown = args.slice(1).find((arg) => arg !== '--json')
+    if (unknown !== undefined) {
+      process.stderr.write(`未知参数: ${unknown}\n`)
+      return 2
+    }
     const asJson = args.includes('--json')
     const stores = openPersistentRemoteStores({ configDir, dshHome })
     const devices = await stores.trustStore.list()
@@ -593,7 +657,7 @@ export async function runRemoteCommand(
           ...(flags.qr && typeof ready.deepLink === 'string' && ready.deepLink.length > 0
             ? [formatPairingQrBlock(ready.deepLink, Boolean(process.stdout.isTTY))]
             : []),
-          `交互命令: confirm <candidateId> | devices | sessions | revoke <deviceId> | qr | quit`,
+          `交互命令: ${REMOTE_REPL_COMMAND_SUMMARY}`,
         )
         process.stdout.write(`${lines.join('\n')}\n`)
       }
@@ -625,65 +689,86 @@ export async function runRemoteCommand(
     if (process.stdin.isTTY && controlUrl) {
       rl = createInterface({ input: process.stdin, crlfDelay: Infinity })
       rl.on('line', async (line) => {
-        const trimmed = line.trim()
-        if (!trimmed) return
-        const [cmd, arg] = trimmed.split(/\s+/, 2)
+        const action = parseRemoteReplLine(line)
         try {
-          if (cmd === 'confirm' && arg) {
-            const res = await fetchControl(`${controlUrl}/pairing/confirm`, {
-              method: 'POST',
-              headers: {
-                'content-type': 'application/json',
-                authorization: `Bearer ${controlToken}`,
-              },
-              body: JSON.stringify({ candidateId: arg }),
-            })
-            process.stdout.write(`${await res.text()}\n`)
-          } else if (cmd === 'devices') {
-            const res = await fetchControl(`${controlUrl}/devices`, {
-              headers: { authorization: `Bearer ${controlToken}` },
-            })
-            process.stdout.write(`${await res.text()}\n`)
-          } else if (cmd === 'sessions') {
-            const res = await fetchControl(`${controlUrl}/sessions`, {
-              headers: { authorization: `Bearer ${controlToken}` },
-            })
-            process.stdout.write(`${await res.text()}\n`)
-          } else if (cmd === 'status') {
-            const res = await fetchControl(`${controlUrl}/status`, {
-              headers: { authorization: `Bearer ${controlToken}` },
-            })
-            process.stdout.write(`${await res.text()}\n`)
-          } else if (cmd === 'help') {
-            process.stdout.write('可用控制命令: status | sessions | devices | confirm <id> | revoke <deviceId> | qr | quit\n')
-          } else if (cmd === 'revoke' && arg) {
-            const res = await fetchControl(`${controlUrl}/devices/revoke`, {
-              method: 'POST',
-              headers: {
-                'content-type': 'application/json',
-                authorization: `Bearer ${controlToken}`,
-              },
-              body: JSON.stringify({ deviceId: arg }),
-            })
-            process.stdout.write(`${await res.text()}\n`)
-          } else if (cmd === 'qr') {
-            const res = await fetchControl(`${controlUrl}/pairing-token`, {
-              method: 'POST',
-              headers: {
-                'content-type': 'application/json',
-                authorization: `Bearer ${controlToken}`,
-              },
-              body: '{}',
-            })
-            const data = (await res.json()) as { deepLink?: string; pairingJson?: string }
-            const deepLink = data.deepLink ?? ''
-            process.stdout.write(`新配对链接：${deepLink}\n`)
-            const qrBlock = formatPairingQrBlock(deepLink, Boolean(process.stdout.isTTY))
-            if (qrBlock.length > 0) {
-              process.stdout.write(`${qrBlock}\n`)
+          switch (action.kind) {
+            case 'empty':
+              return
+            case 'confirm': {
+              const res = await fetchControl(`${controlUrl}/pairing/confirm`, {
+                method: 'POST',
+                headers: {
+                  'content-type': 'application/json',
+                  authorization: `Bearer ${controlToken}`,
+                },
+                body: JSON.stringify({ candidateId: action.candidateId }),
+              })
+              process.stdout.write(`${await res.text()}\n`)
+              return
             }
-          } else if (cmd === 'quit' || cmd === 'exit') {
-            await requestShutdown()
+            case 'devices': {
+              const res = await fetchControl(`${controlUrl}/devices`, {
+                headers: { authorization: `Bearer ${controlToken}` },
+              })
+              process.stdout.write(`${await res.text()}\n`)
+              return
+            }
+            case 'sessions': {
+              const res = await fetchControl(`${controlUrl}/sessions`, {
+                headers: { authorization: `Bearer ${controlToken}` },
+              })
+              process.stdout.write(`${await res.text()}\n`)
+              return
+            }
+            case 'status': {
+              const res = await fetchControl(`${controlUrl}/status`, {
+                headers: { authorization: `Bearer ${controlToken}` },
+              })
+              process.stdout.write(`${await res.text()}\n`)
+              return
+            }
+            case 'revoke': {
+              const res = await fetchControl(`${controlUrl}/devices/revoke`, {
+                method: 'POST',
+                headers: {
+                  'content-type': 'application/json',
+                  authorization: `Bearer ${controlToken}`,
+                },
+                body: JSON.stringify({ deviceId: action.deviceId }),
+              })
+              process.stdout.write(`${await res.text()}\n`)
+              return
+            }
+            case 'qr': {
+              const res = await fetchControl(`${controlUrl}/pairing-token`, {
+                method: 'POST',
+                headers: {
+                  'content-type': 'application/json',
+                  authorization: `Bearer ${controlToken}`,
+                },
+                body: '{}',
+              })
+              const data = (await res.json()) as { deepLink?: string; pairingJson?: string }
+              const deepLink = data.deepLink ?? ''
+              process.stdout.write(`新配对链接：${deepLink}\n`)
+              const qrBlock = formatPairingQrBlock(deepLink, Boolean(process.stdout.isTTY))
+              if (qrBlock.length > 0) {
+                process.stdout.write(`${qrBlock}\n`)
+              }
+              return
+            }
+            case 'help':
+              process.stdout.write(`可用控制命令: ${REMOTE_REPL_COMMAND_SUMMARY}\n`)
+              return
+            case 'usage':
+              process.stdout.write(`${action.usage}\n`)
+              return
+            case 'unknown':
+              process.stdout.write(`未知控制命令: ${action.command}（可用: ${REMOTE_REPL_COMMAND_SUMMARY}）\n`)
+              return
+            case 'quit':
+              await requestShutdown()
+              return
           }
         } catch (err) {
           process.stderr.write(`控制命令失败: ${err instanceof Error ? err.message : String(err)}\n`)

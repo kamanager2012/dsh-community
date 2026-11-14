@@ -66,8 +66,10 @@ import org.dsh.community.android.ui.ChatMarkdownFormatter
 import org.dsh.community.android.ui.ChatTimelineAdapter
 import org.dsh.community.android.ui.ChatTimelineItem
 import org.dsh.community.android.ui.ChatTimelineStore
+import org.dsh.community.android.ui.ConstrainedScrollView
 import org.dsh.community.android.ui.ParsedSlashCommand
 import org.dsh.community.android.ui.PromptImageHelper
+import org.dsh.community.android.ui.RemoteLayoutBudget
 import org.dsh.community.android.ui.SlashCommandHelper
 import org.dsh.community.android.ui.SystemNoticeItem
 import org.dsh.community.android.ui.ToolExecutionItem
@@ -89,9 +91,12 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
     private lateinit var agentStatusView: TextView
     private lateinit var deviceIdView: TextView
     private lateinit var metricsView: TextView
+    private lateinit var rootMainView: android.view.View
     private lateinit var connectionPanel: LinearLayout
+    private lateinit var connectionScroll: ConstrainedScrollView
     private lateinit var logsPanel: LinearLayout
     private lateinit var pendingCard: LinearLayout
+    private lateinit var pendingScroll: ConstrainedScrollView
     private lateinit var questionOptionsScroll: HorizontalScrollView
     private lateinit var questionOptionsContainer: LinearLayout
     private lateinit var pairingInput: EditText
@@ -148,6 +153,8 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
     private var currentPhase: RemoteConnectionPhase = RemoteConnectionPhase.DISCONNECTED
     private var userPinnedConnectionDrawer: Boolean? = null
     private var logsPanelVisible = false
+    private var lastInsetsVerticalPx = 0
+    private var lastImeVisible = false
     private var steerEnabled = false
     private var isAgentRunning = false
     private var pendingOpenModelPicker = false
@@ -210,6 +217,7 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
         setContentView(R.layout.activity_main)
 
         val rootView = findViewById<android.view.View>(R.id.root_main)
+        rootMainView = rootView
         val baseLeft = rootView.paddingLeft
         val baseTop = rootView.paddingTop
         val baseRight = rootView.paddingRight
@@ -220,13 +228,21 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
                     WindowInsetsCompat.Type.displayCutout() or
                     WindowInsetsCompat.Type.ime()
             )
+            lastInsetsVerticalPx = baseTop + baseBottom + insets.top + insets.bottom
+            lastImeVisible = windowInsets.isVisible(WindowInsetsCompat.Type.ime())
             view.setPadding(
                 baseLeft + insets.left,
                 baseTop + insets.top,
                 baseRight + insets.right,
                 baseBottom + insets.bottom
             )
+            updateResponsiveLayoutBudget()
             windowInsets
+        }
+        rootView.addOnLayoutChangeListener { _, _, top, _, bottom, _, oldTop, _, oldBottom ->
+            if ((bottom - top) != (oldBottom - oldTop)) {
+                updateResponsiveLayoutBudget()
+            }
         }
         ViewCompat.requestApplyInsets(rootView)
 
@@ -235,8 +251,10 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
         deviceIdView = findViewById(R.id.tv_device_id)
         metricsView = findViewById(R.id.tv_metrics)
         connectionPanel = findViewById(R.id.ll_connection_panel)
+        connectionScroll = findViewById(R.id.scroll_connection_panel)
         logsPanel = findViewById(R.id.ll_logs_panel)
         pendingCard = findViewById(R.id.ll_pending_card)
+        pendingScroll = findViewById(R.id.scroll_pending_card)
         questionOptionsScroll = findViewById(R.id.hsv_question_options)
         questionOptionsContainer = findViewById(R.id.ll_question_options)
         pairingInput = findViewById(R.id.et_pairing_json)
@@ -310,6 +328,7 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
                     if (logsPanelVisible) R.color.dsh_text_accent else R.color.dsh_text_primary,
                 ),
             )
+            updateResponsiveLayoutBudget()
         }
 
         findViewById<Button>(R.id.btn_export_chat).setOnClickListener {
@@ -993,6 +1012,28 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
                 if (visible) R.color.dsh_text_accent else R.color.dsh_text_primary,
             ),
         )
+        updateResponsiveLayoutBudget()
+    }
+
+    private fun updateResponsiveLayoutBudget() {
+        if (!::rootMainView.isInitialized || !::connectionScroll.isInitialized) return
+        val viewportPx = (rootMainView.height - lastInsetsVerticalPx).coerceAtLeast(0)
+        if (viewportPx <= 0) return
+        val budget = RemoteLayoutBudget.compute(
+            viewportHeightPx = viewportPx,
+            density = resources.displayMetrics.density,
+            imeVisible = lastImeVisible,
+            connectionVisible = connectionPanel.visibility == View.VISIBLE,
+            logsVisible = logsPanel.visibility == View.VISIBLE,
+            pendingVisible = pendingCard.visibility == View.VISIBLE,
+        )
+        connectionScroll.maxHeightPx = budget.connectionPanelMaxPx
+        pendingScroll.maxHeightPx = budget.pendingPanelMaxPx
+        val lp = logsPanel.layoutParams
+        if (lp != null && lp.height != budget.logsPanelHeightPx) {
+            lp.height = budget.logsPanelHeightPx
+            logsPanel.layoutParams = lp
+        }
     }
 
     private fun updateSteerButtonUi() {
@@ -1985,6 +2026,7 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
                 renderedQuestionSignature = null
             }
         }
+        updateResponsiveLayoutBudget()
     }
 
     private fun etAnswerVisibility(visible: Boolean) {

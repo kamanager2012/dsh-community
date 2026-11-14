@@ -115,6 +115,18 @@
         android:orientation="vertical"
         android:padding="10dp">
 
+        <org.dsh.community.android.ui.ConstrainedScrollView
+            android:id="@+id/scroll_connection_panel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:fadeScrollbars="false"
+            android:overScrollMode="ifContentScrolls">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
         <TextView
             android:id="@+id/tv_device_id"
             android:layout_width="match_parent"
@@ -330,6 +342,8 @@
                     android:textSize="11sp" />
             </LinearLayout>
         </HorizontalScrollView>
+            </LinearLayout>
+        </org.dsh.community.android.ui.ConstrainedScrollView>
     </LinearLayout>
 
     <!-- Session Switcher & Model Ribbon -->
@@ -532,6 +546,18 @@
         android:padding="10dp"
         android:visibility="gone">
 
+        <org.dsh.community.android.ui.ConstrainedScrollView
+            android:id="@+id/scroll_pending_card"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:fadeScrollbars="false"
+            android:overScrollMode="ifContentScrolls">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
         <TextView
             android:id="@+id/tv_approval"
             android:layout_width="match_parent"
@@ -616,6 +642,8 @@
                 android:textColor="@color/dsh_text_primary"
                 android:textSize="11sp" />
         </LinearLayout>
+            </LinearLayout>
+        </org.dsh.community.android.ui.ConstrainedScrollView>
     </LinearLayout>
 
     <!-- Bottom Prompt Composer -->

@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { composeCommunityTuiPatch } from '../src/compose-patch.ts'
+import { profileInstallEnv } from '../src/install.ts'
 import {
   COMMUNITY_TUI_HELP,
   initialPromptForLaunch,
@@ -142,5 +143,13 @@ describe('our TUI profile', () => {
       expect(parseCommunityLaunch([sub, '--help'])).toEqual({ kind: 'help' })
       expect(parseCommunityLaunch([sub, '-h'])).toEqual({ kind: 'help' })
     }
+  })
+
+  it('builds non-interactive pnpm install env without update notifier prompts', () => {
+    const installEnv = profileInstallEnv({ PATH: '/usr/bin', CUSTOM: '1' })
+    expect(installEnv.CI).toBe('true')
+    expect(installEnv.npm_config_update_notifier).toBe('false')
+    expect(installEnv.pnpm_config_update_notifier).toBe('false')
+    expect(installEnv.CUSTOM).toBe('1')
   })
 })

@@ -94,7 +94,7 @@ import {
   readSettingsPatch,
   type DesktopSettings,
 } from './settings.ts'
-import { decideHostCrash, decideWindowClose } from './shell-policy.ts'
+import { decideHostCrash, decideWindowClose, shouldApplyAsyncPageUpdate } from './shell-policy.ts'
 import {
   DEFAULT_WINDOW_STATE,
   parseWindowState,
@@ -364,6 +364,7 @@ function settingsModel(saved = false) {
   return {
     product: COMMUNITY_PRODUCT_NAME,
     hideToTray: settings.hideToTray,
+    trayAvailable: trayAvailable(),
     isolated: isolatedNow(),
     envIsolated: isolatedDesktopRequested(),
     officialHome: officialHome(),
@@ -487,7 +488,14 @@ async function runPluginAction(request: { name: string; action: PluginAction }):
     pluginResult = { plugin: request.name, action: request.action, ok, log: fullLog }
     pluginTask = undefined
     pluginChild = undefined
-    if (!quitting) void showHtml(renderMarketplacePage(marketplaceModel()), 'marketplace')
+    if (shouldApplyAsyncPageUpdate({
+      quitting,
+      showingOfficial,
+      currentPage: currentShellPage,
+      expectedPage: 'marketplace',
+    })) {
+      void showHtml(renderMarketplacePage(marketplaceModel()), 'marketplace')
+    }
   }
 
   child.on('error', (error) => finish(false, error.message))
@@ -714,6 +722,28 @@ async function applyRemoteSnapshotSideEffects(
       await renderRemoteSnapshotHtml(snap, true)
     }
   }
+}
+
+async function finishRemoteAction(options?: {
+  readonly refreshLive?: boolean | undefined
+  readonly preserveDraft?: boolean | undefined
+}): Promise<void> {
+  const ctrl = ensureRemoteController()
+  const snap = await ctrl.snapshot({ refreshLive: options?.refreshLive === true })
+  if (shouldApplyAsyncPageUpdate({
+    quitting,
+    showingOfficial,
+    currentPage: currentShellPage,
+    expectedPage: 'remote',
+  })) {
+    lastRemoteUiKey = remoteUiKey(snap)
+    notifyPendingPairingIfIncreased(snap.pendingCandidates.length)
+    syncRemotePollTimer()
+    updateTrayMenu()
+    await renderRemoteSnapshotHtml(snap, options?.preserveDraft === true)
+    return
+  }
+  await applyRemoteSnapshotSideEffects(snap, false)
 }
 
 async function refreshRemoteViewFromController(): Promise<void> {
@@ -1007,35 +1037,35 @@ function bindIpc(): void {
     const ctrl = ensureRemoteController()
     await ctrl.start(config)
     const snap = await ctrl.snapshot({ refreshLive: false })
-    await showRemote({ refreshLive: false, preserveDraft: snap.error !== undefined })
+    await finishRemoteAction({ refreshLive: false, preserveDraft: snap.error !== undefined })
   })
   ipcMain.handle(DESKTOP_IPC.remoteStop, async (event) => {
     assertAuthorizedSender(event)
     await ensureRemoteController().stop()
-    await showRemote({ refreshLive: false, preserveDraft: true })
+    await finishRemoteAction({ refreshLive: false, preserveDraft: true })
   })
   ipcMain.handle(DESKTOP_IPC.remoteRefresh, async (event) => {
     assertAuthorizedSender(event)
-    await showRemote({ refreshLive: true, preserveDraft: true })
+    await finishRemoteAction({ refreshLive: true, preserveDraft: true })
   })
   ipcMain.handle(DESKTOP_IPC.remoteNewPairing, async (event) => {
     assertAuthorizedSender(event)
     await ensureRemoteController().refreshPairingQr()
-    await showRemote({ preserveDraft: true })
+    await finishRemoteAction({ preserveDraft: true })
   })
   ipcMain.handle(DESKTOP_IPC.remoteConfirmPairing, async (event, raw: unknown) => {
     assertAuthorizedSender(event)
     const req = parseConfirmPairingInput(raw)
     if (req === undefined) return
     await ensureRemoteController().confirmPairing(req.candidateId, req.allowApprove)
-    await showRemote({ preserveDraft: true })
+    await finishRemoteAction({ preserveDraft: true })
   })
   ipcMain.handle(DESKTOP_IPC.remoteRevokeDevice, async (event, raw: unknown) => {
     assertAuthorizedSender(event)
     const deviceId = parseRevokeDeviceInput(raw)
     if (deviceId === undefined) return
     await ensureRemoteController().revokeDevice(deviceId)
-    await showRemote({ preserveDraft: true })
+    await finishRemoteAction({ preserveDraft: true })
   })
 }
 
@@ -1141,12 +1171,12 @@ async function boot(): Promise<void> {
     host.onChange((snapshot) => {
       if (snapshot.phase !== 'failed') return
       if (decideHostCrash(quitting) === 'ignore') return
-      void showHtml(renderErrorPage(snapshot.error))
+      void showHtml(renderErrorPage(snapshot.error), 'error')
     })
     await startOfficial()
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    await showHtml(renderErrorPage(message))
+    await showHtml(renderErrorPage(message), 'error')
   }
 }
 

@@ -60,6 +60,7 @@ export interface RuntimePageModel {
 export interface SettingsPageModel {
   readonly product: string
   readonly hideToTray: boolean
+  readonly trayAvailable?: boolean
   readonly isolated: boolean
   readonly envIsolated: boolean
   readonly officialHome: string
@@ -502,11 +503,14 @@ export function renderSettingsPage(model: SettingsPageModel): string {
   const savedBanner = model.saved === true
     ? '<pre class="ok" id="settings-saved-notice">已保存桌面设置。</pre>'
     : ''
+  const trayNotice = model.hideToTray && model.trayAvailable === false
+    ? '<pre class="error" id="settings-tray-unavailable">当前桌面环境未提供可用系统托盘（Tray），关闭窗口时无法驻留托盘，会直接退出应用。</pre>'
+    : ''
   return shellDocument(
     `${model.product} · 设置`,
     (nonce) => `<h1>Desktop 设置</h1>
      <p>只改壳自己的偏好。官方 session 仍在 <code>${escapeHtml(model.officialHome)}</code>${model.isolated ? '（独立数据目录）' : ''}。</p>
-     ${savedBanner}
+     ${savedBanner}${trayNotice}
      <label class="opt">
        <input type="checkbox" id="hideToTray" ${model.hideToTray ? 'checked' : ''} />
        <span>关窗藏到托盘，官方 <code>dsh web</code> 继续跑</span>
