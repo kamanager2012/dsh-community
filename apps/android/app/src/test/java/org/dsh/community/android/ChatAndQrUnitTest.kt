@@ -826,10 +826,15 @@ class ChatAndQrUnitTest {
         assertEquals(SyntaxRole.DIFF_DEL, diffTokens[2].role)
         assertEquals(SyntaxRole.DIFF_ADD, diffTokens[3].role)
 
-        val inlineTokens = ChatMarkdownFormatter.tokenizeInline("Use _italic_ and snake_case_id with ***both***")
+        val inlineTokens = ChatMarkdownFormatter.tokenizeInline(
+            "Use _italic_, *emph*, Compute 2 * 3 * 4, and snake_case_id with ***both***",
+        )
         assertTrue(inlineTokens.contains(InlineSpanToken.Italic("italic")))
+        assertTrue(inlineTokens.contains(InlineSpanToken.Italic("emph")))
         assertTrue(inlineTokens.contains(InlineSpanToken.BoldItalic("both")))
         assertFalse(inlineTokens.any { it is InlineSpanToken.Italic && it.text.contains("case") })
+        assertFalse(inlineTokens.any { it is InlineSpanToken.Italic && it.text.contains("3") })
+        assertTrue(inlineTokens.any { it is InlineSpanToken.Plain && it.text.contains("2 * 3 * 4") })
 
         val md = """
             #### Checklist

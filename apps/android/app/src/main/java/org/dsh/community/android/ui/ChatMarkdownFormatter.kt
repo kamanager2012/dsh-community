@@ -182,9 +182,9 @@ object ChatMarkdownFormatter {
                     }
                 }
             }
-            if (text[i] == '*' && !text.startsWith("**", i)) {
-                val end = text.indexOf('*', i + 1)
-                if (end > i + 1 && !text.substring(i + 1, end).contains('\n')) {
+            if (text[i] == '*' && !text.startsWith("**", i) && i + 1 < text.length && !text[i + 1].isWhitespace()) {
+                val end = findClosingSingleAsterisk(text, i + 1)
+                if (end > i + 1) {
                     flushPlain()
                     tokens.add(InlineSpanToken.Italic(text.substring(i + 1, end)))
                     i = end + 1
@@ -217,6 +217,24 @@ object ChatMarkdownFormatter {
         if (idxAfterToken >= text.length) return true
         val next = text[idxAfterToken]
         return !next.isLetterOrDigit()
+    }
+
+    private fun findClosingSingleAsterisk(text: String, start: Int): Int {
+        var i = start
+        while (i < text.length) {
+            if (text[i] == '\n') return -1
+            if (text[i] == '*' && text[i - 1] != '\\') {
+                if (i + 1 < text.length && text[i + 1] == '*') {
+                    i += 2
+                    continue
+                }
+                if (!text[i - 1].isWhitespace()) {
+                    return i
+                }
+            }
+            i++
+        }
+        return -1
     }
 
     private fun findClosingSingleUnderscore(text: String, start: Int): Int {
