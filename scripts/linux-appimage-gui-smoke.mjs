@@ -75,32 +75,77 @@ export function validateRemotePairingDeepLink(deepLink, pairingJsonText) {
   if (typeof descriptor !== 'object' || descriptor === null) {
     throw new Error('Decoded pairing descriptor is not an object')
   }
+  if (
+    typeof descriptor.protocolVersion !== 'number'
+    || !Number.isInteger(descriptor.protocolVersion)
+    || descriptor.protocolVersion < 1
+  ) {
+    throw new Error(`Pairing descriptor missing valid protocolVersion: ${String(descriptor.protocolVersion)}`)
+  }
   if (typeof descriptor.endpointUrl !== 'string' || !/^ws:\/\/127\.0\.0\.1:\d+(?:\/|$)/u.test(descriptor.endpointUrl)) {
     throw new Error(`Unexpected loopback endpointUrl in pairing descriptor: ${String(descriptor.endpointUrl)}`)
   }
-  if (typeof descriptor.token !== 'string' || descriptor.token.length < 16) {
-    throw new Error('Pairing descriptor missing valid pairing token')
+  if (typeof descriptor.bootstrapToken !== 'string' || descriptor.bootstrapToken.length < 16) {
+    throw new Error('Pairing descriptor missing valid bootstrapToken')
   }
-  if (typeof descriptor.hostFingerprint !== 'string' || descriptor.hostFingerprint.length === 0) {
-    throw new Error('Pairing descriptor missing hostFingerprint')
+  if (typeof descriptor.hostFingerprint !== 'string' || !/^[0-9a-fA-F]{64}$/u.test(descriptor.hostFingerprint)) {
+    throw new Error('Pairing descriptor missing valid hostFingerprint')
   }
-  if (typeof descriptor.hostStaticKey !== 'string' || descriptor.hostStaticKey.length === 0) {
-    throw new Error('Pairing descriptor missing hostStaticKey')
+  if (typeof descriptor.hostPublicKeyHex !== 'string' || !/^[0-9a-fA-F]{64}$/u.test(descriptor.hostPublicKeyHex)) {
+    throw new Error('Pairing descriptor missing valid hostPublicKeyHex')
   }
-  if (typeof descriptor.expiresAt !== 'number' || !Number.isFinite(descriptor.expiresAt)) {
+  if (typeof descriptor.expiresAt !== 'number' || !Number.isFinite(descriptor.expiresAt) || descriptor.expiresAt <= 0) {
     throw new Error('Pairing descriptor missing numeric expiresAt')
   }
   if (pairingJsonText !== undefined && pairingJsonText !== '') {
     const rawJson = JSON.parse(pairingJsonText)
-    if (rawJson.token !== descriptor.token || rawJson.endpointUrl !== descriptor.endpointUrl) {
+    if (
+      rawJson.protocolVersion !== descriptor.protocolVersion
+      || rawJson.bootstrapToken !== descriptor.bootstrapToken
+      || rawJson.endpointUrl !== descriptor.endpointUrl
+      || rawJson.hostPublicKeyHex !== descriptor.hostPublicKeyHex
+      || rawJson.hostFingerprint !== descriptor.hostFingerprint
+    ) {
       throw new Error('Mismatch between DOM pairingJson and deep-link descriptor')
     }
   }
   return descriptor
 }
 
+/** Sends a signal to the entire spawned process group on POSIX when detached, falling back to pid. */
+export function killProcessTree(child, signal = 'SIGKILL', { forceGroup = false } = {}) {
+  if (!child || typeof child.pid !== 'number') return
+  const stillRunning = child.exitCode === null && child.signalCode === null
+  if (!stillRunning && !forceGroup) return
+  if (process.platform !== 'win32') {
+    try {
+      process.kill(-child.pid, signal)
+      return
+    } catch {
+      // Fall through if the process is no longer a process-group leader.
+    }
+  }
+  if (stillRunning) {
+    try {
+      child.kill(signal)
+    } catch {
+      // Ignore already exited child processes.
+    }
+  }
+}
+
 function sleep(ms) {
   return new Promise((resolvePromise) => setTimeout(resolvePromise, ms))
+}
+
+function raceWithTimeout(promise, timeoutMs, fallbackValue) {
+  let timer
+  const timeoutPromise = new Promise((resolveTimeout) => {
+    timer = setTimeout(() => resolveTimeout(fallbackValue), timeoutMs)
+  })
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    clearTimeout(timer)
+  })
 }
 
 async function waitForTcpReachable(urlString, timeoutMs = 10_000) {
@@ -206,12 +251,16 @@ async function connectCdp(wsUrl, { onRuntimeError = undefined } = {}) {
     }
   })
 
-  ws.addEventListener('close', () => {
+  function clearPending(reason) {
     for (const [id, entry] of pending) {
       clearTimeout(entry.timer)
-      entry.reject(new Error(`CDP closed before ${entry.method} replied`))
+      entry.reject(new Error(reason(entry.method)))
       pending.delete(id)
     }
+  }
+
+  ws.addEventListener('close', () => {
+    clearPending((method) => `CDP closed before ${method} replied`)
   })
 
   function call(method, params = {}, timeoutMs = 15_000) {
@@ -243,6 +292,7 @@ async function connectCdp(wsUrl, { onRuntimeError = undefined } = {}) {
     call,
     evaluate,
     close: () => {
+      clearPending((method) => `CDP client closed before ${method} replied`)
       try {
         ws.close()
       } catch {}
@@ -322,6 +372,7 @@ export async function runAppImageGuiSmoke({ executable, timeoutMs = 90_000 }) {
     {
       cwd: workspaceDir,
       env: childEnv,
+      detached: process.platform !== 'win32',
       stdio: ['ignore', 'pipe', 'pipe'],
     },
   )
@@ -348,6 +399,7 @@ export async function runAppImageGuiSmoke({ executable, timeoutMs = 90_000 }) {
   let pageCdp
   let officialOrigin
   let firstRemoteEndpointUrl
+  let cleanExit = false
 
   try {
     await waitForCondition('DevTools WebSocket URL', 30_000, rendererErrors, async () => {
@@ -361,7 +413,7 @@ export async function runAppImageGuiSmoke({ executable, timeoutMs = 90_000 }) {
     browserCdp = await connectCdp(browserWsUrl)
 
     const shellTarget = await waitForCondition('Main Electron shell window target', 30_000, rendererErrors, async () => {
-      const res = await fetch(`${debugOrigin}/json/list`)
+      const res = await fetch(`${debugOrigin}/json/list`, { signal: AbortSignal.timeout(5_000) })
       if (!res.ok) return undefined
       const targets = await res.json()
       return selectMainShellTarget(targets)
@@ -382,7 +434,7 @@ export async function runAppImageGuiSmoke({ executable, timeoutMs = 90_000 }) {
         return { phase: snapshot?.phase ?? null, hasRemoteBtn: remoteBtn !== null };
       })()`)
       if (!snap || snap.phase !== 'ready' || !snap.hasRemoteBtn) return undefined
-      const targetsRes = await fetch(`${debugOrigin}/json/list`)
+      const targetsRes = await fetch(`${debugOrigin}/json/list`, { signal: AbortSignal.timeout(5_000) })
       if (!targetsRes.ok) return undefined
       const targets = await targetsRes.json()
       const foundOrigin = findOfficialWebOrigin(targets)
@@ -489,8 +541,8 @@ export async function runAppImageGuiSmoke({ executable, timeoutMs = 90_000 }) {
     })
 
     const rotatedDesc = validateRemotePairingDeepLink(rotatedPairing.deepLink, rotatedPairing.pairingJson)
-    if (rotatedDesc.token === firstDesc.token) {
-      throw new Error('Rotated pairing kept identical token')
+    if (rotatedDesc.bootstrapToken === firstDesc.bootstrapToken) {
+      throw new Error('Rotated pairing kept identical bootstrapToken')
     }
 
     process.stdout.write('[gui-smoke] Stopping Remote Host from UI...\n')
@@ -556,27 +608,22 @@ export async function runAppImageGuiSmoke({ executable, timeoutMs = 90_000 }) {
     browserCdp.close()
     browserCdp = undefined
 
-    let exitResult = await Promise.race([
-      exitPromise,
-      sleep(8_000).then(() => ({ timedOut: true })),
-    ])
+    let exitResult = await raceWithTimeout(exitPromise, 8_000, { timedOut: true })
     if (exitResult.timedOut) {
       process.stdout.write('[gui-smoke] Browser.close did not exit within 8s; sending SIGTERM...\n')
-      child.kill('SIGTERM')
-      exitResult = await Promise.race([
-        exitPromise,
-        sleep(10_000).then(() => ({ timedOut: true })),
-      ])
+      killProcessTree(child, 'SIGTERM')
+      exitResult = await raceWithTimeout(exitPromise, 10_000, { timedOut: true })
     }
     if (exitResult.timedOut) {
-      child.kill('SIGKILL')
-      await exitPromise
+      killProcessTree(child, 'SIGKILL', { forceGroup: true })
+      await raceWithTimeout(exitPromise, 3_000, { timedOut: true })
       throw new Error('Electron AppImage did not exit cleanly after Browser.close + SIGTERM')
     }
     if (exitResult.code !== 0) {
       throw new Error(`Electron AppImage exited non-zero: code=${String(exitResult.code)}, signal=${String(exitResult.signal)}`)
     }
 
+    cleanExit = true
     await assertTcpRefused(officialOrigin, 10_000)
     process.stdout.write('[gui-smoke] PASS: Packaged AppImage Electron GUI + Remote Host + clean teardown verified.\n')
   } catch (error) {
@@ -594,9 +641,11 @@ export async function runAppImageGuiSmoke({ executable, timeoutMs = 90_000 }) {
   } finally {
     pageCdp?.close()
     browserCdp?.close()
-    if (child.exitCode === null && !child.killed) {
-      child.kill('SIGKILL')
-      await Promise.race([exitPromise, sleep(3_000)])
+    killProcessTree(child, 'SIGKILL', { forceGroup: !cleanExit })
+    child.stdout?.destroy()
+    child.stderr?.destroy()
+    if (child.exitCode === null && child.signalCode === null) {
+      await raceWithTimeout(exitPromise, 3_000, { timedOut: true })
     }
     rmSync(sandboxRoot, { recursive: true, force: true })
   }
