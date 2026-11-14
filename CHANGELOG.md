@@ -74,6 +74,14 @@
 - 冻结的 Agent Governance Stack 三仓曾以完整代码与提交历史并入本仓 `archive/`，独立仓于 2026-09-13 删除；**2026-09-14 回退**：AIOS 是独立项目，与 dsh 无技术依赖——`aios-core` 已在独立仓 [`kamanager2012/aios-core`](https://github.com/kamanager2012/aios-core) 恢复（原始提交 SHA 与全部分支不变），`governor-core` 与 `agent-constraint-system` 的完整历史现保留为该仓 `legacy/governor-core`、`legacy/agent-constraint-system` 分支，本仓 `archive/` 中的三个副本已移除。手册实验固定的 workspace 版本 `aios-core@6af8968` 改从独立仓检出。
 - 安全修复：通过 `pnpm-workspace.yaml` 的 `overrides` 修补官方传递依赖新披露的高危漏洞——`@xmldom/xmldom` 0.8.14→0.8.15（electron 打包链，plist 现解析 0.9.12）、`js-yaml` 4.3.1→4.3.2（官方 cordis-plugin-include 传递依赖）、`sharp` 0.35.3→0.35.4（官方 dsh-attachment-local 传递依赖，与 Android 裁决同版本）。`pnpm audit --audit-level high` 恢复通过：8 high + 9 moderate → 0 high + 7 moderate。
 
+## 0.2.2-rc.2-community.1 — Community Prerelease (2026-11-14)
+
+Community prerelease built on the pinned official kernel `@deepseek-ai/dsh@0.2.2-rc.2`. GitHub Published Latest remains `v0.2.2-rc.2`; Android stays `REAL_DEVICE_ACCEPTANCE_READY = false` / `NOT_RUN` until R6 physical `arm64-v8a` acceptance passes.
+
+- **Multi-agent E2EE control plane & colored Git diff review (#137)**: Added selectable remote backends (`DSH`, `Claude`, `Codex`, `ACP` + multi-agent router) and read-only staged/unstaged colored Git diff inspection across Host, Desktop, TUI, and Android.
+- **Multi-session Git worktree dashboard & Android rich Markdown cards (#138)**: Added worktree-grouped session attention/summary payloads (`SessionDashboardPlanner`, active-first bounded payloads) plus Android syntax-highlighted code blocks, clickable links, and Markdown tables.
+- **Unified public relay/STUN defaults & resilient Android reconnect (#139)**: Added shared `DSH_REMOTE_DEFAULT_*` env parsing with strict `stun:`-only R3 enforcement (`packages/remote-adapter`, TUI, and Desktop strict-CSP quick-fill), and upgraded `RemoteSessionService` with multi-tier exponential reconnect backoff, epoch reset fencing across retired sessions, automatic session reattach, and coalesced `NetworkCallback` probing.
+
 ## 0.2.2-rc.2 — Candidate Source (2026-11-13)
 
 This is a reviewed **Candidate Source**, not GitHub Published Latest. Published Latest remains `v0.1.1-rc.2`; consolidated local acceptance passed on commit `750d8c5` (**97 test files / 469 tests passed, 1 skipped** unpackaged `asar-purity`, 327 exact `0.2.2-rc.2` DSH runtime entries, 0 high/critical advisories in `pnpm audit` and `npm audit`, Android closure/backing/portable audits PASS, 9-plugin offline marketplace PASS) and `latest-tested` advances to `0.2.2-rc.2`.

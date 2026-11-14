@@ -17,18 +17,18 @@ Source can move to a reviewed candidate before GitHub Latest moves. These are se
 - `assets` / `publishedAssets` describe installers that actually exist for Published Latest; never synthesize filenames from an unpublished candidate.
 - plugin `testedDsh` and user-loop evidence are evidence states, not aliases for Candidate Source. They move only after their own verification.
 
-Candidate Source and Published Latest may coincide after publication, but they are not required to. On the current line, both Candidate Source and Published Latest align at `0.2.2-rc.2` / `v0.2.2-rc.2` (Complementary Edition Linux AppImage + official-runtime CycloneDX SBOM + Cosign bundles).
+Candidate Source and Published Latest may coincide after publication, but they are not required to. On the current line, Candidate Source advances to `0.2.2-rc.2-community.1` / `v0.2.2-rc.2-community.1` (prerelease on pinned official kernel `@deepseek-ai/dsh@0.2.2-rc.2`), while Published Latest remains `v0.2.2-rc.2` (Complementary Edition Linux AppImage + official-runtime CycloneDX SBOM + Cosign bundles).
 
 ## Current line (2026-11-14)
 
 | Fact | Value |
 |---|---|
 | Candidate official kernel | `@deepseek-ai/dsh@0.2.2-rc.2` |
-| Candidate community product | `0.2.2-rc.2` |
-| Candidate tag | `v0.2.2-rc.2` |
+| Candidate community product | `0.2.2-rc.2-community.1` |
+| Candidate tag | `v0.2.2-rc.2-community.1` |
 | GitHub Latest | [`v0.2.2-rc.2`](https://github.com/kamanager2012/dsh-community/releases/latest) |
 | Published release evidence | GitHub release ID `445031139`; published `2026-11-14T05:08:47Z`; primary AppImage asset ID/digest pinned in `current-release.json` |
-| Candidate Dual-Badge | `DeepSeek Harness Community v0.2.2-rc.2 [Official Core: @deepseek-ai/dsh@0.2.2-rc.2]` |
+| Candidate Dual-Badge | `DeepSeek Harness Community v0.2.2-rc.2-community.1 [Official Core: @deepseek-ai/dsh@0.2.2-rc.2]` |
 | Latest tested | `0.2.2-rc.2` — consolidated local acceptance PASS on commit `750d8c5` (runtime-lock attested by CI [run 43334043848](https://github.com/kamanager2012/dsh-community/actions/runs/43334043848)); published by `release` [run 43559784495](https://github.com/kamanager2012/dsh-community/actions/runs/43559784495) |
 | Active Complementary endpoints (2 shipped) | WSL/Linux Terminal, Linux AppImage (official `deepseek-harness` covers Win/macOS Desktop & Web) |
 | Active unpublished endpoint | Android `apps/android` `[UNVERIFIED]`, Remote Client target, not on the Latest download page |

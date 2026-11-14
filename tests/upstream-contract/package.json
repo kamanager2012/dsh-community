@@ -1,6 +1,6 @@
 {
   "name": "@dsh-community/upstream-contract",
-  "version": "0.2.2-rc.2",
+  "version": "0.2.2-rc.2-community.1",
   "private": true,
   "type": "module",
   "scripts": {

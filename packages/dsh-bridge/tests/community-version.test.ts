@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  COMMUNITY_PRODUCT_VERSION,
   assertCommunityVersionMatchesOfficial,
   communityBaseVersion,
   formatCommunityIdentity,
@@ -24,8 +25,10 @@ describe('community version identity', () => {
   it('formats the exact Dual-Badge identity', () => {
     expect(formatCommunityIdentity('@deepseek-ai/dsh', '0.1.0-rc.8', '0.1.0-rc.8-community.1'))
       .toBe('DeepSeek Harness Community v0.1.0-rc.8-community.1 [Official Core: @deepseek-ai/dsh@0.1.0-rc.8]')
-    expect(formatCommunityIdentity('@deepseek-ai/dsh', '0.2.2-rc.2'))
+    expect(formatCommunityIdentity('@deepseek-ai/dsh', '0.2.2-rc.2', '0.2.2-rc.2'))
       .toBe('DeepSeek Harness Community v0.2.2-rc.2 [Official Core: @deepseek-ai/dsh@0.2.2-rc.2]')
+    expect(formatCommunityIdentity('@deepseek-ai/dsh', '0.2.2-rc.2'))
+      .toBe(`DeepSeek Harness Community v${COMMUNITY_PRODUCT_VERSION} [Official Core: @deepseek-ai/dsh@0.2.2-rc.2]`)
   })
 
   it('does not allow a different package name in the official-core badge', () => {
