@@ -44,6 +44,7 @@ export interface BlindGatewayStats {
   readonly webAppRejectedRequests: number
   readonly unknownUpgradeRequests: number
   readonly rejectedPerIpCap: number
+  readonly rejectedPreAuthRate: number
 }
 
 export interface BlindGatewayServerOptions {
@@ -63,6 +64,12 @@ export interface BlindGatewayServerOptions {
   readonly maxPeersPerRoom?: number | undefined
   readonly maxConnections?: number | undefined
   readonly maxConnectionsPerIp?: number | undefined
+  /** IPv6 prefix length used when bucketing client IPs (default: 64). */
+  readonly ipv6PrefixLength?: number | undefined
+  /** Sliding-window global pre-auth admission cap (default: max(32, floor(maxConnections / 2))). */
+  readonly maxPreAuthConnectionsPerWindow?: number | undefined
+  /** Sliding window length for global pre-auth rate budget in ms (default: 5000). */
+  readonly preAuthRateWindowMs?: number | undefined
   /** Explicit trusted reverse-proxy IPs/CIDRs allowed to supply forwarded client IPs (fail-closed by default). */
   readonly trustedProxies?: readonly string[] | undefined
   readonly maxOpaquePayloadBytes?: number | undefined
@@ -226,6 +233,7 @@ export class BlindGatewayServer {
   private webAppRejectedRequests = 0
   private unknownUpgradeRequests = 0
   private rejectedPerIpCap = 0
+  private rejectedPreAuthRate = 0
 
   constructor(options: BlindGatewayServerOptions) {
     this.options = options
@@ -235,9 +243,19 @@ export class BlindGatewayServer {
       maxConnections: this.maxConnections,
       maxConnectionsPerIp: options.maxConnectionsPerIp ?? 16,
       registerTimeoutMs: this.registerTimeoutMs,
+      ...(options.ipv6PrefixLength !== undefined ? { ipv6PrefixLength: options.ipv6PrefixLength } : {}),
+      ...(options.maxPreAuthConnectionsPerWindow !== undefined
+        ? { maxPreAuthConnectionsPerWindow: options.maxPreAuthConnectionsPerWindow }
+        : {}),
+      ...(options.preAuthRateWindowMs !== undefined
+        ? { preAuthRateWindowMs: options.preAuthRateWindowMs }
+        : {}),
       ...(options.trustedProxies !== undefined ? { trustedProxies: options.trustedProxies } : {}),
       onPerIpRejected: () => {
         this.rejectedPerIpCap += 1
+      },
+      onPreAuthRateRejected: () => {
+        this.rejectedPreAuthRate += 1
       },
     })
 
@@ -254,6 +272,13 @@ export class BlindGatewayServer {
       ...(options.maxClientsPerRoom !== undefined ? { maxClientsPerRoom: options.maxClientsPerRoom } : {}),
       maxConnections: this.maxConnections,
       ...(options.maxConnectionsPerIp !== undefined ? { maxConnectionsPerIp: options.maxConnectionsPerIp } : {}),
+      ...(options.ipv6PrefixLength !== undefined ? { ipv6PrefixLength: options.ipv6PrefixLength } : {}),
+      ...(options.maxPreAuthConnectionsPerWindow !== undefined
+        ? { maxPreAuthConnectionsPerWindow: options.maxPreAuthConnectionsPerWindow }
+        : {}),
+      ...(options.preAuthRateWindowMs !== undefined
+        ? { preAuthRateWindowMs: options.preAuthRateWindowMs }
+        : {}),
       ...(options.trustedProxies !== undefined ? { trustedProxies: options.trustedProxies } : {}),
       ...(options.maxOpaquePayloadBytes !== undefined
         ? { maxOpaquePayloadBytes: options.maxOpaquePayloadBytes }
@@ -275,6 +300,13 @@ export class BlindGatewayServer {
       ...(options.maxPeersPerRoom !== undefined ? { maxPeersPerRoom: options.maxPeersPerRoom } : {}),
       maxConnections: this.maxConnections,
       ...(options.maxConnectionsPerIp !== undefined ? { maxConnectionsPerIp: options.maxConnectionsPerIp } : {}),
+      ...(options.ipv6PrefixLength !== undefined ? { ipv6PrefixLength: options.ipv6PrefixLength } : {}),
+      ...(options.maxPreAuthConnectionsPerWindow !== undefined
+        ? { maxPreAuthConnectionsPerWindow: options.maxPreAuthConnectionsPerWindow }
+        : {}),
+      ...(options.preAuthRateWindowMs !== undefined
+        ? { preAuthRateWindowMs: options.preAuthRateWindowMs }
+        : {}),
       ...(options.trustedProxies !== undefined ? { trustedProxies: options.trustedProxies } : {}),
       ...(options.maxFrameBytes !== undefined ? { maxFrameBytes: options.maxFrameBytes } : {}),
       ...(options.maxOutboundQueue !== undefined ? { maxOutboundQueue: options.maxOutboundQueue } : {}),
@@ -332,6 +364,7 @@ export class BlindGatewayServer {
       webAppRejectedRequests: this.webAppRejectedRequests,
       unknownUpgradeRequests: this.unknownUpgradeRequests,
       rejectedPerIpCap: this.rejectedPerIpCap,
+      rejectedPreAuthRate: this.rejectedPreAuthRate,
     }
   }
 

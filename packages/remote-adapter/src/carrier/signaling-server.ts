@@ -34,6 +34,7 @@ export interface SignalingStats {
   readonly relayedMessages: number
   readonly rejectedMessages: number
   readonly rejectedPerIpCap: number
+  readonly rejectedPreAuthRate: number
 }
 
 export interface SelfHostedSignalingServerOptions {
@@ -51,6 +52,12 @@ export interface SelfHostedSignalingServerOptions {
   readonly maxPeersPerRoom?: number | undefined
   readonly maxConnections?: number | undefined
   readonly maxConnectionsPerIp?: number | undefined
+  /** IPv6 prefix length used when bucketing client IPs (default: 64). */
+  readonly ipv6PrefixLength?: number | undefined
+  /** Sliding-window global pre-auth admission cap (default: max(32, floor(maxConnections / 2))). */
+  readonly maxPreAuthConnectionsPerWindow?: number | undefined
+  /** Sliding window length for global pre-auth rate budget in ms (default: 5000). */
+  readonly preAuthRateWindowMs?: number | undefined
   /** Explicit trusted reverse-proxy IPs/CIDRs allowed to supply forwarded client IPs (fail-closed by default). */
   readonly trustedProxies?: readonly string[] | undefined
   readonly maxFrameBytes?: number | undefined
@@ -153,6 +160,7 @@ export class SelfHostedSignalingServer {
   private relayedMessages = 0
   private rejectedMessages = 0
   private rejectedPerIpCap = 0
+  private rejectedPreAuthRate = 0
 
   constructor(options: SelfHostedSignalingServerOptions) {
     this.options = options
@@ -169,9 +177,19 @@ export class SelfHostedSignalingServer {
       maxConnections: this.maxConnections,
       maxConnectionsPerIp: this.maxConnectionsPerIp,
       registerTimeoutMs: this.registerTimeoutMs,
+      ...(options.ipv6PrefixLength !== undefined ? { ipv6PrefixLength: options.ipv6PrefixLength } : {}),
+      ...(options.maxPreAuthConnectionsPerWindow !== undefined
+        ? { maxPreAuthConnectionsPerWindow: options.maxPreAuthConnectionsPerWindow }
+        : {}),
+      ...(options.preAuthRateWindowMs !== undefined
+        ? { preAuthRateWindowMs: options.preAuthRateWindowMs }
+        : {}),
       ...(options.trustedProxies !== undefined ? { trustedProxies: options.trustedProxies } : {}),
       onPerIpRejected: () => {
         this.rejectedPerIpCap += 1
+      },
+      onPreAuthRateRejected: () => {
+        this.rejectedPreAuthRate += 1
       },
     })
     this.hostAuthDigest =
@@ -205,6 +223,7 @@ export class SelfHostedSignalingServer {
       relayedMessages: this.relayedMessages,
       rejectedMessages: this.rejectedMessages,
       rejectedPerIpCap: this.rejectedPerIpCap,
+      rejectedPreAuthRate: this.rejectedPreAuthRate,
     }
   }
 

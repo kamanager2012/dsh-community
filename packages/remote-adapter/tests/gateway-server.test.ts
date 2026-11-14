@@ -13,6 +13,7 @@ import {
   FailoverRemoteClient,
   InMemoryDeviceTrustStore,
   InMemoryHostIdentityStore,
+  normalizeIpForRateLimit,
   PairingCoordinator,
   PairingTokenRegistry,
   parsePairingInput,
@@ -692,6 +693,7 @@ describe('BlindGatewayServer', () => {
       host: '127.0.0.1',
       port: 0,
       maxConnectionsPerIp: 1,
+      ipv6PrefixLength: 128,
       trustedProxies: ['127.0.0.1'],
     })
     await signaling.start()
@@ -717,5 +719,103 @@ describe('BlindGatewayServer', () => {
     })
     sigDup.socket.destroy()
     expect(sigDup.statusCode).toBe(429)
+  })
+
+  it('aggregates IPv6 prefixes (default /64, configurable) and enforces a global pre-auth rate budget', async () => {
+    expect(normalizeIpForRateLimit('2001:db8:abcd:1234::1')).toBe('2001:db8:abcd:1234::/64')
+    expect(normalizeIpForRateLimit('2001:db8:abcd:1234:dead:beef::99')).toBe('2001:db8:abcd:1234::/64')
+    expect(normalizeIpForRateLimit('2001:db8:abcd:1234::1', 48)).toBe('2001:db8:abcd::/48')
+    expect(normalizeIpForRateLimit('::ffff:203.0.113.9', 64)).toBe('203.0.113.9')
+    expect(() => normalizeIpForRateLimit('2001:db8::1', 0)).toThrow(/ipv6PrefixLength/i)
+    expect(() => normalizeIpForRateLimit('2001:db8::1', 129)).toThrow(/ipv6PrefixLength/i)
+
+    expect(
+      () =>
+        new BlindGatewayServer({
+          enabled: true,
+          host: '127.0.0.1',
+          port: 0,
+          ipv6PrefixLength: 0,
+        }),
+    ).toThrow(/ipv6PrefixLength/i)
+
+    // Default /64 aggregation: distinct /128s inside the same /64 share maxConnectionsPerIp
+    const v6Gw = new BlindGatewayServer({
+      enabled: true,
+      host: '127.0.0.1',
+      port: 0,
+      maxConnections: 16,
+      maxConnectionsPerIp: 2,
+      trustedProxies: ['127.0.0.1'],
+    })
+    await v6Gw.start()
+    cleanups.push(() => v6Gw.stop())
+    const v6Addr = v6Gw.getBoundAddress()!
+
+    const p1 = await openRawWebSocketUpgrade('127.0.0.1', v6Addr.port, '/relay', {
+      'X-Forwarded-For': '2001:db8:1:2::1',
+    })
+    const p2 = await openRawWebSocketUpgrade('127.0.0.1', v6Addr.port, '/signal', {
+      'X-Forwarded-For': '2001:db8:1:2:dead:beef::2',
+    })
+    cleanups.push(async () => {
+      p1.socket.destroy()
+      p2.socket.destroy()
+    })
+    expect(p1.statusCode).toBe(101)
+    expect(p2.statusCode).toBe(101)
+
+    const p3Same64 = await openRawWebSocketUpgrade('127.0.0.1', v6Addr.port, '/relay', {
+      'X-Forwarded-For': '2001:db8:1:2:cafe::3',
+    })
+    p3Same64.socket.destroy()
+    expect(p3Same64.statusCode).toBe(429)
+    expect(v6Gw.getStats().rejectedPerIpCap).toBeGreaterThanOrEqual(1)
+
+    const p4Other64 = await openRawWebSocketUpgrade('127.0.0.1', v6Addr.port, '/relay', {
+      'X-Forwarded-For': '2001:db8:1:3::1',
+    })
+    cleanups.push(async () => p4Other64.socket.destroy())
+    expect(p4Other64.statusCode).toBe(101)
+
+    // Global pre-auth rate budget stops rapid churn across distinct prefixes/IPs without filling maxConnections
+    const rateGw = new BlindGatewayServer({
+      enabled: true,
+      host: '127.0.0.1',
+      port: 0,
+      maxConnections: 16,
+      maxConnectionsPerIp: 2,
+      ipv6PrefixLength: 48,
+      maxPreAuthConnectionsPerWindow: 3,
+      preAuthRateWindowMs: 80,
+      trustedProxies: ['127.0.0.1'],
+    })
+    await rateGw.start()
+    cleanups.push(() => rateGw.stop())
+    const rAddr = rateGw.getBoundAddress()!
+
+    const distinctPrefixes = [
+      '2001:db8:10::1',
+      '2001:db8:20::1',
+      '2001:db8:30::1',
+      '2001:db8:40::1',
+    ]
+    const results: number[] = []
+    for (const ip of distinctPrefixes) {
+      const up = await openRawWebSocketUpgrade('127.0.0.1', rAddr.port, '/relay', {
+        'X-Forwarded-For': ip,
+      })
+      results.push(up.statusCode)
+      up.socket.destroy()
+    }
+    expect(results).toEqual([101, 101, 101, 429])
+    expect(rateGw.getStats().rejectedPreAuthRate).toBeGreaterThanOrEqual(1)
+
+    await new Promise((resolve) => setTimeout(resolve, 95))
+    const recovered = await openRawWebSocketUpgrade('127.0.0.1', rAddr.port, '/signal', {
+      'X-Forwarded-For': '2001:db8:50::1',
+    })
+    recovered.socket.destroy()
+    expect(recovered.statusCode).toBe(101)
   })
 })
