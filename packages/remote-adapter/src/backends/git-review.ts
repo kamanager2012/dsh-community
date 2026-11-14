@@ -30,6 +30,10 @@ const GIT_TIMEOUT_MS = 8000
 const WORKSPACE_SUMMARY_TIMEOUT_MS = 1500
 const WORKSPACE_SUMMARY_TTL_MS = 4000
 const MAX_WORKSPACE_SUMMARY_CACHE = 128
+const WORKSPACE_FILES_CACHE_TTL_MS = 4000
+const MAX_WORKSPACE_FILES_CACHE = 32
+const MAX_WORKSPACE_FILES_INDEX_ENTRIES = 50_000
+const MAX_CONCURRENT_WORKSPACE_INDEX_BUILDS = 4
 
 async function runGit(
   cwd: string,
@@ -765,15 +769,130 @@ function collectFilesFallbackWalk(
   return { paths, walkTruncated }
 }
 
+interface WorkspaceFilesIndexEntry {
+  readonly expiresAt: number
+  readonly paths: readonly string[]
+  readonly walkTruncated: boolean
+}
+
+const workspaceFilesIndexCache = new Map<string, WorkspaceFilesIndexEntry>()
+const workspaceFilesIndexInFlight = new Map<string, Promise<WorkspaceFilesIndexEntry>>()
+let activeWorkspaceIndexBuilds = 0
+
+async function loadWorkspaceFilesIndex(
+  realRoot: string,
+  forceRefresh = false,
+): Promise<WorkspaceFilesIndexEntry> {
+  const now = Date.now()
+  if (!forceRefresh) {
+    const cached = workspaceFilesIndexCache.get(realRoot)
+    if (cached && cached.expiresAt > now) {
+      workspaceFilesIndexCache.delete(realRoot)
+      workspaceFilesIndexCache.set(realRoot, cached)
+      return cached
+    }
+    const existing = workspaceFilesIndexInFlight.get(realRoot)
+    if (existing) {
+      return existing
+    }
+  }
+
+  if (activeWorkspaceIndexBuilds >= MAX_CONCURRENT_WORKSPACE_INDEX_BUILDS) {
+    throw new RemoteProtocolError(
+      'STATE_CAPACITY_EXCEEDED',
+      'workspace index build capacity exceeded',
+    )
+  }
+
+  activeWorkspaceIndexBuilds += 1
+  const loadPromise = (async (): Promise<WorkspaceFilesIndexEntry> => {
+    try {
+      let candidates: string[] = []
+      let walkTruncated = false
+      let usedGit = false
+
+      try {
+        await runGit(realRoot, ['rev-parse', '--show-toplevel'], 256 * 1024, GIT_TIMEOUT_MS)
+        const { stdout } = await runGit(
+          realRoot,
+          ['ls-files', '--cached', '--others', '--exclude-standard', '-z'],
+          8 * 1024 * 1024,
+          GIT_TIMEOUT_MS,
+        )
+        usedGit = true
+        for (const rawEntry of stdout.split('\0')) {
+          if (!rawEntry) continue
+          const normalized = rawEntry.replace(/\\/gu, '/')
+          if (
+            normalized.startsWith('/')
+            || normalized.startsWith('..')
+            || normalized.split('/').some((seg) => seg === '..' || seg === '.' || seg === '.git' || seg === '')
+          ) {
+            continue
+          }
+          candidates.push(normalized)
+          if (candidates.length >= MAX_WORKSPACE_FILES_INDEX_ENTRIES) {
+            walkTruncated = true
+            break
+          }
+        }
+      } catch {
+        usedGit = false
+      }
+
+      if (!usedGit) {
+        const walked = collectFilesFallbackWalk(realRoot)
+        candidates = walked.paths
+        walkTruncated = walked.walkTruncated
+      }
+
+      const seen = new Set<string>()
+      const paths: string[] = []
+      for (const p of candidates) {
+        if (seen.has(p)) continue
+        seen.add(p)
+        paths.push(p)
+      }
+
+      const entry: WorkspaceFilesIndexEntry = {
+        expiresAt: Date.now() + WORKSPACE_FILES_CACHE_TTL_MS,
+        paths,
+        walkTruncated,
+      }
+      workspaceFilesIndexCache.delete(realRoot)
+      if (workspaceFilesIndexCache.size >= MAX_WORKSPACE_FILES_CACHE) {
+        const oldestKey = workspaceFilesIndexCache.keys().next().value
+        if (oldestKey !== undefined) workspaceFilesIndexCache.delete(oldestKey)
+      }
+      workspaceFilesIndexCache.set(realRoot, entry)
+      return entry
+    } finally {
+      activeWorkspaceIndexBuilds = Math.max(0, activeWorkspaceIndexBuilds - 1)
+    }
+  })()
+
+  if (!forceRefresh) {
+    workspaceFilesIndexInFlight.set(realRoot, loadPromise)
+  }
+  try {
+    return await loadPromise
+  } finally {
+    if (!forceRefresh && workspaceFilesIndexInFlight.get(realRoot) === loadPromise) {
+      workspaceFilesIndexInFlight.delete(realRoot)
+    }
+  }
+}
+
 /**
  * Lists read-only workspace-relative file paths for `@file` mentions and search.
- * Uses `git ls-files` (respecting `.gitignore`) when in a git checkout, otherwise a
- * bounded non-symlink filesystem walk, always enforcing canonical containment and
+ * Uses a shared single-flight TTL-cached workspace index keyed by canonical root,
+ * enforces global index-build concurrency caps, and checks canonical containment and
  * Noise transport frame payload bounds.
  */
 export async function inspectWorkspaceFiles(
   params: WorkspaceFilesParams,
   cwd: string,
+  options?: { readonly forceRefresh?: boolean | undefined },
 ): Promise<WorkspaceFilesResult> {
   const realRoot = resolveExistingDirectoryRealpath(cwd)
   const limit = Math.min(
@@ -790,47 +909,11 @@ export async function inspectWorkspaceFiles(
     normalizedPrefix = assertSafeRepoRelativePath(realRoot, cleanBase)
   }
 
-  let candidates: string[] = []
-  let walkTruncated = false
+  const indexEntry = await loadWorkspaceFilesIndex(realRoot, options?.forceRefresh === true)
+  const walkTruncated = indexEntry.walkTruncated
 
-  let usedGit = false
-  try {
-    await runGit(realRoot, ['rev-parse', '--show-toplevel'], 256 * 1024, GIT_TIMEOUT_MS)
-    const gitArgs = ['ls-files', '--cached', '--others', '--exclude-standard', '-z']
-    if (normalizedPrefix && prefixDirOnly) {
-      gitArgs.push('--', normalizedPrefix)
-    }
-    const { stdout } = await runGit(realRoot, gitArgs, 8 * 1024 * 1024, GIT_TIMEOUT_MS)
-    usedGit = true
-    const rawList = stdout.split('\0')
-    for (const rawEntry of rawList) {
-      if (!rawEntry) continue
-      const normalized = rawEntry.replace(/\\/gu, '/')
-      if (
-        normalized.startsWith('/')
-        || normalized.startsWith('..')
-        || normalized.split('/').some((seg) => seg === '..' || seg === '.' || seg === '.git' || seg === '')
-      ) {
-        continue
-      }
-      candidates.push(normalized)
-    }
-  } catch {
-    usedGit = false
-  }
-
-  if (!usedGit) {
-    const walked = collectFilesFallbackWalk(realRoot, normalizedPrefix)
-    candidates = walked.paths
-    walkTruncated = walked.walkTruncated
-  }
-
-  // Deduplicate cleanly (a file cannot duplicate normally, except git flags or walk edge cases)
-  const seen = new Set<string>()
   const uniquePaths: string[] = []
-  for (const p of candidates) {
-    if (seen.has(p)) continue
-    seen.add(p)
+  for (const p of indexEntry.paths) {
     if (normalizedPrefix) {
       if (prefixDirOnly) {
         if (p !== normalizedPrefix && !p.startsWith(`${normalizedPrefix}/`)) continue

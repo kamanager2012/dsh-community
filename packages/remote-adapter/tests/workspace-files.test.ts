@@ -165,4 +165,116 @@ describe('bounded read-only workspace.files RPC and helpers', () => {
       }),
     ).rejects.toMatchObject({ code: 'INVALID_REQUEST' })
   })
+
+  it('enforces per-device and global workspace.files concurrency caps in RemoteAdapterCore and deduplicates inspectWorkspaceFiles', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'dsh-ws-concurrency-'))
+    tempDirs.push(dir)
+    initGitRepo(dir)
+    writeFileSync(join(dir, 'a.ts'), 'export const a = 1\n', 'utf8')
+    execFileSync('git', ['add', '.'], { cwd: dir, stdio: 'pipe' })
+    execFileSync('git', ['commit', '-m', 'init'], { cwd: dir, stdio: 'pipe' })
+
+    // Concurrent calls to inspectWorkspaceFiles coalesce and cache across differing queries/prefixes
+    const [r1, r2, r3] = await Promise.all([
+      inspectWorkspaceFiles({ sessionId: 's1', query: '' }, dir),
+      inspectWorkspaceFiles({ sessionId: 's1', query: 'a.ts' }, dir),
+      inspectWorkspaceFiles({ sessionId: 's1', prefix: 'a' }, dir),
+    ])
+    expect(r1.files).toEqual(['a.ts'])
+    expect(r2.files).toEqual(['a.ts'])
+    expect(r3.files).toEqual(['a.ts'])
+
+    const resolvers: Array<() => void> = []
+    const core = new RemoteAdapterCore(
+      {
+        listSessions: async () => [{ id: 'dsh-1', cwd: dir }],
+        assertSession: async () => {},
+        followup: async () => ({ accepted: true }),
+        respondApproval: async () => ({ ok: true }),
+        respondQuestion: async () => ({ ok: true }),
+        listWorkspaceFiles: async (params) => {
+          await new Promise<void>((resolve) => {
+            resolvers.push(resolve)
+          })
+          return {
+            sessionId: params.sessionId,
+            root: dir,
+            files: ['a.ts'],
+            totalMatched: 1,
+            truncated: false,
+          }
+        },
+      },
+      {
+        maxConcurrentWorkspaceFilesPerDevice: 2,
+        maxConcurrentWorkspaceFilesGlobal: 3,
+      },
+    )
+
+    const hostIdentity = await core.hostIdentityStore.getPublicIdentity()
+    const kp1 = await new InMemoryHostIdentityStore().loadOrCreate()
+    const kp2 = await new InMemoryHostIdentityStore().loadOrCreate()
+    const d1 = core.devices.trust(kp1.identity.publicKey, ['observe'], {
+      displayName: 'D1',
+      trustDomainId: hostIdentity.trustDomainId,
+    })
+    const d2 = core.devices.trust(kp2.identity.publicKey, ['observe'], {
+      displayName: 'D2',
+      trustDomainId: hostIdentity.trustDomainId,
+    })
+    const peer1: AuthenticatedPeer = {
+      deviceId: d1.deviceId,
+      publicKey: kp1.identity.publicKey,
+      connectionEpoch: 1,
+    }
+    const peer2: AuthenticatedPeer = {
+      deviceId: d2.deviceId,
+      publicKey: kp2.identity.publicKey,
+      connectionEpoch: 1,
+    }
+
+    const callFiles = (peer: AuthenticatedPeer, seq: number) =>
+      core.handle(peer, {
+        jsonrpc: '2.0',
+        id: `wf-${peer.deviceId}-${seq}`,
+        method: 'workspace.files',
+        protocolVersion: REMOTE_PROTOCOL_VERSION,
+        connectionEpoch: 1,
+        requestSeq: seq,
+        params: { sessionId: 'dsh-1' },
+      })
+
+    const waitForResolvers = async (count: number): Promise<void> => {
+      for (let i = 0; i < 50 && resolvers.length < count; i += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 1))
+      }
+      expect(resolvers.length).toBe(count)
+    }
+
+    // Peer 1 fills its per-device limit (2 in-flight)
+    const p1a = callFiles(peer1, 1)
+    const p1b = callFiles(peer1, 2)
+    await waitForResolvers(2)
+
+    await expect(callFiles(peer1, 3)).rejects.toMatchObject({ code: 'STATE_CAPACITY_EXCEEDED' })
+
+    // Peer 2 takes the 3rd global slot, filling global capacity (3)
+    const p2a = callFiles(peer2, 1)
+    await waitForResolvers(3)
+
+    await expect(callFiles(peer2, 2)).rejects.toMatchObject({ code: 'STATE_CAPACITY_EXCEEDED' })
+
+    // Releasing all in-flight calls frees slots cleanly
+    while (resolvers.length > 0) {
+      resolvers.pop()!()
+    }
+    await Promise.all([p1a, p1b, p2a])
+
+    const afterRelease = callFiles(peer1, 4)
+    await waitForResolvers(1)
+    while (resolvers.length > 0) {
+      resolvers.pop()!()
+    }
+    await expect(afterRelease).resolves.toMatchObject({ files: ['a.ts'] })
+  })
 })

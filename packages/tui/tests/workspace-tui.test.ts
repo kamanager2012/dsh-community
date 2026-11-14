@@ -301,4 +301,37 @@ describe('TUI local /diff, @file completion, and safe workspace helpers', () => 
     expect(first).toEqual(['z-valid.ts'])
     expect(second).toEqual(['z-valid.ts'])
   })
+
+  it('invalidates pending @file and Tab completion lookups when Escape is pressed before resolution', async () => {
+    const store = createStore()
+    let resolveLookup: ((matches: string[]) => void) | undefined
+    let cancels = 0
+    const deps: KeyHandlerDeps = {
+      store,
+      onSend: () => {},
+      onCancel: () => {
+        cancels += 1
+      },
+      onExit: () => {},
+      showHelp: () => {},
+      toggleThinking: () => {},
+      completeAtFiles: () =>
+        new Promise<string[]>((resolve) => {
+          resolveLookup = resolve
+        }),
+    }
+
+    // Escape pressed while async Tab lookup is pending (atCompletion still undefined)
+    handleKey(deps, '@foo')
+    handleKey(deps, '\t')
+    handleKey(deps, '', { escape: true })
+    expect(cancels).toBe(1)
+
+    resolveLookup?.(['foo.ts'])
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(store.state.draft).toBe('@foo')
+    expect(store.state.atCompletion).toBeUndefined()
+  })
 })

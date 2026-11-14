@@ -277,8 +277,8 @@ function applyChar(deps: KeyHandlerDeps, ch: string, key: KeyEvent): boolean {
     return false
   }
   if (ch === '\x1b' || key.escape) {
+    nextAtQueryGen(store)
     if (state.atCompletion !== undefined) {
-      nextAtQueryGen(store)
       store.setAtCompletion(undefined)
       return false
     }

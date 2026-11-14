@@ -49,6 +49,8 @@ export interface RemoteAdapterOptions {
   readonly terminalStateCapacity?: number
   readonly connectionStateCapacity?: number
   readonly maxDevices?: number
+  readonly maxConcurrentWorkspaceFilesPerDevice?: number
+  readonly maxConcurrentWorkspaceFilesGlobal?: number
   readonly trustStore?: DeviceTrustStore
   readonly hostIdentityStore?: HostIdentityStore
 }
@@ -592,6 +594,10 @@ export class RemoteAdapterCore {
   private readonly maxReplaySessions: number
   private readonly terminalStateCapacity: number
   private readonly connectionStateCapacity: number
+  private readonly maxConcurrentWorkspaceFilesPerDevice: number
+  private readonly maxConcurrentWorkspaceFilesGlobal: number
+  private inFlightWorkspaceFilesTotal = 0
+  private readonly inFlightWorkspaceFilesByDevice = new Map<string, number>()
 
   constructor(
     private readonly seams: OfficialRemoteSeams,
@@ -605,6 +611,20 @@ export class RemoteAdapterCore {
     }
     this.terminalStateCapacity = options.terminalStateCapacity ?? 4096
     this.connectionStateCapacity = options.connectionStateCapacity ?? 1024
+    this.maxConcurrentWorkspaceFilesPerDevice = options.maxConcurrentWorkspaceFilesPerDevice ?? 2
+    if (
+      !Number.isInteger(this.maxConcurrentWorkspaceFilesPerDevice)
+      || this.maxConcurrentWorkspaceFilesPerDevice < 1
+    ) {
+      throw new Error('maxConcurrentWorkspaceFilesPerDevice must be a positive integer')
+    }
+    this.maxConcurrentWorkspaceFilesGlobal = options.maxConcurrentWorkspaceFilesGlobal ?? 6
+    if (
+      !Number.isInteger(this.maxConcurrentWorkspaceFilesGlobal)
+      || this.maxConcurrentWorkspaceFilesGlobal < 1
+    ) {
+      throw new Error('maxConcurrentWorkspaceFilesGlobal must be a positive integer')
+    }
     this.hostIdentityStore = options.hostIdentityStore ?? new InMemoryHostIdentityStore()
     this.devices = new DeviceRegistry(
       options.trustStore ?? options.maxDevices ?? 128,
@@ -694,14 +714,39 @@ export class RemoteAdapterCore {
       }
       case 'workspace.files': {
         const params = parseWorkspaceFiles(request.params)
-        await this.seams.assertSession(params.sessionId)
         if (!this.seams.listWorkspaceFiles) {
           throw new RemoteProtocolError(
             'INVALID_REQUEST',
             'workspace.files is not supported by this host',
           )
         }
-        return this.seams.listWorkspaceFiles(params)
+        const perDeviceActive = this.inFlightWorkspaceFilesByDevice.get(peer.deviceId) ?? 0
+        if (perDeviceActive >= this.maxConcurrentWorkspaceFilesPerDevice) {
+          throw new RemoteProtocolError(
+            'STATE_CAPACITY_EXCEEDED',
+            'too many concurrent workspace.files requests for device',
+          )
+        }
+        if (this.inFlightWorkspaceFilesTotal >= this.maxConcurrentWorkspaceFilesGlobal) {
+          throw new RemoteProtocolError(
+            'STATE_CAPACITY_EXCEEDED',
+            'too many concurrent workspace.files requests',
+          )
+        }
+        this.inFlightWorkspaceFilesByDevice.set(peer.deviceId, perDeviceActive + 1)
+        this.inFlightWorkspaceFilesTotal += 1
+        try {
+          await this.seams.assertSession(params.sessionId)
+          return await this.seams.listWorkspaceFiles(params)
+        } finally {
+          const remaining = (this.inFlightWorkspaceFilesByDevice.get(peer.deviceId) ?? 1) - 1
+          if (remaining <= 0) {
+            this.inFlightWorkspaceFilesByDevice.delete(peer.deviceId)
+          } else {
+            this.inFlightWorkspaceFilesByDevice.set(peer.deviceId, remaining)
+          }
+          this.inFlightWorkspaceFilesTotal = Math.max(0, this.inFlightWorkspaceFilesTotal - 1)
+        }
       }
       case 'session.create':
         return this.mutate(
