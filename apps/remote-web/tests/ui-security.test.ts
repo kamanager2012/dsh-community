@@ -662,5 +662,37 @@ describe('remote-web pairing security, safe Markdown/Diff DOM, and CSP hygiene',
     expect(tl.pendingApprovals[0]?.args).toEqual({ command: 'rm -rf /tmp/demo && pnpm test' })
     expect(typeof tl.pendingApprovals[1]?.args).toBe('string')
     expect(String(tl.pendingApprovals[1]?.args)).toContain('src/index.ts')
+
+    const mainSrc = readFileSync(join(APP_ROOT, 'src/main.ts'), 'utf8')
+    expect(mainSrc).toContain('pendingSubmitIdempotencyBySession')
+    expect(mainSrc).toContain('idempotencyKey,')
+  })
+
+  it('folds agent/error notifications and structured MCP tool errors accurately', () => {
+    const tl = new SessionTimelineState('codex--err')
+    tl.applyEvent({
+      seq: 1,
+      type: 'tool/call',
+      data: { callId: 'mcp-1', name: 'mcp_search', arguments: { q: 'foo' } },
+    })
+    tl.applyEvent({
+      seq: 2,
+      type: 'tool/result',
+      data: { callId: 'mcp-1', result: null, error: { code: -32602, message: 'Invalid params' } },
+    })
+    tl.applyEvent({
+      seq: 3,
+      type: 'agent/error',
+      data: { message: 'Model rate limit exceeded' },
+    })
+
+    const toolItem = tl.items[0] as Extract<(typeof tl.items)[number], { kind: 'tool' }>
+    expect(toolItem.status).toBe('error')
+    expect(toolItem.outputText).toContain('-32602')
+    expect(toolItem.outputText).toContain('Invalid params')
+
+    const noticeItem = tl.items[1] as Extract<(typeof tl.items)[number], { kind: 'notice' }>
+    expect(noticeItem.isError).toBe(true)
+    expect(noticeItem.text).toBe('Error: Model rate limit exceeded')
   })
 })

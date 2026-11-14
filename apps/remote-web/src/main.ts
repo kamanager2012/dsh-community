@@ -1,4 +1,4 @@
-import { base64Encode, hexToBytes, sha256Hex } from './crypto/bytes.ts'
+import { base64Encode, hexToBytes, randomUuid, sha256Hex } from './crypto/bytes.ts'
 import { RemoteWebKeyStore, type ClientDeviceIdentity } from './client/keystore.ts'
 import {
   consumePairFragmentFromLocation,
@@ -127,6 +127,10 @@ let toastTimer: ReturnType<typeof setTimeout> | undefined = undefined
 let lastComposerRenderKey = ''
 let gitReviewGeneration = 0
 let hostResetGeneration = 0
+const pendingSubmitIdempotencyBySession = new Map<
+  string,
+  { readonly key: string; readonly signature: string }
+>()
 
 function stopActiveCameraScanner(): void {
   qrScanGeneration += 1
@@ -194,6 +198,7 @@ function resetHostScopedState(nextHostFingerprint?: string): void {
   lastComposerRenderKey = ''
   gitReviewGeneration += 1
   hostResetGeneration += 1
+  pendingSubmitIdempotencyBySession.clear()
 }
 
 function getOrCreateTimeline(sessionId: string): SessionTimelineState {
@@ -585,6 +590,14 @@ async function handleSubmitPrompt(): Promise<void> {
 
   const mode = tl.status === 'running' ? state.promptMode : 'followup'
   const promptText = draft || '[image]'
+  const submitSignature = `${promptText}\0${attachments.map((a) => `${a.mediaType}:${a.name ?? ''}:${a.dataBase64}`).join('\0')}`
+  const existingSubmit = pendingSubmitIdempotencyBySession.get(sid)
+  const idempotencyKey =
+    existingSubmit && existingSubmit.signature === submitSignature
+      ? existingSubmit.key
+      : randomUuid()
+  pendingSubmitIdempotencyBySession.set(sid, { key: idempotencyKey, signature: submitSignature })
+
   const envelopeBytes = estimateRpcEnvelopeBytes(
     'prompt.submit',
     {
@@ -617,7 +630,11 @@ async function handleSubmitPrompt(): Promise<void> {
     await client.submitPrompt(sid, promptText, {
       mode,
       attachments,
+      idempotencyKey,
     })
+    if (pendingSubmitIdempotencyBySession.get(sid)?.key === idempotencyKey) {
+      pendingSubmitIdempotencyBySession.delete(sid)
+    }
   } catch (err) {
     tl.removeOptimisticItem(optId)
     if ((state.draftBySession.get(sid) ?? '') === '' && draft) {

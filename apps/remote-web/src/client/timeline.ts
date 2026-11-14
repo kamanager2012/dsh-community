@@ -689,13 +689,21 @@ export class SessionTimelineState implements SessionStoreState {
         if (!data) return
         const msg = isRecord(data.message) ? data.message : data
         const callId = String(msg.callId ?? data.callId ?? '')
+        const rawError = data.error !== undefined ? data.error : msg.error
         const isErr =
           msg.isError === true ||
           data.isError === true ||
-          (typeof data.error === 'string' && data.error.length > 0)
+          (typeof rawError === 'string' && rawError.length > 0) ||
+          isRecord(rawError)
+        const errorText =
+          typeof rawError === 'string' && rawError.length > 0
+            ? rawError
+            : isRecord(rawError)
+              ? formatJsonCompact(rawError)
+              : ''
         const rawOutput =
-          typeof data.error === 'string'
-            ? data.error
+          errorText.length > 0
+            ? errorText
             : typeof msg.content === 'string'
               ? msg.content
               : formatJsonCompact(msg.content ?? data.result ?? data.output)
@@ -913,13 +921,23 @@ export class SessionTimelineState implements SessionStoreState {
       }
 
       case 'error':
-      case 'session/error': {
+      case 'session/error':
+      case 'agent/error':
+      case 'agent.error': {
         this.unmergedStreamedAssistantId = undefined
+        const errText =
+          typeof data?.message === 'string' && data.message.length > 0
+            ? data.message
+            : typeof data?.error === 'string' && data.error.length > 0
+              ? data.error
+              : isRecord(data?.error)
+                ? formatJsonCompact(data.error)
+                : event.type
         this.items.push({
           kind: 'notice',
           id: this.nextId('n'),
           seq: event.seq,
-          text: `Error: ${String(data?.message ?? data?.error ?? event.type)}`,
+          text: `Error: ${errText}`,
           isError: true,
         })
       }
