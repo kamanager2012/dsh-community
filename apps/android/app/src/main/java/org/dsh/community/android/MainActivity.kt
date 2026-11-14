@@ -82,6 +82,8 @@ import org.dsh.community.android.ui.ConstrainedScrollView
 import org.dsh.community.android.ui.ParsedSlashCommand
 import org.dsh.community.android.ui.PromptImageHelper
 import org.dsh.community.android.ui.RemoteLayoutBudget
+import org.dsh.community.android.ui.SessionDashboardPlanner
+import org.dsh.community.android.ui.SessionFilter
 import org.dsh.community.android.ui.SlashCommandHelper
 import org.dsh.community.android.ui.SystemNoticeItem
 import org.dsh.community.android.ui.ToolExecutionItem
@@ -162,6 +164,7 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
     private var attachedSessionId: String? = null
     private var lastEventSessionId: String? = null
     private var lastSessions: List<SessionRef> = emptyList()
+    private val sessionStatusById = HashMap<String, String>()
     private var lastEngines: List<EngineDescriptor> = emptyList()
     private var lastModelCatalog: ModelCatalogResult? = null
     private var onSessionsRefreshedInDialog: (() -> Unit)? = null
@@ -314,6 +317,10 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
             },
             onLongPressItem = { item ->
                 showTimelineItemActionsDialog(item)
+            },
+            onCopyCode = { language, code ->
+                val tag = language.ifBlank { "code" }
+                copyTextToClipboard("DSH $tag", code, "Copied $tag block")
             },
         )
         chatRecyclerView.layoutManager = LinearLayoutManager(this).apply {
@@ -635,10 +642,17 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
     override fun onSessionsUpdated(sessions: List<SessionRef>) {
         runOnUiThread {
             lastSessions = sessions
+            for (session in sessions) {
+                val remoteStatus = session.status?.takeIf { it.isNotBlank() }
+                if (remoteStatus != null) {
+                    sessionStatusById[session.id] = remoteStatus
+                }
+            }
             val summary = sessions.joinToString("\n") {
                 val safeId = DisplayTextSanitizer.sanitizeSingleLine(it.id)
                 val safeTitle = DisplayTextSanitizer.sanitizeSingleLine(it.title ?: "untitled").ifBlank { "untitled" }
-                "$safeId ($safeTitle)"
+                val branchSuffix = it.workspace?.branch?.let { b -> " [$b]" }.orEmpty()
+                "$safeId ($safeTitle)$branchSuffix"
             }
             if (sessions.isNotEmpty()) {
                 appendLog("Sessions:\n$summary")
@@ -646,6 +660,7 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
             if (sessionIdInput.text.isNullOrBlank() && sessions.isNotEmpty()) {
                 sessionIdInput.setText(sessions.first().id)
             }
+            activeTimelineSessionId()?.let { timelineStore.markSessionSeen(it) }
             renderSessionChips(sessions)
             onSessionsRefreshedInDialog?.invoke()
         }
@@ -702,8 +717,13 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
 
             val diffBody = diff.diff.ifBlank { "(No unified text diff in current scope.)" }
             val stats = DiffDisplayFormatter.summarize(diff.diff)
+            val wtPrefix = if (status.isWorktree && !status.worktreeName.isNullOrBlank()) {
+                "[Worktree: ${status.worktreeName}] "
+            } else {
+                ""
+            }
             val summaryText = buildString {
-                append("${status.branch} (↑${status.ahead} ↓${status.behind}) · ${status.files.size} files")
+                append("$wtPrefix${status.branch} (↑${status.ahead} ↓${status.behind}) · ${status.files.size} files")
                 if (diff.diff.isNotBlank()) {
                     append(" · +${stats.additions} / -${stats.deletions}")
                 }
@@ -980,9 +1000,14 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
 
     override fun onAgentStatusChanged(sessionId: String, status: String) {
         runOnUiThread {
+            val prevStatus = sessionStatusById.put(sessionId, status)
             val activeSid = activeTimelineSessionId()
             if (activeSid == null || activeSid == sessionId) {
                 updateAgentStatusUi(status)
+            }
+            if (prevStatus != status && lastSessions.isNotEmpty()) {
+                renderSessionChips(lastSessions)
+                onSessionsRefreshedInDialog?.invoke()
             }
         }
     }
@@ -1021,6 +1046,13 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
             }
             lastEventSessionId = sessionId
             timelineStore.applyEvent(sessionId, event)
+            val activeSid = activeTimelineSessionId()
+            if (activeSid == sessionId) {
+                timelineStore.markSessionSeen(sessionId)
+            } else if (lastSessions.isNotEmpty()) {
+                renderSessionChips(lastSessions)
+                onSessionsRefreshedInDialog?.invoke()
+            }
 
             if (event.type == "assistant/chunk" || event.type == "text-delta" || event.type == "reasoning-delta") {
                 streamChunkCount += 1
@@ -1146,10 +1178,12 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
                 timelineStore.applyEvent(sessionId, evt)
             }
         }
+        timelineStore.markSessionSeen(sessionId)
         if (lastSessions.isNotEmpty()) {
             renderSessionChips(lastSessions)
         }
-        updateAgentStatusUi(service?.currentAgentStatus(sessionId) ?: "idle")
+        val effectiveStatus = service?.currentAgentStatus(sessionId) ?: sessionStatusById[sessionId] ?: "idle"
+        updateAgentStatusUi(effectiveStatus)
         refreshTimelineUi(scrollToBottom = true)
         service?.attachSessionAsync(sessionId)
     }
@@ -1569,7 +1603,7 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
             setPadding(p, p, p, p)
         }
         val searchInput = EditText(this).apply {
-            hint = "Search sessions by title or ID…"
+            hint = "Search title, ID, engine, branch, repo…"
             setBackgroundResource(R.drawable.bg_input_field)
             setTextColor(ContextCompat.getColor(this@MainActivity, R.color.dsh_text_primary))
             setHintTextColor(ContextCompat.getColor(this@MainActivity, R.color.dsh_text_secondary))
@@ -1579,12 +1613,32 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
             setPadding(h, v, h, v)
             setSingleLine(true)
         }
+        val filterScroll = HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                topMargin = dpToPx(8)
+            }
+        }
+        val filterBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
+        filterScroll.addView(filterBar)
+
+        val metricsLine = TextView(this).apply {
+            textSize = 11f
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.dsh_text_secondary))
+            setPadding(dpToPx(2), dpToPx(6), dpToPx(2), dpToPx(2))
+        }
+
         val scroll = ScrollView(this).apply {
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dpToPx(240),
+                dpToPx(340),
             ).apply {
-                topMargin = dpToPx(10)
+                topMargin = dpToPx(6)
             }
         }
         val rowsContainer = LinearLayout(this).apply {
@@ -1592,59 +1646,226 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
         }
         scroll.addView(rowsContainer)
         root.addView(searchInput)
+        root.addView(filterScroll)
+        root.addView(metricsLine)
         root.addView(scroll)
 
+        var activeFilter = SessionFilter.ALL
         var dialogRef: AlertDialog? = null
+
         fun repopulate() {
             rowsContainer.removeAllViews()
-            val query = searchInput.text?.toString()?.trim()?.lowercase().orEmpty()
+            filterBar.removeAllViews()
+            val query = searchInput.text?.toString()?.trim().orEmpty()
             val selectedId = attachedSessionId ?: sessionIdInput.text?.toString()?.trim()
-            val filtered = lastSessions.filter { s ->
-                query.isEmpty() ||
-                    s.id.lowercase().contains(query) ||
-                    (s.title?.lowercase()?.contains(query) == true)
+            val unreadMap = lastSessions.associate { it.id to timelineStore.unreadCount(it.id) }
+            val model = SessionDashboardPlanner.build(
+                sessions = lastSessions,
+                statusOverrides = sessionStatusById,
+                unreadCounts = unreadMap,
+                filter = activeFilter,
+                query = query,
+            )
+
+            val filterSpecs = listOf(
+                SessionFilter.ALL to "All (${model.totalCount})",
+                SessionFilter.RUNNING to "Running (${model.runningCount})",
+                SessionFilter.ATTENTION to "Attention (${model.attentionCount})",
+                SessionFilter.DIRTY to "Dirty Git (${model.dirtyCount})",
+            )
+            for ((filterKey, label) in filterSpecs) {
+                val selectedFilter = activeFilter == filterKey
+                val chip = TextView(this).apply {
+                    text = label
+                    textSize = 11f
+                    setPadding(dpToPx(10), dpToPx(5), dpToPx(10), dpToPx(5))
+                    setBackgroundResource(if (selectedFilter) R.drawable.bg_chip_accent else R.drawable.bg_chip_neutral)
+                    setTextColor(ContextCompat.getColor(this@MainActivity, R.color.dsh_text_primary))
+                    isClickable = true
+                    isFocusable = true
+                    setOnClickListener {
+                        if (activeFilter != filterKey) {
+                            activeFilter = filterKey
+                            repopulate()
+                        }
+                    }
+                }
+                val lp = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                ).apply { marginEnd = dpToPx(6) }
+                filterBar.addView(chip, lp)
             }
-            if (filtered.isEmpty()) {
+
+            metricsLine.text = "${model.groups.size} repos · ${model.runningCount} running · " +
+                "${model.attentionCount} attention · ${model.dirtyCount} dirty"
+
+            if (model.groups.isEmpty()) {
                 val empty = TextView(this).apply {
-                    text = if (lastSessions.isEmpty()) "No sessions loaded yet." else "No sessions match \"$query\"."
+                    text = if (lastSessions.isEmpty()) {
+                        "No sessions loaded yet."
+                    } else {
+                        "No sessions match current filter${if (query.isNotEmpty()) " \"$query\"" else ""}."
+                    }
                     setTextColor(ContextCompat.getColor(this@MainActivity, R.color.dsh_text_secondary))
                     textSize = 12f
-                    setPadding(dpToPx(4), dpToPx(8), dpToPx(4), dpToPx(8))
+                    setPadding(dpToPx(4), dpToPx(12), dpToPx(4), dpToPx(12))
                 }
                 rowsContainer.addView(empty)
                 return
             }
-            for (s in filtered) {
-                val cleanTitle = DisplayTextSanitizer.sanitizeSingleLine(s.title).ifBlank { "(Untitled)" }
-                val engPrefix = s.engine?.let { "[${it.take(10)}] " } ?: ""
-                val isSelected = s.id == selectedId
-                val rowBtn = Button(this).apply {
-                    text = (if (isSelected) "● " else "") + "$engPrefix$cleanTitle\n${s.id}"
+
+            for (group in model.groups) {
+                val hdr = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(dpToPx(2), dpToPx(8), dpToPx(2), dpToPx(4))
+                }
+                val wtNote = if (group.worktreeCount > 1) " · ${group.worktreeCount} worktrees" else ""
+                val dirtyNote = if (group.hasDirtyWorktree) " · dirty" else ""
+                val titleTv = TextView(this).apply {
+                    text = "${group.label}$wtNote$dirtyNote"
                     textSize = 12f
-                    isAllCaps = false
-                    gravity = android.view.Gravity.START or android.view.Gravity.CENTER_VERTICAL
-                    minHeight = 0
-                    minimumHeight = 0
-                    setPadding(dpToPx(10), dpToPx(8), dpToPx(10), dpToPx(8))
-                    setBackgroundResource(if (isSelected) R.drawable.bg_chip_accent else R.drawable.bg_chip_neutral)
-                    setTextColor(ContextCompat.getColor(this@MainActivity, R.color.dsh_text_primary))
-                    setOnClickListener {
-                        selectAndAttachSession(s.id)
-                        dialogRef?.dismiss()
-                    }
-                    setOnLongClickListener {
-                        dialogRef?.dismiss()
-                        showSessionActionDialog(s)
-                        true
-                    }
+                    setTypeface(null, Typeface.BOLD)
+                    setTextColor(ContextCompat.getColor(this@MainActivity, R.color.dsh_text_accent))
                 }
-                val lp = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                ).apply {
-                    bottomMargin = dpToPx(6)
+                hdr.addView(titleTv)
+                if (!group.pathLabel.isNullOrBlank()) {
+                    val pathTv = TextView(this).apply {
+                        text = DisplayTextSanitizer.sanitizeSingleLine(group.pathLabel)
+                        textSize = 10.5f
+                        typeface = Typeface.MONOSPACE
+                        maxLines = 1
+                        ellipsize = android.text.TextUtils.TruncateAt.MIDDLE
+                        setTextColor(ContextCompat.getColor(this@MainActivity, R.color.dsh_text_secondary))
+                    }
+                    hdr.addView(pathTv)
                 }
-                rowsContainer.addView(rowBtn, lp)
+                rowsContainer.addView(hdr)
+
+                for (entry in group.entries) {
+                    val s = entry.session
+                    val isSelected = s.id == selectedId
+                    val bgRes = when {
+                        isSelected -> R.drawable.bg_chip_accent
+                        entry.needsAttention -> R.drawable.bg_alert_card
+                        else -> R.drawable.bg_card_surface
+                    }
+                    val card = LinearLayout(this).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        android.view.Gravity.CENTER_VERTICAL
+                        setBackgroundResource(bgRes)
+                        setPadding(dpToPx(10), dpToPx(8), dpToPx(10), dpToPx(8))
+                        isClickable = true
+                        isFocusable = true
+                        setOnClickListener {
+                            selectAndAttachSession(s.id)
+                            dialogRef?.dismiss()
+                        }
+                        setOnLongClickListener {
+                            dialogRef?.dismiss()
+                            showSessionActionDialog(s)
+                            true
+                        }
+                    }
+
+                    val infoCol = LinearLayout(this).apply {
+                        orientation = LinearLayout.VERTICAL
+                        layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                    }
+
+                    val statusGlyph = when {
+                        entry.effectiveStatus == "running" -> "🟢 "
+                        isSelected -> "● "
+                        else -> ""
+                    }
+                    val cleanTitle = DisplayTextSanitizer.sanitizeSingleLine(s.title).ifBlank { "(Untitled)" }
+                    val engPrefix = s.engine?.let { "[${it.take(10)}] " } ?: ""
+                    val pendingParts = ArrayList<String>(3)
+                    if (s.pendingApprovals > 0) pendingParts.add("Appr ${s.pendingApprovals}")
+                    if (s.pendingQuestions > 0) pendingParts.add("Ask ${s.pendingQuestions}")
+                    if (!isSelected && entry.unreadCount > 0) pendingParts.add("+${entry.unreadCount} new")
+                    val badgeSuffix = if (pendingParts.isNotEmpty()) "  (${pendingParts.joinToString(" · ")})" else ""
+
+                    val headTv = TextView(this).apply {
+                        text = "$statusGlyph$engPrefix$cleanTitle$badgeSuffix"
+                        textSize = 12.5f
+                        setTypeface(null, Typeface.BOLD)
+                        setTextColor(ContextCompat.getColor(this@MainActivity, R.color.dsh_text_primary))
+                    }
+                    infoCol.addView(headTv)
+
+                    val metaParts = ArrayList<String>(5)
+                    val ws = s.workspace
+                    if (ws?.isWorktree == true && !ws.worktreeName.isNullOrBlank()) {
+                        metaParts.add("wt:${ws.worktreeName}")
+                    }
+                    if (!ws?.branch.isNullOrBlank()) {
+                        val dirtyTag = if (ws?.dirty == true) "*M${ws.changedFiles}" else ""
+                        metaParts.add("${ws?.branch}$dirtyTag")
+                    }
+                    if ((ws?.ahead ?: 0) > 0) metaParts.add("↑${ws?.ahead}")
+                    if ((ws?.behind ?: 0) > 0) metaParts.add("↓${ws?.behind}")
+                    if (!s.model.isNullOrBlank()) metaParts.add(s.model)
+                    if (metaParts.isEmpty()) metaParts.add(s.id.take(16))
+
+                    val metaTv = TextView(this).apply {
+                        text = metaParts.joinToString(" · ")
+                        textSize = 10.5f
+                        typeface = Typeface.MONOSPACE
+                        setTextColor(
+                            ContextCompat.getColor(
+                                this@MainActivity,
+                                if (ws?.dirty == true || entry.needsAttention) R.color.dsh_status_warn else R.color.dsh_text_code,
+                            ),
+                        )
+                    }
+                    infoCol.addView(metaTv)
+
+                    if (!s.preview.isNullOrBlank()) {
+                        val previewTv = TextView(this).apply {
+                            text = DisplayTextSanitizer.sanitizeSingleLine(s.preview)
+                            textSize = 11f
+                            maxLines = 1
+                            ellipsize = android.text.TextUtils.TruncateAt.END
+                            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.dsh_text_secondary))
+                        }
+                        infoCol.addView(previewTv)
+                    }
+
+                    card.addView(infoCol)
+
+                    if (!s.cwd.isNullOrBlank() || s.workspace != null) {
+                        val diffChip = TextView(this).apply {
+                            text = "Diff"
+                            textSize = 11f
+                            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.dsh_text_accent))
+                            setBackgroundResource(R.drawable.bg_chip_neutral)
+                            setPadding(dpToPx(9), dpToPx(5), dpToPx(9), dpToPx(5))
+                            isClickable = true
+                            isFocusable = true
+                            setOnClickListener {
+                                dialogRef?.dismiss()
+                                service?.fetchWorkspaceGitDiffAsync(s.id)
+                            }
+                        }
+                        val diffLp = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.WRAP_CONTENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT,
+                        ).apply {
+                            marginStart = dpToPx(8)
+                            gravity = android.view.Gravity.CENTER_VERTICAL
+                        }
+                        card.addView(diffChip, diffLp)
+                    }
+
+                    val lp = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                    ).apply {
+                        bottomMargin = dpToPx(6)
+                    }
+                    rowsContainer.addView(card, lp)
+                }
             }
         }
 
@@ -1662,7 +1883,7 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
 
         val activeForButton = lastSessions.firstOrNull { it.id == (attachedSessionId ?: sessionIdInput.text?.toString()?.trim()) }
         val builder = AlertDialog.Builder(this)
-            .setTitle("Sessions (tap switch · long-press rename)")
+            .setTitle("Workspaces & Sessions (tap · Diff · hold rename)")
             .setView(root)
             .setPositiveButton("New Session") { _, _ ->
                 stickyStatusError = null
@@ -1939,13 +2160,31 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
             container = sessionChipsContainer,
             emptyHintResId = R.string.session_picker_hint,
             chips = sessions.map { session ->
-                val cleanTitle = DisplayTextSanitizer.sanitizeSingleLine(session.title).take(22)
-                val baseLabel = cleanTitle.takeIf { it.isNotBlank() } ?: session.id.take(14)
-                val label = session.engine?.let { "[${it.take(8)}] $baseLabel" } ?: baseLabel
+                val effectiveStatus = sessionStatusById[session.id] ?: session.status
+                val runningPrefix = if (effectiveStatus == "running") "🟢 " else ""
+                val cleanTitle = DisplayTextSanitizer.sanitizeSingleLine(session.title).take(18)
+                val baseLabel = cleanTitle.takeIf { it.isNotBlank() } ?: session.id.take(12)
+                val engLabel = session.engine?.let { "[${it.take(8)}] $baseLabel" } ?: baseLabel
+                val ws = session.workspace
+                val branchSuffix = ws?.branch?.takeIf { it.isNotBlank() }?.let { b ->
+                    val dirtyStar = if (ws.dirty == true) "*" else ""
+                    " · ${b.take(12)}$dirtyStar"
+                }.orEmpty()
+                val pendingTotal = (session.pendingApprovals + session.pendingQuestions).coerceAtLeast(0)
+                val unread = if (session.id == selectedId) 0 else timelineStore.unreadCount(session.id)
+                val attentionSuffix = buildString {
+                    if (pendingTotal > 0) append(" !$pendingTotal")
+                    if (unread > 0) append(" (+$unread)")
+                }
                 val selected = session.id == selectedId
+                val bg = when {
+                    selected -> R.drawable.bg_chip_accent
+                    pendingTotal > 0 || unread > 0 -> R.drawable.bg_alert_card
+                    else -> R.drawable.bg_chip_neutral
+                }
                 ChipSpec(
-                    label = label,
-                    backgroundRes = if (selected) R.drawable.bg_chip_accent else R.drawable.bg_chip_neutral,
+                    label = "$runningPrefix$engLabel$branchSuffix$attentionSuffix",
+                    backgroundRes = bg,
                     onClick = { selectAndAttachSession(session.id) },
                     onLongClick = { showSessionActionDialog(session) },
                 )

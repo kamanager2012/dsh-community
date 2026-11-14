@@ -5,6 +5,8 @@ export {
   probeBinaryVersion,
   sanitizeSubprocessEnv,
   MonotonicSessionEventEmitter,
+  MAX_SESSION_LIST_BYTES,
+  boundSessionListPayload,
   type ManagedAgentBackend,
 } from './types.js'
 export {
@@ -13,6 +15,8 @@ export {
 } from './ndjson-rpc.js'
 export {
   resolveGitRepoRoot,
+  inspectSessionWorkspaceSummary,
+  enrichSessionsWithWorkspaceSummaries,
   inspectWorkspaceGitStatus,
   inspectWorkspaceGitDiff,
 } from './git-review.js'

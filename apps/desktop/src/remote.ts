@@ -107,15 +107,58 @@ export interface DesktopRemotePairingView {
   readonly loopbackWarning?: string | undefined
 }
 
+export interface DesktopSessionWorkspaceSummary {
+  readonly repoRoot?: string | undefined
+  readonly commonRepoRoot?: string | undefined
+  readonly worktreeName?: string | undefined
+  readonly isWorktree?: boolean | undefined
+  readonly branch?: string | undefined
+  readonly dirty?: boolean | undefined
+  readonly changedFiles?: number | undefined
+  readonly ahead?: number | undefined
+  readonly behind?: number | undefined
+}
+
 export interface DesktopLiveSessionView {
   readonly id: string
   readonly engine?: string | undefined
   readonly title?: string | undefined
+  readonly updatedAtMs?: number | undefined
+  readonly cwd?: string | undefined
   readonly status?: string | undefined
   readonly preview?: string | undefined
   readonly model?: string | undefined
   readonly pendingApprovals?: number | undefined
   readonly pendingQuestions?: number | undefined
+  readonly workspace?: DesktopSessionWorkspaceSummary | undefined
+}
+
+export function parseSessionWorkspaceSummary(raw: unknown): DesktopSessionWorkspaceSummary | undefined {
+  if (typeof raw !== 'object' || raw === null) return undefined
+  const obj = raw as Record<string, unknown>
+  const summary: {
+    repoRoot?: string
+    commonRepoRoot?: string
+    worktreeName?: string
+    isWorktree?: boolean
+    branch?: string
+    dirty?: boolean
+    changedFiles?: number
+    ahead?: number
+    behind?: number
+  } = {}
+  if (typeof obj.repoRoot === 'string' && obj.repoRoot !== '') summary.repoRoot = obj.repoRoot
+  if (typeof obj.commonRepoRoot === 'string' && obj.commonRepoRoot !== '') summary.commonRepoRoot = obj.commonRepoRoot
+  if (typeof obj.worktreeName === 'string' && obj.worktreeName !== '') summary.worktreeName = obj.worktreeName
+  if (typeof obj.isWorktree === 'boolean') summary.isWorktree = obj.isWorktree
+  if (typeof obj.branch === 'string' && obj.branch !== '') summary.branch = obj.branch
+  if (typeof obj.dirty === 'boolean') summary.dirty = obj.dirty
+  if (typeof obj.changedFiles === 'number' && Number.isFinite(obj.changedFiles) && obj.changedFiles >= 0) {
+    summary.changedFiles = obj.changedFiles
+  }
+  if (typeof obj.ahead === 'number' && Number.isFinite(obj.ahead) && obj.ahead >= 0) summary.ahead = obj.ahead
+  if (typeof obj.behind === 'number' && Number.isFinite(obj.behind) && obj.behind >= 0) summary.behind = obj.behind
+  return Object.keys(summary).length > 0 ? summary : undefined
 }
 
 export interface DesktopRemoteSnapshot {
@@ -722,7 +765,7 @@ export class DesktopRemoteController {
         if (Array.isArray(body.sessions)) {
           this.cachedSessions = body.sessions
             .filter((s) => typeof s?.id === 'string' && s.id !== '')
-            .slice(0, 20)
+            .slice(0, 40)
             .map((s) => {
               const modelObj = typeof s.model === 'object' && s.model !== null
                 ? (s.model as Record<string, unknown>)
@@ -732,10 +775,15 @@ export class DesktopRemoteController {
                 : typeof s.model === 'string'
                   ? s.model
                   : undefined
+              const workspace = parseSessionWorkspaceSummary(s.workspace)
               return {
                 id: s.id as string,
                 ...(typeof s.engine === 'string' && s.engine !== '' ? { engine: s.engine } : {}),
                 ...(typeof s.title === 'string' && s.title !== '' ? { title: s.title } : {}),
+                ...(typeof s.updatedAtMs === 'number' && Number.isFinite(s.updatedAtMs)
+                  ? { updatedAtMs: s.updatedAtMs }
+                  : {}),
+                ...(typeof s.cwd === 'string' && s.cwd !== '' ? { cwd: s.cwd } : {}),
                 ...(typeof s.status === 'string' && s.status !== '' ? { status: s.status } : {}),
                 ...(typeof s.preview === 'string' && s.preview !== '' ? { preview: s.preview } : {}),
                 ...(modelStr !== undefined ? { model: modelStr } : {}),
@@ -745,6 +793,7 @@ export class DesktopRemoteController {
                 ...(typeof s.pendingQuestions === 'number' && s.pendingQuestions > 0
                   ? { pendingQuestions: s.pendingQuestions }
                   : {}),
+                ...(workspace !== undefined ? { workspace } : {}),
               }
             })
         }

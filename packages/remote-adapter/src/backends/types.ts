@@ -8,6 +8,7 @@ import type {
   AgentHostBackend,
   EngineDescriptor,
   OfficialSessionEvent,
+  SessionRef,
 } from '../protocol.js'
 import { isSafeSessionId } from '../session-transcript.js'
 
@@ -205,4 +206,70 @@ export function extractTextSnippet(text: string, maxChars = 120): string | undef
   const collapsed = text.trim().replace(/\s+/gu, ' ')
   if (!collapsed) return undefined
   return collapsed.length > maxChars ? `${collapsed.slice(0, maxChars - 1)}…` : collapsed
+}
+
+export const MAX_SESSION_LIST_BYTES = 44 * 1024
+
+function trimSessionRefFields(
+  ref: SessionRef,
+  level: 'strip-preview' | 'strip-verbose' | 'minimal',
+): SessionRef {
+  if (level === 'strip-preview') {
+    const { preview: _p, ...rest } = ref
+    return rest
+  }
+  if (level === 'minimal') {
+    return {
+      id: ref.id,
+      ...(ref.engine !== undefined ? { engine: ref.engine } : {}),
+      ...(ref.title !== undefined ? { title: ref.title } : {}),
+      ...(ref.updatedAtMs !== undefined ? { updatedAtMs: ref.updatedAtMs } : {}),
+      ...(ref.status !== undefined ? { status: ref.status } : {}),
+      ...(ref.pendingApprovals !== undefined ? { pendingApprovals: ref.pendingApprovals } : {}),
+      ...(ref.pendingQuestions !== undefined ? { pendingQuestions: ref.pendingQuestions } : {}),
+    }
+  }
+  const { preview: _p, cwd: _c, workspace: _w, ...rest } = ref
+  return rest
+}
+
+/**
+ * Ensures serialized `session.list` payloads stay within carrier frame budgets while
+ * keeping active sessions and compact workspace grouping metadata intact as long as possible.
+ */
+export function boundSessionListPayload(
+  items: readonly SessionRef[],
+  activeIds: ReadonlySet<string>,
+  maxBytes = MAX_SESSION_LIST_BYTES,
+): readonly SessionRef[] {
+  if (items.length === 0 || Buffer.byteLength(JSON.stringify(items), 'utf8') <= maxBytes) {
+    return Object.freeze([...items])
+  }
+  let current = items.map((item) =>
+    activeIds.has(item.id) ? item : trimSessionRefFields(item, 'strip-preview'),
+  )
+  if (Buffer.byteLength(JSON.stringify(current), 'utf8') <= maxBytes) {
+    return Object.freeze(current)
+  }
+  current = items.map((item) =>
+    activeIds.has(item.id)
+      ? trimSessionRefFields(item, 'strip-preview')
+      : trimSessionRefFields(item, 'strip-verbose'),
+  )
+  if (Buffer.byteLength(JSON.stringify(current), 'utf8') <= maxBytes) {
+    return Object.freeze(current)
+  }
+  current = current.map((item) =>
+    activeIds.has(item.id)
+      ? trimSessionRefFields(item, 'strip-verbose')
+      : trimSessionRefFields(item, 'minimal'),
+  )
+  if (Buffer.byteLength(JSON.stringify(current), 'utf8') <= maxBytes) {
+    return Object.freeze(current)
+  }
+  current = current.map((item) => trimSessionRefFields(item, 'minimal'))
+  while (current.length > 1 && Buffer.byteLength(JSON.stringify(current), 'utf8') > maxBytes) {
+    current.pop()
+  }
+  return Object.freeze(current)
 }

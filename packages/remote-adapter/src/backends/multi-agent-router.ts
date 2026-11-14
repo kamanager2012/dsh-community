@@ -32,8 +32,16 @@ import type {
   WorkspaceUploadOpenResult,
 } from '../protocol.js'
 import { WorkspaceUploadManager } from '../workspace-upload.js'
-import { inspectWorkspaceGitDiff, inspectWorkspaceGitStatus } from './git-review.js'
-import { parseNamespacedSessionId, type ManagedAgentBackend } from './types.js'
+import {
+  enrichSessionsWithWorkspaceSummaries,
+  inspectWorkspaceGitDiff,
+  inspectWorkspaceGitStatus,
+} from './git-review.js'
+import {
+  boundSessionListPayload,
+  parseNamespacedSessionId,
+  type ManagedAgentBackend,
+} from './types.js'
 
 export interface MultiAgentHostRouterOptions {
   readonly backends: readonly ManagedAgentBackend[]
@@ -193,7 +201,11 @@ export class MultiAgentHostRouter implements AgentHostBackend {
     if (multiEngine) {
       all.sort((a, b) => (b.updatedAtMs ?? 0) - (a.updatedAtMs ?? 0))
     }
-    return all
+    const enriched = await enrichSessionsWithWorkspaceSummaries(all)
+    const activeIds = new Set<string>(
+      enriched.filter((s) => s.status === 'running' || (s.pendingApprovals ?? 0) > 0 || (s.pendingQuestions ?? 0) > 0).map((s) => s.id),
+    )
+    return boundSessionListPayload(enriched, activeIds)
   }
 
   private async resolveBackendForSession(sessionId: string): Promise<ManagedAgentBackend> {

@@ -15,11 +15,16 @@ import org.dsh.community.android.qr.QrImageDecoder
 import org.dsh.community.android.ui.AssistantTurnItem
 import org.dsh.community.android.ui.ChatMarkdownFormatter
 import org.dsh.community.android.ui.ChatTimelineStore
+import org.dsh.community.android.ui.CodeSyntaxHighlighter
 import org.dsh.community.android.ui.InlineSpanToken
 import org.dsh.community.android.ui.MarkdownBlock
+import org.dsh.community.android.ui.MarkdownRenderBlock
 import org.dsh.community.android.ui.ParsedSlashCommand
 import org.dsh.community.android.ui.PromptImageHelper
+import org.dsh.community.android.ui.SessionDashboardPlanner
+import org.dsh.community.android.ui.SessionFilter
 import org.dsh.community.android.ui.SlashCommandHelper
+import org.dsh.community.android.ui.SyntaxRole
 import org.dsh.community.android.ui.SystemNoticeItem
 import org.dsh.community.android.ui.ToolExecutionItem
 import org.dsh.community.android.ui.ToolExecutionStatus
@@ -629,5 +634,219 @@ class ChatAndQrUnitTest {
         assertEquals("+const multi = true", gitDiff.diff)
         assertEquals("src/app.ts", gitDiff.path)
         assertFalse(gitDiff.truncated)
+    }
+
+    @Test
+    fun parsesSessionWorkspaceSummaryWorktreeMetadataAndDashboardGrouping() {
+        val wtSession = RemoteFrameCodec.parseSessionRef(
+            JsonObject.of(
+                "id" to JsonString("codex:wt-1"),
+                "engine" to JsonString("codex"),
+                "title" to JsonString("Auth Refactor"),
+                "updatedAtMs" to JsonNumber(2000),
+                "cwd" to JsonString("/repos/dsh-wt-auth"),
+                "status" to JsonString("running"),
+                "model" to JsonObject.of("model" to JsonString("gpt-5-codex")),
+                "nativeSessionId" to JsonString("thread-99"),
+                "pendingApprovals" to JsonNumber(1),
+                "workspace" to JsonObject.of(
+                    "repoRoot" to JsonString("/repos/dsh-wt-auth"),
+                    "commonRepoRoot" to JsonString("/repos/dsh"),
+                    "worktreeName" to JsonString("dsh-wt-auth"),
+                    "isWorktree" to JsonBool(true),
+                    "branch" to JsonString("feat/auth"),
+                    "dirty" to JsonBool(true),
+                    "changedFiles" to JsonNumber(4),
+                    "ahead" to JsonNumber(2),
+                    "behind" to JsonNumber(1),
+                ),
+            ),
+        )
+        assertEquals("gpt-5-codex", wtSession.model)
+        assertEquals("thread-99", wtSession.nativeSessionId)
+        assertEquals("/repos/dsh", wtSession.workspace?.commonRepoRoot)
+        assertTrue(wtSession.workspace?.isWorktree == true)
+        assertEquals("dsh-wt-auth", wtSession.workspace?.worktreeName)
+        assertEquals(4, wtSession.workspace?.changedFiles)
+
+        val mainSession = RemoteFrameCodec.parseSessionRef(
+            JsonObject.of(
+                "id" to JsonString("claude:main"),
+                "engine" to JsonString("claude"),
+                "title" to JsonString("Main Review"),
+                "updatedAtMs" to JsonNumber(1500),
+                "cwd" to JsonString("/repos/dsh"),
+                "status" to JsonString("idle"),
+                "model" to JsonString("claude-sonnet-4"),
+                "workspace" to JsonObject.of(
+                    "repoRoot" to JsonString("/repos/dsh"),
+                    "commonRepoRoot" to JsonString("/repos/dsh"),
+                    "isWorktree" to JsonBool(false),
+                    "branch" to JsonString("main"),
+                    "dirty" to JsonBool(false),
+                ),
+            ),
+        )
+        assertEquals("claude-sonnet-4", mainSession.model)
+
+        val gitStatus = RemoteFrameCodec.parseGitStatusResult(
+            JsonObject.of(
+                "repoRoot" to JsonString("/repos/dsh-wt-auth"),
+                "commonRepoRoot" to JsonString("/repos/dsh"),
+                "isWorktree" to JsonBool(true),
+                "worktreeName" to JsonString("dsh-wt-auth"),
+                "branch" to JsonString("feat/auth"),
+                "ahead" to JsonNumber(2),
+                "behind" to JsonNumber(1),
+                "clean" to JsonBool(false),
+                "files" to JsonArray(emptyList()),
+            ),
+        )
+        assertEquals("/repos/dsh", gitStatus.commonRepoRoot)
+        assertTrue(gitStatus.isWorktree)
+        assertEquals("dsh-wt-auth", gitStatus.worktreeName)
+
+        val dashboard = SessionDashboardPlanner.build(
+            sessions = listOf(mainSession, wtSession),
+            statusOverrides = mapOf("claude:main" to "idle"),
+            unreadCounts = mapOf("claude:main" to 2),
+            filter = SessionFilter.ALL,
+            query = "",
+        )
+        assertEquals(2, dashboard.totalCount)
+        assertEquals(1, dashboard.runningCount)
+        assertEquals(2, dashboard.attentionCount)
+        assertEquals(1, dashboard.dirtyCount)
+        assertEquals(1, dashboard.groups.size)
+        assertEquals("dsh", dashboard.groups[0].label)
+        assertEquals(2, dashboard.groups[0].worktreeCount)
+        assertTrue(dashboard.groups[0].hasDirtyWorktree)
+        assertEquals("codex:wt-1", dashboard.groups[0].entries[0].session.id)
+
+        val dirtyOnly = SessionDashboardPlanner.build(
+            sessions = listOf(mainSession, wtSession),
+            filter = SessionFilter.DIRTY,
+            query = "feat/auth",
+        )
+        assertEquals(1, dirtyOnly.groups.size)
+        assertEquals(1, dirtyOnly.groups[0].entries.size)
+        assertEquals("codex:wt-1", dirtyOnly.groups[0].entries[0].session.id)
+    }
+
+    @Test
+    fun tracksUnreadCountsPerSessionAcrossStreamingAndReplay() {
+        val store = ChatTimelineStore()
+        // Streaming chunks of one reply count as a single unread turn
+        store.applyEvent(
+            "bg",
+            OfficialSessionEvent(seq = 10, type = "assistant/chunk", data = JsonObject.of("delta" to JsonString("Hel"))),
+        )
+        store.applyEvent(
+            "bg",
+            OfficialSessionEvent(seq = 11, type = "assistant/chunk", data = JsonObject.of("delta" to JsonString("lo"))),
+        )
+        assertEquals(1, store.unreadCount("bg"))
+
+        // Tool call adds +1 unread update
+        store.applyEvent(
+            "bg",
+            OfficialSessionEvent(seq = 12, type = "tool/call", data = JsonObject.of("callId" to JsonString("c1"), "name" to JsonString("read"))),
+        )
+        assertEquals(2, store.unreadCount("bg"))
+
+        // Viewing the session resets unread and advances lastSeenSeq
+        store.markSessionSeen("bg")
+        assertEquals(0, store.unreadCount("bg"))
+
+        // Prepending older history does not bump unread
+        val prepended = store.prependHistory(
+            "bg",
+            listOf(OfficialSessionEvent(seq = 2, type = "user/message", data = JsonObject.of("text" to JsonString("hi")))),
+        )
+        assertEquals(1, prepended)
+        assertEquals(0, store.unreadCount("bg"))
+
+        // Subsequent new event increments unread again
+        store.applyEvent(
+            "bg",
+            OfficialSessionEvent(seq = 13, type = "error", data = JsonObject.of("message" to JsonString("timeout"))),
+        )
+        assertEquals(1, store.unreadCount("bg"))
+    }
+
+    @Test
+    fun tokenizesSyntaxAndParsesRichMarkdownTablesChecklistsAndAllCodeBlocks() {
+        val ktTokens = CodeSyntaxHighlighter.tokenize(
+            """
+            @Suppress("Unused")
+            suspend fun greet(name: String): Int {
+                // greeting count
+                return 42
+            }
+            """.trimIndent(),
+            "kt",
+        )
+        assertTrue(ktTokens.any { it.role == SyntaxRole.ANNOTATION })
+        assertTrue(ktTokens.any { it.role == SyntaxRole.KEYWORD })
+        assertTrue(ktTokens.any { it.role == SyntaxRole.TYPE })
+        assertTrue(ktTokens.any { it.role == SyntaxRole.COMMENT })
+        assertTrue(ktTokens.any { it.role == SyntaxRole.NUMBER })
+        assertTrue(ktTokens.any { it.role == SyntaxRole.STRING })
+        assertTrue(ktTokens.any { it.role == SyntaxRole.FUNCTION })
+
+        val jsonTokens = CodeSyntaxHighlighter.tokenize("""{"enabled": true, "port": 9000}""", "json")
+        assertTrue(jsonTokens.any { it.role == SyntaxRole.KEY })
+        assertTrue(jsonTokens.any { it.role == SyntaxRole.KEYWORD })
+        assertTrue(jsonTokens.any { it.role == SyntaxRole.NUMBER })
+
+        val diffTokens = CodeSyntaxHighlighter.tokenize(
+            "diff --git a/a.kt b/a.kt\n@@ -1 +1 @@\n-old\n+new",
+            "diff",
+        )
+        assertEquals(SyntaxRole.DIFF_HEADER, diffTokens[0].role)
+        assertEquals(SyntaxRole.DIFF_HUNK, diffTokens[1].role)
+        assertEquals(SyntaxRole.DIFF_DEL, diffTokens[2].role)
+        assertEquals(SyntaxRole.DIFF_ADD, diffTokens[3].role)
+
+        val inlineTokens = ChatMarkdownFormatter.tokenizeInline("Use _italic_ and snake_case_id with ***both***")
+        assertTrue(inlineTokens.contains(InlineSpanToken.Italic("italic")))
+        assertTrue(inlineTokens.contains(InlineSpanToken.BoldItalic("both")))
+        assertFalse(inlineTokens.any { it is InlineSpanToken.Italic && it.text.contains("case") })
+
+        val md = """
+            #### Checklist
+            - [x] Ship protocol
+            - [ ] Verify APK
+
+            | Engine | Status |
+            | --- | --- |
+            | Codex | ready |
+            | Claude | idle |
+
+            ```kotlin
+            val first = 1
+            ```
+
+            ---
+
+            ~~~bash
+            git status
+            ~~~
+        """.trimIndent()
+        val blocks = ChatMarkdownFormatter.parseRenderBlocks(md)
+        assertTrue(blocks[0] is MarkdownRenderBlock.Prose)
+        val table = blocks[1] as MarkdownRenderBlock.Table
+        assertEquals(listOf("Engine", "Status"), table.headers)
+        assertEquals(2, table.rows.size)
+        val code1 = blocks[2] as MarkdownRenderBlock.CodeFence
+        assertEquals("kotlin", code1.language)
+        assertTrue(blocks[3] is MarkdownRenderBlock.HorizontalRule)
+        val code2 = blocks[4] as MarkdownRenderBlock.CodeFence
+        assertEquals("bash", code2.language)
+
+        val extracted = ChatMarkdownFormatter.extractAllCodeBlocks(md)
+        assertEquals(2, extracted.size)
+        assertEquals("kotlin" to "val first = 1", extracted[0])
+        assertEquals("bash" to "git status", extracted[1])
     }
 }

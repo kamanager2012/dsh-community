@@ -40,7 +40,7 @@ export {
 }
 import { DshAgentBackend } from './backends/dsh-backend.js'
 import { MultiAgentHostRouter } from './backends/multi-agent-router.js'
-import type { ManagedAgentBackend } from './backends/types.js'
+import { boundSessionListPayload, type ManagedAgentBackend } from './backends/types.js'
 import { RemoteHostRuntime, type RemoteHostRuntimeOptions } from './host-runtime.js'
 import {
   REMOTE_PROTOCOL_VERSION,
@@ -399,56 +399,7 @@ function readHeaderTitleFromJsonl(filePath: string): string | undefined {
   }
 }
 
-const MAX_SESSION_LIST_BYTES = 44 * 1024
 const MAX_SESSION_METADATA_CACHE = 512
-
-function trimSessionRefFields(
-  ref: SessionRef,
-  level: 'strip-verbose' | 'minimal',
-): SessionRef {
-  if (level === 'minimal') {
-    return {
-      id: ref.id,
-      ...(ref.engine !== undefined ? { engine: ref.engine } : {}),
-      ...(ref.title !== undefined ? { title: ref.title } : {}),
-      ...(ref.updatedAtMs !== undefined ? { updatedAtMs: ref.updatedAtMs } : {}),
-      ...(ref.status !== undefined ? { status: ref.status } : {}),
-      ...(ref.pendingApprovals !== undefined ? { pendingApprovals: ref.pendingApprovals } : {}),
-      ...(ref.pendingQuestions !== undefined ? { pendingQuestions: ref.pendingQuestions } : {}),
-    }
-  }
-  const { preview: _p, cwd: _c, ...rest } = ref
-  return rest
-}
-
-function boundSessionListPayload(
-  items: readonly SessionRef[],
-  activeIds: ReadonlySet<string>,
-  maxBytes = MAX_SESSION_LIST_BYTES,
-): readonly SessionRef[] {
-  if (items.length === 0 || Buffer.byteLength(JSON.stringify(items), 'utf8') <= maxBytes) {
-    return Object.freeze([...items])
-  }
-  let current = items.map((item) =>
-    activeIds.has(item.id) ? item : trimSessionRefFields(item, 'strip-verbose'),
-  )
-  if (Buffer.byteLength(JSON.stringify(current), 'utf8') <= maxBytes) {
-    return Object.freeze(current)
-  }
-  current = current.map((item) =>
-    activeIds.has(item.id)
-      ? trimSessionRefFields(item, 'strip-verbose')
-      : trimSessionRefFields(item, 'minimal'),
-  )
-  if (Buffer.byteLength(JSON.stringify(current), 'utf8') <= maxBytes) {
-    return Object.freeze(current)
-  }
-  current = current.map((item) => trimSessionRefFields(item, 'minimal'))
-  while (current.length > 1 && Buffer.byteLength(JSON.stringify(current), 'utf8') > maxBytes) {
-    current.pop()
-  }
-  return Object.freeze(current)
-}
 
 function findBestCanonicalSessionLog(dirPath: string): string | undefined {
   let files: string[]

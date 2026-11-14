@@ -69,14 +69,11 @@
             android:textSize="12sp"
             android:visibility="gone" />
 
-        <TextView
-            android:id="@+id/tv_assistant_body"
+        <LinearLayout
+            android:id="@+id/ll_assistant_blocks"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
-            android:lineSpacingExtra="2dp"
-            android:textColor="@color/dsh_text_primary"
-            android:textIsSelectable="true"
-            android:textSize="14sp" />
+            android:orientation="vertical" />
     </LinearLayout>
 </LinearLayout>

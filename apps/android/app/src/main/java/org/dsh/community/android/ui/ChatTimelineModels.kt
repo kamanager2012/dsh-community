@@ -62,6 +62,8 @@ class ChatTimelineStore {
     private val itemsBySession = LinkedHashMap<String, MutableList<ChatTimelineItem>>()
     private val sessionLruOrder = ArrayDeque<String>()
     private val highestSeqBySession = HashMap<String, Long>()
+    private val lastSeenSeqBySession = HashMap<String, Long>()
+    private val unreadUpdatesBySession = HashMap<String, Int>()
     private val seenEventKeysBySession = HashMap<String, LinkedHashSet<String>>()
     private var idSeq = 0L
 
@@ -73,6 +75,8 @@ class ChatTimelineStore {
             if (evicted != sessionId) {
                 itemsBySession.remove(evicted)
                 highestSeqBySession.remove(evicted)
+                lastSeenSeqBySession.remove(evicted)
+                unreadUpdatesBySession.remove(evicted)
                 seenEventKeysBySession.remove(evicted)
             }
         }
@@ -211,6 +215,22 @@ class ChatTimelineStore {
     fun trackedSessionCount(): Int = itemsBySession.size
 
     @Synchronized
+    fun highestSeq(sessionId: String): Long = highestSeqBySession[sessionId] ?: 0L
+
+    @Synchronized
+    fun unreadCount(sessionId: String): Int = unreadUpdatesBySession[sessionId] ?: 0
+
+    @Synchronized
+    fun markSessionSeen(sessionId: String) {
+        val high = highestSeqBySession[sessionId] ?: 0L
+        val prev = lastSeenSeqBySession[sessionId] ?: 0L
+        if (high > prev) {
+            lastSeenSeqBySession[sessionId] = high
+        }
+        unreadUpdatesBySession[sessionId] = 0
+    }
+
+    @Synchronized
     fun applyEvent(sessionId: String, event: OfficialSessionEvent) {
         touchSessionLocked(sessionId)
         if (event.seq > 0L) {
@@ -227,6 +247,7 @@ class ChatTimelineStore {
         val list = itemsBySession.getOrPut(sessionId) { ArrayList() }
         val dataObj = event.data as? JsonObject
         val evtType = event.type.trim().lowercase()
+        var isMeaningfulUnreadUpdate = false
 
         when {
             evtType == "user/message" || evtType == "user.message" || evtType == "prompt" -> {
@@ -250,6 +271,7 @@ class ChatTimelineStore {
                             attachmentLabels = attachments,
                         ),
                     )
+                    isMeaningfulUnreadUpdate = true
                 }
             }
 
@@ -286,6 +308,7 @@ class ChatTimelineStore {
                             isFinalized = false,
                         ),
                     )
+                    isMeaningfulUnreadUpdate = true
                 }
             }
 
@@ -323,6 +346,7 @@ class ChatTimelineStore {
                             interrupted = isInterrupted,
                         ),
                     )
+                    isMeaningfulUnreadUpdate = true
                 }
             }
 
@@ -367,6 +391,7 @@ class ChatTimelineStore {
                             isExpanded = false,
                         ),
                     )
+                    isMeaningfulUnreadUpdate = true
                 }
             }
 
@@ -393,6 +418,9 @@ class ChatTimelineStore {
                         outputText = rawOut,
                         status = newStatus,
                     )
+                    if (isErr) {
+                        isMeaningfulUnreadUpdate = true
+                    }
                 } else {
                     list.add(
                         ToolExecutionItem(
@@ -405,6 +433,7 @@ class ChatTimelineStore {
                             isExpanded = false,
                         ),
                     )
+                    isMeaningfulUnreadUpdate = true
                 }
             }
 
@@ -429,6 +458,7 @@ class ChatTimelineStore {
                             isError = false,
                         ),
                     )
+                    isMeaningfulUnreadUpdate = true
                 } else if (kind == "error") {
                     val errMsg = DisplayTextSanitizer.sanitizeSingleLine(
                         reasonObj?.str("message") ?: dataObj?.str("error") ?: "Turn failed",
@@ -441,6 +471,7 @@ class ChatTimelineStore {
                             isError = true,
                         ),
                     )
+                    isMeaningfulUnreadUpdate = true
                 }
             }
 
@@ -456,7 +487,13 @@ class ChatTimelineStore {
                         isError = true,
                     ),
                 )
+                isMeaningfulUnreadUpdate = true
             }
+        }
+        val seenFloor = lastSeenSeqBySession[sessionId] ?: 0L
+        val isReplayAlreadySeen = event.seq > 0L && event.seq <= seenFloor
+        if (isMeaningfulUnreadUpdate && !isReplayAlreadySeen) {
+            unreadUpdatesBySession[sessionId] = ((unreadUpdatesBySession[sessionId] ?: 0) + 1).coerceAtMost(999)
         }
         clampSessionItemsLocked(list)
     }
@@ -466,6 +503,8 @@ class ChatTimelineStore {
         itemsBySession.remove(sessionId)
         sessionLruOrder.remove(sessionId)
         highestSeqBySession.remove(sessionId)
+        lastSeenSeqBySession.remove(sessionId)
+        unreadUpdatesBySession.remove(sessionId)
         seenEventKeysBySession.remove(sessionId)
     }
 
@@ -474,6 +513,8 @@ class ChatTimelineStore {
         itemsBySession.clear()
         sessionLruOrder.clear()
         highestSeqBySession.clear()
+        lastSeenSeqBySession.clear()
+        unreadUpdatesBySession.clear()
         seenEventKeysBySession.clear()
     }
 

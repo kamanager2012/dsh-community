@@ -7,7 +7,11 @@ import {
   type MarketplaceSource,
   type PluginAction,
 } from './marketplace.ts'
-import type { DesktopRemotePhase, DesktopRemoteSnapshot } from './remote.ts'
+import type {
+  DesktopLiveSessionView,
+  DesktopRemotePhase,
+  DesktopRemoteSnapshot,
+} from './remote.ts'
 
 export interface AboutPageModel {
   readonly product: string
@@ -266,6 +270,18 @@ function shellDocument(
       .diff-ctx { color: #b8c0cc; }
       .chip.diff-stat-add { color: #7ee787; border-color: #1f6f4a; background: #0b1a12; }
       .chip.diff-stat-del { color: #ffa198; border-color: #7a2929; background: #1c0c0e; }
+      .worktree-metrics { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 12px; }
+      .metric-pill { font: 12px/1.4 ui-monospace, SFMono-Regular, monospace; background: #0b0d12;
+        border: 1px solid #2a303b; border-radius: 8px; padding: 4px 10px; color: #9aa3b2; }
+      .metric-pill strong { color: #d9dee8; }
+      .metric-pill.ok { border-color: #2f6fed; color: #7ee2a8; }
+      .metric-pill.risk-med { border-color: #7c5816; color: #f5c26b; }
+      .worktree-group { border: 1px solid #2a303b; border-radius: 8px; padding: 10px 12px;
+        margin-top: 10px; background: #0e121b; }
+      .worktree-group-hdr { display: flex; align-items: baseline; justify-content: space-between;
+        gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+      .worktree-group table { margin: 4px 0 0; }
+      .worktree-group tr:last-child td { border-bottom: 0; }
     </style>
   </head>
   <body>
@@ -805,6 +821,168 @@ function renderColoredDiffHtml(diffText: string): string {
   return `<div class="diff-viewer" role="region" aria-label="Git Unified Diff">${rows}</div>`
 }
 
+function basenamePath(rawPath: string): string {
+  const normalized = rawPath.replace(/[/\\]+$/u, '')
+  if (!normalized) return rawPath
+  const parts = normalized.split(/[/\\]/u)
+  return parts[parts.length - 1] || normalized
+}
+
+function renderSessionWorkspaceCell(s: DesktopLiveSessionView): string {
+  const ws = s.workspace
+  const chips: string[] = []
+  if (ws?.isWorktree) {
+    const wtName = ws.worktreeName || basenamePath(ws.repoRoot ?? s.cwd ?? '')
+    chips.push(`<span class="chip">Worktree · ${escapeHtml(wtName)}</span>`)
+  }
+  if (ws?.branch) {
+    chips.push(`<span class="chip ${ws.dirty ? 'risk-med' : 'ok'}">${escapeHtml(ws.branch)}</span>`)
+  }
+  if (ws?.dirty === true) {
+    chips.push(`<span class="chip risk-med">已改 ${String(ws.changedFiles ?? 0)} 项</span>`)
+  } else if (ws?.dirty === false) {
+    chips.push('<span class="chip ok">干净</span>')
+  }
+  if ((ws?.ahead ?? 0) > 0) {
+    chips.push(`<span class="chip">↑${String(ws?.ahead ?? 0)}</span>`)
+  }
+  if ((ws?.behind ?? 0) > 0) {
+    chips.push(`<span class="chip risk-med">↓${String(ws?.behind ?? 0)}</span>`)
+  }
+  if (chips.length > 0) {
+    return `<div class="chips">${chips.join('')}</div>`
+  }
+  return s.cwd ? `<span class="meta"><code>${escapeHtml(s.cwd)}</code></span>` : '<span class="meta">—</span>'
+}
+
+function sessionPriorityScore(s: DesktopLiveSessionView): number {
+  const pending = (s.pendingApprovals ?? 0) + (s.pendingQuestions ?? 0)
+  return (pending > 0 ? 4 : 0) + (s.status === 'running' ? 2 : 0) + (s.workspace?.dirty ? 1 : 0)
+}
+
+function renderWorktreeDashboard(liveSessions: readonly DesktopLiveSessionView[]): string {
+  const groupsMap = new Map<string, {
+    key: string
+    label: string
+    pathLabel: string
+    sessions: DesktopLiveSessionView[]
+    worktreeRoots: Set<string>
+    dirty: boolean
+    pendingTotal: number
+    runningCount: number
+    maxUpdatedAtMs: number
+  }>()
+
+  let runningCount = 0
+  let pendingTotal = 0
+  const dirtyWorkspaces = new Set<string>()
+
+  for (const s of liveSessions) {
+    const ws = s.workspace
+    const commonRoot = ws?.commonRepoRoot ?? ws?.repoRoot ?? s.cwd ?? ''
+    const key = commonRoot || '__unscoped__'
+    const wtRoot = ws?.repoRoot ?? s.cwd ?? s.id
+    const pending = (s.pendingApprovals ?? 0) + (s.pendingQuestions ?? 0)
+    if (s.status === 'running') runningCount += 1
+    pendingTotal += pending
+    if (ws?.dirty) dirtyWorkspaces.add(wtRoot)
+
+    let group = groupsMap.get(key)
+    if (!group) {
+      group = {
+        key,
+        label: commonRoot ? basenamePath(commonRoot) : '未绑定工作目录',
+        pathLabel: commonRoot,
+        sessions: [],
+        worktreeRoots: new Set<string>(),
+        dirty: false,
+        pendingTotal: 0,
+        runningCount: 0,
+        maxUpdatedAtMs: 0,
+      }
+      groupsMap.set(key, group)
+    }
+    group.sessions.push(s)
+    if (wtRoot) group.worktreeRoots.add(wtRoot)
+    if (ws?.dirty) group.dirty = true
+    group.pendingTotal += pending
+    if (s.status === 'running') group.runningCount += 1
+    if ((s.updatedAtMs ?? 0) > group.maxUpdatedAtMs) {
+      group.maxUpdatedAtMs = s.updatedAtMs ?? 0
+    }
+  }
+
+  const groups = [...groupsMap.values()].sort((a, b) => {
+    const pendingDiff = (b.pendingTotal > 0 ? 1 : 0) - (a.pendingTotal > 0 ? 1 : 0)
+    if (pendingDiff !== 0) return pendingDiff
+    const runDiff = (b.runningCount > 0 ? 1 : 0) - (a.runningCount > 0 ? 1 : 0)
+    if (runDiff !== 0) return runDiff
+    const dirtyDiff = (b.dirty ? 1 : 0) - (a.dirty ? 1 : 0)
+    if (dirtyDiff !== 0) return dirtyDiff
+    if (b.maxUpdatedAtMs !== a.maxUpdatedAtMs) return b.maxUpdatedAtMs - a.maxUpdatedAtMs
+    return a.label.localeCompare(b.label)
+  })
+
+  const metricsHtml = `<div class="worktree-metrics">
+    <span class="metric-pill">工作区组数 <strong>${String(groups.length)}</strong></span>
+    <span class="metric-pill${runningCount > 0 ? ' ok' : ''}">运行中 <strong>${String(runningCount)}</strong></span>
+    <span class="metric-pill${pendingTotal > 0 ? ' risk-med' : ''}">待处理 <strong>${String(pendingTotal)}</strong></span>
+    <span class="metric-pill${dirtyWorkspaces.size > 0 ? ' risk-med' : ''}">脏工作区 <strong>${String(dirtyWorkspaces.size)}</strong></span>
+  </div>`
+
+  const groupsHtml = groups.map((group) => {
+    const sortedSessions = [...group.sessions].sort((a, b) => {
+      const scoreDiff = sessionPriorityScore(b) - sessionPriorityScore(a)
+      if (scoreDiff !== 0) return scoreDiff
+      return (b.updatedAtMs ?? 0) - (a.updatedAtMs ?? 0)
+    })
+    const multiWorktreeChip = group.worktreeRoots.size > 1
+      ? `<span class="chip">${String(group.worktreeRoots.size)} worktrees</span>`
+      : ''
+    const pathHtml = group.pathLabel
+      ? `<span class="meta"><code>${escapeHtml(group.pathLabel)}</code></span>`
+      : ''
+    const rowsHtml = sortedSessions.map((s) => {
+      const title = s.title ? `<div><strong>${escapeHtml(s.title)}</strong></div>` : ''
+      const preview = s.preview ? `<div class="session-sub">${escapeHtml(s.preview)}</div>` : ''
+      const engineBadge = s.engine ? `<span class="chip">${escapeHtml(s.engine)}</span> ` : ''
+      const statusBadge = s.status === 'running'
+        ? '<span class="chip ok">运行中</span>'
+        : s.status === 'idle'
+          ? '<span class="chip">空闲</span>'
+          : ''
+      const modelBadge = s.model ? ` <span class="chip">${escapeHtml(s.model)}</span>` : ''
+      const pendingBadges = [
+        ...(s.pendingApprovals ? [`<span class="chip risk-med">审批 ${String(s.pendingApprovals)}</span>`] : []),
+        ...(s.pendingQuestions ? [`<span class="chip risk-med">提问 ${String(s.pendingQuestions)}</span>`] : []),
+      ].join(' ') || '<span class="meta">—</span>'
+      return `<tr>
+        <td>${title}${engineBadge}<code>${escapeHtml(s.id)}</code>${preview}</td>
+        <td>${renderSessionWorkspaceCell(s)}</td>
+        <td>${statusBadge}${modelBadge}</td>
+        <td>${pendingBadges}</td>
+        <td><button class="secondary small" data-git-inspect="${escapeHtml(s.id)}">查看 Diff</button></td>
+      </tr>`
+    }).join('')
+    return `<div class="worktree-group">
+      <div class="worktree-group-hdr">
+        <div><strong>${escapeHtml(group.label)}</strong> ${multiWorktreeChip}</div>
+        ${pathHtml}
+      </div>
+      <table>
+        <thead><tr><th>会话与摘要</th><th>Worktree / Git</th><th>模型 / 状态</th><th>待处理</th><th>代码审阅</th></tr></thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+    </div>`
+  }).join('')
+
+  return `<section class="panel">
+    <h2>活跃与可接入会话 · Worktree 看板（${String(liveSessions.length)}）</h2>
+    ${metricsHtml}
+    ${groupsHtml}
+  </section>`
+}
+
 export function renderRemotePage(model: RemotePageModel): string {
   const presetHosts = new Set<string>(['', ...model.lanCandidates, '0.0.0.0', '127.0.0.1'])
   const isCustomHost = !presetHosts.has(model.settings.listenHost)
@@ -951,33 +1129,7 @@ export function renderRemotePage(model: RemotePageModel): string {
 
   const liveSessions = model.liveSessions ?? []
   const liveSessionsBlock = (model.phase === 'running' || model.phase === 'external') && liveSessions.length > 0
-    ? `<section class="panel">
-        <h2>活跃与可接入会话（${String(liveSessions.length)}）</h2>
-        <table>
-          <thead><tr><th>会话与摘要</th><th>模型 / 状态</th><th>待处理</th><th>代码审阅</th></tr></thead>
-          <tbody>${liveSessions.map((s) => {
-            const title = s.title ? `<div><strong>${escapeHtml(s.title)}</strong></div>` : ''
-            const preview = s.preview ? `<div class="session-sub">${escapeHtml(s.preview)}</div>` : ''
-            const engineBadge = s.engine ? `<span class="chip">${escapeHtml(s.engine)}</span> ` : ''
-            const statusBadge = s.status === 'running'
-              ? '<span class="chip ok">运行中</span>'
-              : s.status === 'idle'
-                ? '<span class="chip">空闲</span>'
-                : ''
-            const modelBadge = s.model ? ` <span class="chip">${escapeHtml(s.model)}</span>` : ''
-            const pendingBadges = [
-              ...(s.pendingApprovals ? [`<span class="chip risk-med">审批 ${String(s.pendingApprovals)}</span>`] : []),
-              ...(s.pendingQuestions ? [`<span class="chip risk-med">提问 ${String(s.pendingQuestions)}</span>`] : []),
-            ].join(' ') || '<span class="meta">—</span>'
-            return `<tr>
-              <td>${title}${engineBadge}<code>${escapeHtml(s.id)}</code>${preview}</td>
-              <td>${statusBadge}${modelBadge}</td>
-              <td>${pendingBadges}</td>
-              <td><button class="secondary small" data-git-inspect="${escapeHtml(s.id)}">查看 Diff</button></td>
-            </tr>`
-          }).join('')}</tbody>
-        </table>
-      </section>`
+    ? renderWorktreeDashboard(liveSessions)
     : ''
 
   const gitPreview = model.gitPreview
