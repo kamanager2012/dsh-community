@@ -1,0 +1,360 @@
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, describe, expect, it } from 'vitest'
+import {
+  BlindRelayServer,
+  MultiAgentRemoteHost,
+  type ManagedAgentBackend,
+  type OfficialSessionEvent,
+} from '@dsh-community/remote-adapter'
+import { RemoteWebKeyStore } from '../src/client/keystore.ts'
+import { consumePairFragmentFromLocation, parsePairingInput } from '../src/client/pairing.ts'
+import { RemoteRpcError, RemoteWebClient } from '../src/client/remote-client.ts'
+import { SessionTimelineState } from '../src/client/timeline.ts'
+import { utf8Decode } from '../src/crypto/bytes.ts'
+
+const cleanupCallbacks: Array<() => Promise<void> | void> = []
+
+afterEach(async () => {
+  while (cleanupCallbacks.length > 0) {
+    const fn = cleanupCallbacks.pop()
+    if (fn) {
+      await fn()
+    }
+  }
+})
+
+function createMockMultiAgentBackend(workspaceRoot: string): {
+  backend: ManagedAgentBackend
+  emit: (sessionId: string, events: readonly OfficialSessionEvent[]) => void
+  approvalsSeen: Array<{ callId: string; decision: string }>
+  questionsSeen: Array<{ questionId: string; answer: unknown }>
+} {
+  let seqCounter = 10
+  const listeners = new Set<(sessionId: string, events: readonly OfficialSessionEvent[]) => void>()
+  const sessions = new Map<string, { id: string; title: string; engine: string; cwd: string }>([
+    [
+      'claude--s1',
+      {
+        id: 'claude--s1',
+        title: 'Refactor Auth Module',
+        engine: 'claude',
+        cwd: workspaceRoot,
+      },
+    ],
+  ])
+  const approvalsSeen: Array<{ callId: string; decision: string }> = []
+  const questionsSeen: Array<{ questionId: string; answer: unknown }> = []
+
+  const emit = (sessionId: string, events: readonly OfficialSessionEvent[]): void => {
+    for (const l of listeners) {
+      l(sessionId, events)
+    }
+  }
+
+  const backend: ManagedAgentBackend = {
+    engineId: 'claude',
+    displayName: 'Claude Code',
+    probe: async () => ({
+      id: 'claude',
+      displayName: 'Claude Code',
+      available: true,
+      running: true,
+      capabilities: {
+        createSession: true,
+        listSessions: true,
+        history: true,
+        abortTurn: true,
+        approvals: true,
+        questions: true,
+        streaming: true,
+        models: true,
+        gitReview: true,
+      },
+    }),
+    onEvent: (listener) => {
+      listeners.add(listener)
+      return () => listeners.delete(listener)
+    },
+    listSessions: async () =>
+      [...sessions.values()].map((s) => ({
+        id: s.id,
+        engine: 'claude',
+        title: s.title,
+        status: 'idle' as const,
+        cwd: s.cwd,
+        workspace: {
+          repoRoot: workspaceRoot,
+          branch: 'feat/remote-web',
+          dirty: true,
+          changedFiles: 1,
+        },
+      })),
+    assertSession: async (sessionId) => {
+      if (!sessions.has(sessionId)) {
+        throw new Error(`Unknown session ${sessionId}`)
+      }
+    },
+    createSession: async (opts) => {
+      const id = `claude--created-${sessions.size + 1}`
+      const created = {
+        id,
+        title: opts?.title ?? 'New Browser Session',
+        engine: 'claude',
+        cwd: opts?.cwd ?? workspaceRoot,
+      }
+      sessions.set(id, created)
+      return {
+        id,
+        engine: 'claude',
+        title: created.title,
+        status: 'idle',
+        cwd: created.cwd,
+      }
+    },
+    followup: async (sessionId, prompt) => {
+      const s1 = ++seqCounter
+      const s2 = ++seqCounter
+      const s3 = ++seqCounter
+      const s4 = ++seqCounter
+      setTimeout(() => {
+        emit(sessionId, [
+          { seq: s1, type: 'turn/start', data: {} },
+          { seq: s2, type: 'assistant/chunk', data: { delta: 'Reviewing ' } },
+          {
+            seq: s3,
+            type: 'assistant/message',
+            data: { message: { content: `Reviewing **${prompt}** complete.` } },
+          },
+          { seq: s4, type: 'turn/end', data: { reason: { kind: 'completed' } } },
+        ])
+      }, 10)
+      return { accepted: true }
+    },
+    respondApproval: async (callId, decision) => {
+      approvalsSeen.push({ callId, decision })
+      emit('claude--s1', [{ seq: ++seqCounter, type: 'approval.resolved', data: { callId, decision } }])
+      return { ok: true }
+    },
+    respondQuestion: async (questionId, answer) => {
+      questionsSeen.push({ questionId, answer })
+      emit('claude--s1', [{ seq: ++seqCounter, type: 'question.resolved', data: { questionId, answer } }])
+      return { ok: true }
+    },
+    getWorkspaceGitStatus: async ({ sessionId }) => ({
+      sessionId,
+      repoRoot: workspaceRoot,
+      branch: 'feat/remote-web',
+      ahead: 1,
+      behind: 0,
+      clean: false,
+      files: [
+        {
+          path: 'src/index.ts',
+          indexStatus: 'M',
+          worktreeStatus: ' ',
+          staged: true,
+          unstaged: false,
+          untracked: false,
+        },
+      ],
+      truncated: false,
+    }),
+    getWorkspaceGitDiff: async ({ sessionId, staged }) => ({
+      sessionId,
+      repoRoot: workspaceRoot,
+      branch: 'feat/remote-web',
+      staged: Boolean(staged),
+      diff: 'diff --git a/src/index.ts b/src/index.ts\n@@ -1,2 +1,2 @@\n-const a = 1\n+const a = 2\n',
+      bytes: 79,
+      truncated: false,
+    }),
+  }
+
+  return { backend, emit, approvalsSeen, questionsSeen }
+}
+
+describe('remote-web live E2EE host interoperability', () => {
+  it('pairs via #pair= URL fragment scrub, exchanges Noise IK RPCs, streams events, handles approvals/questions/diff, and enforces revocation & epoch anti-rollback', async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), 'dsh-rweb-lan-'))
+    cleanupCallbacks.push(() => rmSync(tmpDir, { recursive: true, force: true }))
+
+    const mock = createMockMultiAgentBackend(tmpDir)
+    const host = new MultiAgentRemoteHost({
+      dshHome: join(tmpDir, 'dsh-home'),
+      configDir: join(tmpDir, 'remote-config'),
+      cwd: tmpDir,
+      backends: [mock.backend],
+      autoConfirmCapabilities: ['observe', 'prompt', 'approve', 'answer-question'],
+      carrier: { enabled: true, host: '127.0.0.1', port: 0 },
+    })
+    await host.start()
+    cleanupCallbacks.push(() => host.stop())
+
+    const issued = await host.issuePairingDescriptor()
+    const base64Fragment = new URL(issued.deepLink).searchParams.get('data')!
+
+    // Verify URL #pair= extraction + history.replaceState token scrubbing
+    let replacedUrl = ''
+    const extracted = consumePairFragmentFromLocation({
+      location: {
+        pathname: '/app/',
+        search: '?tab=remote',
+        hash: `#pair=${base64Fragment}&view=chat`,
+      } as Location,
+      history: {
+        replaceState: (_s, _t, url) => {
+          replacedUrl = String(url ?? '')
+        },
+      } as History,
+    })
+    expect(extracted).toBe(base64Fragment)
+    expect(replacedUrl).toBe('/app/?tab=remote#view=chat')
+    expect(replacedUrl).not.toContain('pair=')
+    expect(replacedUrl).not.toContain(issued.descriptor.bootstrapToken)
+
+    const parsed = await parsePairingInput(extracted!)
+    const keyStore = new RemoteWebKeyStore(false)
+    const client = new RemoteWebClient(keyStore)
+    cleanupCallbacks.push(() => client.disconnect())
+
+    const timeline = new SessionTimelineState('claude--s1')
+    const eventsReceived: OfficialSessionEvent[] = []
+    client.onNotification((notif) => {
+      if (notif.type === 'stream.event' && notif.sessionId === 'claude--s1') {
+        eventsReceived.push(notif.event)
+        timeline.applyEvent(notif.event)
+      }
+    })
+
+    const savedProfile = await client.connectWithPairing(parsed, {
+      displayName: 'Safari Vitest Peer',
+      autoPairPollIntervalMs: 30,
+    })
+    expect(savedProfile.hostFingerprint).toBe(issued.descriptor.hostFingerprint)
+    expect(client.getStatus()).toBe('active')
+    expect(client.getActiveTransportKind()).toBe('lan')
+    expect(await client.ping()).toBe(true)
+
+    const engines = await client.listEngines()
+    expect(engines.some((e) => e.id === 'claude')).toBe(true)
+
+    const sessions = await client.listSessions()
+    expect(sessions.map((s) => s.id)).toContain('claude--s1')
+
+    await client.attachSession('claude--s1')
+    await client.submitPrompt('claude--s1', 'check remote web')
+
+    await expect.poll(() => timeline.items.length, { timeout: 3000 }).toBeGreaterThanOrEqual(1)
+    expect(timeline.items.some((it) => it.kind === 'assistant' && it.markdownText.includes('check remote web'))).toBe(true)
+
+    // Test approval + question live roundtrip
+    mock.emit('claude--s1', [
+      { seq: 50, type: 'approval.request', data: { callId: 'c1', toolName: 'bash', reason: 'Run tests' } },
+      { seq: 51, type: 'question.request', data: { questionId: 'q1', questions: [{ question: 'Deploy target?' }] } },
+    ])
+    await expect.poll(() => timeline.pendingApprovals.length, { timeout: 3000 }).toBe(1)
+    await expect.poll(() => timeline.pendingQuestions.length, { timeout: 3000 }).toBe(1)
+
+    await client.respondApproval('c1', 'approved')
+    await client.respondQuestion('q1', 'staging')
+    expect(mock.approvalsSeen).toEqual([{ callId: 'c1', decision: 'approved' }])
+    expect(mock.questionsSeen).toEqual([{ questionId: 'q1', answer: 'staging' }])
+
+    // Test Workspace Git Status + Diff
+    const gitStatus = await client.getWorkspaceGitStatus('claude--s1')
+    expect(gitStatus.branch).toBe('feat/remote-web')
+    expect(gitStatus.files[0]?.path).toBe('src/index.ts')
+    const gitDiff = await client.getWorkspaceGitDiff('claude--s1', { staged: true })
+    expect(gitDiff.diff).toContain('+const a = 2')
+
+    // Test Create Session
+    const created = await client.createSession({ engine: 'claude', title: 'Browser Spawned' })
+    expect(created.title).toBe('Browser Spawned')
+
+    // Test Epoch Rollback Protection on stale epoch
+    client.disconnect()
+    await keyStore.updateHostEpoch(savedProfile.hostFingerprint, savedProfile.lastEpoch + 500)
+    const elevatedProfile = (await keyStore.getTrustedHost(savedProfile.hostFingerprint))!
+    await expect(client.connectToProfile(elevatedProfile, { allowEpochReset: false })).rejects.toMatchObject({
+      code: 'EPOCH_DOWNGRADE',
+    })
+
+    // Confirming explicit reset succeeds cleanly
+    await client.connectToProfile(elevatedProfile, { allowEpochReset: true })
+    expect(client.getStatus()).toBe('active')
+
+    // Host revocation fails closed and delivers peer.revoked notification
+    const identity = await keyStore.getOrCreateClientKeyPair()
+    let revokedNotif = false
+    client.onNotification((n) => {
+      if (n.type === 'peer.revoked') revokedNotif = true
+    })
+    await host.revokeDevice(identity.fingerprint)
+    await expect.poll(() => client.getStatus(), { timeout: 3000 }).toBe('revoked')
+    expect(revokedNotif).toBe(true)
+    await expect(client.ping()).rejects.toThrow(RemoteRpcError)
+  })
+
+  it('falls back transparently from unreachable LAN to blind WebSocket relay while keeping plaintext hidden from the relay', async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), 'dsh-rweb-relay-'))
+    cleanupCallbacks.push(() => rmSync(tmpDir, { recursive: true, force: true }))
+
+    const observedRelayBytes: Uint8Array[] = []
+    const relay = new BlindRelayServer({
+      enabled: true,
+      host: '127.0.0.1',
+      port: 0,
+      hostAuthSecret: 'relay-host-secret',
+      onBlindFrame: (obs) => observedRelayBytes.push(new Uint8Array(obs.payload)),
+    })
+    await relay.start()
+    cleanupCallbacks.push(() => relay.stop())
+
+    const relayUrl = relay.getEndpointUrl()!
+    const mock = createMockMultiAgentBackend(tmpDir)
+    const host = new MultiAgentRemoteHost({
+      dshHome: join(tmpDir, 'dsh-home'),
+      configDir: join(tmpDir, 'remote-config'),
+      cwd: tmpDir,
+      backends: [mock.backend],
+      autoConfirmCapabilities: ['observe', 'prompt'],
+      carrier: { enabled: true, host: '127.0.0.1', port: 0 },
+      relay: {
+        enabled: true,
+        relayUrl,
+        hostAuthSecret: 'relay-host-secret',
+      },
+    })
+    await host.start()
+    cleanupCallbacks.push(() => host.stop())
+
+    const issued = await host.issuePairingDescriptor()
+    // Point endpointUrl at an unreachable port so failover exercises Blind Relay WebSocket
+    const unreachableLanDescriptor = {
+      ...issued.descriptor,
+      endpointUrl: 'ws://127.0.0.1:1',
+    }
+
+    const client = new RemoteWebClient(new RemoteWebKeyStore(false))
+    cleanupCallbacks.push(() => client.disconnect())
+
+    const profile = await client.connectWithPairing(unreachableLanDescriptor, {
+      handshakeTimeoutMs: 2_000,
+      autoPairPollIntervalMs: 30,
+    })
+    expect(profile.relayUrl).toBe(relayUrl)
+    expect(client.getStatus()).toBe('active')
+    expect(client.getActiveTransportKind()).toBe('relay')
+
+    const secretMarker = 'TOP_SECRET_E2EE_RELAY_PAYLOAD_9911'
+    await client.attachSession('claude--s1')
+    await client.submitPrompt('claude--s1', secretMarker)
+
+    expect(observedRelayBytes.length).toBeGreaterThan(0)
+    const joinedAscii = observedRelayBytes.map((b) => utf8Decode(b)).join('')
+    expect(joinedAscii).not.toContain(secretMarker)
+    expect(joinedAscii).not.toContain('prompt.submit')
+  })
+})
