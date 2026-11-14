@@ -766,10 +766,28 @@ class ChatAndQrUnitTest {
         assertEquals(1, prepended)
         assertEquals(0, store.unreadCount("bg"))
 
+        // Continued chunks & finalization on the SAME open turn after user switched away count once
+        store.applyEvent(
+            "bg",
+            OfficialSessionEvent(seq = 13, type = "assistant/chunk", data = JsonObject.of("delta" to JsonString(" world"))),
+        )
+        store.applyEvent(
+            "bg",
+            OfficialSessionEvent(seq = 14, type = "assistant/chunk", data = JsonObject.of("delta" to JsonString("!!"))),
+        )
+        store.applyEvent(
+            "bg",
+            OfficialSessionEvent(seq = 15, type = "assistant/message", data = JsonObject.of("text" to JsonString("Hello world!!"))),
+        )
+        assertEquals(1, store.unreadCount("bg"))
+
+        store.markSessionSeen("bg")
+        assertEquals(0, store.unreadCount("bg"))
+
         // Subsequent new event increments unread again
         store.applyEvent(
             "bg",
-            OfficialSessionEvent(seq = 13, type = "error", data = JsonObject.of("message" to JsonString("timeout"))),
+            OfficialSessionEvent(seq = 16, type = "error", data = JsonObject.of("message" to JsonString("timeout"))),
         )
         assertEquals(1, store.unreadCount("bg"))
     }

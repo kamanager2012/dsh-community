@@ -64,6 +64,7 @@ class ChatTimelineStore {
     private val highestSeqBySession = HashMap<String, Long>()
     private val lastSeenSeqBySession = HashMap<String, Long>()
     private val unreadUpdatesBySession = HashMap<String, Int>()
+    private val unseenActiveTurnBySession = HashMap<String, String>()
     private val seenEventKeysBySession = HashMap<String, LinkedHashSet<String>>()
     private var idSeq = 0L
 
@@ -77,6 +78,7 @@ class ChatTimelineStore {
                 highestSeqBySession.remove(evicted)
                 lastSeenSeqBySession.remove(evicted)
                 unreadUpdatesBySession.remove(evicted)
+                unseenActiveTurnBySession.remove(evicted)
                 seenEventKeysBySession.remove(evicted)
             }
         }
@@ -228,6 +230,7 @@ class ChatTimelineStore {
             lastSeenSeqBySession[sessionId] = high
         }
         unreadUpdatesBySession[sessionId] = 0
+        unseenActiveTurnBySession.remove(sessionId)
     }
 
     @Synchronized
@@ -248,6 +251,8 @@ class ChatTimelineStore {
         val dataObj = event.data as? JsonObject
         val evtType = event.type.trim().lowercase()
         var isMeaningfulUnreadUpdate = false
+        val seenFloor = lastSeenSeqBySession[sessionId] ?: 0L
+        val isReplayAlreadySeen = event.seq > 0L && event.seq <= seenFloor
 
         when {
             evtType == "user/message" || evtType == "user.message" || evtType == "prompt" -> {
@@ -297,17 +302,23 @@ class ChatTimelineStore {
                         )
                     }
                     list[tailIdx] = updated
+                    if (!isReplayAlreadySeen && unseenActiveTurnBySession[sessionId] != updated.stableId) {
+                        unseenActiveTurnBySession[sessionId] = updated.stableId
+                        isMeaningfulUnreadUpdate = true
+                    }
                 } else {
-                    list.add(
-                        AssistantTurnItem(
-                            stableId = "a-${++idSeq}",
-                            seq = event.seq,
-                            thinkingText = if (isThinking) clampText(delta, MAX_MESSAGE_CHARS) else "",
-                            markdownText = if (isThinking) "" else clampText(delta, MAX_MESSAGE_CHARS),
-                            isThinkingExpanded = false,
-                            isFinalized = false,
-                        ),
+                    val created = AssistantTurnItem(
+                        stableId = "a-${++idSeq}",
+                        seq = event.seq,
+                        thinkingText = if (isThinking) clampText(delta, MAX_MESSAGE_CHARS) else "",
+                        markdownText = if (isThinking) "" else clampText(delta, MAX_MESSAGE_CHARS),
+                        isThinkingExpanded = false,
+                        isFinalized = false,
                     )
+                    list.add(created)
+                    if (!isReplayAlreadySeen) {
+                        unseenActiveTurnBySession[sessionId] = created.stableId
+                    }
                     isMeaningfulUnreadUpdate = true
                 }
             }
@@ -325,14 +336,21 @@ class ChatTimelineStore {
                     val resolvedText = if (finalText.isNotBlank()) finalText else open.markdownText
                     if (resolvedThinking.isBlank() && resolvedText.isBlank()) {
                         list.removeAt(openIdx)
+                        unseenActiveTurnBySession.remove(sessionId)
                     } else {
-                        list[openIdx] = open.copy(
+                        val updated = open.copy(
                             seq = event.seq,
                             thinkingText = resolvedThinking,
                             markdownText = resolvedText,
                             isFinalized = true,
                             interrupted = isInterrupted || open.interrupted,
                         )
+                        list[openIdx] = updated
+                        val hadContentChange = resolvedThinking != open.thinkingText || resolvedText != open.markdownText
+                        if (!isReplayAlreadySeen && hadContentChange && unseenActiveTurnBySession[sessionId] != updated.stableId) {
+                            isMeaningfulUnreadUpdate = true
+                        }
+                        unseenActiveTurnBySession.remove(sessionId)
                     }
                 } else if (finalThinking.isNotBlank() || finalText.isNotBlank()) {
                     list.add(
@@ -490,8 +508,6 @@ class ChatTimelineStore {
                 isMeaningfulUnreadUpdate = true
             }
         }
-        val seenFloor = lastSeenSeqBySession[sessionId] ?: 0L
-        val isReplayAlreadySeen = event.seq > 0L && event.seq <= seenFloor
         if (isMeaningfulUnreadUpdate && !isReplayAlreadySeen) {
             unreadUpdatesBySession[sessionId] = ((unreadUpdatesBySession[sessionId] ?: 0) + 1).coerceAtMost(999)
         }
@@ -505,6 +521,7 @@ class ChatTimelineStore {
         highestSeqBySession.remove(sessionId)
         lastSeenSeqBySession.remove(sessionId)
         unreadUpdatesBySession.remove(sessionId)
+        unseenActiveTurnBySession.remove(sessionId)
         seenEventKeysBySession.remove(sessionId)
     }
 
@@ -515,6 +532,7 @@ class ChatTimelineStore {
         highestSeqBySession.clear()
         lastSeenSeqBySession.clear()
         unreadUpdatesBySession.clear()
+        unseenActiveTurnBySession.clear()
         seenEventKeysBySession.clear()
     }
 
