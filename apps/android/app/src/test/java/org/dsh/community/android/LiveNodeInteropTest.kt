@@ -262,6 +262,53 @@ class LiveNodeInteropTest {
             assertTrue("relay should audit blind ciphertext frames", (status.longVal("blindFramesAudited") ?: 0L) > 0L)
             assertEquals(0L, status.longVal("plaintextLeaks"))
 
+            // 4b. Priority 2 parity RPCs & multi-chunk encrypted workspace upload over Blind Relay
+            val historyRes = activeSession.getSessionHistory(sessionId, limit = 10)
+            assertEquals(sessionId, historyRes.sessionId)
+            assertTrue("expected recorded session history events", historyRes.events.isNotEmpty())
+            assertEquals("live", historyRes.source)
+
+            val searchRes = activeSession.searchSessions("Renamed", sessionId = sessionId)
+            assertTrue("expected session search hit", searchRes.hits.any { it.sessionId == sessionId })
+
+            val forked = activeSession.forkSession(sessionId, title = "Forked R5 Live Session")
+            assertEquals("Forked R5 Live Session", forked.title)
+            assertTrue(activeSession.listSessions().any { it.id == forked.id && it.title == "Forked R5 Live Session" })
+
+            val commands = activeSession.listCommands(sessionId)
+            assertTrue("expected host command /status", commands.any { it.name == "/status" })
+            val cmdExec = activeSession.executeCommand(sessionId, "/status")
+            assertTrue(cmdExec.ok)
+            assertTrue(cmdExec.output?.contains("/status") == true)
+
+            val skills = activeSession.listSkills(sessionId)
+            assertTrue("expected host skill refactor", skills.any { it.name == "refactor" })
+
+            val largeUploadBytes = ByteArray(70_000) { idx -> ((idx * 31 + 7) and 0xFF).toByte() }
+            val uploadCommit = activeSession.uploadWorkspaceBytes(
+                sessionId = sessionId,
+                filename = "r5-large-spec.bin",
+                bytes = largeUploadBytes,
+            )
+            assertEquals(70_000, uploadCommit.bytesWritten)
+            assertEquals(".dsh-uploads/r5-large-spec.bin", uploadCommit.relativePath)
+            assertEquals(64, uploadCommit.sha256.length)
+
+            val statusAfterP2 = httpJson("$controlUrl/status")
+            assertEquals(1L, statusAfterP2.longVal("historyCalls"))
+            assertEquals(1L, statusAfterP2.longVal("searchCalls"))
+            assertEquals(1L, statusAfterP2.longVal("forkCalls"))
+            assertEquals(1L, statusAfterP2.longVal("commandListCalls"))
+            assertEquals(1L, statusAfterP2.longVal("commandExecuteCalls"))
+            assertEquals(1L, statusAfterP2.longVal("skillListCalls"))
+            assertEquals(1L, statusAfterP2.longVal("uploadOpenCalls"))
+            assertEquals(3L, statusAfterP2.longVal("uploadChunkCalls"))
+            assertEquals(1L, statusAfterP2.longVal("uploadCommitCalls"))
+            assertEquals(1L, statusAfterP2.longVal("uploadedFilesCount"))
+            assertEquals(70_000L, statusAfterP2.longVal("uploadedBytesTotal"))
+            assertEquals(uploadCommit.sha256, statusAfterP2.str("lastUploadedSha256"))
+            assertEquals(0L, statusAfterP2.longVal("plaintextLeaks"))
+
             // 5. Revoke Android device -> reconnect over Relay must fail closed
             httpJson(
                 "$controlUrl/revoke",

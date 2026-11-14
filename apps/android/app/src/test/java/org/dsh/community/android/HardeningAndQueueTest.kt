@@ -30,6 +30,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
 class HardeningAndQueueTest {
@@ -418,5 +419,114 @@ class HardeningAndQueueTest {
         assertEquals(0, transport.decryptErrors.get())
         assertEquals(0, failures.get())
         assertEquals(workers * iterationsPerWorker, successes.get())
+    }
+
+    @Test
+    fun displayTextSanitizerPreventsSurrogateSplitAndMasksLoneSurrogates() {
+        val surrogateInput = "A\uD83D\uDE00BC"
+        assertEquals("A\uD83D\uDE00…", DisplayTextSanitizer.truncateByCodePoints(surrogateInput, 3, "…"))
+        assertEquals(
+            "hi\uFFFDthere\uFFFD",
+            DisplayTextSanitizer.sanitizeLoneSurrogates("hi\uD83Dthere\uDC00"),
+        )
+        assertEquals(
+            "ok\uFFFDend",
+            DisplayTextSanitizer.sanitizeSingleLine("ok\uD83Dend", maxCodePoints = 16),
+        )
+    }
+
+    @Test
+    fun failoverSessionEnforcesCooldownsAntiDeadlockHistoryBoundAndSecretRedaction() {
+        val hostKeys = Curve25519.generateKeyPair()
+        val nowMs = AtomicLong(1_000L)
+        val lanCalls = AtomicInteger(0)
+        val relayCalls = AtomicInteger(0)
+        val dualProfile = org.dsh.community.android.transport.RemoteEndpointProfile(
+            hostPublicKey = hostKeys.publicKey,
+            hostFingerprint = CryptoUtils.sha256Hex(hostKeys.publicKey),
+            lanUrl = "ws://127.0.0.1:9998",
+            relayUrl = "ws://127.0.0.1:9999",
+            relayRoomId = "room-cooldown",
+        )
+        val session = FailoverRemoteSession(
+            identity = testIdentity(),
+            profile = dualProfile,
+            lanFactory = {
+                lanCalls.incrementAndGet()
+                throw IOException("dial ws://host:8787?token=supersecret123 failed Authorization: Bearer abcdef.123")
+            },
+            relayFactory = { _, _, _ ->
+                val nextEpoch = relayCalls.incrementAndGet()
+                MockHostTransport(TransportKind.RELAY, hostKeys, epochToAdvertise = nextEpoch)
+            },
+            requestTimeoutMs = 2_000L,
+            handshakeTimeoutMs = 2_000L,
+            failureCooldownMs = 10_000L,
+            clock = { nowMs.get() },
+        )
+
+        assertEquals(RemoteConnectionPhase.ACTIVE, session.connect(listOf(TransportKind.LAN, TransportKind.RELAY)))
+        assertEquals(TransportKind.RELAY, session.activeCarrier)
+        assertEquals(1, lanCalls.get())
+        assertEquals(1, relayCalls.get())
+        assertEquals(1, session.attemptErrors.size)
+        val redactedMsg = session.attemptErrors[0].message
+        assertFalse(redactedMsg.contains("supersecret123"))
+        assertFalse(redactedMsg.contains("abcdef.123"))
+        assertTrue(redactedMsg.contains("[REDACTED]"))
+        session.close("cooldown check")
+
+        // Inside cooldown window: LAN must be skipped while Relay connects directly.
+        nowMs.set(2_000L)
+        assertEquals(RemoteConnectionPhase.ACTIVE, session.connect(listOf(TransportKind.LAN, TransportKind.RELAY)))
+        assertEquals(1, lanCalls.get())
+        assertEquals(2, relayCalls.get())
+        session.close("after reset check")
+
+        // After resetCooldowns(), LAN must be retried immediately.
+        session.resetCooldowns()
+        assertEquals(RemoteConnectionPhase.ACTIVE, session.connect(listOf(TransportKind.LAN, TransportKind.RELAY)))
+        assertEquals(2, lanCalls.get())
+        assertEquals(3, relayCalls.get())
+        session.close("cleanup")
+
+        // Anti-deadlock + MAX_FAILOVER_HISTORY bound on single-carrier failure storm.
+        val stormNow = AtomicLong(5_000L)
+        val stormLanCalls = AtomicInteger(0)
+        val shouldFailLan = AtomicBoolean(true)
+        val stormSession = FailoverRemoteSession(
+            identity = testIdentity(),
+            profile = testProfile(hostKeys.publicKey),
+            lanFactory = {
+                stormLanCalls.incrementAndGet()
+                if (shouldFailLan.get()) {
+                    throw IOException("storm failure")
+                }
+                MockHostTransport(TransportKind.LAN, hostKeys, epochToAdvertise = 1)
+            },
+            requestTimeoutMs = 1_000L,
+            handshakeTimeoutMs = 1_000L,
+            failureCooldownMs = 60_000L,
+            clock = { stormNow.get() },
+        )
+        for (i in 0 until 70) {
+            stormNow.set(5_000L + i)
+            var failed = false
+            try {
+                stormSession.connect(listOf(TransportKind.LAN))
+            } catch (_: Throwable) {
+                failed = true
+            }
+            assertTrue("expected attempt $i to fail", failed)
+        }
+        assertEquals(70, stormLanCalls.get())
+        assertEquals(1, stormSession.attemptErrors.size)
+        assertEquals(FailoverRemoteSession.MAX_FAILOVER_HISTORY, stormSession.failoverHistory.size)
+
+        // All candidates are cooling down, yet single LAN candidate must still be attempted (no deadlock).
+        shouldFailLan.set(false)
+        assertEquals(RemoteConnectionPhase.ACTIVE, stormSession.connect(listOf(TransportKind.LAN)))
+        assertEquals(71, stormLanCalls.get())
+        stormSession.close("done")
     }
 }

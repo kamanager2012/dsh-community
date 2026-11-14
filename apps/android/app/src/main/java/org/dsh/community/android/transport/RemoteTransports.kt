@@ -306,6 +306,21 @@ object DataChannelChunkCodec {
     }
 }
 
+enum class WebRtcIceTransportPolicy(val wireName: String) {
+    ALL("all"),
+    DIRECT_ONLY("direct-only"),
+}
+
+object WebRtcCandidateFilter {
+    private val RELAY_CANDIDATE_RE = Regex("""(?:^|\s)typ\s+relay(?:\s|$)""", RegexOption.IGNORE_CASE)
+
+    fun isRelayCandidate(candidateSdp: String): Boolean =
+        RELAY_CANDIDATE_RE.containsMatchIn(candidateSdp)
+
+    fun shouldAllowCandidate(candidateSdp: String, policy: WebRtcIceTransportPolicy): Boolean =
+        policy != WebRtcIceTransportPolicy.DIRECT_ONLY || !isRelayCandidate(candidateSdp)
+}
+
 /**
  * Pluggable WebRTC peer engine seam so R5 Android keeps the full signaling + DataChannel failover
  * contract and tests without shipping heavy unverified native `.so` runtime blobs before R6.
@@ -317,6 +332,14 @@ interface WebRtcPeerEngine {
         stunUrls: List<String>,
         callbacks: RemoteTransportCallbacks,
     ): WebRtcPeerHandle
+
+    fun openDataChannel(
+        signalingUrl: String,
+        roomId: String,
+        stunUrls: List<String>,
+        callbacks: RemoteTransportCallbacks,
+        iceTransportPolicy: WebRtcIceTransportPolicy,
+    ): WebRtcPeerHandle = openDataChannel(signalingUrl, roomId, stunUrls, callbacks)
 }
 
 interface WebRtcPeerHandle {
@@ -344,6 +367,7 @@ class WebRtcDataChannelTransport(
     private val roomId: String,
     private val stunUrls: List<String>,
     private val peerEngine: WebRtcPeerEngine = UnattachedWebRtcPeerEngine,
+    private val iceTransportPolicy: WebRtcIceTransportPolicy = WebRtcIceTransportPolicy.ALL,
 ) : RemoteClientTransport {
     override val kind: TransportKind = TransportKind.WEBRTC
 
@@ -354,7 +378,13 @@ class WebRtcDataChannelTransport(
         if (signalingUrl.isBlank()) {
             throw TransportUnavailableException("WEBRTC_UNCONFIGURED", "signalingUrl is empty")
         }
-        handle = peerEngine.openDataChannel(signalingUrl, roomId, stunUrls, callbacks)
+        handle = peerEngine.openDataChannel(
+            signalingUrl = signalingUrl,
+            roomId = roomId,
+            stunUrls = stunUrls,
+            callbacks = callbacks,
+            iceTransportPolicy = iceTransportPolicy,
+        )
     }
 
     override fun sendBinary(payload: ByteArray) {

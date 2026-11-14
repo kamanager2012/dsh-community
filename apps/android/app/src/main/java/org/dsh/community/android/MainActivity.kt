@@ -31,6 +31,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import org.dsh.community.android.crypto.DeviceIdentity
 import org.dsh.community.android.crypto.TrustedHostRecord
+import org.dsh.community.android.protocol.CommandExecuteResult
 import org.dsh.community.android.protocol.DisplayTextSanitizer
 import org.dsh.community.android.protocol.JsonArray
 import org.dsh.community.android.protocol.JsonObject
@@ -40,7 +41,11 @@ import org.dsh.community.android.protocol.ModelOptionRef
 import org.dsh.community.android.protocol.OfficialSessionEvent
 import org.dsh.community.android.protocol.PromptImageAttachment
 import org.dsh.community.android.protocol.QuestionSpec
+import org.dsh.community.android.protocol.RemoteCommandDescriptor
+import org.dsh.community.android.protocol.RemoteSkillSummary
+import org.dsh.community.android.protocol.SessionHistoryResult
 import org.dsh.community.android.protocol.SessionRef
+import org.dsh.community.android.protocol.SessionSearchResult
 import org.dsh.community.android.qr.QrScanActivity
 import org.dsh.community.android.service.BackgroundLifecycleStats
 import org.dsh.community.android.service.DiscoverySelectOutcome
@@ -556,6 +561,142 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
         }
     }
 
+    override fun onSessionForked(forked: SessionRef) {
+        runOnUiThread {
+            val cleanTitle = DisplayTextSanitizer.sanitizeSingleLine(forked.title).ifBlank { forked.id }
+            appendLog("Forked session ${forked.id} ($cleanTitle)")
+            sessionIdInput.setText(forked.id)
+            renderSessionChips(lastSessions)
+        }
+    }
+
+    override fun onSessionHistoryLoaded(history: SessionHistoryResult) {
+        runOnUiThread {
+            val inserted = timelineStore.prependHistory(history.sessionId, history.events)
+            for (evt in history.events) {
+                if (evt.seq > 0L) {
+                    markEventSeen("${history.sessionId}:${evt.seq}:${evt.type}")
+                }
+            }
+            if (activeTimelineSessionId() == history.sessionId) {
+                refreshTimelineUi(scrollToBottom = false)
+            }
+            val msg = "Loaded ${history.events.size} history events (+$inserted cards, source=${history.source}, hasMore=${history.hasMore})"
+            appendLog(msg)
+            Toast.makeText(
+                this,
+                if (inserted > 0) "Loaded $inserted older timeline entries" else "No older events remaining",
+                Toast.LENGTH_SHORT,
+            ).show()
+        }
+    }
+
+    override fun onSessionSearchResults(results: SessionSearchResult) {
+        runOnUiThread {
+            if (results.hits.isEmpty()) {
+                AlertDialog.Builder(this)
+                    .setTitle("Search · ${DisplayTextSanitizer.sanitizeSingleLine(results.query)}")
+                    .setMessage("No matching messages found across Host sessions.")
+                    .setPositiveButton("OK", null)
+                    .show()
+                return@runOnUiThread
+            }
+            val labels = results.hits.map { hit ->
+                val title = DisplayTextSanitizer.sanitizeSingleLine(hit.title).ifBlank { hit.sessionId }
+                val snippet = DisplayTextSanitizer.truncateByCodePoints(
+                    DisplayTextSanitizer.sanitizeSingleLine(hit.snippet),
+                    120,
+                )
+                "$title (#${hit.seq})\n$snippet"
+            }
+            AlertDialog.Builder(this)
+                .setTitle("Search (${results.hits.size}${if (results.hasMore) "+" else ""}) · ${DisplayTextSanitizer.sanitizeSingleLine(results.query)}")
+                .setItems(labels.toTypedArray()) { _, which ->
+                    val chosen = results.hits[which]
+                    selectAndAttachSession(chosen.sessionId)
+                    appendLog("Jumped to search hit ${chosen.sessionId} seq=${chosen.seq}")
+                }
+                .setNegativeButton("Close", null)
+                .show()
+        }
+    }
+
+    override fun onCommandsListed(sessionId: String?, commands: List<RemoteCommandDescriptor>) {
+        runOnUiThread {
+            if (commands.isEmpty()) {
+                Toast.makeText(this, "No Host commands advertised", Toast.LENGTH_SHORT).show()
+                return@runOnUiThread
+            }
+            val labels = commands.map { cmd ->
+                val cleanName = DisplayTextSanitizer.sanitizeSingleLine(cmd.name)
+                val cleanDesc = DisplayTextSanitizer.sanitizeSingleLine(cmd.description)
+                val hint = cmd.inputHint?.takeIf { it.isNotBlank() }?.let { " ${DisplayTextSanitizer.sanitizeSingleLine(it)}" }.orEmpty()
+                "$cleanName$hint\n$cleanDesc"
+            }
+            AlertDialog.Builder(this)
+                .setTitle("Host Commands (${commands.size})")
+                .setItems(labels.toTypedArray()) { _, which ->
+                    val chosen = commands[which]
+                    val targetSid = sessionId ?: activeTimelineSessionId()
+                    if (chosen.inputHint.isNullOrBlank() && targetSid != null) {
+                        service?.executeCommandAsync(targetSid, chosen.name)
+                    } else {
+                        val fill = "${chosen.name} "
+                        promptInput.setText(fill)
+                        promptInput.setSelection(fill.length)
+                        promptInput.requestFocus()
+                    }
+                }
+                .setNegativeButton("Close", null)
+                .show()
+        }
+    }
+
+    override fun onCommandExecuted(sessionId: String, command: String, result: CommandExecuteResult) {
+        runOnUiThread {
+            val cleanOut = DisplayTextSanitizer.sanitizeMultiline(result.output ?: result.error ?: "", 2_000).trim()
+            if (cleanOut.isNotEmpty()) {
+                appendLog("[command ${DisplayTextSanitizer.sanitizeSingleLine(command)}] $cleanOut")
+                AlertDialog.Builder(this)
+                    .setTitle(DisplayTextSanitizer.sanitizeSingleLine(command))
+                    .setMessage(cleanOut)
+                    .setPositiveButton("OK", null)
+                    .show()
+            } else {
+                val msg = if (result.ok) "Executed $command" else "Command failed"
+                Toast.makeText(this, DisplayTextSanitizer.sanitizeSingleLine(msg), Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    override fun onSkillsListed(sessionId: String?, skills: List<RemoteSkillSummary>) {
+        runOnUiThread {
+            if (skills.isEmpty()) {
+                Toast.makeText(this, "No Host skills reported", Toast.LENGTH_SHORT).show()
+                return@runOnUiThread
+            }
+            val labels = skills.map { sk ->
+                val cleanName = DisplayTextSanitizer.sanitizeSingleLine(sk.name)
+                val desc = DisplayTextSanitizer.truncateByCodePoints(
+                    DisplayTextSanitizer.sanitizeSingleLine(sk.description),
+                    100,
+                )
+                "$cleanName\n$desc"
+            }
+            AlertDialog.Builder(this)
+                .setTitle("Host Skills (${skills.size})")
+                .setItems(labels.toTypedArray()) { _, which ->
+                    val sk = skills[which]
+                    val fill = "/skill ${sk.name} "
+                    promptInput.setText(fill)
+                    promptInput.setSelection(fill.length)
+                    promptInput.requestFocus()
+                }
+                .setNegativeButton("Close", null)
+                .show()
+        }
+    }
+
     override fun onSessionAttached(sessionId: String) {
         runOnUiThread {
             attachedSessionId = sessionId
@@ -909,6 +1050,38 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
                     promptInput.text.clear()
                     service?.renameSessionAsync(targetSid, parsed.title)
                 }
+                is ParsedSlashCommand.ForkSession -> {
+                    val targetSid = activeTimelineSessionId()
+                    if (targetSid == null) {
+                        Toast.makeText(this, "Attach or create a session first", Toast.LENGTH_SHORT).show()
+                        return
+                    }
+                    promptInput.text.clear()
+                    stickyStatusError = null
+                    service?.forkSessionAsync(targetSid, title = parsed.title, autoAttach = true)
+                }
+                is ParsedSlashCommand.SearchSessions -> {
+                    promptInput.text.clear()
+                    service?.searchSessionsAsync(parsed.query)
+                }
+                ParsedSlashCommand.LoadHistory -> {
+                    val targetSid = activeTimelineSessionId()
+                    if (targetSid == null) {
+                        Toast.makeText(this, "Attach or create a session first", Toast.LENGTH_SHORT).show()
+                        return
+                    }
+                    promptInput.text.clear()
+                    val beforeSeq = timelineStore.oldestLoadedSeq(targetSid)
+                    service?.loadHistoryAsync(targetSid, beforeSeq = beforeSeq)
+                }
+                ParsedSlashCommand.ListCommands -> {
+                    promptInput.text.clear()
+                    service?.listCommandsAsync(activeTimelineSessionId())
+                }
+                ParsedSlashCommand.ListSkills -> {
+                    promptInput.text.clear()
+                    service?.listSkillsAsync(activeTimelineSessionId())
+                }
                 ParsedSlashCommand.StopTurn -> {
                     val targetSid = activeTimelineSessionId()
                     if (targetSid == null) {
@@ -1210,14 +1383,25 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
 
     private fun showSessionActionDialog(session: SessionRef) {
         val title = DisplayTextSanitizer.sanitizeSingleLine(session.title).ifBlank { session.id }
-        val actions = arrayOf("Switch to Session", "Rename Session", "Copy Session ID")
+        val actions = arrayOf(
+            "Switch to Session",
+            "Rename Session",
+            "Fork Session",
+            "Load Older History",
+            "Copy Session ID",
+        )
         AlertDialog.Builder(this)
             .setTitle(title)
             .setItems(actions) { _, which ->
                 when (which) {
                     0 -> selectAndAttachSession(session.id)
                     1 -> showRenameSessionDialog(session)
-                    2 -> copyTextToClipboard("Session ID", session.id, "Copied session ID")
+                    2 -> service?.forkSessionAsync(session.id, autoAttach = true)
+                    3 -> {
+                        val before = timelineStore.oldestLoadedSeq(session.id)
+                        service?.loadHistoryAsync(session.id, beforeSeq = before)
+                    }
+                    4 -> copyTextToClipboard("Session ID", session.id, "Copied session ID")
                 }
             }
             .setNegativeButton("Cancel", null)

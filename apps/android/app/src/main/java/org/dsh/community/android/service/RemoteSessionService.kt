@@ -22,6 +22,7 @@ import org.dsh.community.android.crypto.EncryptedDeviceIdentityStore
 import org.dsh.community.android.crypto.EncryptedTrustedHostStore
 import org.dsh.community.android.crypto.TrustedHostRecord
 import org.dsh.community.android.protocol.AttachResumeResult
+import org.dsh.community.android.protocol.CommandExecuteResult
 import org.dsh.community.android.protocol.DisplayTextSanitizer
 import org.dsh.community.android.protocol.JsonCodec
 import org.dsh.community.android.protocol.JsonNumber
@@ -31,8 +32,12 @@ import org.dsh.community.android.protocol.JsonValue
 import org.dsh.community.android.protocol.ModelCatalogResult
 import org.dsh.community.android.protocol.OfficialSessionEvent
 import org.dsh.community.android.protocol.PromptImageAttachment
+import org.dsh.community.android.protocol.RemoteCommandDescriptor
 import org.dsh.community.android.protocol.RemoteFrameCodec
+import org.dsh.community.android.protocol.RemoteSkillSummary
+import org.dsh.community.android.protocol.SessionHistoryResult
 import org.dsh.community.android.protocol.SessionRef
+import org.dsh.community.android.protocol.SessionSearchResult
 import org.dsh.community.android.transport.AndroidWebRtcPeerEngine
 import org.dsh.community.android.transport.DiscoveredLanHost
 import org.dsh.community.android.transport.FailoverRemoteSession
@@ -109,6 +114,12 @@ class RemoteSessionService : Service() {
         fun onSessionsUpdated(sessions: List<SessionRef>)
         fun onSessionCreated(session: SessionRef) {}
         fun onSessionRenamed(session: SessionRef) {}
+        fun onSessionForked(session: SessionRef) {}
+        fun onSessionHistoryLoaded(history: SessionHistoryResult) {}
+        fun onSessionSearchResults(results: SessionSearchResult) {}
+        fun onCommandsListed(sessionId: String?, commands: List<RemoteCommandDescriptor>) {}
+        fun onCommandExecuted(sessionId: String, command: String, result: CommandExecuteResult) {}
+        fun onSkillsListed(sessionId: String?, skills: List<RemoteSkillSummary>) {}
         fun onSessionAttached(sessionId: String) {}
         fun onEventReceived(sessionId: String, event: OfficialSessionEvent)
         fun onStreamReset(sessionId: String, reason: String) {}
@@ -813,6 +824,131 @@ class RemoteSessionService : Service() {
         }
     }
 
+    fun loadHistoryAsync(sessionId: String, beforeSeq: Long? = null, limit: Int = 50) {
+        ioExecutor.execute {
+            val session = activeSession ?: run {
+                uiObservers.forEach { it.onActionFailed("session.history", "Not connected to Host") }
+                return@execute
+            }
+            try {
+                val history = session.getSessionHistory(sessionId, beforeSeq = beforeSeq, limit = limit)
+                uiObservers.forEach { it.onSessionHistoryLoaded(history) }
+                uiObservers.forEach { it.onActionSucceeded("session.history", sessionId) }
+            } catch (t: Throwable) {
+                val reason = sanitizeErr(t)
+                uiObservers.forEach { it.onActionFailed("session.history", reason) }
+            }
+        }
+    }
+
+    fun searchSessionsAsync(query: String, sessionId: String? = null, limit: Int = 30) {
+        ioExecutor.execute {
+            val cleanQuery = query.trim()
+            if (cleanQuery.isEmpty()) {
+                uiObservers.forEach { it.onActionFailed("session.search", "Search query must not be empty") }
+                return@execute
+            }
+            val session = activeSession ?: run {
+                uiObservers.forEach { it.onActionFailed("session.search", "Not connected to Host") }
+                return@execute
+            }
+            try {
+                val results = session.searchSessions(cleanQuery, sessionId = sessionId, limit = limit)
+                uiObservers.forEach { it.onSessionSearchResults(results) }
+                uiObservers.forEach { it.onActionSucceeded("session.search", cleanQuery) }
+            } catch (t: Throwable) {
+                val reason = sanitizeErr(t)
+                uiObservers.forEach { it.onActionFailed("session.search", reason) }
+            }
+        }
+    }
+
+    fun forkSessionAsync(
+        sessionId: String,
+        atSeq: Long? = null,
+        title: String? = null,
+        autoAttach: Boolean = true,
+    ) {
+        ioExecutor.execute {
+            val session = activeSession ?: run {
+                uiObservers.forEach { it.onActionFailed("session.fork", "Not connected to Host") }
+                return@execute
+            }
+            val opKey = session.newOperationKey("session-fork")
+            try {
+                val forked = session.forkSession(sessionId, atSeq = atSeq, title = title, idempotencyKey = opKey)
+                val refreshed = try {
+                    session.listSessions()
+                } catch (_: Throwable) {
+                    listOf(forked) + lastSessions.filterNot { it.id == forked.id }
+                }
+                lastSessions = refreshed
+                uiObservers.forEach { it.onSessionsUpdated(refreshed) }
+                uiObservers.forEach { it.onSessionForked(forked) }
+                uiObservers.forEach { it.onActionSucceeded("session.fork", forked.id) }
+                if (autoAttach) {
+                    attachSessionInternal(session, forked.id)
+                }
+            } catch (t: Throwable) {
+                val reason = sanitizeErr(t)
+                updateStatus(session.phase, session.activeCarrier, session.currentEpoch, "session.fork failed: $reason")
+                uiObservers.forEach { it.onActionFailed("session.fork", reason) }
+            }
+        }
+    }
+
+    fun listCommandsAsync(sessionId: String? = attachedSessionId) {
+        ioExecutor.execute {
+            val session = activeSession ?: run {
+                uiObservers.forEach { it.onActionFailed("command.list", "Not connected to Host") }
+                return@execute
+            }
+            try {
+                val commands = session.listCommands(sessionId)
+                uiObservers.forEach { it.onCommandsListed(sessionId, commands) }
+                uiObservers.forEach { it.onActionSucceeded("command.list", "${commands.size}") }
+            } catch (t: Throwable) {
+                val reason = sanitizeErr(t)
+                uiObservers.forEach { it.onActionFailed("command.list", reason) }
+            }
+        }
+    }
+
+    fun executeCommandAsync(sessionId: String, command: String) {
+        ioExecutor.execute {
+            val session = activeSession ?: run {
+                uiObservers.forEach { it.onActionFailed("command.execute", "Not connected to Host") }
+                return@execute
+            }
+            val opKey = session.newOperationKey("cmd")
+            try {
+                val res = session.executeCommand(sessionId, command, idempotencyKey = opKey)
+                uiObservers.forEach { it.onCommandExecuted(sessionId, command, res) }
+                uiObservers.forEach { it.onActionSucceeded("command.execute", res.commandId ?: command) }
+            } catch (t: Throwable) {
+                val reason = sanitizeErr(t)
+                uiObservers.forEach { it.onActionFailed("command.execute", reason) }
+            }
+        }
+    }
+
+    fun listSkillsAsync(sessionId: String? = attachedSessionId) {
+        ioExecutor.execute {
+            val session = activeSession ?: run {
+                uiObservers.forEach { it.onActionFailed("skill.list", "Not connected to Host") }
+                return@execute
+            }
+            try {
+                val skills = session.listSkills(sessionId)
+                uiObservers.forEach { it.onSkillsListed(sessionId, skills) }
+                uiObservers.forEach { it.onActionSucceeded("skill.list", "${skills.size}") }
+            } catch (t: Throwable) {
+                val reason = sanitizeErr(t)
+                uiObservers.forEach { it.onActionFailed("skill.list", reason) }
+            }
+        }
+    }
+
     fun failoverAsync() {
         ioExecutor.execute {
             val session = activeSession ?: return@execute
@@ -929,6 +1065,7 @@ class RemoteSessionService : Service() {
             profile,
             webRtcPeerEngine = AndroidWebRtcPeerEngine(applicationContext),
             initialHighestEpoch = initialHighestEpoch,
+            failureCooldownMs = 15_000L,
         )
         session.addListener(
             object : FailoverRemoteSession.Listener {

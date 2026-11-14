@@ -1,14 +1,23 @@
 package org.dsh.community.android
 
 import org.dsh.community.android.protocol.InboundHostFrame
+import org.dsh.community.android.protocol.JsonArray
+import org.dsh.community.android.protocol.JsonBool
+import org.dsh.community.android.protocol.JsonNumber
+import org.dsh.community.android.protocol.JsonObject
+import org.dsh.community.android.protocol.JsonString
 import org.dsh.community.android.protocol.RemoteFrameCodec
+import org.dsh.community.android.protocol.RemoteProtocol
 import org.dsh.community.android.service.BackoffPolicy
 import org.dsh.community.android.transport.AndroidWebRtcPeerEngine
 import org.dsh.community.android.transport.DataChannelChunkCodec
 import org.dsh.community.android.transport.PeerRevokedException
 import org.dsh.community.android.transport.TransportUnavailableException
+import org.dsh.community.android.transport.WebRtcCandidateFilter
+import org.dsh.community.android.transport.WebRtcIceTransportPolicy
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -90,5 +99,159 @@ class FailoverAndProtocolTest {
         assertThrows(TransportUnavailableException::class.java) {
             AndroidWebRtcPeerEngine.validateRoomId("   ")
         }
+    }
+
+    @Test
+    fun webRtcCandidateFilterEnforcesDirectOnlyRelayBlocking() {
+        val relayCand = "candidate:1 1 UDP 123 192.0.2.1 40000 typ relay raddr 0.0.0.0 rport 0"
+        val hostCand = "candidate:2 1 UDP 456 192.168.1.5 50000 typ host"
+        val srflxCand = "candidate:3 1 UDP 789 203.0.113.9 50001 typ srflx raddr 192.168.1.5 rport 50001"
+
+        assertTrue(WebRtcCandidateFilter.isRelayCandidate(relayCand))
+        assertFalse(WebRtcCandidateFilter.isRelayCandidate(hostCand))
+        assertFalse(WebRtcCandidateFilter.isRelayCandidate(srflxCand))
+
+        assertTrue(WebRtcCandidateFilter.shouldAllowCandidate(relayCand, WebRtcIceTransportPolicy.ALL))
+        assertFalse(WebRtcCandidateFilter.shouldAllowCandidate(relayCand, WebRtcIceTransportPolicy.DIRECT_ONLY))
+        assertTrue(WebRtcCandidateFilter.shouldAllowCandidate(hostCand, WebRtcIceTransportPolicy.DIRECT_ONLY))
+        assertTrue(WebRtcCandidateFilter.shouldAllowCandidate(srflxCand, WebRtcIceTransportPolicy.DIRECT_ONLY))
+    }
+
+    @Test
+    fun decodesPriority2RpcResultsAndUploadResponses() {
+        val history = RemoteFrameCodec.parseSessionHistoryResult(
+            JsonObject.of(
+                "sessionId" to JsonString("s-hist"),
+                "hasMore" to JsonBool(true),
+                "oldestSeq" to JsonNumber(11),
+                "latestSeq" to JsonNumber(25),
+                "source" to JsonString("disk"),
+                "events" to JsonArray(
+                    listOf(
+                        JsonObject.of(
+                            "seq" to JsonNumber(11),
+                            "type" to JsonString("user/message"),
+                            "data" to JsonObject.of("text" to JsonString("hello")),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        assertEquals("s-hist", history.sessionId)
+        assertTrue(history.hasMore)
+        assertEquals(11L, history.oldestSeq)
+        assertEquals(25L, history.latestSeq)
+        assertEquals("disk", history.source)
+        assertEquals(1, history.events.size)
+
+        val search = RemoteFrameCodec.parseSessionSearchResult(
+            JsonObject.of(
+                "query" to JsonString("oauth"),
+                "hasMore" to JsonBool(false),
+                "hits" to JsonArray(
+                    listOf(
+                        JsonObject.of(
+                            "sessionId" to JsonString("s-1"),
+                            "title" to JsonString("Auth Fixes"),
+                            "seq" to JsonNumber(7),
+                            "type" to JsonString("assistant/message"),
+                            "snippet" to JsonString("rotated oauth token"),
+                            "updatedAt" to JsonString("2026-11-14T00:00:00Z"),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        assertEquals("oauth", search.query)
+        assertEquals(1, search.hits.size)
+        assertEquals("Auth Fixes", search.hits[0].title)
+        assertEquals(7L, search.hits[0].seq)
+
+        val commands = RemoteFrameCodec.parseCommandList(
+            JsonObject.of(
+                "commands" to JsonArray(
+                    listOf(
+                        JsonObject.of(
+                            "name" to JsonString("/review"),
+                            "description" to JsonString("Review diff"),
+                            "inputHint" to JsonString("[scope]"),
+                            "acceptsAttachments" to JsonBool(true),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        assertEquals(1, commands.size)
+        assertEquals("/review", commands[0].name)
+        assertTrue(commands[0].acceptsAttachments)
+
+        val cmdExec = RemoteFrameCodec.parseCommandExecuteResult(
+            JsonObject.of(
+                "ok" to JsonBool(true),
+                "commandId" to JsonString("cmd-1"),
+                "output" to JsonString("dispatched"),
+            ),
+        )
+        assertTrue(cmdExec.ok)
+        assertEquals("cmd-1", cmdExec.commandId)
+        assertEquals("dispatched", cmdExec.output)
+
+        val skills = RemoteFrameCodec.parseSkillList(
+            JsonObject.of(
+                "skills" to JsonArray(
+                    listOf(
+                        JsonObject.of(
+                            "name" to JsonString("refactor"),
+                            "description" to JsonString("Clean helper"),
+                            "source" to JsonString("repo"),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        assertEquals(1, skills.size)
+        assertEquals("refactor", skills[0].name)
+
+        val uplOpen = RemoteFrameCodec.parseWorkspaceUploadOpenResult(
+            JsonObject.of(
+                "uploadId" to JsonString("upl-1"),
+                "sessionId" to JsonString("s-1"),
+                "chunkBytes" to JsonNumber(32768),
+                "maxBytes" to JsonNumber(1048576),
+                "relativePath" to JsonString(".dsh-uploads/spec.md"),
+            ),
+        )
+        assertEquals("upl-1", uplOpen.uploadId)
+        assertEquals(32768, uplOpen.chunkBytes)
+
+        val uplChunk = RemoteFrameCodec.parseWorkspaceUploadChunkResult(
+            JsonObject.of(
+                "uploadId" to JsonString("upl-1"),
+                "receivedBytes" to JsonNumber(32768),
+                "nextOffset" to JsonNumber(32768),
+            ),
+        )
+        assertEquals(32768, uplChunk.receivedBytes)
+
+        val uplCommit = RemoteFrameCodec.parseWorkspaceUploadCommitResult(
+            JsonObject.of(
+                "uploadId" to JsonString("upl-1"),
+                "sessionId" to JsonString("s-1"),
+                "relativePath" to JsonString(".dsh-uploads/spec.md"),
+                "bytesWritten" to JsonNumber(40000),
+                "sha256" to JsonString("a".repeat(64)),
+            ),
+        )
+        assertEquals(40000, uplCommit.bytesWritten)
+
+        val uplAbort = RemoteFrameCodec.parseWorkspaceUploadAbortResult(
+            JsonObject.of(
+                "uploadId" to JsonString("upl-1"),
+                "aborted" to JsonBool(true),
+            ),
+        )
+        assertTrue(uplAbort.aborted)
+        assertEquals("session.history", RemoteProtocol.METHOD_SESSION_HISTORY)
+        assertEquals("workspace.upload.commit", RemoteProtocol.METHOD_WORKSPACE_UPLOAD_COMMIT)
     }
 }
