@@ -38,7 +38,8 @@ async function runGitBoundedDiff(
   maxBytes: number,
   options?: { allowExitOne?: boolean },
 ): Promise<{ text: string; bytes: number; truncated: boolean }> {
-  const captureCap = maxBytes + 4
+  const effectiveMaxBytes = Math.max(1, maxBytes)
+  const captureCap = effectiveMaxBytes + 4
   return new Promise((resolvePromise, rejectPromise) => {
     const child = spawn('git', ['-C', cwd, ...args], {
       env: sanitizeSubprocessEnv(),
@@ -124,14 +125,14 @@ async function runGitBoundedDiff(
       }
 
       const rawBuf = Buffer.concat(stdoutChunks)
-      const truncated = streamTruncated || rawBuf.byteLength > maxBytes
+      const truncated = streamTruncated || rawBuf.byteLength > effectiveMaxBytes
       if (!truncated) {
         const text = rawBuf.toString('utf8')
         resolvePromise({ text, bytes: rawBuf.byteLength, truncated: false })
         return
       }
 
-      let end = Math.min(maxBytes, rawBuf.byteLength)
+      let end = Math.min(effectiveMaxBytes, rawBuf.byteLength)
       while (end > 0 && (rawBuf[end]! & 0b1100_0000) === 0b1000_0000) {
         end -= 1
       }
@@ -256,7 +257,7 @@ export async function inspectWorkspaceGitStatus(
     '--porcelain=v1',
     '-z',
     '-b',
-    '--untracked-files=normal',
+    '--untracked-files=all',
   ])
 
   const tokens = stdout.split('\0')
@@ -377,6 +378,64 @@ export async function inspectWorkspaceGitDiff(
         }
       } catch {}
     }
+  } else if (!staged && safePath === undefined && !bounded.truncated) {
+    // Include bounded untracked file previews in unfiltered unstaged diffs so "all files" matches status.
+    try {
+      const untrackedList = await runGit(repoRoot, [
+        'ls-files',
+        '--others',
+        '--exclude-standard',
+        '-z',
+      ])
+      const untrackedPaths = untrackedList.stdout.split('\0').filter((p) => p.length > 0)
+      if (untrackedPaths.length > 0) {
+        const parts: string[] = bounded.text ? [bounded.text] : []
+        let usedBytes = bounded.bytes
+        let combinedTruncated = false
+
+        for (const rawRel of untrackedPaths) {
+          let verifiedPath: string
+          try {
+            verifiedPath = assertSafeRepoRelativePath(repoRoot, rawRel)
+          } catch {
+            continue
+          }
+          const absTarget = join(repoRoot, verifiedPath)
+          if (!existsSync(absTarget) || !statSync(absTarget).isFile()) continue
+
+          const sepBytes = parts.length > 0 ? 1 : 0
+          const remainingBudget = maxBytes - usedBytes - sepBytes
+          if (remainingBudget <= 0) {
+            combinedTruncated = true
+            break
+          }
+
+          const preview = await runGitBoundedDiff(
+            repoRoot,
+            ['diff', '--no-index', '--no-ext-diff', '--', '/dev/null', verifiedPath],
+            remainingBudget,
+            { allowExitOne: true },
+          )
+          if (preview.bytes === 0) continue
+
+          parts.push(preview.text)
+          usedBytes += sepBytes + preview.bytes
+          if (preview.truncated || usedBytes >= maxBytes) {
+            combinedTruncated = true
+            if (usedBytes >= maxBytes) break
+          }
+        }
+
+        if (parts.length > (bounded.text ? 1 : 0) || combinedTruncated) {
+          const text = parts.join('\n')
+          bounded = {
+            text,
+            bytes: Buffer.byteLength(text, 'utf8'),
+            truncated: combinedTruncated,
+          }
+        }
+      }
+    } catch {}
   }
 
   return {

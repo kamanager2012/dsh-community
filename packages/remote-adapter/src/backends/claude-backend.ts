@@ -72,6 +72,13 @@ interface DiscoveredClaudeSession {
   updatedAtMs: number
   model?: ModelSelectionParams | undefined
   readonly createdNew: boolean
+  hasLaunchedWorker?: boolean | undefined
+}
+
+function modelsMatch(a?: ModelSelectionParams, b?: ModelSelectionParams): boolean {
+  return (a?.provider ?? undefined) === (b?.provider ?? undefined)
+    && (a?.model ?? undefined) === (b?.model ?? undefined)
+    && (a?.reasoningEffort ?? undefined) === (b?.reasoningEffort ?? undefined)
 }
 
 interface PendingClaudeApproval {
@@ -352,6 +359,44 @@ export class ClaudeAgentBackend implements ManagedAgentBackend {
     }
   }
 
+  private clearWorkerPendingInteractions(worker: ClaudeLiveWorker, reason: string): void {
+    for (const [callId, pending] of this.pendingApprovals.entries()) {
+      if (pending.worker !== worker) continue
+      this.pendingApprovals.delete(callId)
+      this.emitter.emit(pending.sessionId, 'approval.resolved', {
+        callId,
+        decision: 'rejected',
+        cancelled: true,
+        reason,
+      })
+    }
+    for (const [questionId, pending] of this.pendingQuestions.entries()) {
+      if (pending.worker !== worker) continue
+      this.pendingQuestions.delete(questionId)
+      this.emitter.emit(pending.sessionId, 'question.resolved', {
+        questionId,
+        cancelled: true,
+        reason,
+      })
+    }
+  }
+
+  private retireWorker(nativeId: string, worker: ClaudeLiveWorker, reason: string): void {
+    worker.running = false
+    if (this.workers.get(nativeId) === worker) {
+      this.workers.delete(nativeId)
+    }
+    this.clearWorkerPendingInteractions(worker, reason)
+    if (worker.child.exitCode === null) {
+      try {
+        worker.child.stdin?.end()
+      } catch {}
+      try {
+        worker.child.kill('SIGTERM')
+      } catch {}
+    }
+  }
+
   async stop(): Promise<void> {
     for (const [id, pending] of this.pendingApprovals.entries()) {
       this.pendingApprovals.delete(id)
@@ -359,12 +404,23 @@ export class ClaudeAgentBackend implements ManagedAgentBackend {
         behavior: 'deny',
         message: 'Host shutting down',
       })
+      this.emitter.emit(pending.sessionId, 'approval.resolved', {
+        callId: id,
+        decision: 'rejected',
+        cancelled: true,
+        reason: 'host_stopped',
+      })
     }
     for (const [id, pending] of this.pendingQuestions.entries()) {
       this.pendingQuestions.delete(id)
       this.sendControlResponse(pending.worker, pending.requestId, {
         behavior: 'deny',
         message: 'Host shutting down',
+      })
+      this.emitter.emit(pending.sessionId, 'question.resolved', {
+        questionId: id,
+        cancelled: true,
+        reason: 'host_stopped',
       })
     }
     const stops = [...this.workers.values()].map(async (worker) => {
@@ -509,7 +565,11 @@ export class ClaudeAgentBackend implements ManagedAgentBackend {
   private ensureWorker(meta: DiscoveredClaudeSession): ClaudeLiveWorker {
     const existing = this.workers.get(meta.nativeId)
     if (existing && existing.child.exitCode === null && !existing.child.killed) {
-      return existing
+      if (modelsMatch(existing.model, meta.model)) {
+        return existing
+      }
+      // Respawn with --resume --model when the selected model differs from the launched subprocess.
+      this.retireWorker(meta.nativeId, existing, 'model_changed')
     }
 
     const binaryPath = findBinaryOnPath(this.command, this.env)
@@ -522,6 +582,7 @@ export class ClaudeAgentBackend implements ManagedAgentBackend {
 
     const spawnImpl = this.options.spawnFn ?? spawn
     const sessionCwd = meta.cwd ?? this.defaultCwd
+    const useFreshSessionId = meta.createdNew && !meta.hasLaunchedWorker && meta.filePath === undefined
     const args = [
       '--print',
       '--input-format', 'stream-json',
@@ -529,7 +590,7 @@ export class ClaudeAgentBackend implements ManagedAgentBackend {
       '--verbose',
       '--include-partial-messages',
       '--permission-prompts', 'host',
-      ...(meta.createdNew && meta.filePath === undefined
+      ...(useFreshSessionId
         ? ['--session-id', meta.nativeId]
         : ['--resume', meta.nativeId]),
       ...(meta.model?.model ? ['--model', meta.model.model] : []),
@@ -541,6 +602,7 @@ export class ClaudeAgentBackend implements ManagedAgentBackend {
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
     })
+    meta.hasLaunchedWorker = true
 
     const worker: ClaudeLiveWorker = {
       nativeId: meta.nativeId,
@@ -572,10 +634,14 @@ export class ClaudeAgentBackend implements ManagedAgentBackend {
     child.stderr?.resume()
     child.once('exit', () => {
       worker.running = false
-      if (this.workers.get(meta.nativeId) === worker) {
+      const wasActive = this.workers.get(meta.nativeId) === worker
+      if (wasActive) {
         this.workers.delete(meta.nativeId)
       }
-      this.emitter.emit(meta.sessionId, 'agent/status', { status: 'idle' })
+      this.clearWorkerPendingInteractions(worker, 'worker_exited')
+      if (wasActive) {
+        this.emitter.emit(meta.sessionId, 'agent/status', { status: 'idle' })
+      }
     })
 
     return worker
@@ -706,8 +772,9 @@ export class ClaudeAgentBackend implements ManagedAgentBackend {
     const meta = this.sessions.get(nativeId)!
     meta.model = selection
     const worker = this.workers.get(nativeId)
-    if (worker) {
-      worker.model = selection
+    if (worker && !modelsMatch(worker.model, selection) && !worker.running) {
+      // Idle worker still runs old --model; retire now so next prompt spawns with updated --model.
+      this.retireWorker(nativeId, worker, 'model_changed')
     }
     this.emitter.emit(meta.sessionId, 'session.model', selection)
     return { ok: true, sessionId: meta.sessionId, selection }

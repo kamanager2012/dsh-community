@@ -122,4 +122,37 @@ describe('scoped read-only git review helpers', () => {
     expect(Buffer.byteLength(res.diff, 'utf8')).toBe(res.bytes)
     expect(res.diff.includes('\uFFFD')).toBe(false)
   })
+
+  it('enumerates files inside untracked directories individually and includes bounded untracked previews in unfiltered diff', async () => {
+    const repoDir = mkdtempSync(join(tmpdir(), 'dsh-git-untracked-dir-'))
+    tempDirs.push(repoDir)
+    initGitRepo(repoDir)
+
+    writeFileSync(join(repoDir, 'tracked.txt'), 'v1\n', 'utf8')
+    execFileSync('git', ['add', 'tracked.txt'], { cwd: repoDir, stdio: 'pipe' })
+    execFileSync('git', ['commit', '-m', 'init'], { cwd: repoDir, stdio: 'pipe' })
+
+    const newSubDir = join(repoDir, 'new-dir', 'nested')
+    mkdirSync(newSubDir, { recursive: true })
+    writeFileSync(join(repoDir, 'new-dir', 'new.txt'), 'brand new line\n', 'utf8')
+    writeFileSync(join(newSubDir, 'deep.ts'), 'export const deep = true\n', 'utf8')
+
+    const status = await inspectWorkspaceGitStatus('s-untracked', repoDir)
+    const paths = status.files.map((f) => f.path)
+    expect(paths).toContain('new-dir/new.txt')
+    expect(paths).toContain('new-dir/nested/deep.ts')
+    expect(paths.some((p) => p.endsWith('/'))).toBe(false)
+
+    // Individual untracked nested file path succeeds directly
+    const singleDiff = await inspectWorkspaceGitDiff(
+      { sessionId: 's-untracked', path: 'new-dir/new.txt' },
+      repoDir,
+    )
+    expect(singleDiff.diff).toContain('+brand new line')
+
+    // Unfiltered unstaged diff also includes untracked files and stays bounded by maxBytes
+    const allDiff = await inspectWorkspaceGitDiff({ sessionId: 's-untracked' }, repoDir)
+    expect(allDiff.diff).toContain('+brand new line')
+    expect(allDiff.diff).toContain('+export const deep = true')
+  })
 })

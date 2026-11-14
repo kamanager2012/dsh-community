@@ -175,9 +175,15 @@ export class MonotonicSessionEventEmitter {
     }
   }
 
-  emit(sessionId: string, type: string, data?: unknown): OfficialSessionEvent {
+  /** Allocates the next monotonic positive integer sequence number without emitting. */
+  nextSeq(sessionId: string): number {
     const seq = (this.seqBySession.get(sessionId) ?? 0) + 1
     this.seqBySession.set(sessionId, seq)
+    return seq
+  }
+
+  emit(sessionId: string, type: string, data?: unknown): OfficialSessionEvent {
+    const seq = this.nextSeq(sessionId)
     const event: OfficialSessionEvent =
       data !== undefined ? { seq, type, data } : { seq, type }
     for (const listener of this.listeners) {

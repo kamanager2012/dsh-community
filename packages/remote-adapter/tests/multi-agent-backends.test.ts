@@ -1,7 +1,9 @@
-import { execFileSync } from 'node:child_process'
+import { EventEmitter } from 'node:events'
+import { execFileSync, type ChildProcess } from 'node:child_process'
 import { chmodSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { PassThrough } from 'node:stream'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   AcpAgentBackend,
@@ -649,5 +651,316 @@ describe('multi-agent control plane backends and standalone host', () => {
     expect(dumpedCodexEnv.DSH_REMOTE_RELAY_HOST_SECRET).toBeUndefined()
     expect(dumpedClaudeEnv.DSH_REMOTE_CONTROL_TOKEN).toBeUndefined()
     expect(dumpedClaudeEnv.DSH_REMOTE_RELAY_HOST_SECRET).toBeUndefined()
+  })
+
+  it('re-spawns Claude worker on model change and clears pending interactions when worker exits', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-claude-lifecycle-'))
+    tempDirs.push(root)
+
+    interface FakeWorker {
+      readonly args: readonly string[]
+      readonly proc: ChildProcess
+      readonly stdout: PassThrough
+      readonly exitCodeRef: { value: number | null }
+      readonly writes: string[]
+    }
+
+    const spawned: FakeWorker[] = []
+    const spawnFn = ((_cmd: string, args: readonly string[]) => {
+      const ee = new EventEmitter()
+      const stdin = new PassThrough()
+      const stdout = new PassThrough()
+      const stderr = new PassThrough()
+      const writes: string[] = []
+      const exitCodeRef: { value: number | null } = { value: null }
+
+      const origWrite = stdin.write.bind(stdin)
+      stdin.write = ((chunk: unknown, ...rest: unknown[]) => {
+        writes.push(typeof chunk === 'string' ? chunk : Buffer.from(chunk as Uint8Array).toString('utf8'))
+        return origWrite(chunk as string, ...(rest as []))
+      }) as typeof stdin.write
+
+      const fakeProc = Object.assign(ee, {
+        stdin,
+        stdout,
+        stderr,
+        get exitCode() {
+          return exitCodeRef.value
+        },
+        killed: false,
+        kill: () => {
+          if (exitCodeRef.value === null) {
+            fakeProc.killed = true
+            exitCodeRef.value = 0
+            queueMicrotask(() => ee.emit('exit', 0, null))
+          }
+          return true
+        },
+      }) as unknown as ChildProcess
+
+      spawned.push({ args: [...args], proc: fakeProc, stdout, exitCodeRef, writes })
+      return fakeProc
+    }) as unknown as typeof import('node:child_process').spawn
+
+    const backend = new ClaudeAgentBackend({
+      defaultCwd: root,
+      projectsDir: join(root, 'projects'),
+      env: { ...process.env, PATH: '/usr/bin' },
+      spawnFn,
+    })
+    activeClosers.push(() => backend.stop())
+
+    const received: Array<{ sessionId: string; seq: number; type: string; data?: any }> = []
+    backend.onEvent((sessionId, evs) => {
+      for (const ev of evs) received.push({ sessionId, ...ev })
+    })
+
+    const sess = await backend.createSession({
+      cwd: root,
+      model: { provider: 'anthropic', model: 'sonnet' },
+    })
+
+    // First prompt launches with --session-id and --model sonnet
+    await backend.followup(sess.id, 'first turn')
+    expect(spawned).toHaveLength(1)
+    expect(spawned[0]!.args).toContain('--session-id')
+    expect(spawned[0]!.args).toContain('sonnet')
+
+    // Complete first turn cleanly so worker is idle
+    spawned[0]!.stdout.write(`${JSON.stringify({ type: 'result', subtype: 'success' })}\n`)
+    await new Promise((r) => setTimeout(r, 20))
+
+    // Selecting another model retires idle worker and next prompt launches with --resume + --model opus
+    await backend.selectModel(sess.id, { provider: 'anthropic', model: 'opus' })
+    await backend.followup(sess.id, 'second turn')
+    expect(spawned).toHaveLength(2)
+    expect(spawned[1]!.args).toContain('--resume')
+    expect(spawned[1]!.args).not.toContain('--session-id')
+    expect(spawned[1]!.args).toContain('opus')
+
+    // Changing model WHILE worker is busy defers restart until turn ends, then next prompt respawns with haiku
+    await backend.selectModel(sess.id, { provider: 'anthropic', model: 'haiku' })
+    expect(spawned).toHaveLength(2)
+    spawned[1]!.stdout.write(`${JSON.stringify({ type: 'result', subtype: 'success' })}\n`)
+    await new Promise((r) => setTimeout(r, 20))
+    await backend.followup(sess.id, 'third turn')
+    expect(spawned).toHaveLength(3)
+    expect(spawned[2]!.args).toContain('--resume')
+    expect(spawned[2]!.args).toContain('haiku')
+
+    // Emit pending approval and pending question, then simulate sudden worker exit
+    spawned[2]!.stdout.write(
+      `${JSON.stringify({
+        type: 'control_request',
+        request_id: 'req-apr',
+        request: { subtype: 'can_use_tool', tool_name: 'Bash', input: { command: 'ls' }, decision_reason: 'Check files' },
+      })}\n`,
+    )
+    spawned[2]!.stdout.write(
+      `${JSON.stringify({
+        type: 'control_request',
+        request_id: 'req-q',
+        request: {
+          subtype: 'can_use_tool',
+          tool_name: 'AskUserQuestion',
+          input: { questions: [{ id: 'q1', question: 'Confirm?' }] },
+        },
+      })}\n`,
+    )
+    await new Promise((r) => setTimeout(r, 20))
+
+    const liveBefore = await backend.getSessionLiveState(sess.id)
+    expect(liveBefore?.pendingApprovals).toHaveLength(1)
+    expect(liveBefore?.pendingQuestions).toHaveLength(1)
+    const callId = liveBefore!.pendingApprovals[0]!.callId
+    const questionId = liveBefore!.pendingQuestions[0]!.questionId
+
+    spawned[2]!.exitCodeRef.value = 1
+    spawned[2]!.proc.emit('exit', 1, null)
+    await new Promise((r) => setTimeout(r, 20))
+
+    const liveAfter = await backend.getSessionLiveState(sess.id)
+    expect(liveAfter?.pendingApprovals).toEqual([])
+    expect(liveAfter?.pendingQuestions).toEqual([])
+    expect(received.some((e) => e.type === 'approval.resolved' && e.data?.callId === callId && e.data?.cancelled === true)).toBe(true)
+    expect(received.some((e) => e.type === 'question.resolved' && e.data?.questionId === questionId && e.data?.cancelled === true)).toBe(true)
+    await expect(backend.respondApproval(callId, 'approved')).rejects.toBeInstanceOf(RemoteProtocolError)
+    await expect(backend.respondQuestion(questionId, 'yes')).rejects.toBeInstanceOf(RemoteProtocolError)
+  })
+
+  it('keeps Codex live vs history event sequences consistent and searches explicit sessions past top-12', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-codex-seq-search-'))
+    tempDirs.push(root)
+
+    const oldThreadId = 'thr-old-15'
+    const threadsJson: Array<{
+      id: string
+      name: string
+      updatedAt: number
+      turns: Array<{
+        id: string
+        status: string
+        items: Array<Record<string, unknown>>
+      }>
+    }> = [
+      {
+        id: oldThreadId,
+        name: 'Older Thread #15',
+        updatedAt: 100,
+        turns: [
+          {
+            id: 'turn-hist-1',
+            status: 'completed',
+            items: [
+              { type: 'userMessage', id: 'u-hist-1', content: [{ type: 'text', text: 'find needle_in_15th_thread' }] },
+              { type: 'agentMessage', id: 'a-hist-1', text: 'Found needle_in_15th_thread answer' },
+            ],
+          },
+        ],
+      },
+    ]
+    for (let i = 1; i <= 14; i += 1) {
+      threadsJson.push({
+        id: `thr-recent-${i}`,
+        name: `Recent ${i}`,
+        updatedAt: 1000 + i,
+        turns: [
+          {
+            id: `turn-r-${i}`,
+            status: 'completed',
+            items: [
+              { type: 'userMessage', id: `ur-${i}`, content: [{ type: 'text', text: `recent prompt ${i}` }] },
+              { type: 'agentMessage', id: `ar-${i}`, text: `recent answer ${i}` },
+            ],
+          },
+        ],
+      })
+    }
+
+    const codexScript = writeExecutableScript(
+      join(root, 'codex-seq-mock.mjs'),
+      `
+import { createInterface } from 'node:readline'
+if (process.argv.includes('--version')) {
+  process.stdout.write('codex-cli 0.118.0-seqmock\\n')
+  process.exit(0)
+}
+const threads = new Map(${JSON.stringify(threadsJson.map((t) => [t.id, t]))})
+const send = (obj) => process.stdout.write(JSON.stringify(obj) + '\\n')
+const rl = createInterface({ input: process.stdin, crlfDelay: Infinity })
+rl.on('line', (line) => {
+  if (!line.trim()) return
+  const msg = JSON.parse(line)
+  if (msg.method === 'initialize') return send({ id: msg.id, result: { userAgent: 'seq-mock' } })
+  if (msg.method === 'initialized') return
+  if (msg.method === 'thread/list') {
+    const data = [...threads.values()].sort((a, b) => b.updatedAt - a.updatedAt).map((t) => ({ id: t.id, name: t.name, cwd: process.cwd(), preview: t.name, updatedAt: t.updatedAt, turns: [] }))
+    return send({ id: msg.id, result: { data, nextCursor: null } })
+  }
+  if (msg.method === 'thread/resume') {
+    const t = threads.get(msg.params.threadId)
+    return send({ id: msg.id, result: { thread: t ? { ...t, turns: msg.params.excludeTurns ? [] : t.turns } : null } })
+  }
+  if (msg.method === 'thread/read') {
+    const t = threads.get(msg.params.threadId)
+    return send({ id: msg.id, result: { thread: t ? { ...t, turns: msg.params.includeTurns ? t.turns : [] } : null } })
+  }
+  if (msg.method === 'turn/start') {
+    const t = threads.get(msg.params.threadId)
+    const turnId = 'turn-live-2'
+    const userItem = { type: 'userMessage', id: 'u-live-2', content: [{ type: 'text', text: msg.params.input?.[0]?.text || '' }] }
+    const assistantItem = { type: 'agentMessage', id: 'a-live-2', text: 'Final streamed Codex reply' }
+    send({ id: msg.id, result: { turn: { id: turnId, items: [], status: 'inProgress' } } })
+    send({ method: 'turn/started', params: { threadId: t.id, turn: { id: turnId, items: [], status: 'inProgress' } } })
+    send({ method: 'item/completed', params: { threadId: t.id, turnId, item: userItem } })
+    send({ method: 'item/agentMessage/delta', params: { threadId: t.id, turnId, itemId: 'a-live-2', delta: 'Final ' } })
+    send({ method: 'item/agentMessage/delta', params: { threadId: t.id, turnId, itemId: 'a-live-2', delta: 'streamed Codex reply' } })
+    send({ method: 'thread/tokenUsage/updated', params: { threadId: t.id, tokenUsage: { inputTokens: 5, outputTokens: 3, totalTokens: 8 } } })
+    send({ method: 'item/completed', params: { threadId: t.id, turnId, item: assistantItem } })
+    t.turns.push({ id: turnId, status: 'completed', items: [userItem, assistantItem] })
+    send({ method: 'turn/completed', params: { threadId: t.id, turn: { id: turnId, items: [], status: 'completed' } } })
+  }
+})
+`,
+    )
+
+    const backend = new CodexAgentBackend({
+      command: codexScript,
+      args: [],
+      defaultCwd: root,
+    })
+    activeClosers.push(() => backend.stop())
+
+    const liveEvents: Array<{ seq: number; type: string; data?: any }> = []
+    const targetPublicId = `codex--${oldThreadId}`
+    backend.onEvent((sid, evs) => {
+      if (sid === targetPublicId) liveEvents.push(...evs)
+    })
+
+    // 1. Scoped search reaches #15 oldest thread beyond the top-12 sampling limit
+    const scoped = await backend.searchSessions({
+      sessionId: targetPublicId,
+      query: 'needle_in_15th_thread',
+    })
+    expect(scoped.hits.length).toBeGreaterThanOrEqual(1)
+    expect(scoped.hits.every((h) => h.sessionId === targetPublicId)).toBe(true)
+
+    // 2. Followup emits live turn events AFTER historical turns (turn-hist-1 = seq 1..4)
+    await backend.followup(targetPublicId, 'hello turn 2')
+    await new Promise<void>((resolve, reject) => {
+      const deadline = Date.now() + 3000
+      const timer = setInterval(() => {
+        if (liveEvents.some((e) => e.type === 'turn/end')) {
+          clearInterval(timer)
+          resolve()
+        } else if (Date.now() > deadline) {
+          clearInterval(timer)
+          reject(new Error('timed out waiting for codex turn/end'))
+        }
+      }, 20)
+    })
+
+    const liveAssistant = liveEvents.find((e) => e.type === 'assistant/message')!
+    const liveTurnEnd = liveEvents.find((e) => e.type === 'turn/end')!
+    expect(liveAssistant.seq).toBeGreaterThan(4)
+    expect(liveTurnEnd.seq).toBeGreaterThan(liveAssistant.seq)
+
+    // 3. Reloading history returns the EXACT SAME seq identities for live turn events despite deltas/usage!
+    const hist = await backend.getSessionHistory({ sessionId: targetPublicId, limit: 100 })
+    const histAssistant = hist.events.find(
+      (e) => e.type === 'assistant/message' && (e.data as any)?.message?.content === 'Final streamed Codex reply',
+    )!
+    const histTurnEnd = hist.events.filter((e) => e.type === 'turn/end').pop()!
+    expect(histAssistant.seq).toBe(liveAssistant.seq)
+    expect(histTurnEnd.seq).toBe(liveTurnEnd.seq)
+
+    // 4. Cold backend resuming WITHOUT prior getSessionHistory() also seeds disk turns before streaming!
+    const coldBackend = new CodexAgentBackend({
+      command: codexScript,
+      args: [],
+      defaultCwd: root,
+    })
+    activeClosers.push(() => coldBackend.stop())
+    const coldLive: Array<{ seq: number; type: string }> = []
+    coldBackend.onEvent((sid, evs) => {
+      if (sid === targetPublicId) coldLive.push(...evs)
+    })
+    await coldBackend.followup(targetPublicId, 'cold resume turn')
+    await new Promise<void>((resolve, reject) => {
+      const deadline = Date.now() + 3000
+      const timer = setInterval(() => {
+        if (coldLive.some((e) => e.type === 'turn/end')) {
+          clearInterval(timer)
+          resolve()
+        } else if (Date.now() > deadline) {
+          clearInterval(timer)
+          reject(new Error('timed out waiting for cold codex turn/end'))
+        }
+      }, 20)
+    })
+    const coldHist = await coldBackend.getSessionHistory({ sessionId: targetPublicId, limit: 100 })
+    const coldLiveEnd = coldLive.find((e) => e.type === 'turn/end')!
+    expect(coldLiveEnd.seq).toBeGreaterThan(4)
+    expect(coldHist.events.some((e) => e.seq === coldLiveEnd.seq && e.type === 'turn/end')).toBe(true)
   })
 })

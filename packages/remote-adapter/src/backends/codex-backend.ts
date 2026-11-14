@@ -101,86 +101,114 @@ function buildCodexUserInput(
   return inputs
 }
 
-function toCodexNormalizedEvents(turnsRaw: unknown): NormalizedTranscriptEvent[] {
-  if (!Array.isArray(turnsRaw)) return []
-  const events: NormalizedTranscriptEvent[] = []
-  let seq = 0
+interface CodexCanonicalEventDescriptor {
+  readonly key: string
+  readonly type: string
+  readonly data?: unknown
+}
+
+function buildCodexItemDescriptors(
+  rawItem: Record<string, unknown>,
+  turnKey: string,
+  itemIndex: number,
+): CodexCanonicalEventDescriptor[] {
+  const itemType = rawItem.type
+  const itemId = typeof rawItem.id === 'string' && rawItem.id.length > 0 ? rawItem.id : undefined
+  const itemKey = itemId !== undefined ? `id:${itemId}` : `pos:${itemIndex}`
+  const events: CodexCanonicalEventDescriptor[] = []
   const push = (type: string, data?: unknown): void => {
-    seq += 1
-    events.push(data !== undefined ? { seq, type, data } : { seq, type })
+    const key = `item:${turnKey}:${itemKey}:${type}`
+    events.push(data !== undefined ? { key, type, data } : { key, type })
   }
 
-  for (const rawTurn of turnsRaw) {
+  if (itemType === 'userMessage') {
+    const content = Array.isArray(rawItem.content) ? rawItem.content : []
+    const texts = content
+      .map((c) => (isRecord(c) && typeof c.text === 'string' ? c.text : ''))
+      .filter(Boolean)
+      .join('\n')
+    push('user/message', { message: { role: 'user', content: texts } })
+  } else if (itemType === 'agentMessage') {
+    const text = typeof rawItem.text === 'string' ? rawItem.text : ''
+    push('assistant/message', { message: { role: 'assistant', content: text } })
+  } else if (itemType === 'reasoning') {
+    const summary = Array.isArray(rawItem.summary)
+      ? rawItem.summary.filter((s): s is string => typeof s === 'string').join('\n')
+      : ''
+    if (summary) {
+      push('thinking/message', { text: summary })
+    }
+  } else if (itemType === 'commandExecution') {
+    const command = typeof rawItem.command === 'string' ? rawItem.command : ''
+    push('tool/call', {
+      callId: itemId,
+      toolName: 'bash',
+      args: { command, cwd: rawItem.cwd },
+    })
+    if (rawItem.aggregatedOutput !== undefined || rawItem.exitCode !== undefined) {
+      push('tool/result', {
+        callId: itemId,
+        toolName: 'bash',
+        result: rawItem.aggregatedOutput ?? '',
+        exitCode: rawItem.exitCode ?? null,
+      })
+    }
+  } else if (itemType === 'fileChange') {
+    push('tool/call', {
+      callId: itemId,
+      toolName: 'file_change',
+      args: { changes: rawItem.changes },
+    })
+    push('tool/result', {
+      callId: itemId,
+      toolName: 'file_change',
+      result: { status: rawItem.status },
+    })
+  } else if (itemType === 'mcpToolCall') {
+    const name = `${String(rawItem.server ?? 'mcp')}:${String(rawItem.tool ?? 'call')}`
+    push('tool/call', { callId: itemId, toolName: name, args: rawItem.arguments })
+    if (rawItem.result !== null || rawItem.error !== null) {
+      push('tool/result', {
+        callId: itemId,
+        toolName: name,
+        result: rawItem.result,
+        error: rawItem.error,
+      })
+    }
+  }
+
+  return events
+}
+
+function buildCodexTurnEventDescriptors(turnsRaw: unknown): CodexCanonicalEventDescriptor[] {
+  if (!Array.isArray(turnsRaw)) return []
+  const events: CodexCanonicalEventDescriptor[] = []
+
+  for (let turnIdx = 0; turnIdx < turnsRaw.length; turnIdx += 1) {
+    const rawTurn = turnsRaw[turnIdx]
     if (!isRecord(rawTurn)) continue
-    const turnId = typeof rawTurn.id === 'string' ? rawTurn.id : undefined
-    push('turn/start', turnId !== undefined ? { turnId } : {})
+    const turnId = typeof rawTurn.id === 'string' && rawTurn.id.length > 0 ? rawTurn.id : undefined
+    const turnKey = turnId !== undefined ? `id:${turnId}` : `pos:${turnIdx}`
+    events.push({
+      key: `turn:${turnKey}:start`,
+      type: 'turn/start',
+      data: turnId !== undefined ? { turnId } : {},
+    })
 
     const items = Array.isArray(rawTurn.items) ? rawTurn.items : []
-    for (const rawItem of items) {
+    for (let itemIdx = 0; itemIdx < items.length; itemIdx += 1) {
+      const rawItem = items[itemIdx]
       if (!isRecord(rawItem)) continue
-      const itemType = rawItem.type
-      const itemId = typeof rawItem.id === 'string' ? rawItem.id : undefined
-
-      if (itemType === 'userMessage') {
-        const content = Array.isArray(rawItem.content) ? rawItem.content : []
-        const texts = content
-          .map((c) => (isRecord(c) && typeof c.text === 'string' ? c.text : ''))
-          .filter(Boolean)
-          .join('\n')
-        push('user/message', { message: { role: 'user', content: texts } })
-      } else if (itemType === 'agentMessage') {
-        const text = typeof rawItem.text === 'string' ? rawItem.text : ''
-        push('assistant/message', { message: { role: 'assistant', content: text } })
-      } else if (itemType === 'reasoning') {
-        const summary = Array.isArray(rawItem.summary)
-          ? rawItem.summary.filter((s): s is string => typeof s === 'string').join('\n')
-          : ''
-        if (summary) {
-          push('thinking/message', { text: summary })
-        }
-      } else if (itemType === 'commandExecution') {
-        const command = typeof rawItem.command === 'string' ? rawItem.command : ''
-        push('tool/call', {
-          callId: itemId,
-          toolName: 'bash',
-          args: { command, cwd: rawItem.cwd },
-        })
-        if (rawItem.aggregatedOutput !== undefined || rawItem.exitCode !== undefined) {
-          push('tool/result', {
-            callId: itemId,
-            toolName: 'bash',
-            result: rawItem.aggregatedOutput ?? '',
-            exitCode: rawItem.exitCode ?? null,
-          })
-        }
-      } else if (itemType === 'fileChange') {
-        push('tool/call', {
-          callId: itemId,
-          toolName: 'file_change',
-          args: { changes: rawItem.changes },
-        })
-        push('tool/result', {
-          callId: itemId,
-          toolName: 'file_change',
-          result: { status: rawItem.status },
-        })
-      } else if (itemType === 'mcpToolCall') {
-        const name = `${String(rawItem.server ?? 'mcp')}:${String(rawItem.tool ?? 'call')}`
-        push('tool/call', { callId: itemId, toolName: name, args: rawItem.arguments })
-        if (rawItem.result !== null || rawItem.error !== null) {
-          push('tool/result', {
-            callId: itemId,
-            toolName: name,
-            result: rawItem.result,
-            error: rawItem.error,
-          })
-        }
-      }
+      events.push(...buildCodexItemDescriptors(rawItem, turnKey, itemIdx))
     }
 
-    push('turn/end', {
-      ...(turnId !== undefined ? { turnId } : {}),
-      status: rawTurn.status ?? 'completed',
+    events.push({
+      key: `turn:${turnKey}:end`,
+      type: 'turn/end',
+      data: {
+        ...(turnId !== undefined ? { turnId } : {}),
+        status: rawTurn.status ?? 'completed',
+      },
     })
   }
 
@@ -203,6 +231,9 @@ export class CodexAgentBackend implements ManagedAgentBackend {
   private rpc: NdjsonRpcProcess | undefined
   private startPromise: Promise<NdjsonRpcProcess> | undefined
   private readonly resumedThreads = new Set<string>()
+  private readonly seededHistoryThreads = new Set<string>()
+  private readonly canonicalSeqByThread = new Map<string, Map<string, number>>()
+  private readonly liveItemIndexByTurn = new Map<string, number>()
   private readonly activeTurnByThread = new Map<string, string>()
   private readonly sessions = new Map<string, CachedThreadMeta>()
   private readonly pendingApprovals = new Map<string, PendingCodexApproval>()
@@ -440,6 +471,7 @@ export class CodexAgentBackend implements ManagedAgentBackend {
       throw new RemoteProtocolError('INVALID_REQUEST', 'codex thread/start did not return a thread id')
     }
     this.resumedThreads.add(threadRec.id)
+    this.seededHistoryThreads.add(threadRec.id)
     if (options?.title) {
       await rpc.request('thread/name/set', { threadId: threadRec.id, name: options.title }).catch(() => {})
       threadRec.name = options.title
@@ -482,11 +514,69 @@ export class CodexAgentBackend implements ManagedAgentBackend {
       throw new RemoteProtocolError('INVALID_REQUEST', 'codex thread/fork did not return a thread')
     }
     this.resumedThreads.add(threadRec.id)
+    this.seededHistoryThreads.add(threadRec.id)
     if (params.title) {
       await rpc.request('thread/name/set', { threadId: threadRec.id, name: params.title }).catch(() => {})
       threadRec.name = params.title
     }
     return this.toSessionRef(this.cacheThread(threadRec)!)
+  }
+
+  private getCanonicalSeqMap(nativeId: string): Map<string, number> {
+    let map = this.canonicalSeqByThread.get(nativeId)
+    if (!map) {
+      map = new Map<string, number>()
+      this.canonicalSeqByThread.set(nativeId, map)
+    }
+    return map
+  }
+
+  private nextLiveItemIndex(nativeId: string, turnKey: string): number {
+    const scopeKey = `${nativeId}:${turnKey}`
+    const index = this.liveItemIndexByTurn.get(scopeKey) ?? 0
+    this.liveItemIndexByTurn.set(scopeKey, index + 1)
+    return index
+  }
+
+  private emitCanonicalEvent(
+    nativeId: string,
+    publicId: string,
+    canonicalKey: string | undefined,
+    type: string,
+    data?: unknown,
+  ): void {
+    const event = this.emitter.emit(publicId, type, data)
+    if (canonicalKey !== undefined) {
+      const seqMap = this.getCanonicalSeqMap(nativeId)
+      if (!seqMap.has(canonicalKey)) {
+        seqMap.set(canonicalKey, event.seq)
+      }
+    }
+  }
+
+  private reconcileThreadTurns(
+    nativeId: string,
+    publicId: string,
+    turnsRaw: unknown,
+  ): NormalizedTranscriptEvent[] {
+    const descriptors = buildCodexTurnEventDescriptors(turnsRaw)
+    const seqMap = this.getCanonicalSeqMap(nativeId)
+    const events: NormalizedTranscriptEvent[] = []
+    for (const desc of descriptors) {
+      let seq = seqMap.get(desc.key)
+      if (seq === undefined) {
+        seq = this.emitter.nextSeq(publicId)
+        seqMap.set(desc.key, seq)
+      }
+      events.push(
+        desc.data !== undefined
+          ? { seq, type: desc.type, data: desc.data }
+          : { seq, type: desc.type },
+      )
+    }
+    events.sort((a, b) => a.seq - b.seq)
+    this.seededHistoryThreads.add(nativeId)
+    return events
   }
 
   private async ensureResumed(rpc: NdjsonRpcProcess, nativeId: string): Promise<void> {
@@ -495,11 +585,29 @@ export class CodexAgentBackend implements ManagedAgentBackend {
     const res = await rpc.request<{ thread?: Record<string, unknown> }>('thread/resume', {
       threadId: nativeId,
       approvalPolicy: 'on-request',
-      excludeTurns: true,
       ...(meta?.model?.model ? { model: meta.model.model } : {}),
     })
+    const publicId = formatNamespacedSessionId('codex', nativeId)
     if (isRecord(res?.thread)) {
       this.cacheThread(res.thread)
+      if (!this.seededHistoryThreads.has(nativeId) && Array.isArray(res.thread.turns)) {
+        this.reconcileThreadTurns(nativeId, publicId, res.thread.turns)
+      }
+    }
+    if (!this.seededHistoryThreads.has(nativeId)) {
+      try {
+        const readRes = await rpc.request<{ thread?: Record<string, unknown> }>('thread/read', {
+          threadId: nativeId,
+          includeTurns: true,
+        })
+        if (isRecord(readRes?.thread)) {
+          this.cacheThread(readRes.thread)
+          if (Array.isArray(readRes.thread.turns)) {
+            this.reconcileThreadTurns(nativeId, publicId, readRes.thread.turns)
+          }
+        }
+      } catch {}
+      this.seededHistoryThreads.add(nativeId)
     }
     this.resumedThreads.add(nativeId)
   }
@@ -724,17 +832,15 @@ export class CodexAgentBackend implements ManagedAgentBackend {
       throw new RemoteProtocolError('INVALID_REQUEST', `codex thread '${nativeId}' not found`)
     }
     this.cacheThread(res.thread)
-    const normalized = toCodexNormalizedEvents(res.thread.turns)
+    const publicId = formatNamespacedSessionId('codex', nativeId)
+    const normalized = this.reconcileThreadTurns(nativeId, publicId, res.thread.turns)
     const page = paginateNormalizedTranscriptEvents(normalized, {
       beforeSeq: params.beforeSeq,
       limit: params.limit,
       minTurns: params.minTurns,
     })
-    if (page.latestSeq !== null) {
-      this.emitter.seedSeq(formatNamespacedSessionId('codex', nativeId), page.latestSeq)
-    }
     return {
-      sessionId: formatNamespacedSessionId('codex', nativeId),
+      sessionId: publicId,
       events: page.events,
       hasMore: page.hasMore,
       oldestSeq: page.oldestSeq,
@@ -744,24 +850,41 @@ export class CodexAgentBackend implements ManagedAgentBackend {
   }
 
   async searchSessions(params: SessionSearchParams): Promise<SessionSearchResult> {
-    const list = await this.listSessions()
     const sources: Array<{
       readonly sessionId: string
       readonly title?: string | undefined
       readonly updatedAt?: string | undefined
       readonly events: readonly NormalizedTranscriptEvent[]
     }> = []
-    for (const ref of list.slice(0, 12)) {
-      if (params.sessionId !== undefined && ref.id !== params.sessionId) continue
-      const hist = await this.getSessionHistory({ sessionId: ref.id, limit: 100 }).catch(() => undefined)
-      if (!hist) continue
-      sources.push({
-        sessionId: ref.id,
-        ...(ref.title !== undefined ? { title: ref.title } : {}),
-        ...(ref.updatedAtMs !== undefined ? { updatedAt: new Date(ref.updatedAtMs).toISOString() } : {}),
-        events: hist.events,
-      })
+
+    if (params.sessionId !== undefined) {
+      // Scoped search targets the explicit session directly instead of sampling top-N recent threads.
+      const nativeId = this.resolveNativeId(params.sessionId)
+      const publicId = formatNamespacedSessionId('codex', nativeId)
+      const hist = await this.getSessionHistory({ sessionId: publicId, limit: 100 }).catch(() => undefined)
+      if (hist) {
+        const meta = this.sessions.get(nativeId)
+        sources.push({
+          sessionId: publicId,
+          ...(meta?.title !== undefined ? { title: meta.title } : {}),
+          ...(meta?.updatedAtMs !== undefined ? { updatedAt: new Date(meta.updatedAtMs).toISOString() } : {}),
+          events: hist.events,
+        })
+      }
+    } else {
+      const list = await this.listSessions()
+      for (const ref of list.slice(0, 12)) {
+        const hist = await this.getSessionHistory({ sessionId: ref.id, limit: 100 }).catch(() => undefined)
+        if (!hist) continue
+        sources.push({
+          sessionId: ref.id,
+          ...(ref.title !== undefined ? { title: ref.title } : {}),
+          ...(ref.updatedAtMs !== undefined ? { updatedAt: new Date(ref.updatedAtMs).toISOString() } : {}),
+          events: hist.events,
+        })
+      }
     }
+
     const res = searchSessionCollections({
       query: params.query,
       ...(params.limit !== undefined ? { limit: params.limit } : {}),
@@ -814,25 +937,43 @@ export class CodexAgentBackend implements ManagedAgentBackend {
     }
     if (method === 'turn/started') {
       const turnRec = isRecord(params.turn) ? params.turn : undefined
-      const turnId = typeof turnRec?.id === 'string' ? turnRec.id : undefined
+      const turnId = typeof turnRec?.id === 'string' && turnRec.id.length > 0 ? turnRec.id : undefined
       if (turnId) this.activeTurnByThread.set(nativeId, turnId)
       const meta = this.sessions.get(nativeId)
       if (meta) meta.status = 'running'
-      this.emitter.emit(publicId, 'turn/start', turnId ? { turnId } : {})
+      this.emitCanonicalEvent(
+        nativeId,
+        publicId,
+        turnId !== undefined ? `turn:id:${turnId}:start` : undefined,
+        'turn/start',
+        turnId ? { turnId } : {},
+      )
       return
     }
     if (method === 'turn/completed') {
       const turnRec = isRecord(params.turn) ? params.turn : undefined
+      const turnId = typeof turnRec?.id === 'string' && turnRec.id.length > 0
+        ? turnRec.id
+        : this.activeTurnByThread.get(nativeId)
       this.activeTurnByThread.delete(nativeId)
+      if (turnId) {
+        this.liveItemIndexByTurn.delete(`${nativeId}:id:${turnId}`)
+      }
       const meta = this.sessions.get(nativeId)
       if (meta) {
         meta.status = 'idle'
         meta.updatedAtMs = Date.now()
       }
-      this.emitter.emit(publicId, 'turn/end', {
-        ...(typeof turnRec?.id === 'string' ? { turnId: turnRec.id } : {}),
-        status: turnRec?.status ?? 'completed',
-      })
+      this.emitCanonicalEvent(
+        nativeId,
+        publicId,
+        turnId !== undefined ? `turn:id:${turnId}:end` : undefined,
+        'turn/end',
+        {
+          ...(typeof turnRec?.id === 'string' ? { turnId: turnRec.id } : {}),
+          status: turnRec?.status ?? 'completed',
+        },
+      )
       return
     }
     if (method === 'item/agentMessage/delta' && typeof params.delta === 'string') {
@@ -880,10 +1021,20 @@ export class CodexAgentBackend implements ManagedAgentBackend {
       return
     }
     if (method === 'item/completed' && isRecord(params.item)) {
-      const converted = toCodexNormalizedEvents([{ items: [params.item] }])
+      const turnId = typeof params.turnId === 'string' && params.turnId.length > 0
+        ? params.turnId
+        : this.activeTurnByThread.get(nativeId)
+      const turnKey = turnId !== undefined ? `id:${turnId}` : 'live'
+      const itemIndex = this.nextLiveItemIndex(nativeId, turnKey)
+      const converted = buildCodexItemDescriptors(params.item, turnKey, itemIndex)
       for (const ev of converted) {
-        if (ev.type === 'turn/start' || ev.type === 'turn/end') continue
-        this.emitter.emit(publicId, ev.type, ev.data)
+        this.emitCanonicalEvent(
+          nativeId,
+          publicId,
+          turnId !== undefined ? ev.key : undefined,
+          ev.type,
+          ev.data,
+        )
       }
     }
   }
