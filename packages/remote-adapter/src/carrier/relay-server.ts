@@ -60,7 +60,9 @@ export interface BlindRelayServerOptions {
   readonly ipv6PrefixLength?: number | undefined
   /** Sliding-window global pre-auth admission cap (default: max(32, floor(maxConnections / 2))). */
   readonly maxPreAuthConnectionsPerWindow?: number | undefined
-  /** Sliding window length for global pre-auth rate budget in ms (default: 5000). */
+  /** Sliding-window per-IP/prefix pre-auth admission cap (default: max(1, floor(global / 4))). */
+  readonly maxPreAuthConnectionsPerIpPerWindow?: number | undefined
+  /** Sliding window length for global/per-IP pre-auth rate budget in ms (default: 5000). */
   readonly preAuthRateWindowMs?: number | undefined
   /** Explicit trusted reverse-proxy IPs/CIDRs allowed to supply forwarded client IPs (fail-closed by default). */
   readonly trustedProxies?: readonly string[] | undefined
@@ -176,6 +178,9 @@ export class BlindRelayServer {
       ...(options.ipv6PrefixLength !== undefined ? { ipv6PrefixLength: options.ipv6PrefixLength } : {}),
       ...(options.maxPreAuthConnectionsPerWindow !== undefined
         ? { maxPreAuthConnectionsPerWindow: options.maxPreAuthConnectionsPerWindow }
+        : {}),
+      ...(options.maxPreAuthConnectionsPerIpPerWindow !== undefined
+        ? { maxPreAuthConnectionsPerIpPerWindow: options.maxPreAuthConnectionsPerIpPerWindow }
         : {}),
       ...(options.preAuthRateWindowMs !== undefined
         ? { preAuthRateWindowMs: options.preAuthRateWindowMs }

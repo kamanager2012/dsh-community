@@ -525,12 +525,58 @@ export class PerIpConnectionTracker {
   }
 }
 
+interface SlidingRateWindow {
+  timestamps: number[]
+  head: number
+}
+
+function pruneSlidingWindow(window: SlidingRateWindow, cutoff: number): void {
+  while (window.head < window.timestamps.length && window.timestamps[window.head]! <= cutoff) {
+    window.head += 1
+  }
+  if (window.head > 1024 && window.head * 2 >= window.timestamps.length) {
+    window.timestamps = window.timestamps.slice(window.head)
+    window.head = 0
+  }
+}
+
+function tryConsumeSlidingWindow(
+  window: SlidingRateWindow,
+  maxRequests: number,
+  windowMs: number,
+  now: number,
+): boolean {
+  pruneSlidingWindow(window, now - windowMs)
+  if (window.timestamps.length - window.head >= maxRequests) {
+    return false
+  }
+  window.timestamps.push(now)
+  return true
+}
+
+function rejectHttp429(res: ServerResponse, errorMessage: string): false {
+  res.writeHead(429, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'X-Content-Type-Options': 'nosniff',
+    'Cache-Control': 'no-store',
+  })
+  res.end(JSON.stringify({ error: errorMessage }))
+  return false
+}
+
+function rejectSocketWithStatus(socket: Socket, statusLine: string): false {
+  socket.write(`${statusLine}\r\n\r\n`)
+  socket.destroy()
+  return false
+}
+
 export interface ProxyAwareHttpConnectionGuardOptions {
   readonly maxConnections: number
   readonly maxConnectionsPerIp: number
   readonly registerTimeoutMs: number
   readonly ipv6PrefixLength?: number | undefined
   readonly maxPreAuthConnectionsPerWindow?: number | undefined
+  readonly maxPreAuthConnectionsPerIpPerWindow?: number | undefined
   readonly preAuthRateWindowMs?: number | undefined
   readonly trustedProxies?: readonly string[] | undefined
   readonly onPerIpRejected: () => void
@@ -539,8 +585,8 @@ export interface ProxyAwareHttpConnectionGuardOptions {
 
 /**
  * Shared connection admission, pre-handshake timeout, IPv6-prefix-aggregated per-bucket cap,
- * and global pre-auth admission rate guard used by BlindGatewayServer, BlindRelayServer, and
- * SelfHostedSignalingServer.
+ * per-IP/prefix admission rate window, and global pre-auth admission rate guard used by
+ * BlindGatewayServer, BlindRelayServer, and SelfHostedSignalingServer.
  */
 export class ProxyAwareHttpConnectionGuard {
   readonly trustedProxies: readonly TrustedProxyCidr[]
@@ -548,14 +594,16 @@ export class ProxyAwareHttpConnectionGuard {
   private readonly maxConnections: number
   private readonly registerTimeoutMs: number
   private readonly maxPreAuthConnectionsPerWindow: number
+  private readonly maxPreAuthConnectionsPerIpPerWindow: number
   private readonly preAuthRateWindowMs: number
+  private readonly maxTrackedRateWindowIps: number
   private readonly onPerIpRejected: () => void
   private readonly onPreAuthRateRejected: (() => void) | undefined
   private readonly openSockets = new Set<Socket>()
   private readonly pendingHandshakeTimers = new Map<Socket, ReturnType<typeof setTimeout>>()
   private readonly preAuthChargedSockets = new WeakSet<Socket>()
-  private preAuthTimestamps: number[] = []
-  private preAuthHead = 0
+  private readonly preAuthGlobalWindow: SlidingRateWindow = { timestamps: [], head: 0 }
+  private readonly perIpPreAuthWindows = new Map<string, SlidingRateWindow>()
 
   constructor(options: ProxyAwareHttpConnectionGuardOptions) {
     this.trustedProxies = parseTrustedProxyCidrs(options.trustedProxies)
@@ -569,6 +617,18 @@ export class ProxyAwareHttpConnectionGuard {
         `maxPreAuthConnectionsPerWindow must be a positive integer, received '${String(this.maxPreAuthConnectionsPerWindow)}'`,
       )
     }
+    this.maxPreAuthConnectionsPerIpPerWindow =
+      options.maxPreAuthConnectionsPerIpPerWindow ??
+      Math.max(1, Math.floor(this.maxPreAuthConnectionsPerWindow / 4))
+    if (
+      !Number.isInteger(this.maxPreAuthConnectionsPerIpPerWindow) ||
+      this.maxPreAuthConnectionsPerIpPerWindow < 1
+    ) {
+      throw new RemoteCryptoError(
+        'HANDSHAKE_FAILED',
+        `maxPreAuthConnectionsPerIpPerWindow must be a positive integer, received '${String(this.maxPreAuthConnectionsPerIpPerWindow)}'`,
+      )
+    }
     this.preAuthRateWindowMs = options.preAuthRateWindowMs ?? 5_000
     if (!Number.isInteger(this.preAuthRateWindowMs) || this.preAuthRateWindowMs < 1) {
       throw new RemoteCryptoError(
@@ -576,6 +636,7 @@ export class ProxyAwareHttpConnectionGuard {
         `preAuthRateWindowMs must be a positive integer, received '${String(this.preAuthRateWindowMs)}'`,
       )
     }
+    this.maxTrackedRateWindowIps = Math.max(256, this.maxConnections * 8)
     this.onPerIpRejected = options.onPerIpRejected
     this.onPreAuthRateRejected = options.onPreAuthRateRejected
     this.ipTracker = new PerIpConnectionTracker(options.maxConnectionsPerIp, options.ipv6PrefixLength)
@@ -585,23 +646,65 @@ export class ProxyAwareHttpConnectionGuard {
     return this.openSockets.size
   }
 
-  private tryConsumeGlobalPreAuthBudget(): boolean {
-    const now = Date.now()
-    const cutoff = now - this.preAuthRateWindowMs
-    while (
-      this.preAuthHead < this.preAuthTimestamps.length &&
-      this.preAuthTimestamps[this.preAuthHead]! <= cutoff
-    ) {
-      this.preAuthHead += 1
+  private tryConsumePerIpPreAuthBudget(clientIp: string | undefined, now = Date.now()): boolean {
+    const key = this.ipTracker.bucketKey(clientIp)
+    const existing = this.perIpPreAuthWindows.get(key)
+    if (existing !== undefined) {
+      // Refresh LRU order so saturated senders cannot be evicted by other traffic
+      this.perIpPreAuthWindows.delete(key)
+      this.perIpPreAuthWindows.set(key, existing)
+      return tryConsumeSlidingWindow(
+        existing,
+        this.maxPreAuthConnectionsPerIpPerWindow,
+        this.preAuthRateWindowMs,
+        now,
+      )
     }
-    if (this.preAuthHead > 1024 && this.preAuthHead * 2 >= this.preAuthTimestamps.length) {
-      this.preAuthTimestamps = this.preAuthTimestamps.slice(this.preAuthHead)
-      this.preAuthHead = 0
+
+    if (this.perIpPreAuthWindows.size >= this.maxTrackedRateWindowIps) {
+      const cutoff = now - this.preAuthRateWindowMs
+      for (const [candidateKey, candidateWindow] of this.perIpPreAuthWindows.entries()) {
+        pruneSlidingWindow(candidateWindow, cutoff)
+        if (candidateWindow.head >= candidateWindow.timestamps.length) {
+          this.perIpPreAuthWindows.delete(candidateKey)
+        }
+      }
+      if (this.perIpPreAuthWindows.size >= this.maxTrackedRateWindowIps) {
+        const oldestKey = this.perIpPreAuthWindows.keys().next().value
+        if (oldestKey !== undefined) {
+          this.perIpPreAuthWindows.delete(oldestKey)
+        }
+      }
     }
-    if (this.preAuthTimestamps.length - this.preAuthHead >= this.maxPreAuthConnectionsPerWindow) {
+
+    this.perIpPreAuthWindows.set(key, { timestamps: [now], head: 0 })
+    return true
+  }
+
+  private tryConsumeGlobalPreAuthBudget(now = Date.now()): boolean {
+    return tryConsumeSlidingWindow(
+      this.preAuthGlobalWindow,
+      this.maxPreAuthConnectionsPerWindow,
+      this.preAuthRateWindowMs,
+      now,
+    )
+  }
+
+  private tryConsumePreAuthBudgetsForIp(
+    clientIp: string | undefined,
+    onPerIpReject: () => void,
+    onGlobalReject: () => void,
+  ): boolean {
+    if (!this.tryConsumePerIpPreAuthBudget(clientIp)) {
+      this.onPerIpRejected()
+      onPerIpReject()
       return false
     }
-    this.preAuthTimestamps.push(now)
+    if (!this.tryConsumeGlobalPreAuthBudget()) {
+      this.onPreAuthRateRejected?.()
+      onGlobalReject()
+      return false
+    }
     return true
   }
 
@@ -619,30 +722,27 @@ export class ProxyAwareHttpConnectionGuard {
 
   handleConnection(socket: Socket): boolean {
     if (this.openSockets.size >= this.maxConnections) {
-      socket.write('HTTP/1.1 503 Service Unavailable\r\n\r\n')
-      socket.destroy()
-      return false
+      return rejectSocketWithStatus(socket, 'HTTP/1.1 503 Service Unavailable')
     }
 
     if (!this.isTrustedProxySocket(socket)) {
       if (this.ipTracker.isAtCap(socket.remoteAddress)) {
         this.onPerIpRejected()
-        socket.write('HTTP/1.1 429 Too Many Requests\r\n\r\n')
-        socket.destroy()
-        return false
+        return rejectSocketWithStatus(socket, 'HTTP/1.1 429 Too Many Requests')
       }
-      if (!this.tryConsumeGlobalPreAuthBudget()) {
-        this.onPreAuthRateRejected?.()
-        socket.write('HTTP/1.1 429 Too Many Requests\r\n\r\n')
-        socket.destroy()
+      if (
+        !this.tryConsumePreAuthBudgetsForIp(
+          socket.remoteAddress,
+          () => rejectSocketWithStatus(socket, 'HTTP/1.1 429 Too Many Requests'),
+          () => rejectSocketWithStatus(socket, 'HTTP/1.1 429 Too Many Requests'),
+        )
+      ) {
         return false
       }
       this.preAuthChargedSockets.add(socket)
       if (!this.ipTracker.tryAcquire(socket)) {
         this.onPerIpRejected()
-        socket.write('HTTP/1.1 429 Too Many Requests\r\n\r\n')
-        socket.destroy()
-        return false
+        return rejectSocketWithStatus(socket, 'HTTP/1.1 429 Too Many Requests')
       }
     }
 
@@ -673,33 +773,20 @@ export class ProxyAwareHttpConnectionGuard {
     const clientIp = resolveClientIpFromRequest(req, req.socket.remoteAddress, this.trustedProxies)
     if (this.ipTracker.isAtCap(clientIp)) {
       this.onPerIpRejected()
-      res.writeHead(429, {
-        'Content-Type': 'application/json; charset=utf-8',
-        'X-Content-Type-Options': 'nosniff',
-        'Cache-Control': 'no-store',
-      })
-      res.end('{"error":"too many requests"}')
-      return false
+      return rejectHttp429(res, 'too many requests')
     }
-    if (!this.tryConsumeGlobalPreAuthBudget()) {
-      this.onPreAuthRateRejected?.()
-      res.writeHead(429, {
-        'Content-Type': 'application/json; charset=utf-8',
-        'X-Content-Type-Options': 'nosniff',
-        'Cache-Control': 'no-store',
-      })
-      res.end('{"error":"too many pre-auth requests"}')
+    if (
+      !this.tryConsumePreAuthBudgetsForIp(
+        clientIp,
+        () => rejectHttp429(res, 'too many requests'),
+        () => rejectHttp429(res, 'too many pre-auth requests'),
+      )
+    ) {
       return false
     }
     if (!this.ipTracker.tryAcquireHttpRequest(req, res, clientIp)) {
       this.onPerIpRejected()
-      res.writeHead(429, {
-        'Content-Type': 'application/json; charset=utf-8',
-        'X-Content-Type-Options': 'nosniff',
-        'Cache-Control': 'no-store',
-      })
-      res.end('{"error":"too many requests"}')
-      return false
+      return rejectHttp429(res, 'too many requests')
     }
     return true
   }
@@ -713,29 +800,29 @@ export class ProxyAwareHttpConnectionGuard {
     if (!this.ipTracker.has(socket)) {
       const openCapExceeded = !this.openSockets.has(socket) && this.openSockets.size >= this.maxConnections
       if (openCapExceeded || this.ipTracker.totalTracked >= this.maxConnections) {
-        socket.write('HTTP/1.1 503 Service Unavailable\r\n\r\n')
-        socket.destroy()
+        rejectSocketWithStatus(socket, 'HTTP/1.1 503 Service Unavailable')
         return undefined
       }
       if (this.ipTracker.isAtCap(clientIp)) {
         this.onPerIpRejected()
-        socket.write('HTTP/1.1 429 Too Many Requests\r\n\r\n')
-        socket.destroy()
+        rejectSocketWithStatus(socket, 'HTTP/1.1 429 Too Many Requests')
         return undefined
       }
       if (preResolvedClientIp === undefined && !this.preAuthChargedSockets.has(socket)) {
-        if (!this.tryConsumeGlobalPreAuthBudget()) {
-          this.onPreAuthRateRejected?.()
-          socket.write('HTTP/1.1 429 Too Many Requests\r\n\r\n')
-          socket.destroy()
+        if (
+          !this.tryConsumePreAuthBudgetsForIp(
+            clientIp,
+            () => rejectSocketWithStatus(socket, 'HTTP/1.1 429 Too Many Requests'),
+            () => rejectSocketWithStatus(socket, 'HTTP/1.1 429 Too Many Requests'),
+          )
+        ) {
           return undefined
         }
         this.preAuthChargedSockets.add(socket)
       }
       if (!this.ipTracker.tryAcquire(socket, clientIp)) {
         this.onPerIpRejected()
-        socket.write('HTTP/1.1 429 Too Many Requests\r\n\r\n')
-        socket.destroy()
+        rejectSocketWithStatus(socket, 'HTTP/1.1 429 Too Many Requests')
         return undefined
       }
     }
@@ -752,7 +839,8 @@ export class ProxyAwareHttpConnectionGuard {
     }
     this.pendingHandshakeTimers.clear()
     this.openSockets.clear()
-    this.preAuthTimestamps = []
-    this.preAuthHead = 0
+    this.preAuthGlobalWindow.timestamps = []
+    this.preAuthGlobalWindow.head = 0
+    this.perIpPreAuthWindows.clear()
   }
 }

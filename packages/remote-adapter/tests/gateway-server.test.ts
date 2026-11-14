@@ -818,4 +818,122 @@ describe('BlindGatewayServer', () => {
     recovered.socket.destroy()
     expect(recovered.statusCode).toBe(101)
   })
+
+  it('enforces per-IP and IPv6 prefix pre-auth admission windows before global budget', async () => {
+    expect(
+      () =>
+        new BlindGatewayServer({
+          enabled: true,
+          host: '127.0.0.1',
+          port: 0,
+          maxPreAuthConnectionsPerIpPerWindow: 0,
+        }),
+    ).toThrow(/maxPreAuthConnectionsPerIpPerWindow/i)
+
+    // Single attacker /64 hammering /healthz sequentially cannot starve global pre-auth budget
+    const httpGw = new BlindGatewayServer({
+      enabled: true,
+      host: '127.0.0.1',
+      port: 0,
+      maxConnections: 32,
+      maxConnectionsPerIp: 1,
+      maxPreAuthConnectionsPerWindow: 3, // default per-IP window => max(1, floor(3 / 4)) = 1
+      preAuthRateWindowMs: 1_000,
+      trustedProxies: ['127.0.0.1'],
+    })
+    await httpGw.start()
+    cleanups.push(() => httpGw.stop())
+    const httpAddr = httpGw.getBoundAddress()!
+
+    const sendHealthz = async (forwardedIp: string) => {
+      const res = await fetch(`http://127.0.0.1:${httpAddr.port}/healthz`, {
+        headers: { 'X-Forwarded-For': forwardedIp },
+      })
+      const body = (await res.json()) as { ok?: boolean; error?: string }
+      return { status: res.status, body }
+    }
+
+    const r1 = await sendHealthz('2001:db8:77::1')
+    const r2Same64 = await sendHealthz('2001:db8:77::2')
+    const r3Same64 = await sendHealthz('2001:db8:77::3')
+    expect(r1.status).toBe(200)
+    expect(r2Same64.status).toBe(429)
+    expect(r2Same64.body.error).toBe('too many requests')
+    expect(r3Same64.status).toBe(429)
+    expect(httpGw.getStats().rejectedPerIpCap).toBe(2)
+    expect(httpGw.getStats().rejectedPreAuthRate).toBe(0)
+
+    const otherClient1 = await sendHealthz('198.51.100.44')
+    const otherClient2 = await sendHealthz('203.0.113.45')
+    const overGlobal = await sendHealthz('203.0.113.46')
+    expect(otherClient1.status).toBe(200)
+    expect(otherClient2.status).toBe(200)
+    expect(overGlobal.status).toBe(429)
+    expect(overGlobal.body.error).toBe('too many pre-auth requests')
+    expect(httpGw.getStats().rejectedPreAuthRate).toBe(1)
+
+    // Explicit maxPreAuthConnectionsPerIpPerWindow on WebSocket upgrades behind trusted proxy
+    const wsGw = new BlindGatewayServer({
+      enabled: true,
+      host: '127.0.0.1',
+      port: 0,
+      maxConnections: 32,
+      maxConnectionsPerIp: 4,
+      maxPreAuthConnectionsPerWindow: 4,
+      maxPreAuthConnectionsPerIpPerWindow: 2,
+      preAuthRateWindowMs: 1_000,
+      trustedProxies: ['127.0.0.1'],
+    })
+    await wsGw.start()
+    cleanups.push(() => wsGw.stop())
+    const wsAddr = wsGw.getBoundAddress()!
+
+    const wsStatuses: number[] = []
+    for (let i = 0; i < 4; i++) {
+      const up = await openRawWebSocketUpgrade('127.0.0.1', wsAddr.port, i < 2 ? '/relay' : '/signal', {
+        'X-Forwarded-For': '198.51.100.10',
+      })
+      wsStatuses.push(up.statusCode)
+      up.socket.destroy()
+    }
+    expect(wsStatuses).toEqual([101, 101, 429, 429])
+    expect(wsGw.getStats().rejectedPerIpCap).toBe(2)
+    expect(wsGw.getStats().rejectedPreAuthRate).toBe(0)
+
+    const otherWs = await openRawWebSocketUpgrade('127.0.0.1', wsAddr.port, '/signal', {
+      'X-Forwarded-For': '203.0.113.55',
+    })
+    otherWs.socket.destroy()
+    expect(otherWs.statusCode).toBe(101)
+
+    // Direct untrusted TCP connection path also enforces per-IP window before global budget
+    const directRelay = new BlindRelayServer({
+      enabled: true,
+      host: '127.0.0.1',
+      port: 0,
+      maxConnections: 16,
+      maxConnectionsPerIp: 4,
+      maxPreAuthConnectionsPerWindow: 3,
+      maxPreAuthConnectionsPerIpPerWindow: 1,
+      preAuthRateWindowMs: 90,
+    })
+    await directRelay.start()
+    cleanups.push(() => directRelay.stop())
+    const directAddr = directRelay.getBoundAddress()!
+
+    const d1 = await openRawWebSocketUpgrade('127.0.0.1', directAddr.port, '/relay')
+    d1.socket.destroy()
+    expect(d1.statusCode).toBe(101)
+
+    const d2 = await openRawWebSocketUpgrade('127.0.0.1', directAddr.port, '/relay')
+    d2.socket.destroy()
+    expect(d2.statusCode).toBe(429)
+    expect(directRelay.getStats().rejectedPerIpCap).toBeGreaterThanOrEqual(1)
+    expect(directRelay.getStats().rejectedPreAuthRate).toBe(0)
+
+    await new Promise((resolve) => setTimeout(resolve, 110))
+    const d3Recovered = await openRawWebSocketUpgrade('127.0.0.1', directAddr.port, '/relay')
+    d3Recovered.socket.destroy()
+    expect(d3Recovered.statusCode).toBe(101)
+  })
 })
