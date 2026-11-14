@@ -306,7 +306,17 @@ export class SessionTimelineState implements SessionStoreState {
     if (snap.model !== undefined) this.model = snap.model
     this.todos = [...snap.todos]
     if (snap.usage !== undefined) this.usage = snap.usage
-    this.pendingApprovals = [...snap.pendingApprovals]
+    const prevByCallId = new Map(this.pendingApprovals.map((a) => [a.callId, a]))
+    this.pendingApprovals = snap.pendingApprovals.map((approval) => {
+      if (approval.args !== undefined) return approval
+      const prev = prevByCallId.get(approval.callId)
+      if (prev?.args !== undefined) return { ...approval, args: prev.args }
+      const matchedTool = this.items.find(
+        (it): it is Extract<TimelineItem, { kind: 'tool' }> =>
+          it.kind === 'tool' && it.callId === approval.callId && it.argumentsText.length > 0,
+      )
+      return matchedTool ? { ...approval, args: matchedTool.argumentsText } : approval
+    })
     this.pendingQuestions = [...snap.pendingQuestions]
     if (snap.oldestSeq !== undefined && snap.oldestSeq !== null) this.oldestSeq = snap.oldestSeq
     if (snap.latestSeq !== undefined && snap.latestSeq !== null && snap.latestSeq > this.highestSeq) {
@@ -728,16 +738,39 @@ export class SessionTimelineState implements SessionStoreState {
       case 'approval.request':
       case 'approval/request': {
         if (!data || typeof data.callId !== 'string') return
+        const matchedTool = this.items.find(
+          (it): it is Extract<TimelineItem, { kind: 'tool' }> =>
+            it.kind === 'tool' && it.callId === data.callId && it.argumentsText.length > 0,
+        )
+        const rawArgs =
+          data.args !== undefined
+            ? data.args
+            : data.input !== undefined
+              ? data.input
+              : data.rawInput !== undefined
+                ? data.rawInput
+                : data.locations !== undefined
+                  ? data.locations
+                  : matchedTool?.argumentsText
         const approval: PendingApprovalSnapshot = {
           callId: data.callId,
           toolName: String(data.toolName ?? data.tool ?? 'tool'),
           ...(typeof data.reason === 'string' ? { reason: data.reason } : {}),
           ...(typeof data.summary === 'string' ? { summary: data.summary } : {}),
+          ...(rawArgs !== undefined ? { args: rawArgs } : {}),
           sessionId: this.sessionId,
         }
-        if (!this.pendingApprovals.some((a) => a.callId === approval.callId)) {
+        const existingIdx = this.pendingApprovals.findIndex((a) => a.callId === approval.callId)
+        if (existingIdx < 0) {
           this.pendingApprovals = [...this.pendingApprovals, approval]
           if (markUnread) this.unreadCount += 1
+        } else {
+          const prev = this.pendingApprovals[existingIdx]!
+          if (prev.args === undefined && approval.args !== undefined) {
+            this.pendingApprovals = this.pendingApprovals.map((a, idx) =>
+              idx === existingIdx ? { ...a, ...approval } : a,
+            )
+          }
         }
         return
       }

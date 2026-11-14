@@ -490,6 +490,8 @@ interface PendingApproval {
   readonly sessionId: string
   readonly toolName: string
   readonly reason?: string | undefined
+  readonly summary?: string | undefined
+  readonly args?: unknown
   resolve(outcome: 'allowed-once' | 'rejected' | 'cancelled' | 'unavailable'): void
   cleanup(): void
 }
@@ -700,6 +702,13 @@ export class OfficialHostCordisBridge {
         const toolName =
           typeof req?.toolName === 'string' && req.toolName.length > 0 ? req.toolName : 'tool'
         const reason = typeof req?.reason === 'string' ? req.reason : undefined
+        const summary = typeof req?.summary === 'string' ? req.summary : undefined
+        const args =
+          req?.args !== undefined
+            ? req.args
+            : req?.input !== undefined
+              ? req.input
+              : req?.params
 
         return new Promise<'allowed-once' | 'rejected' | 'cancelled' | 'unavailable'>((resolve) => {
           const onAbort = (): void => {
@@ -717,6 +726,8 @@ export class OfficialHostCordisBridge {
             sessionId: agentId,
             toolName,
             ...(reason !== undefined ? { reason } : {}),
+            ...(summary !== undefined ? { summary } : {}),
+            ...(args !== undefined ? { args } : {}),
             resolve,
             cleanup: () => {
               if (signal && typeof signal.removeEventListener === 'function') {
@@ -729,6 +740,8 @@ export class OfficialHostCordisBridge {
             callId,
             toolName,
             ...(reason !== undefined ? { reason } : {}),
+            ...(summary !== undefined ? { summary } : {}),
+            ...(args !== undefined ? { args } : {}),
           })
         })
       })
@@ -1267,6 +1280,8 @@ export class OfficialHostCordisBridge {
         callId: pending.callId,
         toolName: pending.toolName,
         ...(pending.reason !== undefined ? { reason: pending.reason } : {}),
+        ...(pending.summary !== undefined ? { summary: pending.summary } : {}),
+        ...(pending.args !== undefined ? { args: pending.args } : {}),
         sessionId: pending.sessionId,
       })
     }

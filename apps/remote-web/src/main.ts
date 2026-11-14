@@ -1272,12 +1272,66 @@ function renderPendingActionsTray(): void {
   }
 }
 
+const MAX_APPROVAL_ARGS_CHARS = 8_192
+
+function formatApprovalArgsText(rawArgs: unknown): string {
+  if (rawArgs === undefined || rawArgs === null) return ''
+  let text: string
+  if (typeof rawArgs === 'string') {
+    text = rawArgs
+  } else {
+    try {
+      text = JSON.stringify(rawArgs, null, 2) ?? ''
+    } catch {
+      text = String(rawArgs)
+    }
+  }
+  const trimmed = text.trim()
+  if (trimmed.length <= MAX_APPROVAL_ARGS_CHARS) return trimmed
+  return `${trimmed.slice(0, MAX_APPROVAL_ARGS_CHARS)}\n… (truncated, ${trimmed.length} chars total)`
+}
+
 function buildApprovalCard(approval: PendingApprovalSnapshot): HTMLElement {
   const card = el('div', 'action-card approval-card')
   card.appendChild(el('div', 'action-title', `Approval Required: ${approval.toolName}`))
+
+  const sid = approval.sessionId ?? state.activeSessionId
+  const sess = sid ? state.sessions.find((s) => s.id === sid) : undefined
+  const tl = sid ? state.timelines.get(sid) : undefined
+  const sessionLabel = sess?.title ?? tl?.title ?? sid
+  const workspacePath = sess?.workspace?.repoRoot ?? sess?.cwd
+  const contextParts: string[] = []
+  if (sessionLabel) {
+    contextParts.push(`Session: ${sessionLabel}${sess?.engine ? ` (${sess.engine})` : ''}`)
+  }
+  if (workspacePath) {
+    const branch = sess?.workspace?.branch ? ` [${sess.workspace.branch}]` : ''
+    contextParts.push(`Workspace: ${workspacePath}${branch}`)
+  }
+  if (contextParts.length > 0) {
+    card.appendChild(el('div', 'action-context', contextParts.join(' · ')))
+  }
+
   if (approval.reason || approval.summary) {
     card.appendChild(el('div', 'action-detail', approval.summary ?? approval.reason ?? ''))
   }
+
+  const matchedTool = tl?.items.find(
+    (it): it is Extract<typeof tl.items[number], { kind: 'tool' }> =>
+      it.kind === 'tool' && it.callId === approval.callId && it.argumentsText.length > 0,
+  )
+  const formattedArgs = formatApprovalArgsText(
+    approval.args !== undefined ? approval.args : matchedTool?.argumentsText,
+  )
+  if (formattedArgs) {
+    const argsWrap = el('div', 'action-args-wrap')
+    argsWrap.appendChild(el('div', 'field-label', 'Tool Input'))
+    argsWrap.appendChild(el('pre', 'action-args', formattedArgs))
+    card.appendChild(argsWrap)
+  } else if (!approval.reason && !approval.summary) {
+    card.appendChild(el('div', 'action-context', 'Tool input details: (none provided by host)'))
+  }
+
   const btns = el('div', 'action-buttons')
   const allowBtn = el('button', 'btn-primary btn-sm', 'Allow Once')
   allowBtn.type = 'button'

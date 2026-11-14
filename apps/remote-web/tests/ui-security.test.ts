@@ -601,5 +601,66 @@ describe('remote-web pairing security, safe Markdown/Diff DOM, and CSP hygiene',
     expect(mainSrc).not.toContain('pendingAttachments')
     expect(mainSrc).toContain('qrScanGeneration')
     expect(mainSrc).toContain('headTrimmedOnInitialAttach')
+    expect(mainSrc).toContain('formatApprovalArgsText')
+    expect(mainSrc).toContain('action-args')
+    expect(mainSrc).toContain('action-context')
+  })
+
+  it('preserves approval args across live events, snapshot hydration, and history prepends', () => {
+    const tl = new SessionTimelineState('claude--sec-appr')
+    tl.applyEvent({
+      seq: 10,
+      type: 'approval.request',
+      data: {
+        callId: 'appr-bash-1',
+        toolName: 'Bash',
+        reason: 'Run build check',
+        args: { command: 'rm -rf /tmp/demo && pnpm test' },
+      },
+    })
+    expect(tl.pendingApprovals).toHaveLength(1)
+    expect(tl.pendingApprovals[0]).toMatchObject({
+      callId: 'appr-bash-1',
+      toolName: 'Bash',
+      reason: 'Run build check',
+      args: { command: 'rm -rf /tmp/demo && pnpm test' },
+      sessionId: 'claude--sec-appr',
+    })
+
+    // Snapshot with args retains it; snapshot without args enriches from matching tool item
+    tl.applyEvent({
+      seq: 11,
+      type: 'tool/call',
+      data: {
+        callId: 'appr-acp-2',
+        name: 'write_file',
+        arguments: { path: 'src/index.ts', content: 'export const ok = true' },
+      },
+    })
+    tl.applyLiveStateSnapshot({
+      status: 'running',
+      todos: [],
+      pendingApprovals: [
+        {
+          callId: 'appr-bash-1',
+          toolName: 'Bash',
+          reason: 'Run build check',
+          args: { command: 'rm -rf /tmp/demo && pnpm test' },
+          sessionId: 'claude--sec-appr',
+        },
+        {
+          callId: 'appr-acp-2',
+          toolName: 'write_file',
+          sessionId: 'claude--sec-appr',
+        },
+      ],
+      pendingQuestions: [],
+      oldestSeq: 10,
+      latestSeq: 11,
+      hasMoreHistory: false,
+    })
+    expect(tl.pendingApprovals[0]?.args).toEqual({ command: 'rm -rf /tmp/demo && pnpm test' })
+    expect(typeof tl.pendingApprovals[1]?.args).toBe('string')
+    expect(String(tl.pendingApprovals[1]?.args)).toContain('src/index.ts')
   })
 })

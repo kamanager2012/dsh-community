@@ -667,6 +667,33 @@ select {
   white-space: pre-wrap;
 }
 
+.action-context {
+  font-size: 12px;
+  color: var(--muted);
+  word-break: break-word;
+}
+
+.action-args-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.action-args {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
 .action-buttons,
 .q-options,
 .q-custom-row {

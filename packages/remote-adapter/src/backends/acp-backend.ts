@@ -60,6 +60,7 @@ interface PendingAcpPermission {
   readonly sessionId: string
   readonly toolName: string
   readonly summary?: string | undefined
+  readonly args?: unknown
   readonly allowOptionId?: string | undefined
   readonly rejectOptionId?: string | undefined
   readonly resolve: (value: unknown) => void
@@ -482,6 +483,7 @@ export class AcpAgentBackend implements ManagedAgentBackend {
           callId: a.callId,
           toolName: a.toolName,
           ...(a.summary !== undefined ? { summary: a.summary } : {}),
+          ...(a.args !== undefined ? { args: a.args } : {}),
           sessionId: meta.sessionId,
         })
       }
@@ -570,12 +572,15 @@ export class AcpAgentBackend implements ManagedAgentBackend {
       const allowOption = opts.find((o) => o.kind === 'allow_once' || o.kind === 'allow_always')
       const rejectOption = opts.find((o) => o.kind === 'reject_once' || o.kind === 'reject_always')
 
+      const args = toolCall.rawInput ?? toolCall.locations
+
       return await new Promise((resolve, reject) => {
         this.pendingPermissions.set(callId, {
           callId,
           sessionId: publicId,
           toolName,
           summary: typeof toolCall.title === 'string' ? toolCall.title : undefined,
+          args,
           allowOptionId: typeof allowOption?.optionId === 'string' ? allowOption.optionId : undefined,
           rejectOptionId: typeof rejectOption?.optionId === 'string' ? rejectOption.optionId : undefined,
           resolve,
@@ -584,7 +589,7 @@ export class AcpAgentBackend implements ManagedAgentBackend {
         this.emitter.emit(publicId, 'approval.request', {
           callId,
           toolName,
-          args: toolCall.rawInput ?? toolCall.locations,
+          args,
         })
       })
     }

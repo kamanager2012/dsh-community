@@ -792,6 +792,7 @@ export class ClaudeAgentBackend implements ManagedAgentBackend {
           callId: a.callId,
           toolName: a.toolName,
           ...(a.reason !== undefined ? { reason: a.reason } : {}),
+          ...(a.input !== undefined ? { args: a.input } : {}),
           sessionId: meta.sessionId,
         })
       }

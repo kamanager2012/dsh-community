@@ -71,6 +71,7 @@ interface PendingCodexApproval {
   readonly toolName: string
   readonly reason?: string | undefined
   readonly summary?: string | undefined
+  readonly args?: unknown
   readonly resolve: (value: unknown) => void
   readonly reject: (err: Error) => void
 }
@@ -794,6 +795,7 @@ export class CodexAgentBackend implements ManagedAgentBackend {
           toolName: a.toolName,
           ...(a.reason !== undefined ? { reason: a.reason } : {}),
           ...(a.summary !== undefined ? { summary: a.summary } : {}),
+          ...(a.args !== undefined ? { args: a.args } : {}),
           sessionId: publicId,
         })
       }
@@ -1054,6 +1056,7 @@ export class CodexAgentBackend implements ManagedAgentBackend {
           ? params.reason
           : toolName
       const reason = typeof params.reason === 'string' ? params.reason : undefined
+      const args = isCmd ? { command: params.command, cwd: params.cwd } : { grantRoot: params.grantRoot }
 
       return await new Promise((resolve, reject) => {
         this.pendingApprovals.set(callId, {
@@ -1062,6 +1065,7 @@ export class CodexAgentBackend implements ManagedAgentBackend {
           toolName,
           reason,
           summary,
+          args,
           resolve,
           reject,
         })
@@ -1070,7 +1074,7 @@ export class CodexAgentBackend implements ManagedAgentBackend {
           toolName,
           ...(reason !== undefined ? { reason } : {}),
           summary,
-          args: isCmd ? { command: params.command, cwd: params.cwd } : { grantRoot: params.grantRoot },
+          args,
         })
       })
     }
