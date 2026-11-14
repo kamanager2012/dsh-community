@@ -2,6 +2,7 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import { createServer, type IncomingMessage, type Server } from 'node:http'
 import { isIP, type AddressInfo, type Socket } from 'node:net'
 import { RemoteCryptoError } from '../crypto/errors.js'
+import { normalizeRemoteIp, PerIpConnectionTracker } from './ip-cap.js'
 import {
   encodeCloseFrame,
   encodeWebSocketFrame,
@@ -104,11 +105,6 @@ function constantTimeDigestEquals(a: Buffer, b: Buffer): boolean {
   return a.length === b.length && timingSafeEqual(a, b)
 }
 
-function normalizeRemoteIp(address: string | undefined): string {
-  if (!address) return 'unknown'
-  return address.startsWith('::ffff:') ? address.slice(7) : address
-}
-
 /**
  * Community-owned zero-trust blind WebSocket relay.
  *
@@ -136,8 +132,7 @@ export class BlindRelayServer {
 
   private server: Server | undefined = undefined
   private isRunning = false
-  private readonly socketIps = new Map<Socket, string>()
-  private readonly connectionsPerIp = new Map<string, number>()
+  private readonly ipTracker: PerIpConnectionTracker
   private readonly preUpgradeSockets = new Map<Socket, NodeJS.Timeout>()
   private readonly peers = new Set<RelayPeer>()
   private readonly rooms = new Map<string, RelayRoom>()
@@ -156,6 +151,7 @@ export class BlindRelayServer {
     this.maxClientsPerRoom = options.maxClientsPerRoom ?? 8
     this.maxConnections = options.maxConnections ?? 128
     this.maxConnectionsPerIp = options.maxConnectionsPerIp ?? 16
+    this.ipTracker = new PerIpConnectionTracker(this.maxConnectionsPerIp)
     this.maxOpaquePayloadBytes = options.maxOpaquePayloadBytes ?? 64 * 1024
     this.maxTransportFrameBytes = this.maxOpaquePayloadBytes + RELAY_DATA_HEADER_BYTES
     this.maxOutboundQueue = options.maxOutboundQueue ?? 32
@@ -253,22 +249,17 @@ export class BlindRelayServer {
     })
 
     server.on('connection', (socket: Socket) => {
-      const ip = normalizeRemoteIp(socket.remoteAddress)
-      const ipCount = this.connectionsPerIp.get(ip) ?? 0
-      if (ipCount >= this.maxConnectionsPerIp) {
-        this.rejectedPerIpCap += 1
-        socket.write('HTTP/1.1 429 Too Many Requests\r\n\r\n')
-        socket.destroy()
-        return
-      }
       if (this.preUpgradeSockets.size + this.peers.size >= this.maxConnections) {
         socket.write('HTTP/1.1 503 Service Unavailable\r\n\r\n')
         socket.destroy()
         return
       }
-
-      this.socketIps.set(socket, ip)
-      this.connectionsPerIp.set(ip, ipCount + 1)
+      if (!this.ipTracker.tryAcquire(socket)) {
+        this.rejectedPerIpCap += 1
+        socket.write('HTTP/1.1 429 Too Many Requests\r\n\r\n')
+        socket.destroy()
+        return
+      }
 
       const preTimer = setTimeout(() => {
         this.preUpgradeSockets.delete(socket)
@@ -281,16 +272,6 @@ export class BlindRelayServer {
         if (timer) {
           clearTimeout(timer)
           this.preUpgradeSockets.delete(socket)
-        }
-        const trackedIp = this.socketIps.get(socket)
-        if (trackedIp !== undefined) {
-          this.socketIps.delete(socket)
-          const remaining = (this.connectionsPerIp.get(trackedIp) ?? 1) - 1
-          if (remaining <= 0) {
-            this.connectionsPerIp.delete(trackedIp)
-          } else {
-            this.connectionsPerIp.set(trackedIp, remaining)
-          }
         }
       })
       socket.once('error', () => {})
@@ -327,29 +308,11 @@ export class BlindRelayServer {
       return
     }
     this.isRunning = true
-    if (!this.socketIps.has(socket)) {
-      const ip = normalizeRemoteIp(socket.remoteAddress)
-      const ipCount = this.connectionsPerIp.get(ip) ?? 0
-      if (ipCount >= this.maxConnectionsPerIp) {
-        this.rejectedPerIpCap += 1
-        socket.write('HTTP/1.1 429 Too Many Requests\r\n\r\n')
-        socket.destroy()
-        return
-      }
-      this.socketIps.set(socket, ip)
-      this.connectionsPerIp.set(ip, ipCount + 1)
-      socket.once('close', () => {
-        const trackedIp = this.socketIps.get(socket)
-        if (trackedIp !== undefined) {
-          this.socketIps.delete(socket)
-          const remaining = (this.connectionsPerIp.get(trackedIp) ?? 1) - 1
-          if (remaining <= 0) {
-            this.connectionsPerIp.delete(trackedIp)
-          } else {
-            this.connectionsPerIp.set(trackedIp, remaining)
-          }
-        }
-      })
+    if (!this.ipTracker.tryAcquire(socket)) {
+      this.rejectedPerIpCap += 1
+      socket.write('HTTP/1.1 429 Too Many Requests\r\n\r\n')
+      socket.destroy()
+      return
     }
     this.handleUpgrade(req, socket, head)
   }
@@ -411,7 +374,7 @@ export class BlindRelayServer {
       ].join('\r\n'),
     )
 
-    const remoteIp = this.socketIps.get(socket) ?? normalizeRemoteIp(socket.remoteAddress)
+    const remoteIp = normalizeRemoteIp(socket.remoteAddress)
     let peer!: RelayPeer
     const parser = new WebSocketFrameParser(this.maxTransportFrameBytes, true, {
       onFrame: (frame) => {

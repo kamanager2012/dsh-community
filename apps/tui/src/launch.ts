@@ -134,11 +134,15 @@ export function tuiLaunchEnv(
   env: NodeJS.ProcessEnv,
   launch: CommunityLaunch,
   resumeId?: string,
+  workspaceCwd?: string,
 ): NodeJS.ProcessEnv {
   const next = resumeId === undefined ? { ...env } : resumeEnv(env, resumeId)
   const prompt = initialPromptForLaunch(launch)
   if (prompt !== undefined) next.DSH_TUI_FIRST_PROMPT = prompt
   else delete next.DSH_TUI_FIRST_PROMPT
+  if (workspaceCwd !== undefined && workspaceCwd.trim() !== '' && !next.DSH_COMMUNITY_WORKSPACE_CWD) {
+    next.DSH_COMMUNITY_WORKSPACE_CWD = workspaceCwd
+  }
   return next
 }
 

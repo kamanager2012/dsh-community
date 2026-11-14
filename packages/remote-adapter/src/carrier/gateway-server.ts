@@ -3,6 +3,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { isIP, type AddressInfo, type Socket } from 'node:net'
 import { extname, resolve, sep } from 'node:path'
 import { RemoteCryptoError } from '../crypto/errors.js'
+import { PerIpConnectionTracker } from './ip-cap.js'
 import {
   BlindRelayServer,
   type BlindRelayFrameObservation,
@@ -32,7 +33,7 @@ const STATIC_SECURITY_HEADERS: Readonly<Record<string, string>> = Object.freeze(
   'Referrer-Policy': 'no-referrer',
   'Cross-Origin-Resource-Policy': 'same-origin',
   'Content-Security-Policy':
-    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' ws: wss:; object-src 'none'; base-uri 'none'; form-action 'none';",
+    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' ws: wss:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none';",
 })
 
 export interface BlindGatewayStats {
@@ -213,6 +214,7 @@ export class BlindGatewayServer {
 
   private readonly options: BlindGatewayServerOptions
   private readonly maxConnections: number
+  private readonly ipTracker: PerIpConnectionTracker
   private server: Server | undefined = undefined
   private canonicalWebAppRoot: string | undefined = undefined
   private isRunning = false
@@ -223,6 +225,7 @@ export class BlindGatewayServer {
   constructor(options: BlindGatewayServerOptions) {
     this.options = options
     this.maxConnections = options.maxConnections ?? 128
+    this.ipTracker = new PerIpConnectionTracker(options.maxConnectionsPerIp ?? 16)
 
     const relaySecret = options.relayHostSecret ?? options.hostAuthSecret
     const signalingSecret = options.signalingHostSecret ?? options.hostAuthSecret
@@ -256,6 +259,7 @@ export class BlindGatewayServer {
       ...(options.maxRooms !== undefined ? { maxRooms: options.maxRooms } : {}),
       ...(options.maxPeersPerRoom !== undefined ? { maxPeersPerRoom: options.maxPeersPerRoom } : {}),
       maxConnections: this.maxConnections,
+      ...(options.maxConnectionsPerIp !== undefined ? { maxConnectionsPerIp: options.maxConnectionsPerIp } : {}),
       ...(options.maxFrameBytes !== undefined ? { maxFrameBytes: options.maxFrameBytes } : {}),
       ...(options.maxOutboundQueue !== undefined ? { maxOutboundQueue: options.maxOutboundQueue } : {}),
       ...(options.maxMessagesPerSecond !== undefined ? { maxMessagesPerSecond: options.maxMessagesPerSecond } : {}),
@@ -493,6 +497,16 @@ export class BlindGatewayServer {
     }
 
     if (pathname === '/relay' || pathname === '/relay/') {
+      if (this.ipTracker.totalTracked >= this.maxConnections) {
+        socket.write('HTTP/1.1 503 Service Unavailable\r\n\r\n')
+        socket.destroy()
+        return
+      }
+      if (!this.ipTracker.tryAcquire(socket)) {
+        socket.write('HTTP/1.1 429 Too Many Requests\r\n\r\n')
+        socket.destroy()
+        return
+      }
       this.relay.handleUpgradeRequest(req, socket, head)
       return
     }
@@ -502,6 +516,16 @@ export class BlindGatewayServer {
       pathname === '/signaling' ||
       pathname === '/signaling/'
     ) {
+      if (this.ipTracker.totalTracked >= this.maxConnections) {
+        socket.write('HTTP/1.1 503 Service Unavailable\r\n\r\n')
+        socket.destroy()
+        return
+      }
+      if (!this.ipTracker.tryAcquire(socket)) {
+        socket.write('HTTP/1.1 429 Too Many Requests\r\n\r\n')
+        socket.destroy()
+        return
+      }
       this.signaling.handleUpgradeRequest(req, socket, head)
       return
     }

@@ -46,6 +46,7 @@ COPY --from=builder /workspace/packages/remote-adapter ./packages/remote-adapter
 COPY --from=builder /workspace/apps/remote-web/dist ./apps/remote-web/dist
 COPY --from=builder /workspace/apps/tui/package.json ./apps/tui/package.json
 COPY --from=builder /workspace/apps/tui/dist ./apps/tui/dist
+COPY --from=builder /workspace/apps/tui/node_modules ./apps/tui/node_modules
 
 EXPOSE 8787
 

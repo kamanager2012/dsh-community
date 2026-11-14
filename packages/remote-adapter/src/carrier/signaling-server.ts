@@ -2,6 +2,7 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import { createServer, type IncomingMessage, type Server } from 'node:http'
 import { isIP, type AddressInfo, type Socket } from 'node:net'
 import { RemoteCryptoError } from '../crypto/errors.js'
+import { PerIpConnectionTracker } from './ip-cap.js'
 import {
   encodeCloseFrame,
   encodeWebSocketFrame,
@@ -32,6 +33,7 @@ export interface SignalingStats {
   readonly activePeers: number
   readonly relayedMessages: number
   readonly rejectedMessages: number
+  readonly rejectedPerIpCap: number
 }
 
 export interface SelfHostedSignalingServerOptions {
@@ -48,6 +50,7 @@ export interface SelfHostedSignalingServerOptions {
   readonly maxRooms?: number | undefined
   readonly maxPeersPerRoom?: number | undefined
   readonly maxConnections?: number | undefined
+  readonly maxConnectionsPerIp?: number | undefined
   readonly maxFrameBytes?: number | undefined
   readonly maxOutboundQueue?: number | undefined
   readonly maxMessagesPerSecond?: number | undefined
@@ -138,20 +141,25 @@ export class SelfHostedSignalingServer {
   private readonly registerTimeoutMs: number
   private readonly idleTimeoutMs: number
   private readonly hostAuthDigest: Buffer | undefined
+  private readonly maxConnectionsPerIp: number
 
   private server: Server | undefined = undefined
   private isRunning = false
+  private readonly ipTracker: PerIpConnectionTracker
   private readonly preUpgradeSockets = new Map<Socket, NodeJS.Timeout>()
   private readonly peers = new Set<SignalingPeer>()
   private readonly rooms = new Map<string, SignalingRoom>()
   private relayedMessages = 0
   private rejectedMessages = 0
+  private rejectedPerIpCap = 0
 
   constructor(options: SelfHostedSignalingServerOptions) {
     this.options = options
     this.maxRooms = options.maxRooms ?? 64
     this.maxPeersPerRoom = options.maxPeersPerRoom ?? 16
     this.maxConnections = options.maxConnections ?? 128
+    this.maxConnectionsPerIp = options.maxConnectionsPerIp ?? 16
+    this.ipTracker = new PerIpConnectionTracker(this.maxConnectionsPerIp)
     this.maxFrameBytes = options.maxFrameBytes ?? 32_768
     this.maxOutboundQueue = options.maxOutboundQueue ?? 32
     this.maxMessagesPerSecond = options.maxMessagesPerSecond ?? 60
@@ -187,6 +195,7 @@ export class SelfHostedSignalingServer {
       activePeers: this.peers.size,
       relayedMessages: this.relayedMessages,
       rejectedMessages: this.rejectedMessages,
+      rejectedPerIpCap: this.rejectedPerIpCap,
     }
   }
 
@@ -238,6 +247,12 @@ export class SelfHostedSignalingServer {
         socket.destroy()
         return
       }
+      if (!this.ipTracker.tryAcquire(socket)) {
+        this.rejectedPerIpCap += 1
+        socket.write('HTTP/1.1 429 Too Many Requests\r\n\r\n')
+        socket.destroy()
+        return
+      }
       const timer = setTimeout(() => {
         this.preUpgradeSockets.delete(socket)
         socket.destroy()
@@ -285,6 +300,12 @@ export class SelfHostedSignalingServer {
       return
     }
     this.isRunning = true
+    if (!this.ipTracker.tryAcquire(socket)) {
+      this.rejectedPerIpCap += 1
+      socket.write('HTTP/1.1 429 Too Many Requests\r\n\r\n')
+      socket.destroy()
+      return
+    }
     this.handleUpgrade(req, socket, head)
   }
 

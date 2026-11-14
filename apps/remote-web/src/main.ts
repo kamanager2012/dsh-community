@@ -221,6 +221,8 @@ function scheduleAtFileFetch(sid: string, query: string, immediate = false): voi
   const hostGen = hostResetGeneration
   if (atFileDebounceTimer) clearTimeout(atFileDebounceTimer)
   atFilePicker.loading = true
+  atFilePicker.files = []
+  atFilePicker.selectedIndex = 0
   atFilePicker.error = undefined
   renderAtFilePickerSlot()
 
@@ -1874,6 +1876,11 @@ function renderComposer(): void {
   imgBtn.type = 'button'
   imgBtn.addEventListener('click', () => fileInput.click())
 
+  const textarea = el('textarea', 'composer-textarea')
+  textarea.rows = 2
+  textarea.placeholder = 'Message agent over E2EE Noise channel... (@file, /diff)'
+  textarea.value = state.draftBySession.get(sid) ?? ''
+
   const atFileBtn = el('button', 'btn-ghost btn-xs', '+ @File')
   atFileBtn.type = 'button'
   atFileBtn.addEventListener('click', () => {
@@ -1886,7 +1893,9 @@ function renderComposer(): void {
     atFilePicker.query = ''
     atFilePicker.triggerStart = undefined
     atFilePicker.triggerEnd = undefined
+    atFilePicker.files = []
     atFilePicker.selectedIndex = 0
+    textarea.focus({ preventScroll: true })
     scheduleAtFileFetch(sid, '', true)
   })
 
@@ -1928,10 +1937,6 @@ function renderComposer(): void {
   controls.append(fileInput, imgBtn, atFileBtn)
 
   const row = el('div', 'composer-input-row')
-  const textarea = el('textarea', 'composer-textarea')
-  textarea.rows = 2
-  textarea.placeholder = 'Message agent over E2EE Noise channel... (@file, /diff)'
-  textarea.value = state.draftBySession.get(sid) ?? ''
   textarea.addEventListener('input', () => {
     state.draftBySession.set(sid, textarea.value)
     const token = extractAtFileTokenAtCursor(textarea.value, textarea.selectionStart ?? textarea.value.length)
@@ -1951,38 +1956,38 @@ function renderComposer(): void {
     }
   })
   textarea.addEventListener('keydown', (evt) => {
+    if (evt.isComposing || evt.keyCode === 229) return
     if (atFilePicker.open && atFilePicker.sessionId === sid) {
-      if (evt.key === 'ArrowDown' && atFilePicker.files.length > 0) {
-        evt.preventDefault()
-        atFilePicker.selectedIndex = (atFilePicker.selectedIndex + 1) % atFilePicker.files.length
-        renderAtFilePickerSlot()
-        return
-      }
-      if (evt.key === 'ArrowUp' && atFilePicker.files.length > 0) {
-        evt.preventDefault()
-        atFilePicker.selectedIndex =
-          (atFilePicker.selectedIndex - 1 + atFilePicker.files.length) % atFilePicker.files.length
-        renderAtFilePickerSlot()
-        return
-      }
       if (evt.key === 'Escape') {
         evt.preventDefault()
         closeAtFilePicker(true)
         return
       }
-      if (
-        (evt.key === 'Tab' || (evt.key === 'Enter' && !evt.shiftKey && !evt.isComposing))
-        && atFilePicker.files.length > 0
-      ) {
-        const picked = atFilePicker.files[atFilePicker.selectedIndex]
-        if (picked) {
+      if (!atFilePicker.loading && atFilePicker.files.length > 0) {
+        if (evt.key === 'ArrowDown') {
           evt.preventDefault()
-          applyAtFileSelection(picked)
+          atFilePicker.selectedIndex = (atFilePicker.selectedIndex + 1) % atFilePicker.files.length
+          renderAtFilePickerSlot()
           return
+        }
+        if (evt.key === 'ArrowUp') {
+          evt.preventDefault()
+          atFilePicker.selectedIndex =
+            (atFilePicker.selectedIndex - 1 + atFilePicker.files.length) % atFilePicker.files.length
+          renderAtFilePickerSlot()
+          return
+        }
+        if (evt.key === 'Tab' || (evt.key === 'Enter' && !evt.shiftKey)) {
+          const picked = atFilePicker.files[atFilePicker.selectedIndex]
+          if (picked) {
+            evt.preventDefault()
+            applyAtFileSelection(picked)
+            return
+          }
         }
       }
     }
-    if (evt.key === 'Enter' && !evt.shiftKey && !evt.isComposing) {
+    if (evt.key === 'Enter' && !evt.shiftKey) {
       evt.preventDefault()
       void handleSubmitPrompt()
     }

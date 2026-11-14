@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { renderMarkdownToAnsi, stripUnsafeTerminalControls } from '../src/markdown.js'
 
@@ -60,5 +63,15 @@ describe('TUI pure-TS ANSI markdown renderer', () => {
     // Regression guard: closed italic followed immediately by unclosed * must terminate cleanly
     const tricky = '*hello**unclosed'
     expect(renderMarkdownToAnsi(tricky)).toContain(`${ESC}[3mhello${ESC}[23m*unclosed`)
+  })
+
+  it('sanitizes all untrusted dynamic TUI UI text through stripUnsafeTerminalControls', () => {
+    const uiSrc = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../src/ui.tsx'), 'utf8')
+    expect(uiSrc).toContain('stripUnsafeTerminalControls')
+    expect(uiSrc).toContain('safeText(item.text)')
+    expect(uiSrc).toContain('safeText(todo.content)')
+    expect(uiSrc).toContain('safeText(draft)')
+    expect(uiSrc).toContain('safeText(approval.toolName)')
+    expect(uiSrc).toContain('safeText(question.header ?? question.question)')
   })
 })

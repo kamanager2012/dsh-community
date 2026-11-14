@@ -10,6 +10,7 @@ import {
   inspectLocalGitDiff,
   listLocalWorkspaceFiles,
   parseDiffCommandArgs,
+  sliceUtf8BufferSafely,
 } from '../src/workspace.js'
 
 function initRepo(dir: string): void {
@@ -162,5 +163,61 @@ describe('TUI local /diff, @file completion, and safe workspace helpers', () => 
     resolveSlow(['stale/file.ts'])
     await Promise.resolve()
     expect(store.state.atCompletion).toBeUndefined()
+  })
+
+  it('translates Ink key.tab events into tab behavior for thinking toggle and @file completion', () => {
+    const store = createStore()
+    let thinkingToggles = 0
+    const deps: KeyHandlerDeps = {
+      store,
+      onSend: () => {},
+      onCancel: () => {},
+      onExit: () => {},
+      showHelp: () => {},
+      toggleThinking: () => {
+        thinkingToggles += 1
+      },
+      inspectDiff: () => {},
+      completeAtFiles: (query) => ['src/index.ts'].filter((f) => f.includes(query)),
+    }
+
+    handleKey(deps, '', { tab: true })
+    expect(thinkingToggles).toBe(1)
+
+    handleKey(deps, 'read @ind', {})
+    expect(store.state.atCompletion?.matches).toEqual(['src/index.ts'])
+
+    handleKey(deps, '', { tab: true })
+    expect(store.state.draft).toBe('read @src/index.ts ')
+    expect(store.state.atCompletion).toBeUndefined()
+    expect(thinkingToggles).toBe(1)
+  })
+
+  it('slices UTF-8 buffers without U+FFFD, rejects C1 control paths, and bounds huge git diffs', async () => {
+    const buf = Buffer.from('ab🚀cd', 'utf8')
+    for (let maxBytes = 0; maxBytes <= buf.length; maxBytes++) {
+      expect(sliceUtf8BufferSafely(buf, maxBytes).text).not.toContain('\uFFFD')
+    }
+    expect(sliceUtf8BufferSafely(buf, 5)).toEqual({ text: 'ab', truncated: true })
+    expect(sliceUtf8BufferSafely(buf, 6)).toEqual({ text: 'ab🚀', truncated: true })
+    expect(sliceUtf8BufferSafely(buf, buf.length)).toEqual({ text: 'ab🚀cd', truncated: false })
+
+    const base = mkdtempSync(join(tmpdir(), 'dsh-tui-bound-diff-'))
+    tempDirs.push(base)
+    initRepo(base)
+    writeFileSync(join(base, 'big.txt'), 'init\n', 'utf8')
+    execFileSync('git', ['add', 'big.txt'], { cwd: base, stdio: 'pipe' })
+    execFileSync('git', ['commit', '-m', 'init'], { cwd: base, stdio: 'pipe' })
+
+    const c1Denied = await inspectLocalGitDiff(base, { path: 'src/\u0085evil.ts' })
+    expect(c1Denied.ok).toBe(false)
+
+    writeFileSync(join(base, 'big.txt'), '🚀diff-line\n'.repeat(3000), 'utf8')
+    const bounded = await inspectLocalGitDiff(base, { path: 'big.txt', maxBytes: 1025 })
+    expect(bounded.ok).toBe(true)
+    if (bounded.ok) {
+      expect(bounded.output).not.toContain('\uFFFD')
+      expect(Buffer.byteLength(bounded.output, 'utf8')).toBeLessThan(8192)
+    }
   })
 })

@@ -14,6 +14,7 @@ import {
   PairingTokenRegistry,
   parsePairingInput,
   RemoteHostRuntime,
+  SelfHostedSignalingServer,
   type OfficialRemoteSeams,
 } from '../src/index.js'
 import { createPairingBootstrapDescriptor } from '../src/carrier/pairing-qr.js'
@@ -224,6 +225,8 @@ describe('BlindGatewayServer', () => {
     expect(indexRes.headers.get('x-content-type-options')).toBe('nosniff')
     expect(indexRes.headers.get('cache-control')).toBe('no-store')
     expect(indexRes.headers.get('content-security-policy')).toContain("default-src 'self'")
+    expect(indexRes.headers.get('content-security-policy')).toContain("frame-ancestors 'none'")
+    expect(indexRes.headers.get('x-frame-options')).toBe('DENY')
     expect(await indexRes.text()).toContain('OK')
 
     // Serve allowlisted .js with cache header
@@ -257,5 +260,98 @@ describe('BlindGatewayServer', () => {
     const parsed = parsePairingInput(Buffer.from(encodedPair, 'base64url').toString('utf8'))
     expect(parsed.hostFingerprint).toBe(descriptor.hostFingerprint)
     expect(parsed.relayUrl).toBe('wss://gateway.example.com/relay')
+  })
+
+  it('enforces maxConnectionsPerIp across SelfHostedSignalingServer and BlindGatewayServer /relay + /signal', async () => {
+    const openWs = (url: string) =>
+      new Promise<WebSocket | null>((resolve) => {
+        const ws = new WebSocket(url)
+        let settled = false
+        const fail = () => {
+          if (settled) return
+          settled = true
+          resolve(null)
+        }
+        ws.onopen = () => {
+          if (settled) return
+          settled = true
+          cleanups.push(async () => {
+            if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+              ws.close()
+            }
+          })
+          resolve(ws)
+        }
+        ws.onerror = fail
+        ws.onclose = fail
+      })
+
+    const closeWsAndSettle = (ws: WebSocket) =>
+      new Promise<void>((resolve) => {
+        if (ws.readyState === WebSocket.CLOSED) {
+          resolve()
+          return
+        }
+        ws.onclose = () => setTimeout(resolve, 20)
+        ws.close()
+      })
+
+    // 1. Standalone SelfHostedSignalingServer per-IP cap
+    const sig = new SelfHostedSignalingServer({
+      enabled: true,
+      host: '127.0.0.1',
+      port: 0,
+      maxConnectionsPerIp: 2,
+    })
+    await sig.start()
+    cleanups.push(() => sig.stop())
+
+    const sigUrl = sig.getEndpointUrl()!
+    const s1 = await openWs(sigUrl)
+    const s2 = await openWs(sigUrl)
+    expect(s1).not.toBeNull()
+    expect(s2).not.toBeNull()
+
+    const s3 = await openWs(sigUrl)
+    expect(s3).toBeNull()
+    expect(sig.getStats().rejectedPerIpCap).toBeGreaterThanOrEqual(1)
+
+    await closeWsAndSettle(s1!)
+    const s4 = await openWs(sigUrl)
+    expect(s4).not.toBeNull()
+
+    // 2. BlindGatewayServer combined /relay + /signal per-IP cap
+    const gateway = new BlindGatewayServer({
+      enabled: true,
+      host: '127.0.0.1',
+      port: 0,
+      maxConnectionsPerIp: 2,
+      hostAuthSecret: 'cap-secret-1',
+    })
+    await gateway.start()
+    cleanups.push(() => gateway.stop())
+
+    const gwRelay = gateway.getRelayEndpointUrl()!
+    const gwSig = gateway.getSignalingEndpointUrl()!
+    const g1 = await openWs(gwRelay)
+    const g2 = await openWs(gwSig)
+    expect(g1).not.toBeNull()
+    expect(g2).not.toBeNull()
+
+    const g3 = await openWs(gwSig)
+    const g4 = await openWs(gwRelay)
+    expect(g3).toBeNull()
+    expect(g4).toBeNull()
+
+    await closeWsAndSettle(g1!)
+    const g5 = await openWs(gwSig)
+    expect(g5).not.toBeNull()
+
+    await Promise.all([
+      closeWsAndSettle(s2!),
+      closeWsAndSettle(s4!),
+      closeWsAndSettle(g2!),
+      closeWsAndSettle(g5!),
+    ])
   })
 })

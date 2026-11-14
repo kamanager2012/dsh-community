@@ -13,6 +13,7 @@ export interface KeyEvent {
   readonly return?: boolean
   readonly escape?: boolean
   readonly ctrl?: boolean
+  readonly tab?: boolean
   readonly backspace?: boolean
   readonly delete?: boolean
   readonly upArrow?: boolean
@@ -94,13 +95,15 @@ function dropLastCodePoint(text: string): string {
 export function handleKey(deps: KeyHandlerDeps, raw: string, key: KeyEvent = {}): void {
   const list = key.return
     ? ['\r']
-    : (raw === '' && (key.backspace || key.delete))
-      ? ['\x7f']
-      : (raw === '' && (key.upArrow || key.downArrow))
-        ? ['']
-        : (raw === '' && key.escape)
-          ? ['\x1b']
-          : [...raw].map((ch) => ch === '\n' ? '\r' : ch)
+    : (raw === '' && key.tab)
+      ? ['\t']
+      : (raw === '' && (key.backspace || key.delete))
+        ? ['\x7f']
+        : (raw === '' && (key.upArrow || key.downArrow))
+          ? ['']
+          : (raw === '' && key.escape)
+            ? ['\x1b']
+            : [...raw].map((ch) => ch === '\n' ? '\r' : ch)
   for (const ch of list) {
     applyChar(deps, ch, key)
   }

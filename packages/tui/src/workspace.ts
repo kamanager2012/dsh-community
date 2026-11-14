@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import { existsSync, lstatSync, readdirSync, realpathSync, statSync } from 'node:fs'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { promisify } from 'node:util'
@@ -100,7 +100,7 @@ function assertSafeRelativePath(rootReal: string, rawPath: string): string | und
     || normalized.startsWith('-')
     || normalized.startsWith('/')
     || normalized.startsWith('~')
-    || /[\u0000-\u001f\u007f]/u.test(normalized)
+    || /[\u0000-\u001f\u007f-\u009f]/u.test(normalized)
     || normalized.split('/').some((seg) => seg === '..' || seg === '.' || seg === '.git' || seg === '')
   ) {
     return undefined
@@ -132,6 +132,112 @@ async function runGit(cwd: string, args: readonly string[]): Promise<string> {
     encoding: 'utf8',
   })
   return stdout
+}
+
+export function sliceUtf8BufferSafely(buf: Buffer, maxBytes: number): { readonly text: string; readonly truncated: boolean } {
+  if (buf.byteLength <= maxBytes) {
+    return { text: buf.toString('utf8'), truncated: false }
+  }
+  if (maxBytes <= 0) {
+    return { text: '', truncated: true }
+  }
+  let end = maxBytes
+  // Scan back past continuation bytes (10xxxxxx) to inspect the trailing character's lead byte.
+  let probe = end - 1
+  while (probe > 0 && end - probe <= 4 && (buf[probe]! & 0b1100_0000) === 0b1000_0000) {
+    probe -= 1
+  }
+  const lead = buf[probe]!
+  if ((lead & 0b1100_0000) === 0b1100_0000) {
+    const seqLen =
+      (lead & 0b1110_0000) === 0b1100_0000
+        ? 2
+        : (lead & 0b1111_0000) === 0b1110_0000
+          ? 3
+          : (lead & 0b1111_1000) === 0b1111_0000
+            ? 4
+            : 1
+    if (probe + seqLen > maxBytes) {
+      end = probe
+    }
+  }
+  return { text: buf.subarray(0, end).toString('utf8'), truncated: true }
+}
+
+async function runGitDiffBounded(
+  cwd: string,
+  args: readonly string[],
+  maxBytes: number,
+  allowExitCode1 = false,
+): Promise<{ readonly text: string; readonly truncated: boolean }> {
+  return await new Promise((resolvePromise, rejectPromise) => {
+    const child = spawn('git', ['-C', cwd, ...args], {
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    const chunks: Buffer[] = []
+    let collected = 0
+    let errText = ''
+    let streamTruncated = false
+    let settled = false
+
+    const timer = setTimeout(() => {
+      if (settled) return
+      settled = true
+      child.kill('SIGKILL')
+      rejectPromise(new Error('git diff timed out'))
+    }, GIT_TIMEOUT_MS)
+
+    child.stdout?.on('data', (chunk: Buffer) => {
+      if (settled) return
+      if (collected >= maxBytes + 4) {
+        if (!streamTruncated) {
+          streamTruncated = true
+          child.kill('SIGKILL')
+        }
+        return
+      }
+      const need = maxBytes + 4 - collected
+      const slice = chunk.byteLength > need ? chunk.subarray(0, need) : chunk
+      chunks.push(slice)
+      collected += slice.byteLength
+      if (collected >= maxBytes + 4) {
+        streamTruncated = true
+        child.kill('SIGKILL')
+      }
+    })
+
+    child.stderr?.on('data', (chunk: Buffer) => {
+      if (errText.length < 1024) {
+        errText += chunk.toString('utf8')
+      }
+    })
+
+    child.on('error', (err) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      rejectPromise(err)
+    })
+
+    child.on('close', (code) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      if (!streamTruncated && code !== 0 && !(allowExitCode1 && code === 1)) {
+        rejectPromise(new Error(errText.trim() || `git diff exited with code ${String(code)}`))
+        return
+      }
+      const rawBuf = Buffer.concat(chunks)
+      // Sanitize whole lines before byte slicing? Keep safe ASCII/UTF-8 slicing after stripUnsafeTerminalControls!
+      const cleanText = stripUnsafeTerminalControls(sliceUtf8BufferSafely(rawBuf, maxBytes).text)
+      const sliced = sliceUtf8BufferSafely(Buffer.from(cleanText, 'utf8'), maxBytes)
+      resolvePromise({
+        text: sliced.text.trimEnd(),
+        truncated: streamTruncated || rawBuf.byteLength > maxBytes || sliced.truncated,
+      })
+    })
+  })
 }
 
 function walkFilesNonGit(rootReal: string): string[] {
@@ -310,9 +416,9 @@ export async function inspectLocalGitDiff(
       '--no-ext-diff',
       ...(safePath ? ['--', safePath] : []),
     ]
-    let diffOut = stripUnsafeTerminalControls(await runGit(repoRoot, diffArgs)).trimEnd()
+    let diffRes = await runGitDiffBounded(repoRoot, diffArgs, maxBytes)
 
-    if (!staged && safePath && diffOut === '') {
+    if (!staged && safePath && diffRes.text === '') {
       try {
         const untrackedOut = await runGit(repoRoot, [
           'ls-files',
@@ -322,29 +428,20 @@ export async function inspectLocalGitDiff(
           safePath,
         ])
         if (untrackedOut.trim() !== '' && existsSync(join(repoRoot, safePath))) {
-          try {
-            await runGit(repoRoot, ['diff', '--no-index', '--no-color', '--no-ext-diff', '--', '/dev/null', safePath])
-          } catch (diffErr: unknown) {
-            const stdout = (diffErr as { stdout?: unknown })?.stdout
-            if (typeof stdout === 'string' && stdout.trim() !== '') {
-              diffOut = stripUnsafeTerminalControls(stdout).trimEnd()
-            }
-          }
+          diffRes = await runGitDiffBounded(
+            repoRoot,
+            ['diff', '--no-index', '--no-color', '--no-ext-diff', '--', '/dev/null', safePath],
+            maxBytes,
+            true,
+          )
         }
       } catch {}
     }
 
-    let truncated = false
-    if (Buffer.byteLength(diffOut, 'utf8') > maxBytes) {
-      const sliced = Buffer.from(diffOut, 'utf8').subarray(0, maxBytes)
-      // Step back at continuation bytes so multi-byte UTF-8 doesn't split
-      let end = sliced.byteLength
-      while (end > 0 && (sliced[end - 1]! & 0b1100_0000) === 0b1000_0000) {
-        end -= 1
-      }
-      diffOut = `${sliced.subarray(0, end).toString('utf8')}\n…（diff 已按 ${maxBytes} 字节截断）`
-      truncated = true
-    }
+    const truncated = diffRes.truncated
+    const diffOut = truncated
+      ? `${diffRes.text}\n…（diff 已按 ${maxBytes} 字节截断）`
+      : diffRes.text
 
     const header = `Git Diff（${staged ? 'staged' : 'unstaged'}${safePath ? ` · ${safePath}` : ''}${truncated ? ' · truncated' : ''}）`
     const body = diffOut || '(无 diff 内容)'
