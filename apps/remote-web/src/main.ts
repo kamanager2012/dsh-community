@@ -71,7 +71,7 @@ interface AppState {
   searchHits: SessionSearchHit[] | undefined
   draftBySession: Map<string, string>
   promptMode: 'followup' | 'steer'
-  pendingAttachments: PromptImageAttachment[]
+  attachmentsBySession: Map<string, PromptImageAttachment[]>
   expandedDetailIds: Set<string>
   questionDrafts: Map<string, Map<number, string[]>>
   questionCustomDrafts: Map<string, string>
@@ -112,7 +112,7 @@ const state: AppState = {
   searchHits: undefined,
   draftBySession: new Map(),
   promptMode: 'followup',
-  pendingAttachments: [],
+  attachmentsBySession: new Map(),
   expandedDetailIds: new Set(),
   questionDrafts: new Map(),
   questionCustomDrafts: new Map(),
@@ -121,10 +121,37 @@ const state: AppState = {
 }
 
 let activeCameraScanner: CameraQrScannerSession | undefined = undefined
+let qrScanGeneration = 0
 let timelineRefreshTimer: ReturnType<typeof setTimeout> | undefined = undefined
 let toastTimer: ReturnType<typeof setTimeout> | undefined = undefined
 let lastComposerRenderKey = ''
 let gitReviewGeneration = 0
+let hostResetGeneration = 0
+
+function stopActiveCameraScanner(): void {
+  qrScanGeneration += 1
+  if (activeCameraScanner) {
+    try {
+      activeCameraScanner.stop()
+    } catch {}
+    activeCameraScanner = undefined
+  }
+}
+
+function getSessionAttachments(sessionId: string): readonly PromptImageAttachment[] {
+  return state.attachmentsBySession.get(sessionId) ?? []
+}
+
+function setSessionAttachments(
+  sessionId: string,
+  attachments: readonly PromptImageAttachment[],
+): void {
+  if (attachments.length === 0) {
+    state.attachmentsBySession.delete(sessionId)
+  } else {
+    state.attachmentsBySession.set(sessionId, [...attachments])
+  }
+}
 
 function shortFp(fp: string | undefined): string {
   if (!fp) return 'unknown'
@@ -159,13 +186,14 @@ function resetHostScopedState(nextHostFingerprint?: string): void {
   state.searchQuery = ''
   state.searchHits = undefined
   state.draftBySession.clear()
-  state.pendingAttachments = []
+  state.attachmentsBySession.clear()
   state.expandedDetailIds.clear()
   state.questionDrafts.clear()
   state.questionCustomDrafts.clear()
   state.submittingPrompt = false
   lastComposerRenderKey = ''
   gitReviewGeneration += 1
+  hostResetGeneration += 1
 }
 
 function getOrCreateTimeline(sessionId: string): SessionTimelineState {
@@ -287,16 +315,29 @@ async function attachActiveSession(sessionId: string): Promise<void> {
     const attached = await client.attachSession(sessionId, afterSeq)
     tl.applyLiveStateSnapshot(attached.liveState)
     if (attached.kind === 'events') {
+      let minAttachedSeq: number | undefined
       for (const ev of attached.events) {
+        if (typeof ev.seq === 'number' && ev.seq > 0) {
+          minAttachedSeq = minAttachedSeq === undefined ? ev.seq : Math.min(minAttachedSeq, ev.seq)
+        }
         tl.applyEvent(ev, { markUnread: false })
       }
+      const snapOldest = attached.liveState?.oldestSeq ?? null
+      const headTrimmedOnInitialAttach =
+        afterSeq === undefined &&
+        attached.liveState?.hasMoreHistory === true &&
+        minAttachedSeq !== undefined &&
+        (snapOldest === null || minAttachedSeq > snapOldest)
       if (tl.items.length === 0 && (attached.liveState?.hasMoreHistory || afterSeq === undefined)) {
         const hist = await client.getSessionHistory(sessionId, { limit: 80 })
-        for (const ev of hist.events) {
-          tl.applyEvent(ev, { markUnread: false })
-        }
-        tl.hasMoreHistory = hist.hasMore
-        tl.oldestSeq = hist.oldestSeq
+        tl.applyResetRecoveryHistory(hist.events, hist.hasMore, hist.oldestSeq)
+      } else if (headTrimmedOnInitialAttach && minAttachedSeq !== undefined) {
+        tl.oldestSeq = minAttachedSeq
+        const hist = await client.getSessionHistory(sessionId, {
+          beforeSeq: minAttachedSeq,
+          limit: 80,
+        })
+        tl.prependHistory(hist.events, hist.hasMore, hist.oldestSeq)
       }
     } else {
       // Window reset: fetch latest durable history and merge/reconcile chronologically
@@ -487,7 +528,7 @@ async function handleSubmitPrompt(): Promise<void> {
   const sid = state.activeSessionId
   if (!sid || state.submittingPrompt) return
   const draft = (state.draftBySession.get(sid) ?? '').trim()
-  const attachments = [...state.pendingAttachments]
+  const attachments = [...getSessionAttachments(sid)]
   if (!draft && attachments.length === 0) return
 
   if (draft === '/diff') {
@@ -567,7 +608,7 @@ async function handleSubmitPrompt(): Promise<void> {
     attachments.map((a) => a.name ?? 'image'),
   )
   state.draftBySession.set(sid, '')
-  state.pendingAttachments = []
+  setSessionAttachments(sid, [])
   renderTimelineArea()
   renderComposer()
   scrollChatToBottom()
@@ -582,8 +623,8 @@ async function handleSubmitPrompt(): Promise<void> {
     if ((state.draftBySession.get(sid) ?? '') === '' && draft) {
       state.draftBySession.set(sid, draft)
     }
-    if (state.pendingAttachments.length === 0 && attachments.length > 0) {
-      state.pendingAttachments = attachments
+    if (getSessionAttachments(sid).length === 0 && attachments.length > 0) {
+      setSessionAttachments(sid, attachments)
     }
     renderTimelineArea()
     showToast(`Send failed: ${err instanceof Error ? err.message : String(err)}`)
@@ -593,7 +634,7 @@ async function handleSubmitPrompt(): Promise<void> {
   }
 }
 
-async function handleImagePick(files: FileList | null): Promise<void> {
+async function handleImagePick(files: FileList | null, targetSessionId?: string): Promise<void> {
   if (!files || files.length === 0) return
   const allowed: Record<string, PromptImageMediaType> = {
     'image/jpeg': 'image/jpeg',
@@ -601,9 +642,12 @@ async function handleImagePick(files: FileList | null): Promise<void> {
     'image/webp': 'image/webp',
     'image/gif': 'image/gif',
   }
-  const sid = state.activeSessionId
+  const sid = targetSessionId ?? state.activeSessionId
+  if (!sid) return
+  const captureResetGen = hostResetGeneration
   for (const file of Array.from(files)) {
-    if (state.pendingAttachments.length >= MAX_PROMPT_IMAGE_COUNT) {
+    const currentAttachments = getSessionAttachments(sid)
+    if (currentAttachments.length >= MAX_PROMPT_IMAGE_COUNT) {
       showToast(`At most ${MAX_PROMPT_IMAGE_COUNT} image attachments are permitted per prompt`)
       break
     }
@@ -612,7 +656,7 @@ async function handleImagePick(files: FileList | null): Promise<void> {
       showToast(`Unsupported image type: ${file.type || file.name}`)
       continue
     }
-    const usedBytes = totalAttachmentDecodedBytes(state.pendingAttachments)
+    const usedBytes = totalAttachmentDecodedBytes(currentAttachments)
     const remainingBudget = MAX_PROMPT_IMAGE_DECODED_BYTES - usedBytes
     if (remainingBudget <= 0) {
       showToast(`Combined image attachments reach ${MAX_PROMPT_IMAGE_DECODED_BYTES.toLocaleString()}-byte limit`)
@@ -634,17 +678,29 @@ async function handleImagePick(files: FileList | null): Promise<void> {
     if (!attachment) {
       attachment = await compressImageToBudget(file, remainingBudget)
     }
+    if (captureResetGen !== hostResetGeneration) return
     if (!attachment || base64DecodedLength(attachment.dataBase64) > remainingBudget) {
       showToast(
         `Image "${file.name}" exceeds the ${MAX_PROMPT_IMAGE_DECODED_BYTES.toLocaleString()}-byte E2EE transport budget`,
       )
       continue
     }
-    const candidateAttachments = [...state.pendingAttachments, attachment]
-    const draft = (sid ? state.draftBySession.get(sid) : undefined)?.trim() || '[image]'
+    const latestAttachments = getSessionAttachments(sid)
+    if (latestAttachments.length >= MAX_PROMPT_IMAGE_COUNT) {
+      showToast(`At most ${MAX_PROMPT_IMAGE_COUNT} image attachments are permitted per prompt`)
+      break
+    }
+    const latestRemaining =
+      MAX_PROMPT_IMAGE_DECODED_BYTES - totalAttachmentDecodedBytes(latestAttachments)
+    if (base64DecodedLength(attachment.dataBase64) > latestRemaining) {
+      showToast(`Combined image attachments reach ${MAX_PROMPT_IMAGE_DECODED_BYTES.toLocaleString()}-byte limit`)
+      continue
+    }
+    const candidateAttachments = [...latestAttachments, attachment]
+    const draft = (state.draftBySession.get(sid) ?? '').trim() || '[image]'
     const envelopeBytes = estimateRpcEnvelopeBytes(
       'prompt.submit',
-      { sessionId: sid ?? 'session', prompt: draft, mode: 'followup', attachments: candidateAttachments },
+      { sessionId: sid, prompt: draft, mode: 'followup', attachments: candidateAttachments },
       true,
     )
     if (envelopeBytes > MAX_NOISE_PLAINTEXT_BYTES) {
@@ -653,7 +709,7 @@ async function handleImagePick(files: FileList | null): Promise<void> {
       )
       continue
     }
-    state.pendingAttachments = candidateAttachments
+    setSessionAttachments(sid, candidateAttachments)
   }
   renderComposer()
 }
@@ -1394,15 +1450,19 @@ function renderComposer(): void {
   if (!sid || !tl || state.activeTab !== 'chat') return
   const cmds = state.commandsBySession.get(sid) ?? []
 
-  if (state.pendingAttachments.length > 0) {
+  const sessionAttachments = getSessionAttachments(sid)
+  if (sessionAttachments.length > 0) {
     const attBar = el('div', 'composer-attachments')
-    state.pendingAttachments.forEach((att, idx) => {
+    sessionAttachments.forEach((att, idx) => {
       const chip = el('span', 'badge')
       chip.textContent = att.name ?? 'image'
       const rmBtn = el('button', 'btn-ghost btn-xs', 'x')
       rmBtn.type = 'button'
       rmBtn.addEventListener('click', () => {
-        state.pendingAttachments = state.pendingAttachments.filter((_, i) => i !== idx)
+        setSessionAttachments(
+          sid,
+          getSessionAttachments(sid).filter((_, i) => i !== idx),
+        )
         renderComposer()
       })
       chip.appendChild(rmBtn)
@@ -1418,8 +1478,9 @@ function renderComposer(): void {
   fileInput.type = 'file'
   fileInput.accept = 'image/png,image/jpeg,image/webp,image/gif'
   fileInput.multiple = true
+  const pickSid = sid
   fileInput.addEventListener('change', () => {
-    void handleImagePick(fileInput.files)
+    void handleImagePick(fileInput.files, pickSid)
     fileInput.value = ''
   })
 
@@ -1921,6 +1982,8 @@ function renderModals(root: HTMLElement): void {
   }
 
   if (state.qrModalOpen) {
+    stopActiveCameraScanner()
+    const scanGen = qrScanGeneration
     const backdrop = el('div', 'modal-backdrop')
     const modal = el('div', 'modal-card')
     modal.appendChild(el('h2', undefined, 'Scan Host Pairing QR'))
@@ -1931,8 +1994,7 @@ function renderModals(root: HTMLElement): void {
     const closeBtn = el('button', 'btn-ghost btn-sm', 'Cancel Scan')
     closeBtn.type = 'button'
     closeBtn.addEventListener('click', () => {
-      activeCameraScanner?.stop()
-      activeCameraScanner = undefined
+      stopActiveCameraScanner()
       state.qrModalOpen = false
       renderApp()
     })
@@ -1943,22 +2005,31 @@ function renderModals(root: HTMLElement): void {
     void startCameraQrScanner({
       videoElement: video,
       onDetected: (payload) => {
-        activeCameraScanner = undefined
+        if (scanGen !== qrScanGeneration || !state.qrModalOpen) return
+        stopActiveCameraScanner()
         state.qrModalOpen = false
         state.pairingInput = payload
         void handleConnectPairing(payload)
       },
       onError: (err) => {
+        if (scanGen !== qrScanGeneration) return
         activeCameraScanner = undefined
         msg.textContent = err.message
       },
     })
       .then((scanner) => {
+        if (scanGen !== qrScanGeneration || !state.qrModalOpen) {
+          scanner.stop()
+          return
+        }
         activeCameraScanner = scanner
       })
       .catch((err) => {
+        if (scanGen !== qrScanGeneration) return
         msg.textContent = err instanceof Error ? err.message : String(err)
       })
+  } else {
+    stopActiveCameraScanner()
   }
 }
 

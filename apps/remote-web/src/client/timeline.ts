@@ -179,6 +179,7 @@ export class SessionTimelineState implements SessionStoreState {
   private unmergedStreamedAssistantId: string | undefined = undefined
   private compactedBaseline: SessionTimelineState | undefined = undefined
   private compactedMinSeq: number | null = null
+  private hasAuthoritativeSnapshot = false
 
   constructor(readonly sessionId: string) {}
 
@@ -299,6 +300,7 @@ export class SessionTimelineState implements SessionStoreState {
 
   applyLiveStateSnapshot(snap: SessionLiveStateSnapshot | undefined): void {
     if (!snap) return
+    this.hasAuthoritativeSnapshot = true
     this.status = snap.status
     if (snap.title !== undefined) this.title = snap.title
     if (snap.model !== undefined) this.model = snap.model
@@ -313,7 +315,12 @@ export class SessionTimelineState implements SessionStoreState {
     if (snap.hasMoreHistory !== undefined) this.hasMoreHistory = snap.hasMoreHistory
   }
 
-  private rebuildChronological(markOpenFinalizedBeforeSeq?: number): void {
+  private rebuildChronological(options?: {
+    readonly markOpenFinalizedBeforeSeq?: number | undefined
+    readonly preserveRuntimeState?: boolean | undefined
+  }): void {
+    const markOpenFinalizedBeforeSeq = options?.markOpenFinalizedBeforeSeq
+    const preserveRuntimeState = options?.preserveRuntimeState === true
     const optimisticTrailing = this.items.filter(
       (it): it is Extract<TimelineItem, { kind: 'user' }> => it.kind === 'user' && it.optimistic === true,
     )
@@ -373,7 +380,7 @@ export class SessionTimelineState implements SessionStoreState {
     if (savedOldest !== null && (this.oldestSeq === null || savedOldest < this.oldestSeq)) {
       this.oldestSeq = savedOldest
     }
-    if (sorted.length === 0) {
+    if (preserveRuntimeState || sorted.length === 0) {
       this.status = savedStatus
       this.title = savedTitle
       this.model = savedModel
@@ -422,7 +429,7 @@ export class SessionTimelineState implements SessionStoreState {
       }
     }
     if (added) {
-      this.rebuildChronological()
+      this.rebuildChronological({ preserveRuntimeState: true })
     }
     this.hasMoreHistory = hasMore
     if (oldestSeq !== null) this.oldestSeq = oldestSeq
@@ -446,7 +453,10 @@ export class SessionTimelineState implements SessionStoreState {
       for (const ev of events) {
         this.rememberRawEvent(`${ev.seq}:${ev.type}`, ev)
       }
-      this.rebuildChronological(Number.isFinite(minRecSeq) ? minRecSeq : undefined)
+      this.rebuildChronological({
+        markOpenFinalizedBeforeSeq: Number.isFinite(minRecSeq) ? minRecSeq : undefined,
+        preserveRuntimeState: this.hasAuthoritativeSnapshot,
+      })
     } else {
       for (const [k, ev] of this.rawEvents.entries()) {
         if (!hasMore && isChunkEventType(ev.type)) {

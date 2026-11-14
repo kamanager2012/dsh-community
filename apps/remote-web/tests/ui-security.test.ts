@@ -553,4 +553,53 @@ describe('remote-web pairing security, safe Markdown/Diff DOM, and CSP hygiene',
     expect((big.items[1] as Extract<(typeof big.items)[number], { kind: 'assistant' }>).markdownText).toBe('msg-0')
     expect((big.items[4_005] as Extract<(typeof big.items)[number], { kind: 'assistant' }>).markdownText).toBe('msg-4004')
   })
+
+  it('preserves authoritative live status, todos, and approvals across prependHistory and reset recovery', () => {
+    const tl = new SessionTimelineState('claude--live')
+    tl.applyLiveStateSnapshot({
+      status: 'running',
+      model: { provider: 'anthropic', model: 'sonnet' },
+      todos: [{ id: 't1', content: 'Keep shipping', status: 'in_progress' }],
+      pendingApprovals: [
+        {
+          callId: 'appr-live-1',
+          sessionId: 'claude--live',
+          toolName: 'Bash',
+        },
+      ],
+      pendingQuestions: [],
+      oldestSeq: 50,
+      latestSeq: 60,
+      hasMoreHistory: true,
+    })
+    tl.applyEvent({
+      seq: 60,
+      type: 'assistant/chunk',
+      data: { text: 'Working on it...', chunk: { type: 'text-delta', text: 'Working on it...' } },
+    })
+
+    // Older history ends an earlier turn with turn/end + approval/decision — must NOT clobber current live state!
+    tl.prependHistory(
+      [
+        { seq: 10, type: 'turn/start', data: {} },
+        { seq: 11, type: 'user/message', data: { message: { role: 'user', content: 'Old prompt' } } },
+        { seq: 12, type: 'assistant/message', data: { message: { role: 'assistant', content: 'Old reply' } } },
+        { seq: 13, type: 'turn/end', data: { usage: { inputTokens: 5, outputTokens: 2 } } },
+      ],
+      false,
+      10,
+    )
+
+    expect(tl.status).toBe('running')
+    expect(tl.todos).toHaveLength(1)
+    expect(tl.pendingApprovals).toHaveLength(1)
+    expect(tl.pendingApprovals[0]?.callId).toBe('appr-live-1')
+    expect(tl.items.map((it) => it.kind)).toEqual(['user', 'assistant', 'assistant'])
+
+    const mainSrc = readFileSync(join(APP_ROOT, 'src/main.ts'), 'utf8')
+    expect(mainSrc).toContain('attachmentsBySession')
+    expect(mainSrc).not.toContain('pendingAttachments')
+    expect(mainSrc).toContain('qrScanGeneration')
+    expect(mainSrc).toContain('headTrimmedOnInitialAttach')
+  })
 })
