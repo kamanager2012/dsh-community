@@ -6,7 +6,7 @@ import { InMemoryHostIdentityStore, computeFingerprint } from '@dsh-community/re
 import { assessApprovalInputSecurity, isWindowFramed } from '../src/client/approval-input.ts'
 import { parsePairingInput, validateStunOnlyUrls } from '../src/client/pairing.ts'
 import { buildPromptSubmitSignature, estimateRpcEnvelopeBytes } from '../src/client/remote-client.ts'
-import { SessionTimelineState } from '../src/client/timeline.ts'
+import { buildQuestionSubmissionAnswers, SessionTimelineState } from '../src/client/timeline.ts'
 import { MAX_NOISE_PLAINTEXT_BYTES, SAFE_GIT_DIFF_MAX_BYTES } from '../src/client/types.ts'
 import {
   createBrowserWebRtcTransport,
@@ -1050,5 +1050,57 @@ describe('remote-web pairing security, safe Markdown/Diff DOM, and CSP hygiene',
     expect(mainSrc).toContain('if (captureResetGen !== hostResetGeneration || client.getStatus() !== \'active\') return')
     expect(mainSrc).toContain('await activateSessionAfterMutation(created.id, captureResetGen)')
     expect(mainSrc).toContain('await activateSessionAfterMutation(forked.id, captureResetGen)')
+
+    // 7. Image-only optimistic prompt uses '[image]' and reconciles cleanly with backend user/message
+    expect(mainSrc).toContain('tl.addOptimisticUserPrompt(\n    promptText,')
+    const tlImg = new SessionTimelineState('sess-img-optimistic')
+    tlImg.addOptimisticUserPrompt('[image]', ['shot.png'])
+    expect(tlImg.items).toHaveLength(1)
+    tlImg.applyEvent({
+      seq: 1,
+      type: 'user/message',
+      data: { message: { role: 'user', content: '[image]' } },
+    })
+    expect(tlImg.items).toHaveLength(1)
+    expect((tlImg.items[0] as Extract<(typeof tlImg.items)[number], { kind: 'user' }>).optimistic).toBe(false)
+
+    // 8. Multi-question custom answers stay isolated per question (no copying into unanswered siblings)
+    const builtAnswers = buildQuestionSubmissionAnswers(
+      [
+        { id: 'name', question: 'Name?' },
+        { id: 'city', question: 'City?' },
+        { id: 'env', question: 'Env?' },
+      ],
+      new Map([[2, ['staging']]]),
+      new Map([[0, 'Alice']]),
+    )
+    expect(builtAnswers).toEqual([
+      { id: 'name', question: 'Name?', selected: [], custom: 'Alice' },
+      { id: 'city', question: 'City?', selected: [] },
+      { id: 'env', question: 'Env?', selected: ['staging'] },
+    ])
+    expect(mainSrc).toContain('customInput.dataset.questionDraftId = `${q.questionId}:${idx}`')
+    expect(mainSrc).toContain('buildQuestionSubmissionAnswers(qList, draftMap, customDraftMap)')
+
+    // 9. Inline markdown rendering remains strictly linear on 60,000 unmatched brackets/stars/backticks
+    const fakeDoc = createMinimalDoc()
+    const tStart = performance.now()
+    renderMarkdown(fakeDoc, '['.repeat(60_000))
+    renderMarkdown(fakeDoc, 'a '.repeat(15_000) + '[ '.repeat(30_000))
+    renderMarkdown(fakeDoc, '*'.repeat(60_000))
+    renderMarkdown(fakeDoc, '`'.repeat(60_000))
+    expect(performance.now() - tStart).toBeLessThan(1_000)
+    const renderedSample = renderMarkdown(
+      fakeDoc,
+      'See **bold**, ~~old~~, *em*, `code`, [ok](https://example.com), and [bad](javascript:alert(1)).',
+    )
+    const tags: string[] = []
+    const hrefs: string[] = []
+    collectTagsAndLinks(renderedSample, tags, hrefs)
+    expect(tags).toContain('STRONG')
+    expect(tags).toContain('DEL')
+    expect(tags).toContain('EM')
+    expect(tags).toContain('CODE')
+    expect(hrefs).toEqual(['https://example.com'])
   })
 })

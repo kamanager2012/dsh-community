@@ -13,7 +13,7 @@ import {
   RemoteWebClient,
   type RemoteClientStatusEvent,
 } from './client/remote-client.ts'
-import { SessionTimelineState } from './client/timeline.ts'
+import { buildQuestionSubmissionAnswers, SessionTimelineState } from './client/timeline.ts'
 import {
   MAX_NOISE_PLAINTEXT_BYTES,
   MAX_PROMPT_IMAGE_COUNT,
@@ -76,7 +76,7 @@ interface AppState {
   attachmentsBySession: Map<string, PromptImageAttachment[]>
   expandedDetailIds: Set<string>
   questionDrafts: Map<string, Map<number, string[]>>
-  questionCustomDrafts: Map<string, string>
+  questionCustomDrafts: Map<string, Map<number, string>>
   toastMessage: string | undefined
   submittingPrompt: boolean
 }
@@ -688,7 +688,7 @@ async function handleSubmitPrompt(): Promise<void> {
 
   state.submittingPrompt = true
   const optId = tl.addOptimisticUserPrompt(
-    draft,
+    promptText,
     attachments.map((a) => a.name ?? 'image'),
   )
   state.draftBySession.set(sid, '')
@@ -1472,7 +1472,10 @@ function buildQuestionCard(q: PendingQuestionSnapshot): HTMLElement {
   const qList = q.questions && q.questions.length > 0 ? q.questions : [{ question: q.prompt }]
   const draftMap = state.questionDrafts.get(q.questionId) ?? new Map<number, string[]>()
   state.questionDrafts.set(q.questionId, draftMap)
+  const customDraftMap = state.questionCustomDrafts.get(q.questionId) ?? new Map<number, string>()
+  state.questionCustomDrafts.set(q.questionId, customDraftMap)
 
+  const form = el('form')
   qList.forEach((promptItem, idx) => {
     const qBlock = el('div', 'q-block')
     if (promptItem.header) {
@@ -1519,39 +1522,30 @@ function buildQuestionCard(q: PendingQuestionSnapshot): HTMLElement {
       }
       qBlock.appendChild(optWrap)
     }
-    card.appendChild(qBlock)
+
+    const customInput = el('input', 'input-sm')
+    customInput.type = 'text'
+    customInput.dataset.questionDraftId = `${q.questionId}:${idx}`
+    customInput.placeholder = promptItem.options?.length
+      ? 'Or type a custom answer for this question...'
+      : 'Type your answer...'
+    customInput.value = customDraftMap.get(idx) ?? ''
+    customInput.addEventListener('input', () => {
+      customDraftMap.set(idx, customInput.value)
+    })
+    qBlock.appendChild(customInput)
+    form.appendChild(qBlock)
   })
 
-  const customRow = el('form', 'q-custom-row')
-  const customInput = el('input', 'input-sm')
-  customInput.type = 'text'
-  customInput.dataset.questionDraftId = q.questionId
-  customInput.placeholder = 'Or type a custom answer...'
-  customInput.value = state.questionCustomDrafts.get(q.questionId) ?? ''
-  customInput.addEventListener('input', () => {
-    state.questionCustomDrafts.set(q.questionId, customInput.value)
-  })
+  const customRow = el('div', 'q-custom-row')
   const sendBtn = el('button', 'btn-primary btn-sm', 'Submit Answer')
   sendBtn.type = 'submit'
   const cancelBtn = el('button', 'btn-ghost btn-sm', 'Cancel')
   cancelBtn.type = 'button'
 
-  customRow.addEventListener('submit', (evt) => {
+  form.addEventListener('submit', (evt) => {
     evt.preventDefault()
-    const typed = customInput.value.trim()
-    if (qList.length === 0 && typed) {
-      void sendQuestionAnswer(q, typed)
-      return
-    }
-    const answers = qList.map((p, i) => {
-      const selected = draftMap.get(i) ?? []
-      return {
-        id: p.id || `q${i + 1}`,
-        question: p.question,
-        selected,
-        ...(typed && selected.length === 0 ? { custom: typed } : {}),
-      }
-    })
+    const answers = buildQuestionSubmissionAnswers(qList, draftMap, customDraftMap)
     void sendQuestionAnswer(q, { answers })
   })
 
@@ -1559,8 +1553,9 @@ function buildQuestionCard(q: PendingQuestionSnapshot): HTMLElement {
     void sendQuestionAnswer(q, { cancelled: true })
   })
 
-  customRow.append(customInput, sendBtn, cancelBtn)
-  card.appendChild(customRow)
+  customRow.append(sendBtn, cancelBtn)
+  form.appendChild(customRow)
+  card.appendChild(form)
   return card
 }
 

@@ -195,6 +195,30 @@ function enrichPendingQuestions(
   })
 }
 
+export interface QuestionSubmissionAnswerItem {
+  readonly id: string
+  readonly question: string
+  readonly selected: readonly string[]
+  readonly custom?: string | undefined
+}
+
+export function buildQuestionSubmissionAnswers(
+  questions: readonly { readonly id?: string | undefined; readonly question: string }[],
+  selectedByIndex: ReadonlyMap<number, readonly string[]>,
+  customByIndex: ReadonlyMap<number, string>,
+): QuestionSubmissionAnswerItem[] {
+  return questions.map((p, i) => {
+    const selected = selectedByIndex.get(i) ?? []
+    const typed = (customByIndex.get(i) ?? '').trim()
+    return {
+      id: p.id || `q${i + 1}`,
+      question: p.question,
+      selected: [...selected],
+      ...(typed && selected.length === 0 ? { custom: typed } : {}),
+    }
+  })
+}
+
 const MAX_RETAINED_RAW_EVENTS = 4_000
 
 export class SessionTimelineState implements SessionStoreState {

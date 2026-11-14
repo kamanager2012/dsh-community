@@ -63,53 +63,150 @@ function appendHighlightedCodeLine(doc: Document, parent: HTMLElement, text: str
   }
 }
 
-function appendInlineMarkdown(doc: Document, parent: HTMLElement, text: string): void {
-  const tokenRe = /(`[^`]+`|\*\*[^*]+\*\*|~~[^~]+~~|\*[^*\n]+\*|\[([^\]\n]+)\]\(([^)\s]+)\))/g
+function appendInlineMarkdown(doc: Document, parent: HTMLElement, text: string, depth = 0): void {
+  if (depth > 4) {
+    parent.appendChild(doc.createTextNode(text))
+    return
+  }
+
   let cursor = 0
-  let match: RegExpExecArray | null
+  let i = 0
+  let backtickExhausted = false
+  let doubleStarExhausted = false
+  let strikeExhausted = false
+  let singleStarFailUntil = -1
+  let linkFailUntil = -1
 
-  while ((match = tokenRe.exec(text)) !== null) {
-    if (match.index > cursor) {
-      parent.appendChild(doc.createTextNode(text.slice(cursor, match.index)))
+  const flushPlain = (end: number): void => {
+    if (end > cursor) {
+      parent.appendChild(doc.createTextNode(text.slice(cursor, end)))
     }
-    const tok = match[0]
-    if (tok.startsWith('`') && tok.endsWith('`')) {
-      const code = doc.createElement('code')
-      code.className = 'md-inline-code'
-      code.textContent = tok.slice(1, -1)
-      parent.appendChild(code)
-    } else if (tok.startsWith('**') && tok.endsWith('**')) {
-      const strong = doc.createElement('strong')
-      appendInlineMarkdown(doc, strong, tok.slice(2, -2))
-      parent.appendChild(strong)
-    } else if (tok.startsWith('~~') && tok.endsWith('~~')) {
-      const del = doc.createElement('del')
-      appendInlineMarkdown(doc, del, tok.slice(2, -2))
-      parent.appendChild(del)
-    } else if (tok.startsWith('*') && tok.endsWith('*')) {
-      const em = doc.createElement('em')
-      appendInlineMarkdown(doc, em, tok.slice(1, -1))
-      parent.appendChild(em)
-    } else if (tok.startsWith('[') && match[2] !== undefined && match[3] !== undefined) {
-      const label = match[2]
-      const href = match[3]
-      if (isSafeLinkUrl(href)) {
-        const a = doc.createElement('a')
-        a.href = href
-        a.target = '_blank'
-        a.rel = 'noopener noreferrer'
-        a.textContent = label
-        parent.appendChild(a)
-      } else {
-        parent.appendChild(doc.createTextNode(`${label} (${href})`))
+  }
+
+  while (i < text.length) {
+    const ch = text[i]!
+
+    if (ch === '`' && !backtickExhausted) {
+      const close = text.indexOf('`', i + 1)
+      if (close > i + 1) {
+        flushPlain(i)
+        const code = doc.createElement('code')
+        code.className = 'md-inline-code'
+        code.textContent = text.slice(i + 1, close)
+        parent.appendChild(code)
+        i = close + 1
+        cursor = i
+        continue
       }
+      if (close === -1) {
+        backtickExhausted = true
+      }
+      i += 1
+      continue
     }
-    cursor = match.index + tok.length
+
+    if (ch === '*' && text[i + 1] === '*' && !doubleStarExhausted) {
+      const close = text.indexOf('**', i + 2)
+      if (close > i + 2) {
+        flushPlain(i)
+        const strong = doc.createElement('strong')
+        appendInlineMarkdown(doc, strong, text.slice(i + 2, close), depth + 1)
+        parent.appendChild(strong)
+        i = close + 2
+        cursor = i
+        continue
+      }
+      if (close === -1) {
+        doubleStarExhausted = true
+      }
+      i += 1
+      continue
+    }
+
+    if (ch === '~' && text[i + 1] === '~' && !strikeExhausted) {
+      const close = text.indexOf('~~', i + 2)
+      if (close > i + 2) {
+        flushPlain(i)
+        const del = doc.createElement('del')
+        appendInlineMarkdown(doc, del, text.slice(i + 2, close), depth + 1)
+        parent.appendChild(del)
+        i = close + 2
+        cursor = i
+        continue
+      }
+      if (close === -1) {
+        strikeExhausted = true
+      }
+      i += 1
+      continue
+    }
+
+    if (ch === '*' && i > singleStarFailUntil) {
+      let scan = i + 1
+      while (scan < text.length && text[scan] !== '*' && text[scan] !== '\n') {
+        scan += 1
+      }
+      if (scan < text.length && text[scan] === '*' && scan > i + 1) {
+        flushPlain(i)
+        const em = doc.createElement('em')
+        appendInlineMarkdown(doc, em, text.slice(i + 1, scan), depth + 1)
+        parent.appendChild(em)
+        i = scan + 1
+        cursor = i
+        continue
+      }
+      singleStarFailUntil = scan
+      i += 1
+      continue
+    }
+
+    if (ch === '[' && i > linkFailUntil) {
+      let closeBracket = i + 1
+      while (closeBracket < text.length && text[closeBracket] !== ']' && text[closeBracket] !== '\n') {
+        closeBracket += 1
+      }
+      if (
+        closeBracket < text.length &&
+        text[closeBracket] === ']' &&
+        closeBracket > i + 1 &&
+        text[closeBracket + 1] === '('
+      ) {
+        let closeParen = closeBracket + 2
+        while (
+          closeParen < text.length &&
+          text[closeParen] !== ')' &&
+          !/\s/u.test(text[closeParen]!)
+        ) {
+          closeParen += 1
+        }
+        if (closeParen < text.length && text[closeParen] === ')' && closeParen > closeBracket + 2) {
+          flushPlain(i)
+          const label = text.slice(i + 1, closeBracket)
+          const href = text.slice(closeBracket + 2, closeParen)
+          if (isSafeLinkUrl(href)) {
+            const a = doc.createElement('a')
+            a.href = href
+            a.target = '_blank'
+            a.rel = 'noopener noreferrer'
+            a.textContent = label
+            parent.appendChild(a)
+          } else {
+            parent.appendChild(doc.createTextNode(`${label} (${href})`))
+          }
+          i = closeParen + 1
+          cursor = i
+          continue
+        }
+      }
+      linkFailUntil = closeBracket
+      i += 1
+      continue
+    }
+
+    i += 1
   }
 
-  if (cursor < text.length) {
-    parent.appendChild(doc.createTextNode(text.slice(cursor)))
-  }
+  flushPlain(text.length)
 }
 
 function splitTableRow(line: string): string[] {
