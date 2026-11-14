@@ -6,7 +6,7 @@ import { InMemoryHostIdentityStore, computeFingerprint } from '@dsh-community/re
 import { parsePairingInput, validateStunOnlyUrls } from '../src/client/pairing.ts'
 import { estimateRpcEnvelopeBytes } from '../src/client/remote-client.ts'
 import { SessionTimelineState } from '../src/client/timeline.ts'
-import { MAX_NOISE_PLAINTEXT_BYTES } from '../src/client/types.ts'
+import { MAX_NOISE_PLAINTEXT_BYTES, SAFE_GIT_DIFF_MAX_BYTES } from '../src/client/types.ts'
 import {
   createBrowserWebRtcTransport,
   DataChannelFrameReassembler,
@@ -408,5 +408,101 @@ describe('remote-web pairing security, safe Markdown/Diff DOM, and CSP hygiene',
     } finally {
       globalThis.RTCPeerConnection = prevRtc
     }
+  })
+
+  it('reconciles streamed assistant text across tool/call without duplicating post-tool messages', () => {
+    const tl = new SessionTimelineState('claude--tool')
+    tl.applyEvent({ seq: 1, type: 'turn/start', data: {} })
+    tl.applyEvent({
+      seq: 2,
+      type: 'assistant/chunk',
+      data: { text: 'Checking config.ts first.', chunk: { type: 'text-delta', text: 'Checking config.ts first.' } },
+    })
+    tl.applyEvent({
+      seq: 3,
+      type: 'tool/call',
+      data: { callId: 'call-1', toolName: 'Read', args: { file_path: 'config.ts' } },
+    })
+    tl.applyEvent({
+      seq: 4,
+      type: 'assistant/message',
+      data: { message: { role: 'assistant', content: 'Checking config.ts first.' } },
+    })
+    tl.applyEvent({
+      seq: 5,
+      type: 'tool/result',
+      data: { callId: 'call-1', result: 'ok' },
+    })
+    tl.applyEvent({
+      seq: 6,
+      type: 'assistant/chunk',
+      data: { text: 'Done.', chunk: { type: 'text-delta', text: 'Done.' } },
+    })
+    tl.applyEvent({
+      seq: 7,
+      type: 'assistant/message',
+      data: { message: { role: 'assistant', content: 'Done.' } },
+    })
+
+    const kinds = tl.items.map((it) => it.kind)
+    expect(kinds).toEqual(['assistant', 'tool', 'assistant'])
+    const first = tl.items[0] as Extract<(typeof tl.items)[number], { kind: 'assistant' }>
+    const last = tl.items[2] as Extract<(typeof tl.items)[number], { kind: 'assistant' }>
+    expect(first.markdownText).toBe('Checking config.ts first.')
+    expect(first.finalized).toBe(true)
+    expect(last.markdownText).toBe('Done.')
+    expect(last.finalized).toBe(true)
+
+    // Thinking-only pre-tool bubble + tool/result must NOT absorb the post-tool assistant/message
+    const tlThinking = new SessionTimelineState('claude--think')
+    tlThinking.applyEvent({
+      seq: 1,
+      type: 'assistant/chunk',
+      data: { text: 'Let me think...', chunk: { type: 'reasoning-delta', text: 'Let me think...' } },
+    })
+    tlThinking.applyEvent({
+      seq: 2,
+      type: 'tool/call',
+      data: { callId: 'call-2', toolName: 'Bash', args: { cmd: 'ls' } },
+    })
+    tlThinking.applyEvent({
+      seq: 3,
+      type: 'tool/result',
+      data: { callId: 'call-2', result: 'a.txt' },
+    })
+    tlThinking.applyEvent({
+      seq: 4,
+      type: 'assistant/message',
+      data: { message: { role: 'assistant', content: 'Found a.txt.' } },
+    })
+    expect(tlThinking.items.map((it) => it.kind)).toEqual(['assistant', 'tool', 'assistant'])
+    expect((tlThinking.items[0] as Extract<(typeof tlThinking.items)[number], { kind: 'assistant' }>).markdownText).toBe('')
+    expect((tlThinking.items[2] as Extract<(typeof tlThinking.items)[number], { kind: 'assistant' }>).markdownText).toBe('Found a.txt.')
+  })
+
+  it('bounds git diff request size under Noise frame limit and keeps composer/question draft invariants', () => {
+    // Even dense newlines, quotes, and backslashes in SAFE_GIT_DIFF_MAX_BYTES fit inside 65,519B plaintext frame
+    const escapedLine = '+const v = "line\\n\\t\\\\value";\n'
+    const diff = escapedLine.repeat(Math.floor(SAFE_GIT_DIFF_MAX_BYTES / Buffer.byteLength(escapedLine)))
+    expect(Buffer.byteLength(diff)).toBeLessThanOrEqual(SAFE_GIT_DIFF_MAX_BYTES)
+    const rpcResponseJson = JSON.stringify({
+      jsonrpc: '2.0',
+      id: 'rpc-diff-1',
+      result: {
+        sessionId: 'claude--s1',
+        repoRoot: '/workspace/repo',
+        branch: 'main',
+        staged: false,
+        diff,
+        bytes: Buffer.byteLength(diff),
+        truncated: true,
+      },
+    })
+    expect(Buffer.byteLength(rpcResponseJson)).toBeLessThan(MAX_NOISE_PLAINTEXT_BYTES)
+
+    const mainSrc = readFileSync(join(APP_ROOT, 'src/main.ts'), 'utf8')
+    expect(mainSrc).toContain('maxBytes: SAFE_GIT_DIFF_MAX_BYTES')
+    expect(mainSrc).toContain('syncComposerStatusControlsIfNeeded()')
+    expect(mainSrc).toContain('questionCustomDrafts')
   })
 })

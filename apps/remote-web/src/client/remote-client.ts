@@ -88,6 +88,7 @@ export class RemoteWebClient {
   private rpcCounter = 0
   private manualDisconnect = false
   private revoked = false
+  private connectGeneration = 0
   private reconnectTimer: ReturnType<typeof setTimeout> | undefined = undefined
   private ackFlushTimer: ReturnType<typeof setTimeout> | undefined = undefined
   private pendingAckBySession = new Map<string, number>()
@@ -203,6 +204,10 @@ export class RemoteWebClient {
     return candidates
   }
 
+  private isConnectGenerationActive(gen: number): boolean {
+    return gen === this.connectGeneration && !this.manualDisconnect && !this.revoked
+  }
+
   private cleanupTransportOnly(): void {
     if (this.ackFlushTimer) {
       clearTimeout(this.ackFlushTimer)
@@ -224,6 +229,7 @@ export class RemoteWebClient {
 
   disconnect(): void {
     this.manualDisconnect = true
+    this.connectGeneration += 1
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer)
       this.reconnectTimer = undefined
@@ -240,21 +246,43 @@ export class RemoteWebClient {
     descriptor: PairingBootstrapDescriptor,
     options: RemoteClientConnectOptions = {},
   ): Promise<TrustedHostProfile> {
+    const gen = ++this.connectGeneration
     const existing = await this.keyStore.getTrustedHost(descriptor.hostFingerprint)
+    if (gen !== this.connectGeneration) {
+      throw new RemoteRpcError('CANCELLED', 'Connection attempt superseded')
+    }
     const profile = descriptorToTrustedProfile(descriptor, existing)
     await this.keyStore.saveTrustedHost(profile)
+    if (gen !== this.connectGeneration) {
+      throw new RemoteRpcError('CANCELLED', 'Connection attempt superseded')
+    }
 
-    return this.connectToProfile(profile, {
-      ...options,
-      bootstrapToken: descriptor.bootstrapToken,
-      allowEpochReset: options.allowEpochReset ?? true,
-    })
+    return this.connectToProfileInternal(
+      profile,
+      {
+        ...options,
+        bootstrapToken: descriptor.bootstrapToken,
+        allowEpochReset: options.allowEpochReset ?? true,
+      },
+      gen,
+    )
   }
 
   async connectToProfile(
     profile: TrustedHostProfile,
     options: RemoteClientConnectOptions = {},
   ): Promise<TrustedHostProfile> {
+    return this.connectToProfileInternal(profile, options, ++this.connectGeneration)
+  }
+
+  private async connectToProfileInternal(
+    profile: TrustedHostProfile,
+    options: RemoteClientConnectOptions,
+    gen: number,
+  ): Promise<TrustedHostProfile> {
+    if (gen !== this.connectGeneration) {
+      throw new RemoteRpcError('CANCELLED', 'Connection attempt superseded')
+    }
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer)
       this.reconnectTimer = undefined
@@ -263,6 +291,9 @@ export class RemoteWebClient {
     this.revoked = false
     this.cleanupTransportOnly()
     const storedHost = await this.keyStore.getTrustedHost(profile.hostFingerprint)
+    if (!this.isConnectGenerationActive(gen)) {
+      throw new RemoteRpcError('CANCELLED', 'Connection attempt superseded')
+    }
     const effectiveProfile: TrustedHostProfile =
       storedHost && storedHost.lastEpoch > profile.lastEpoch
         ? { ...profile, lastEpoch: storedHost.lastEpoch }
@@ -278,10 +309,13 @@ export class RemoteWebClient {
     }
 
     const identity = await this.keyStore.getOrCreateClientKeyPair()
+    if (!this.isConnectGenerationActive(gen)) {
+      throw new RemoteRpcError('CANCELLED', 'Connection attempt superseded')
+    }
     const hostPubBytes = hexToBytes(effectiveProfile.hostPublicKeyHex)
     const pollIntervalMs = options.autoPairPollIntervalMs ?? 1_200
 
-    while (!this.manualDisconnect && !this.revoked) {
+    while (this.isConnectGenerationActive(gen)) {
       this.emitStatus({
         status: 'connecting',
         host: effectiveProfile,
@@ -294,8 +328,8 @@ export class RemoteWebClient {
         | undefined = undefined
 
       for (const candidate of candidates) {
-        if (this.manualDisconnect || this.revoked) {
-          throw new RemoteRpcError('CANCELLED', 'Connection cancelled')
+        if (!this.isConnectGenerationActive(gen)) {
+          throw new RemoteRpcError('CANCELLED', 'Connection attempt superseded')
         }
         try {
           handshakeOutcome = await this.tryConnectSingleTransport(
@@ -304,9 +338,15 @@ export class RemoteWebClient {
             hostPubBytes,
             effectiveProfile,
             options,
+            gen,
           )
           break
         } catch (err) {
+          if (!this.isConnectGenerationActive(gen)) {
+            throw err instanceof RemoteRpcError && err.code === 'CANCELLED'
+              ? err
+              : new RemoteRpcError('CANCELLED', 'Connection attempt superseded')
+          }
           const msg = sanitizeDiagnosticMessage(err instanceof Error ? err.message : String(err))
           if (err instanceof RemoteRpcError && (err.code === 'EPOCH_DOWNGRADE' || err.code === 'PEER_REVOKED')) {
             this.cleanupTransportOnly()
@@ -320,6 +360,10 @@ export class RemoteWebClient {
           errors.push(`${candidate.kind}: ${msg}`)
           this.cleanupTransportOnly()
         }
+      }
+
+      if (!this.isConnectGenerationActive(gen)) {
+        throw new RemoteRpcError('CANCELLED', 'Connection attempt superseded')
       }
 
       if (!handshakeOutcome) {
@@ -343,12 +387,18 @@ export class RemoteWebClient {
             lastConnectedAt: Date.now(),
             preferredTransport: handshakeOutcome.kind,
           }
+        if (!this.isConnectGenerationActive(gen)) {
+          throw new RemoteRpcError('CANCELLED', 'Connection attempt superseded')
+        }
         const saved: TrustedHostProfile = {
           ...storedEpochUpdated,
           preferredTransport: handshakeOutcome.kind,
           lastConnectedAt: Date.now(),
         }
         await this.keyStore.saveTrustedHost(saved)
+        if (!this.isConnectGenerationActive(gen)) {
+          throw new RemoteRpcError('CANCELLED', 'Connection attempt superseded')
+        }
         this.activeHost = saved
         this.activeTransportKind = handshakeOutcome.kind
         this.emitStatus({
@@ -362,6 +412,9 @@ export class RemoteWebClient {
 
       // PAIRING_PENDING branch
       if (!bootstrapToken) {
+        if (!this.isConnectGenerationActive(gen)) {
+          throw new RemoteRpcError('CANCELLED', 'Connection attempt superseded')
+        }
         this.cleanupTransportOnly()
         const msg = 'Device is not authorized on host (PAIRING_PENDING). Pair again using a fresh QR code or link.'
         this.emitStatus({
@@ -380,6 +433,10 @@ export class RemoteWebClient {
         options.requestTimeoutMs ?? 10_000,
       )) as { candidateId: string; expiresAt: number }
 
+      if (!this.isConnectGenerationActive(gen)) {
+        throw new RemoteRpcError('CANCELLED', 'Connection attempt superseded')
+      }
+
       this.emitStatus({
         status: 'pairing',
         transport: handshakeOutcome.kind,
@@ -396,19 +453,28 @@ export class RemoteWebClient {
       this.cleanupTransportOnly()
       const waitDeadline = Math.min(pairResult.expiresAt, Date.now() + 180_000)
 
-      while (!this.manualDisconnect && !this.revoked) {
+      while (this.isConnectGenerationActive(gen)) {
         if (Date.now() > waitDeadline) {
           throw new RemoteRpcError('PAIRING_EXPIRED', 'Pairing request expired before host approval')
         }
         await sleep(pollIntervalMs)
-        if (this.manualDisconnect || this.revoked) {
-          throw new RemoteRpcError('CANCELLED', 'Pairing cancelled')
+        if (!this.isConnectGenerationActive(gen)) {
+          throw new RemoteRpcError('CANCELLED', 'Connection attempt superseded')
         }
         try {
-          const recheck = await this.tryConnectFirstReachable(effectiveProfile, identity, hostPubBytes, {
-            ...options,
-            allowEpochReset: true,
-          })
+          const recheck = await this.tryConnectFirstReachable(
+            effectiveProfile,
+            identity,
+            hostPubBytes,
+            {
+              ...options,
+              allowEpochReset: true,
+            },
+            gen,
+          )
+          if (!this.isConnectGenerationActive(gen)) {
+            throw new RemoteRpcError('CANCELLED', 'Connection attempt superseded')
+          }
           if (recheck.state === 'ACTIVE') {
             const saved: TrustedHostProfile = {
               ...(await this.keyStore.updateHostEpoch(effectiveProfile.hostFingerprint, recheck.epoch, {
@@ -417,7 +483,13 @@ export class RemoteWebClient {
               preferredTransport: recheck.kind,
               lastConnectedAt: Date.now(),
             }
+            if (!this.isConnectGenerationActive(gen)) {
+              throw new RemoteRpcError('CANCELLED', 'Connection attempt superseded')
+            }
             await this.keyStore.saveTrustedHost(saved)
+            if (!this.isConnectGenerationActive(gen)) {
+              throw new RemoteRpcError('CANCELLED', 'Connection attempt superseded')
+            }
             this.activeHost = saved
             this.activeTransportKind = recheck.kind
             this.emitStatus({
@@ -431,6 +503,11 @@ export class RemoteWebClient {
           // Still PAIRING_PENDING — close cleanly and wait next poll
           this.cleanupTransportOnly()
         } catch (err) {
+          if (!this.isConnectGenerationActive(gen)) {
+            throw err instanceof RemoteRpcError && err.code === 'CANCELLED'
+              ? err
+              : new RemoteRpcError('CANCELLED', 'Connection attempt superseded')
+          }
           this.cleanupTransportOnly()
           if (err instanceof RemoteRpcError && err.code === 'PEER_REVOKED') {
             throw err
@@ -447,13 +524,22 @@ export class RemoteWebClient {
     identity: { publicKey: Uint8Array; secretKey: Uint8Array },
     hostPubBytes: Uint8Array,
     options: RemoteClientConnectOptions,
+    gen: number,
   ): Promise<{ readonly state: 'ACTIVE' | 'PAIRING_PENDING'; readonly epoch: number; readonly kind: TransportKind }> {
     const candidates = this.buildCandidateTransports(profile, options)
     let lastError: Error | undefined
     for (const c of candidates) {
+      if (!this.isConnectGenerationActive(gen)) {
+        throw new RemoteRpcError('CANCELLED', 'Connection attempt superseded')
+      }
       try {
-        return await this.tryConnectSingleTransport(c, identity, hostPubBytes, profile, options)
+        return await this.tryConnectSingleTransport(c, identity, hostPubBytes, profile, options, gen)
       } catch (err) {
+        if (!this.isConnectGenerationActive(gen)) {
+          throw err instanceof RemoteRpcError && err.code === 'CANCELLED'
+            ? err
+            : new RemoteRpcError('CANCELLED', 'Connection attempt superseded')
+        }
         lastError = err instanceof Error ? err : new Error(String(err))
         this.cleanupTransportOnly()
         if (err instanceof RemoteRpcError && (err.code === 'PEER_REVOKED' || err.code === 'EPOCH_DOWNGRADE')) {
@@ -470,7 +556,14 @@ export class RemoteWebClient {
     hostPubBytes: Uint8Array,
     profile: TrustedHostProfile,
     options: RemoteClientConnectOptions,
+    gen: number,
   ): Promise<{ readonly state: 'ACTIVE' | 'PAIRING_PENDING'; readonly epoch: number; readonly kind: TransportKind }> {
+    if (!this.isConnectGenerationActive(gen)) {
+      try {
+        transport.close()
+      } catch {}
+      throw new RemoteRpcError('CANCELLED', 'Connection attempt superseded')
+    }
     const handshakeTimeoutMs = options.handshakeTimeoutMs ?? 6_000
     const noise = new NoiseIkInitiator({
       clientKeyPair: identity,
@@ -497,17 +590,30 @@ export class RemoteWebClient {
         try {
           transport.close()
         } catch {}
+        if (this.transport === transport) {
+          this.transport = undefined
+          this.noise = undefined
+        }
         reject(err)
       }
 
       const timer = setTimeout(() => {
-        failHandshake(new Error(`Noise handshake timed out on ${transport.kind}`))
+        failHandshake(
+          this.isConnectGenerationActive(gen)
+            ? new Error(`Noise handshake timed out on ${transport.kind}`)
+            : new RemoteRpcError('CANCELLED', 'Connection attempt superseded'),
+        )
       }, handshakeTimeoutMs)
 
       transport
         .connect({
           onMessage: (frame) => {
-            if (this.transport !== transport) return
+            if (this.transport !== transport || !this.isConnectGenerationActive(gen)) {
+              if (stage !== 'ESTABLISHED' && !this.isConnectGenerationActive(gen)) {
+                failHandshake(new RemoteRpcError('CANCELLED', 'Connection attempt superseded'))
+              }
+              return
+            }
 
             if (stage === 'WAIT_MSG2') {
               try {
@@ -582,6 +688,11 @@ export class RemoteWebClient {
                 return
               }
 
+              if (!this.isConnectGenerationActive(gen) || this.transport !== transport) {
+                failHandshake(new RemoteRpcError('CANCELLED', 'Connection attempt superseded'))
+                return
+              }
+
               this.connectionEpoch = epoch
               this.requestSeq = 0
               stage = 'ESTABLISHED'
@@ -594,7 +705,12 @@ export class RemoteWebClient {
             this.handleActiveMessage(msg)
           },
           onError: (err) => {
-            if (this.transport !== transport) return
+            if (this.transport !== transport || !this.isConnectGenerationActive(gen)) {
+              if (stage !== 'ESTABLISHED' && !this.isConnectGenerationActive(gen)) {
+                failHandshake(new RemoteRpcError('CANCELLED', 'Connection attempt superseded'))
+              }
+              return
+            }
             if (stage !== 'ESTABLISHED') {
               failHandshake(err)
             } else {
@@ -602,7 +718,12 @@ export class RemoteWebClient {
             }
           },
           onClose: (reason) => {
-            if (this.transport !== transport) return
+            if (this.transport !== transport || !this.isConnectGenerationActive(gen)) {
+              if (stage !== 'ESTABLISHED' && !this.isConnectGenerationActive(gen)) {
+                failHandshake(new RemoteRpcError('CANCELLED', 'Connection attempt superseded'))
+              }
+              return
+            }
             if (stage !== 'ESTABLISHED') {
               failHandshake(new Error(reason))
             } else {
@@ -611,12 +732,23 @@ export class RemoteWebClient {
           },
         })
         .then(() => {
-          if (settled || this.transport !== transport) return
+          if (settled || this.transport !== transport || !this.isConnectGenerationActive(gen)) {
+            if (!settled && !this.isConnectGenerationActive(gen)) {
+              failHandshake(new RemoteRpcError('CANCELLED', 'Connection attempt superseded'))
+            }
+            return
+          }
           const msg1 = noise.writeMessage1()
           transport.send(msg1)
         })
         .catch((err) => {
-          failHandshake(err instanceof Error ? err : new Error(String(err)))
+          failHandshake(
+            this.isConnectGenerationActive(gen)
+              ? err instanceof Error
+                ? err
+                : new Error(String(err))
+              : new RemoteRpcError('CANCELLED', 'Connection attempt superseded'),
+          )
         })
     })
   }
@@ -646,8 +778,14 @@ export class RemoteWebClient {
       try {
         await this.connectToProfile(host, opts)
       } catch (err) {
-        if (this.manualDisconnect || this.revoked) return
-        if (err instanceof RemoteRpcError && (err.code === 'PEER_REVOKED' || err.code === 'PAIRING_REQUIRED' || err.code === 'EPOCH_DOWNGRADE')) {
+        if (this.manualDisconnect || this.revoked || this.activeHost !== host) return
+        if (
+          err instanceof RemoteRpcError &&
+          (err.code === 'CANCELLED' ||
+            err.code === 'PEER_REVOKED' ||
+            err.code === 'PAIRING_REQUIRED' ||
+            err.code === 'EPOCH_DOWNGRADE')
+        ) {
           return
         }
         attempt += 1

@@ -335,3 +335,10 @@ export type TimelineItem =
       readonly text: string
       readonly isError: boolean
     }
+
+/**
+ * Maximum raw byte count requested for `workspace.git.diff` so the serialized JSON-RPC
+ * response (including JSON escaping and RPC envelope fields) safely fits inside a single
+ * 65,536-byte Noise WebSocket/DataChannel transport frame (65,519-byte plaintext cap).
+ */
+export const SAFE_GIT_DIFF_MAX_BYTES = 24_576

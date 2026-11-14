@@ -176,6 +176,7 @@ export class SessionTimelineState implements SessionStoreState {
   private seenKeys = new Set<string>()
   private rawEvents = new Map<string, OfficialSessionEvent>()
   private itemCounter = 0
+  private unmergedStreamedAssistantId: string | undefined = undefined
 
   constructor(readonly sessionId: string) {}
 
@@ -266,6 +267,7 @@ export class SessionTimelineState implements SessionStoreState {
     this.seenKeys = new Set()
     this.highestSeq = 0
     this.oldestSeq = null
+    this.unmergedStreamedAssistantId = undefined
 
     let crossedThreshold = false
     for (const ev of sorted) {
@@ -276,6 +278,7 @@ export class SessionTimelineState implements SessionStoreState {
       ) {
         crossedThreshold = true
         finalizeOpenAssistants(this.items)
+        this.unmergedStreamedAssistantId = undefined
       }
       this.applyEvent(ev, { markUnread: false, skipRawStore: true })
     }
@@ -347,6 +350,7 @@ export class SessionTimelineState implements SessionStoreState {
         }
       }
       finalizeOpenAssistants(this.items)
+      this.unmergedStreamedAssistantId = undefined
     }
 
     this.hasMoreHistory = hasMore
@@ -392,6 +396,7 @@ export class SessionTimelineState implements SessionStoreState {
       case 'user/message':
       case 'user.message':
       case 'prompt': {
+        this.unmergedStreamedAssistantId = undefined
         const extracted = extractUserMessage(data)
         if (!extracted) return
         const optIdx = this.items.findIndex(
@@ -431,6 +436,7 @@ export class SessionTimelineState implements SessionStoreState {
 
         const tail = this.items[this.items.length - 1]
         if (tail && tail.kind === 'assistant' && !tail.finalized) {
+          this.unmergedStreamedAssistantId = tail.id
           this.items[this.items.length - 1] = {
             ...tail,
             seq: event.seq,
@@ -438,9 +444,11 @@ export class SessionTimelineState implements SessionStoreState {
             markdownText: isThinking ? tail.markdownText : tail.markdownText + delta,
           }
         } else {
+          const id = this.nextId('a')
+          this.unmergedStreamedAssistantId = id
           this.items.push({
             kind: 'assistant',
-            id: this.nextId('a'),
+            id,
             seq: event.seq,
             thinkingText: isThinking ? delta : '',
             markdownText: isThinking ? '' : delta,
@@ -467,11 +475,16 @@ export class SessionTimelineState implements SessionStoreState {
         let openIdx = -1
         for (let i = this.items.length - 1; i >= 0; i -= 1) {
           const it = this.items[i]!
-          if (it.kind === 'assistant' && !it.finalized) {
+          if (
+            it.kind === 'assistant' &&
+            (!it.finalized ||
+              (this.unmergedStreamedAssistantId !== undefined && it.id === this.unmergedStreamedAssistantId))
+          ) {
             openIdx = i
             break
           }
         }
+        this.unmergedStreamedAssistantId = undefined
 
         if (openIdx >= 0) {
           const prev = this.items[openIdx] as Extract<TimelineItem, { kind: 'assistant' }>
@@ -548,6 +561,7 @@ export class SessionTimelineState implements SessionStoreState {
 
       case 'tool/result':
       case 'tool.result': {
+        this.unmergedStreamedAssistantId = undefined
         if (!data) return
         const msg = isRecord(data.message) ? data.message : data
         const callId = String(msg.callId ?? data.callId ?? '')
@@ -670,6 +684,7 @@ export class SessionTimelineState implements SessionStoreState {
 
       case 'turn/start':
       case 'turn.start': {
+        this.unmergedStreamedAssistantId = undefined
         this.status = 'running'
         this.todos = []
         return
@@ -677,6 +692,7 @@ export class SessionTimelineState implements SessionStoreState {
 
       case 'turn/end':
       case 'turn.end': {
+        this.unmergedStreamedAssistantId = undefined
         this.status = 'idle'
         finalizeOpenAssistants(this.items)
         const reasonObj = isRecord(data?.reason) ? data.reason : undefined
@@ -751,6 +767,7 @@ export class SessionTimelineState implements SessionStoreState {
 
       case 'error':
       case 'session/error': {
+        this.unmergedStreamedAssistantId = undefined
         this.items.push({
           kind: 'notice',
           id: this.nextId('n'),

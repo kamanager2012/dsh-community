@@ -16,6 +16,7 @@ import {
   MAX_NOISE_PLAINTEXT_BYTES,
   MAX_PROMPT_IMAGE_COUNT,
   MAX_PROMPT_IMAGE_DECODED_BYTES,
+  SAFE_GIT_DIFF_MAX_BYTES,
   type AgentEngineId,
   type EngineDescriptor,
   type ModelCatalogResult,
@@ -73,6 +74,7 @@ interface AppState {
   pendingAttachments: PromptImageAttachment[]
   expandedDetailIds: Set<string>
   questionDrafts: Map<string, Map<number, string[]>>
+  questionCustomDrafts: Map<string, string>
   toastMessage: string | undefined
   submittingPrompt: boolean
 }
@@ -113,6 +115,7 @@ const state: AppState = {
   pendingAttachments: [],
   expandedDetailIds: new Set(),
   questionDrafts: new Map(),
+  questionCustomDrafts: new Map(),
   toastMessage: undefined,
   submittingPrompt: false,
 }
@@ -120,6 +123,7 @@ const state: AppState = {
 let activeCameraScanner: CameraQrScannerSession | undefined = undefined
 let timelineRefreshTimer: ReturnType<typeof setTimeout> | undefined = undefined
 let toastTimer: ReturnType<typeof setTimeout> | undefined = undefined
+let lastComposerRenderKey = ''
 
 function shortFp(fp: string | undefined): string {
   if (!fp) return 'unknown'
@@ -157,7 +161,9 @@ function resetHostScopedState(nextHostFingerprint?: string): void {
   state.pendingAttachments = []
   state.expandedDetailIds.clear()
   state.questionDrafts.clear()
+  state.questionCustomDrafts.clear()
   state.submittingPrompt = false
+  lastComposerRenderKey = ''
 }
 
 function getOrCreateTimeline(sessionId: string): SessionTimelineState {
@@ -344,7 +350,7 @@ async function loadGitReview(sessionId: string): Promise<void> {
       client.getWorkspaceGitDiff(sessionId, {
         staged: state.gitStaged,
         ...(state.gitSelectedPath ? { path: state.gitSelectedPath } : {}),
-        maxBytes: 256_000,
+        maxBytes: SAFE_GIT_DIFF_MAX_BYTES,
       }),
     ])
     if (state.activeSessionId === sessionId) {
@@ -645,6 +651,15 @@ function scrollChatToBottom(): void {
   }
 }
 
+function syncComposerStatusControlsIfNeeded(): void {
+  const sid = state.activeSessionId
+  const tl = sid ? state.timelines.get(sid) : undefined
+  const nextKey = `${state.activeTab}:${sid ?? ''}:${tl?.status ?? ''}:${client.getStatus()}`
+  if (nextKey !== lastComposerRenderKey) {
+    renderComposer()
+  }
+}
+
 function scheduleTimelineRender(): void {
   if (timelineRefreshTimer) return
   timelineRefreshTimer = setTimeout(() => {
@@ -656,6 +671,7 @@ function scheduleTimelineRender(): void {
     renderTimelineArea()
     renderPendingActionsTray()
     renderSidebarBodyOnly()
+    syncComposerStatusControlsIfNeeded()
     if (wasNearBottom) {
       scrollChatToBottom()
     }
@@ -1140,6 +1156,19 @@ function renderTimelineArea(): void {
 function renderPendingActionsTray(): void {
   const tray = document.getElementById('pending-actions-tray')
   if (!tray) return
+  const activeEl = typeof document !== 'undefined' ? document.activeElement : null
+  const activeCustomInput =
+    typeof HTMLInputElement !== 'undefined' &&
+    activeEl instanceof HTMLInputElement &&
+    tray.contains(activeEl) &&
+    activeEl.dataset.questionDraftId
+      ? activeEl
+      : undefined
+  const focusedQuestionId = activeCustomInput?.dataset.questionDraftId
+  const savedSelStart = activeCustomInput?.selectionStart ?? null
+  const savedSelEnd = activeCustomInput?.selectionEnd ?? null
+  const savedSelDir = activeCustomInput?.selectionDirection ?? null
+
   tray.replaceChildren()
   if (!state.activeSessionId) return
   const tl = state.timelines.get(state.activeSessionId)
@@ -1150,6 +1179,18 @@ function renderPendingActionsTray(): void {
   }
   for (const question of tl.pendingQuestions) {
     tray.appendChild(buildQuestionCard(question))
+  }
+
+  if (focusedQuestionId) {
+    const restored = [...tray.querySelectorAll('input')].find(
+      (input) => input.dataset.questionDraftId === focusedQuestionId,
+    )
+    if (restored) {
+      restored.focus({ preventScroll: true })
+      if (savedSelStart !== null && savedSelEnd !== null) {
+        restored.setSelectionRange(savedSelStart, savedSelEnd, savedSelDir ?? undefined)
+      }
+    }
   }
 }
 
@@ -1257,7 +1298,12 @@ function buildQuestionCard(q: PendingQuestionSnapshot): HTMLElement {
   const customRow = el('form', 'q-custom-row')
   const customInput = el('input', 'input-sm')
   customInput.type = 'text'
+  customInput.dataset.questionDraftId = q.questionId
   customInput.placeholder = 'Or type a custom answer...'
+  customInput.value = state.questionCustomDrafts.get(q.questionId) ?? ''
+  customInput.addEventListener('input', () => {
+    state.questionCustomDrafts.set(q.questionId, customInput.value)
+  })
   const sendBtn = el('button', 'btn-primary btn-sm', 'Submit Answer')
   sendBtn.type = 'submit'
   const cancelBtn = el('button', 'btn-ghost btn-sm', 'Cancel')
@@ -1295,6 +1341,7 @@ async function sendQuestionAnswer(q: PendingQuestionSnapshot, answer: unknown): 
   try {
     await client.respondQuestion(q.questionId, answer)
     state.questionDrafts.delete(q.questionId)
+    state.questionCustomDrafts.delete(q.questionId)
     if (state.activeSessionId) {
       getOrCreateTimeline(state.activeSessionId).resolveQuestionLocally(q.questionId)
     }
@@ -1308,10 +1355,24 @@ async function sendQuestionAnswer(q: PendingQuestionSnapshot, answer: unknown): 
 function renderComposer(): void {
   const host = document.getElementById('composer-slot')
   if (!host) return
-  host.replaceChildren()
+  const activeEl = typeof document !== 'undefined' ? document.activeElement : null
+  const isComposerTextarea =
+    typeof HTMLTextAreaElement !== 'undefined' &&
+    activeEl instanceof HTMLTextAreaElement &&
+    host.contains(activeEl)
+  const savedSelStart = isComposerTextarea ? activeEl.selectionStart : null
+  const savedSelEnd = isComposerTextarea ? activeEl.selectionEnd : null
+  const savedSelDir = isComposerTextarea ? activeEl.selectionDirection : null
+
   const sid = state.activeSessionId
-  if (!sid || state.activeTab !== 'chat') return
-  const tl = getOrCreateTimeline(sid)
+  if (isComposerTextarea && sid) {
+    state.draftBySession.set(sid, activeEl.value)
+  }
+  const tl = sid ? getOrCreateTimeline(sid) : undefined
+  lastComposerRenderKey = `${state.activeTab}:${sid ?? ''}:${tl?.status ?? ''}:${client.getStatus()}`
+
+  host.replaceChildren()
+  if (!sid || !tl || state.activeTab !== 'chat') return
   const cmds = state.commandsBySession.get(sid) ?? []
 
   if (state.pendingAttachments.length > 0) {
@@ -1420,6 +1481,13 @@ function renderComposer(): void {
 
   form.append(controls, row)
   host.appendChild(form)
+
+  if (isComposerTextarea) {
+    textarea.focus({ preventScroll: true })
+    if (savedSelStart !== null && savedSelEnd !== null) {
+      textarea.setSelectionRange(savedSelStart, savedSelEnd, savedSelDir ?? undefined)
+    }
+  }
 }
 
 function renderGitDiffPanel(container: HTMLElement): void {
@@ -1927,6 +1995,14 @@ async function bootstrap(): Promise<void> {
 
   client.onNotification((notif) => {
     if (notif.type === 'stream.event') {
+      const evtType = notif.event.type.trim().toLowerCase()
+      if (evtType === 'question.resolved' && notif.event.data && typeof notif.event.data === 'object') {
+        const qid = (notif.event.data as { questionId?: unknown }).questionId
+        if (typeof qid === 'string') {
+          state.questionDrafts.delete(qid)
+          state.questionCustomDrafts.delete(qid)
+        }
+      }
       const tl = getOrCreateTimeline(notif.sessionId)
       tl.applyEvent(notif.event, {
         markUnread: notif.sessionId !== state.activeSessionId,

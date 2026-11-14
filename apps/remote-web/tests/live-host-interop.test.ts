@@ -1,4 +1,7 @@
+import { createHash } from 'node:crypto'
+import { createServer } from 'node:http'
 import { mkdtempSync, rmSync } from 'node:fs'
+import type { Duplex } from 'node:stream'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -12,6 +15,7 @@ import { RemoteWebKeyStore } from '../src/client/keystore.ts'
 import { consumePairFragmentFromLocation, parsePairingInput } from '../src/client/pairing.ts'
 import { RemoteRpcError, RemoteWebClient } from '../src/client/remote-client.ts'
 import { SessionTimelineState } from '../src/client/timeline.ts'
+import type { TrustedHostProfile } from '../src/client/types.ts'
 import { utf8Decode } from '../src/crypto/bytes.ts'
 
 const cleanupCallbacks: Array<() => Promise<void> | void> = []
@@ -410,5 +414,91 @@ describe('remote-web live E2EE host interoperability', () => {
     await expect.poll(() => statusSeen.includes('epoch_mismatch'), { timeout: 5_000 }).toBe(true)
     const persisted = await keyStore.getTrustedHost(saved.hostFingerprint)
     expect(persisted?.lastEpoch).toBe(saved.lastEpoch + 250)
+  })
+
+  it('cancels superseded connection attempts without tearing down replacement transport or publishing stale errors', async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), 'dsh-rweb-superseded-'))
+    cleanupCallbacks.push(() => rmSync(tmpDir, { recursive: true, force: true }))
+
+    // Create a zero-dependency silent WS upgrade blackhole that stalls before Noise handshake response
+    const openSockets = new Set<Duplex>()
+    const stalledHttp = createServer()
+    stalledHttp.on('upgrade', (req, socket) => {
+      const wsKey = String(req.headers['sec-websocket-key'] ?? '')
+      const accept = createHash('sha1')
+        .update(`${wsKey}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`)
+        .digest('base64')
+      socket.write(
+        `HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`,
+      )
+      openSockets.add(socket)
+      socket.on('close', () => openSockets.delete(socket))
+      socket.on('error', () => {})
+    })
+    await new Promise<void>((resolve) => stalledHttp.listen(0, '127.0.0.1', () => resolve()))
+    const stalledAddr = stalledHttp.address() as { port: number }
+    cleanupCallbacks.push(async () => {
+      for (const sock of openSockets) sock.destroy()
+      await new Promise<void>((resolve) => stalledHttp.close(() => resolve()))
+    })
+
+    const stalledHostPubHex = '2a'.repeat(32)
+    const stalledHostFp = 'bb'.repeat(32)
+
+    const mock = createMockMultiAgentBackend(tmpDir)
+    const liveHost = new MultiAgentRemoteHost({
+      dshHome: join(tmpDir, 'dsh-home'),
+      configDir: join(tmpDir, 'remote-config'),
+      cwd: tmpDir,
+      backends: [mock.backend],
+      autoConfirmCapabilities: ['observe'],
+      carrier: { enabled: true, host: '127.0.0.1', port: 0 },
+    })
+    await liveHost.start()
+    cleanupCallbacks.push(() => liveHost.stop())
+
+    const issuedLive = await liveHost.issuePairingDescriptor()
+    const nowMs = Date.now()
+    const stalledProfile: TrustedHostProfile = {
+      hostFingerprint: stalledHostFp,
+      hostPublicKeyHex: stalledHostPubHex,
+      label: 'Stalled Host',
+      endpointUrl: `ws://127.0.0.1:${stalledAddr.port}`,
+      lastEpoch: 0,
+      pairedAt: nowMs,
+      lastConnectedAt: nowMs,
+    }
+
+    const client = new RemoteWebClient(new RemoteWebKeyStore(false))
+    cleanupCallbacks.push(() => client.disconnect())
+
+    const statuses: string[] = []
+    client.onStatus((evt) => {
+      if (evt.status === 'error') {
+        statuses.push(`${evt.host?.hostFingerprint}:${evt.detail}`)
+      }
+    })
+
+    const staleAttempt = client
+      .connectToProfile(stalledProfile, { handshakeTimeoutMs: 120 })
+      .catch((err) => err)
+
+    await new Promise((r) => setTimeout(r, 20))
+    const liveSaved = await client.connectWithPairing(issuedLive.descriptor, {
+      handshakeTimeoutMs: 2_000,
+      autoPairPollIntervalMs: 30,
+    })
+    expect(client.getStatus()).toBe('active')
+
+    // Wait well past the stale handshake timeout (120ms) to ensure old timers/catches stay silent
+    const staleOutcome = await staleAttempt
+    await new Promise((r) => setTimeout(r, 180))
+
+    expect(staleOutcome).toBeInstanceOf(RemoteRpcError)
+    expect((staleOutcome as RemoteRpcError).code).toBe('CANCELLED')
+    expect(client.getStatus()).toBe('active')
+    expect(client.getActiveHost()?.hostFingerprint).toBe(liveSaved.hostFingerprint)
+    expect(statuses).toEqual([])
+    await expect(client.listSessions()).resolves.toMatchObject([{ id: 'claude--s1' }])
   })
 })
