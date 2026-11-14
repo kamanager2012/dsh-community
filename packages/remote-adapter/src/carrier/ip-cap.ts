@@ -468,6 +468,10 @@ export class PerIpConnectionTracker {
     return this.leaseIps.has(socketOrReq)
   }
 
+  trackedKey(socketOrReq: object): string | undefined {
+    return this.leaseIps.get(socketOrReq)
+  }
+
   bucketKey(ip: string | undefined): string {
     return normalizeIpForRateLimit(ip, this.ipv6PrefixLength)
   }
@@ -554,11 +558,12 @@ function tryConsumeSlidingWindow(
   return true
 }
 
-function rejectHttp429(res: ServerResponse, errorMessage: string): false {
+function rejectHttp429(res: ServerResponse, errorMessage: string, closeConnection = false): false {
   res.writeHead(429, {
     'Content-Type': 'application/json; charset=utf-8',
     'X-Content-Type-Options': 'nosniff',
     'Cache-Control': 'no-store',
+    ...(closeConnection ? { Connection: 'close' } : {}),
   })
   res.end(JSON.stringify({ error: errorMessage }))
   return false
@@ -601,7 +606,7 @@ export class ProxyAwareHttpConnectionGuard {
   private readonly onPreAuthRateRejected: (() => void) | undefined
   private readonly openSockets = new Set<Socket>()
   private readonly pendingHandshakeTimers = new Map<Socket, ReturnType<typeof setTimeout>>()
-  private readonly preAuthChargedSockets = new WeakSet<Socket>()
+  private readonly unspentSocketAdmissions = new WeakSet<Socket>()
   private readonly preAuthGlobalWindow: SlidingRateWindow = { timestamps: [], head: 0 }
   private readonly perIpPreAuthWindows = new Map<string, SlidingRateWindow>()
 
@@ -646,13 +651,12 @@ export class ProxyAwareHttpConnectionGuard {
     return this.openSockets.size
   }
 
-  private tryConsumePerIpPreAuthBudget(clientIp: string | undefined, now = Date.now()): boolean {
-    const key = this.ipTracker.bucketKey(clientIp)
-    const existing = this.perIpPreAuthWindows.get(key)
+  private tryConsumePerIpPreAuthBudgetByKey(bucketKey: string, now = Date.now()): boolean {
+    const existing = this.perIpPreAuthWindows.get(bucketKey)
     if (existing !== undefined) {
       // Refresh LRU order so saturated senders cannot be evicted by other traffic
-      this.perIpPreAuthWindows.delete(key)
-      this.perIpPreAuthWindows.set(key, existing)
+      this.perIpPreAuthWindows.delete(bucketKey)
+      this.perIpPreAuthWindows.set(bucketKey, existing)
       return tryConsumeSlidingWindow(
         existing,
         this.maxPreAuthConnectionsPerIpPerWindow,
@@ -677,7 +681,7 @@ export class ProxyAwareHttpConnectionGuard {
       }
     }
 
-    this.perIpPreAuthWindows.set(key, { timestamps: [now], head: 0 })
+    this.perIpPreAuthWindows.set(bucketKey, { timestamps: [now], head: 0 })
     return true
   }
 
@@ -690,12 +694,12 @@ export class ProxyAwareHttpConnectionGuard {
     )
   }
 
-  private tryConsumePreAuthBudgetsForIp(
-    clientIp: string | undefined,
+  private tryConsumePreAuthBudgetsForBucketKey(
+    bucketKey: string,
     onPerIpReject: () => void,
     onGlobalReject: () => void,
   ): boolean {
-    if (!this.tryConsumePerIpPreAuthBudget(clientIp)) {
+    if (!this.tryConsumePerIpPreAuthBudgetByKey(bucketKey)) {
       this.onPerIpRejected()
       onPerIpReject()
       return false
@@ -731,15 +735,15 @@ export class ProxyAwareHttpConnectionGuard {
         return rejectSocketWithStatus(socket, 'HTTP/1.1 429 Too Many Requests')
       }
       if (
-        !this.tryConsumePreAuthBudgetsForIp(
-          socket.remoteAddress,
+        !this.tryConsumePreAuthBudgetsForBucketKey(
+          this.ipTracker.bucketKey(socket.remoteAddress),
           () => rejectSocketWithStatus(socket, 'HTTP/1.1 429 Too Many Requests'),
           () => rejectSocketWithStatus(socket, 'HTTP/1.1 429 Too Many Requests'),
         )
       ) {
         return false
       }
-      this.preAuthChargedSockets.add(socket)
+      this.unspentSocketAdmissions.add(socket)
       if (!this.ipTracker.tryAcquire(socket)) {
         this.onPerIpRejected()
         return rejectSocketWithStatus(socket, 'HTTP/1.1 429 Too Many Requests')
@@ -766,8 +770,16 @@ export class ProxyAwareHttpConnectionGuard {
 
   handleHttpRequest(req: IncomingMessage, res: ServerResponse): boolean {
     this.clearPendingTimer(req.socket)
-    if (this.ipTracker.has(req.socket)) {
-      return true
+    const trackedBucketKey = this.ipTracker.trackedKey(req.socket)
+    if (trackedBucketKey !== undefined) {
+      if (this.unspentSocketAdmissions.delete(req.socket)) {
+        return true
+      }
+      return this.tryConsumePreAuthBudgetsForBucketKey(
+        trackedBucketKey,
+        () => rejectHttp429(res, 'too many requests', true),
+        () => rejectHttp429(res, 'too many pre-auth requests', true),
+      )
     }
 
     const clientIp = resolveClientIpFromRequest(req, req.socket.remoteAddress, this.trustedProxies)
@@ -776,8 +788,8 @@ export class ProxyAwareHttpConnectionGuard {
       return rejectHttp429(res, 'too many requests')
     }
     if (
-      !this.tryConsumePreAuthBudgetsForIp(
-        clientIp,
+      !this.tryConsumePreAuthBudgetsForBucketKey(
+        this.ipTracker.bucketKey(clientIp),
         () => rejectHttp429(res, 'too many requests'),
         () => rejectHttp429(res, 'too many pre-auth requests'),
       )
@@ -793,11 +805,12 @@ export class ProxyAwareHttpConnectionGuard {
 
   acquireUpgrade(req: IncomingMessage, socket: Socket, preResolvedClientIp?: string): string | undefined {
     this.clearPendingTimer(socket)
+    const trackedBucketKey = this.ipTracker.trackedKey(socket)
     const clientIp =
       preResolvedClientIp ??
       resolveClientIpFromRequest(req, socket.remoteAddress, this.trustedProxies)
 
-    if (!this.ipTracker.has(socket)) {
+    if (trackedBucketKey === undefined) {
       const openCapExceeded = !this.openSockets.has(socket) && this.openSockets.size >= this.maxConnections
       if (openCapExceeded || this.ipTracker.totalTracked >= this.maxConnections) {
         rejectSocketWithStatus(socket, 'HTTP/1.1 503 Service Unavailable')
@@ -808,21 +821,30 @@ export class ProxyAwareHttpConnectionGuard {
         rejectSocketWithStatus(socket, 'HTTP/1.1 429 Too Many Requests')
         return undefined
       }
-      if (preResolvedClientIp === undefined && !this.preAuthChargedSockets.has(socket)) {
+      if (preResolvedClientIp === undefined && !this.unspentSocketAdmissions.delete(socket)) {
         if (
-          !this.tryConsumePreAuthBudgetsForIp(
-            clientIp,
+          !this.tryConsumePreAuthBudgetsForBucketKey(
+            this.ipTracker.bucketKey(clientIp),
             () => rejectSocketWithStatus(socket, 'HTTP/1.1 429 Too Many Requests'),
             () => rejectSocketWithStatus(socket, 'HTTP/1.1 429 Too Many Requests'),
           )
         ) {
           return undefined
         }
-        this.preAuthChargedSockets.add(socket)
       }
       if (!this.ipTracker.tryAcquire(socket, clientIp)) {
         this.onPerIpRejected()
         rejectSocketWithStatus(socket, 'HTTP/1.1 429 Too Many Requests')
+        return undefined
+      }
+    } else if (preResolvedClientIp === undefined && !this.unspentSocketAdmissions.delete(socket)) {
+      if (
+        !this.tryConsumePreAuthBudgetsForBucketKey(
+          trackedBucketKey,
+          () => rejectSocketWithStatus(socket, 'HTTP/1.1 429 Too Many Requests'),
+          () => rejectSocketWithStatus(socket, 'HTTP/1.1 429 Too Many Requests'),
+        )
+      ) {
         return undefined
       }
     }

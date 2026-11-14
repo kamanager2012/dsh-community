@@ -936,4 +936,119 @@ describe('BlindGatewayServer', () => {
     d3Recovered.socket.destroy()
     expect(d3Recovered.statusCode).toBe(101)
   })
+
+  it('rate-limits pipelined and keep-alive HTTP requests plus post-HTTP upgrades on tracked sockets', async () => {
+    const tmp = await mkdtemp(join(tmpdir(), 'dsh-gw-keepalive-rate-'))
+    cleanups.push(() => rm(tmp, { recursive: true, force: true }))
+    await writeFile(join(tmp, 'index.html'), '<!doctype html><html><body>OK</body></html>', 'utf8')
+    await writeFile(join(tmp, 'app.js'), 'console.log("asset")\n', 'utf8')
+
+    // Exact Codex repro: direct socket with both limits = 1 pipelining 64 /app/app.js GETs
+    const gw = new BlindGatewayServer({
+      enabled: true,
+      host: '127.0.0.1',
+      port: 0,
+      maxConnections: 16,
+      maxConnectionsPerIp: 1,
+      maxPreAuthConnectionsPerWindow: 1,
+      maxPreAuthConnectionsPerIpPerWindow: 1,
+      preAuthRateWindowMs: 1_000,
+      webAppDir: tmp,
+    })
+    await gw.start()
+    cleanups.push(() => gw.stop())
+    const addr = gw.getBoundAddress()!
+
+    const pipelinedResponses = await new Promise<string>((resolve, reject) => {
+      const sock = createConnection({ host: '127.0.0.1', port: addr.port })
+      const chunks: Buffer[] = []
+      const timer = setTimeout(() => {
+        sock.destroy()
+        reject(new Error('timed out waiting for pipelined HTTP responses'))
+      }, 3_000)
+      sock.on('error', (err) => {
+        clearTimeout(timer)
+        reject(err)
+      })
+      sock.on('data', (chunk) => chunks.push(chunk))
+      sock.once('close', () => {
+        clearTimeout(timer)
+        resolve(Buffer.concat(chunks).toString('utf8'))
+      })
+      sock.once('connect', () => {
+        const singleReq =
+          `GET /app/app.js HTTP/1.1\r\nHost: 127.0.0.1:${addr.port}\r\nConnection: keep-alive\r\n\r\n`
+        sock.write(singleReq.repeat(64))
+      })
+    })
+
+    const statusCodes = [...pipelinedResponses.matchAll(/HTTP\/1\.1 (\d{3}) /g)].map((m) => Number(m[1]))
+    expect(statusCodes.length).toBeGreaterThanOrEqual(2)
+    expect(statusCodes[0]).toBe(200)
+    expect(statusCodes.slice(1).every((code) => code === 429)).toBe(true)
+    expect(gw.getStats().webAppRequests).toBe(1)
+    expect(gw.getStats().rejectedPerIpCap).toBeGreaterThanOrEqual(1)
+
+    // Keep-alive HTTP request consumes the initial connection admission, so a subsequent WS upgrade or keep-alive GET is also rate-checked
+    const gw2 = new BlindGatewayServer({
+      enabled: true,
+      host: '127.0.0.1',
+      port: 0,
+      maxConnections: 16,
+      maxConnectionsPerIp: 2,
+      maxPreAuthConnectionsPerWindow: 1,
+      maxPreAuthConnectionsPerIpPerWindow: 2,
+      preAuthRateWindowMs: 1_000,
+      webAppDir: tmp,
+    })
+    await gw2.start()
+    cleanups.push(() => gw2.stop())
+    const addr2 = gw2.getBoundAddress()!
+
+    await new Promise<void>((resolve, reject) => {
+      const sock = createConnection({ host: '127.0.0.1', port: addr2.port })
+      const timer = setTimeout(() => {
+        sock.destroy()
+        reject(new Error('timed out waiting for keep-alive HTTP + WS upgrade'))
+      }, 3_000)
+      let stage: 'http' | 'ws' = 'http'
+      let buf = ''
+      sock.on('error', (err) => {
+        clearTimeout(timer)
+        reject(err)
+      })
+      sock.on('data', (chunk) => {
+        buf += chunk.toString('utf8')
+        if (stage === 'http') {
+          if (!buf.includes('console.log("asset")')) return
+          stage = 'ws'
+          buf = ''
+          sock.write(
+            [
+              'GET /relay HTTP/1.1',
+              `Host: 127.0.0.1:${addr2.port}`,
+              'Upgrade: websocket',
+              'Connection: Upgrade',
+              'Sec-WebSocket-Version: 13',
+              `Sec-WebSocket-Key: ${randomBytes(16).toString('base64')}`,
+              '\r\n',
+            ].join('\r\n'),
+          )
+        } else {
+          if (!buf.includes('\r\n\r\n')) return
+          clearTimeout(timer)
+          sock.destroy()
+          expect(buf.startsWith('HTTP/1.1 429 ')).toBe(true)
+          resolve()
+        }
+      })
+      sock.once('connect', () => {
+        sock.write(
+          `GET /app/app.js HTTP/1.1\r\nHost: 127.0.0.1:${addr2.port}\r\nConnection: keep-alive\r\n\r\n`,
+        )
+      })
+    })
+    expect(gw2.getStats().webAppRequests).toBe(1)
+    expect(gw2.getStats().rejectedPreAuthRate).toBe(1)
+  })
 })
