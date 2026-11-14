@@ -159,6 +159,32 @@ function unwrapAssistantChunk(
   return { delta, isThinking }
 }
 
+function parseSeqFromEventKey(key: string): number {
+  const colon = key.indexOf(':')
+  if (colon <= 0) return Number.NaN
+  return Number(key.slice(0, colon))
+}
+
+function enrichPendingQuestions(
+  primary: readonly PendingQuestionSnapshot[],
+  fallback: readonly PendingQuestionSnapshot[],
+): PendingQuestionSnapshot[] {
+  if (fallback.length === 0) return [...primary]
+  const fallbackById = new Map(fallback.map((q) => [q.questionId, q]))
+  return primary.map((question) => {
+    if (question.questions && question.questions.length > 0) return question
+    const richer = fallbackById.get(question.questionId)
+    if (richer?.questions && richer.questions.length > 0) {
+      return {
+        ...question,
+        prompt: question.prompt || richer.prompt,
+        questions: richer.questions,
+      }
+    }
+    return question
+  })
+}
+
 const MAX_RETAINED_RAW_EVENTS = 4_000
 
 export class SessionTimelineState implements SessionStoreState {
@@ -176,6 +202,7 @@ export class SessionTimelineState implements SessionStoreState {
   historyHydrated = false
   unreadCount = 0
   private seenKeys = new Set<string>()
+  private coalescedChunkKeys = new Set<string>()
   private rawEvents = new Map<string, OfficialSessionEvent>()
   private itemCounter = 0
   private unmergedStreamedAssistantId: string | undefined = undefined
@@ -190,12 +217,22 @@ export class SessionTimelineState implements SessionStoreState {
     return `${prefix}-${this.itemCounter}`
   }
 
+  private hasSeenRetainedEvent(key: string): boolean {
+    return (
+      this.rawEvents.has(key) ||
+      this.coalescedChunkKeys.has(key) ||
+      Boolean(this.compactedBaseline && this.seenKeys.has(key))
+    )
+  }
+
   private coalesceContiguousChunksInRawEvents(): void {
     const sorted = [...this.rawEvents.entries()].sort((a, b) => a[1].seq - b[1].seq)
     const next = new Map<string, OfficialSessionEvent>()
     let textBuf: string[] = []
+    let textKeys: string[] = []
     let lastTextEntry: { key: string; seq: number } | undefined = undefined
     let thinkingBuf: string[] = []
+    let thinkingKeys: string[] = []
     let lastThinkingEntry: { key: string; seq: number } | undefined = undefined
 
     const flushChunks = (): void => {
@@ -206,6 +243,11 @@ export class SessionTimelineState implements SessionStoreState {
           type: 'thinking/delta',
           data: { text: merged, chunk: { type: 'reasoning-delta', text: merged } },
         })
+        for (const key of thinkingKeys) {
+          if (key !== lastThinkingEntry.key) {
+            this.coalescedChunkKeys.add(key)
+          }
+        }
       }
       if (textBuf.length > 0 && lastTextEntry) {
         const merged = textBuf.join('')
@@ -214,10 +256,17 @@ export class SessionTimelineState implements SessionStoreState {
           type: 'assistant/chunk',
           data: { text: merged, chunk: { type: 'text-delta', text: merged } },
         })
+        for (const key of textKeys) {
+          if (key !== lastTextEntry.key) {
+            this.coalescedChunkKeys.add(key)
+          }
+        }
       }
       textBuf = []
+      textKeys = []
       lastTextEntry = undefined
       thinkingBuf = []
+      thinkingKeys = []
       lastThinkingEntry = undefined
     }
 
@@ -228,9 +277,11 @@ export class SessionTimelineState implements SessionStoreState {
         if (unwrapped) {
           if (unwrapped.isThinking) {
             thinkingBuf.push(unwrapped.delta)
+            thinkingKeys.push(k)
             lastThinkingEntry = { key: k, seq: ev.seq }
           } else {
             textBuf.push(unwrapped.delta)
+            textKeys.push(k)
             lastTextEntry = { key: k, seq: ev.seq }
           }
           continue
@@ -328,7 +379,7 @@ export class SessionTimelineState implements SessionStoreState {
       )
       return matchedTool ? { ...approval, args: matchedTool.argumentsText } : approval
     })
-    this.pendingQuestions = [...snap.pendingQuestions]
+    this.pendingQuestions = enrichPendingQuestions(snap.pendingQuestions, this.pendingQuestions)
     // Preserve materialized event cursors (oldestSeq / highestSeq); live snapshots must never
     // synthesize loaded boundaries ahead of events actually hydrated on the client.
     if (snap.hasMoreHistory !== undefined) this.hasMoreHistory = snap.hasMoreHistory
@@ -400,13 +451,14 @@ export class SessionTimelineState implements SessionStoreState {
       this.oldestSeq = savedOldest
     }
     if (preserveRuntimeState || sorted.length === 0) {
+      const rebuiltQuestions = this.pendingQuestions
       this.status = savedStatus
       this.title = savedTitle
       this.model = savedModel
       this.todos = savedTodos
       this.usage = savedUsage
       this.pendingApprovals = savedApprovals
-      this.pendingQuestions = savedQuestions
+      this.pendingQuestions = enrichPendingQuestions(savedQuestions, rebuiltQuestions)
     }
   }
 
@@ -416,14 +468,14 @@ export class SessionTimelineState implements SessionStoreState {
     for (const ev of events) {
       const k = `${ev.seq}:${ev.type}`
       if (this.compactedBaseline && this.compactedMinSeq !== null && ev.seq < this.compactedMinSeq) {
-        if (!this.seenKeys.has(k)) {
+        if (!this.seenKeys.has(k) && !this.coalescedChunkKeys.has(k)) {
           preCompacted.push(ev)
           this.seenKeys.add(k)
           added = true
         }
         continue
       }
-      if (!this.rawEvents.has(k) && !(this.compactedBaseline && this.seenKeys.has(k))) {
+      if (!this.hasSeenRetainedEvent(k)) {
         this.rememberRawEvent(k, ev)
         added = true
       }
@@ -460,7 +512,7 @@ export class SessionTimelineState implements SessionStoreState {
     for (const ev of events) {
       if (typeof ev.seq === 'number' && ev.seq > 0) {
         const key = `${ev.seq}:${ev.type}`
-        if (!this.rawEvents.has(key) && !(this.compactedBaseline && this.seenKeys.has(key))) {
+        if (!this.hasSeenRetainedEvent(key)) {
           this.rememberRawEvent(key, ev)
           added = true
         }
@@ -495,6 +547,12 @@ export class SessionTimelineState implements SessionStoreState {
           this.rawEvents.delete(k)
         }
       }
+      for (const ck of [...this.coalescedChunkKeys]) {
+        const seq = parseSeqFromEventKey(ck)
+        if (Number.isFinite(seq) && seq <= maxRecSeq && (!hasMore || seq >= minRecSeq)) {
+          this.coalescedChunkKeys.delete(ck)
+        }
+      }
       for (const ev of events) {
         this.rememberRawEvent(`${ev.seq}:${ev.type}`, ev)
       }
@@ -512,6 +570,14 @@ export class SessionTimelineState implements SessionStoreState {
         }
         if (!hasMore && isChunkEventType(ev.type)) {
           this.rawEvents.delete(k)
+        }
+      }
+      if (!hasMore) {
+        for (const ck of [...this.coalescedChunkKeys]) {
+          const seq = parseSeqFromEventKey(ck)
+          if (Number.isFinite(seq) && seq <= cutoff) {
+            this.coalescedChunkKeys.delete(ck)
+          }
         }
       }
       if (hasNewer) {
@@ -876,6 +942,8 @@ export class SessionTimelineState implements SessionStoreState {
         if (!this.pendingQuestions.some((q) => q.questionId === snap.questionId)) {
           this.pendingQuestions = [...this.pendingQuestions, snap]
           if (markUnread) this.unreadCount += 1
+        } else {
+          this.pendingQuestions = enrichPendingQuestions(this.pendingQuestions, [snap])
         }
         return
       }

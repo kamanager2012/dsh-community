@@ -82,6 +82,16 @@ export function isWindowFramed(win?: Window | undefined): boolean {
   return false
 }
 
+function hasMaterialApprovalArgs(value: unknown, formattedText: string): boolean {
+  if (formattedText.length === 0) return false
+  if (formattedText === '{}' || formattedText === '[]') return false
+  if (Array.isArray(value)) return value.length > 0
+  if (value !== null && typeof value === 'object') {
+    return Object.keys(value as Record<string, unknown>).length > 0
+  }
+  return true
+}
+
 export function assessApprovalInputSecurity(
   approval: PendingApprovalSnapshot,
   matchedToolArgsText?: string,
@@ -105,8 +115,7 @@ export function assessApprovalInputSecurity(
     hasTruncatedApprovalMarker(effectiveRawArgs) ||
     hasTruncatedApprovalMarker(approval.reason) ||
     hasTruncatedApprovalMarker(approval.summary)
-  const unavailable =
-    formatted.text.length === 0 && !approval.reason?.trim() && !approval.summary?.trim()
+  const unavailable = !hasMaterialApprovalArgs(effectiveRawArgs, formatted.text)
 
   if (truncated) {
     return {

@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { InMemoryHostIdentityStore, computeFingerprint } from '@dsh-community/remote-adapter'
 import { assessApprovalInputSecurity, isWindowFramed } from '../src/client/approval-input.ts'
 import { parsePairingInput, validateStunOnlyUrls } from '../src/client/pairing.ts'
-import { estimateRpcEnvelopeBytes } from '../src/client/remote-client.ts'
+import { buildPromptSubmitSignature, estimateRpcEnvelopeBytes } from '../src/client/remote-client.ts'
 import { SessionTimelineState } from '../src/client/timeline.ts'
 import { MAX_NOISE_PLAINTEXT_BYTES, SAFE_GIT_DIFF_MAX_BYTES } from '../src/client/types.ts'
 import {
@@ -914,5 +914,101 @@ describe('remote-web pairing security, safe Markdown/Diff DOM, and CSP hygiene',
       true,
     )
     expect(framedAssessment.allowBlocked).toBe(true)
+  })
+
+  it('preserves/enriches structured pendingQuestions, deduplicates coalesced chunks on replay, includes mode in submit signature, and blocks reason-only approvals', () => {
+    // 1a. Snapshot hydration preserves structured pending questions already received live
+    const tlQ1 = new SessionTimelineState('sess-q-preserve')
+    tlQ1.applyEvent({
+      seq: 1,
+      type: 'question.request',
+      data: {
+        questionId: 'qreq-1',
+        questions: [{ id: 'target_env', question: 'Deploy target?', options: [{ label: 'staging' }, { label: 'prod' }] }],
+      },
+    })
+    tlQ1.applyLiveStateSnapshot({
+      status: 'running',
+      todos: [],
+      pendingApprovals: [],
+      pendingQuestions: [{ questionId: 'qreq-1', prompt: 'Deploy target?', sessionId: 'sess-q-preserve' }],
+    })
+    expect(tlQ1.pendingQuestions[0]?.questions?.[0]?.id).toBe('target_env')
+    expect(tlQ1.pendingQuestions[0]?.questions?.[0]?.options?.map((o) => o.label)).toEqual(['staging', 'prod'])
+
+    // 1b. Replay question.request enriches a prompt-only snapshot item after snapshot hydration
+    const tlQ2 = new SessionTimelineState('sess-q-enrich')
+    tlQ2.applyLiveStateSnapshot({
+      status: 'running',
+      todos: [],
+      pendingApprovals: [],
+      pendingQuestions: [{ questionId: 'qreq-2', prompt: 'Choose mode', sessionId: 'sess-q-enrich' }],
+    })
+    tlQ2.mergeReplayEvents([
+      {
+        seq: 2,
+        type: 'question.request',
+        data: {
+          questionId: 'qreq-2',
+          questions: [{ id: 'custom_id', question: 'Choose mode', options: [{ label: 'fast' }, { label: 'safe' }] }],
+        },
+      },
+    ])
+    expect(tlQ2.pendingQuestions[0]?.questions?.[0]?.id).toBe('custom_id')
+    expect(tlQ2.pendingQuestions[0]?.questions?.[0]?.options?.map((o) => o.label)).toEqual(['fast', 'safe'])
+
+    // 2. Overlapping replay after >4000 chunk coalescing must NOT duplicate assistant characters
+    const tlChunk = new SessionTimelineState('sess-coalesce-dedup')
+    for (let seq = 1; seq <= 4_005; seq += 1) {
+      tlChunk.applyEvent({
+        seq,
+        type: 'assistant/chunk',
+        data: { text: 'x', chunk: { type: 'text-delta', text: 'x' } },
+      })
+    }
+    const replayOverlap = []
+    for (let seq = 3_906; seq <= 4_005; seq += 1) {
+      replayOverlap.push({
+        seq,
+        type: 'assistant/chunk',
+        data: { text: 'x', chunk: { type: 'text-delta', text: 'x' } },
+      })
+    }
+    tlChunk.mergeReplayEvents(replayOverlap)
+    expect(tlChunk.items).toHaveLength(1)
+    expect((tlChunk.items[0] as Extract<(typeof tlChunk.items)[number], { kind: 'assistant' }>).markdownText).toHaveLength(4_005)
+
+    // 3. Submission idempotency signature distinguishes steer vs followup modes
+    expect(buildPromptSubmitSignature('steer', 'retry me', [])).not.toBe(
+      buildPromptSubmitSignature('followup', 'retry me', []),
+    )
+    const mainSrc = readFileSync(join(APP_ROOT, 'src/main.ts'), 'utf8')
+    expect(mainSrc).toContain('buildPromptSubmitSignature(mode, promptText, attachments)')
+
+    // 4. Reason-only, summary-only, and empty-object approvals fail closed (Allow blocked)
+    const reasonOnly = assessApprovalInputSecurity({
+      callId: 'appr-reason-only',
+      toolName: 'bash',
+      reason: 'Inspect workspace via bash',
+    })
+    expect(reasonOnly.unavailable).toBe(true)
+    expect(reasonOnly.allowBlocked).toBe(true)
+
+    const summaryOnly = assessApprovalInputSecurity({
+      callId: 'appr-summary-only',
+      toolName: 'write_file',
+      summary: 'Update config file',
+    })
+    expect(summaryOnly.unavailable).toBe(true)
+    expect(summaryOnly.allowBlocked).toBe(true)
+
+    const emptyObj = assessApprovalInputSecurity({
+      callId: 'appr-empty-obj',
+      toolName: 'bash',
+      args: {},
+      reason: 'Run shell command',
+    })
+    expect(emptyObj.unavailable).toBe(true)
+    expect(emptyObj.allowBlocked).toBe(true)
   })
 })

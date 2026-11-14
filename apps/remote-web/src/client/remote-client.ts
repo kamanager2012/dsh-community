@@ -1147,6 +1147,14 @@ export class RemoteWebClient {
   }
 }
 
+export function buildPromptSubmitSignature(
+  mode: 'steer' | 'followup',
+  promptText: string,
+  attachments: readonly PromptImageAttachment[],
+): string {
+  return `${mode}\0${promptText}\0${attachments.map((a) => `${a.mediaType}:${a.name ?? ''}:${a.dataBase64}`).join('\0')}`
+}
+
 export function estimateRpcEnvelopeBytes(method: string, params: unknown, mutating = true): number {
   const sampleEnvelope = {
     jsonrpc: '2.0',

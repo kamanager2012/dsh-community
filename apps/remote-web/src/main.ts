@@ -7,6 +7,7 @@ import {
   sanitizeDiagnosticMessage,
 } from './client/pairing.ts'
 import {
+  buildPromptSubmitSignature,
   estimateRpcEnvelopeBytes,
   RemoteRpcError,
   RemoteWebClient,
@@ -653,7 +654,7 @@ async function handleSubmitPrompt(): Promise<void> {
 
   const mode = tl.status === 'running' ? state.promptMode : 'followup'
   const promptText = draft || '[image]'
-  const submitSignature = `${promptText}\0${attachments.map((a) => `${a.mediaType}:${a.name ?? ''}:${a.dataBase64}`).join('\0')}`
+  const submitSignature = buildPromptSubmitSignature(mode, promptText, attachments)
   const existingSubmit = pendingSubmitIdempotencyBySession.get(sid)
   const idempotencyKey =
     existingSubmit && existingSubmit.signature === submitSignature
