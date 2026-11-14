@@ -81,6 +81,18 @@ export interface AuthenticatedPeer {
   readonly connectionEpoch: number
 }
 
+export interface SessionWorkspaceSummary {
+  readonly repoRoot?: string | undefined
+  readonly commonRepoRoot?: string | undefined
+  readonly worktreeName?: string | undefined
+  readonly isWorktree?: boolean | undefined
+  readonly branch?: string | undefined
+  readonly dirty?: boolean | undefined
+  readonly changedFiles?: number | undefined
+  readonly ahead?: number | undefined
+  readonly behind?: number | undefined
+}
+
 export interface SessionRef {
   readonly id: string
   readonly engine?: AgentEngineId | undefined
@@ -93,6 +105,7 @@ export interface SessionRef {
   readonly model?: ModelSelectionParams | undefined
   readonly pendingApprovals?: number | undefined
   readonly pendingQuestions?: number | undefined
+  readonly workspace?: SessionWorkspaceSummary | undefined
 }
 
 export interface OfficialSessionEvent {
@@ -388,6 +401,9 @@ export interface GitChangedFileSummary {
 export interface WorkspaceGitStatusResult {
   readonly sessionId: string
   readonly repoRoot: string
+  readonly commonRepoRoot?: string | undefined
+  readonly isWorktree?: boolean | undefined
+  readonly worktreeName?: string | undefined
   readonly branch: string
   readonly upstream?: string | undefined
   readonly ahead: number

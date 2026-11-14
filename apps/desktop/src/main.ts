@@ -621,7 +621,7 @@ function remoteUiKey(snap: Awaited<ReturnType<DesktopRemoteController['snapshot'
     String(snap.pendingQuestions ?? 0),
     (snap.engines ?? []).map((e) => `${e.id}:${e.available ? '1' : '0'}`).join(','),
     (snap.liveSessions ?? [])
-      .map((s) => `${s.engine ?? ''}:${s.id}:${s.status ?? ''}:${String(s.pendingApprovals ?? 0)}:${String(s.pendingQuestions ?? 0)}`)
+      .map((s) => `${s.engine ?? ''}:${s.id}:${s.status ?? ''}:${String(s.pendingApprovals ?? 0)}:${String(s.pendingQuestions ?? 0)}:${s.workspace?.commonRepoRoot ?? s.workspace?.repoRoot ?? s.cwd ?? ''}:${s.workspace?.branch ?? ''}:${s.workspace?.dirty ? '1' : '0'}:${String(s.workspace?.changedFiles ?? 0)}:${String(s.workspace?.ahead ?? 0)}:${String(s.workspace?.behind ?? 0)}`)
       .join(','),
     snap.gitPreview ? `${snap.gitPreview.sessionId}:${snap.gitPreview.diffPath ?? ''}:${String(snap.gitPreview.files.length)}:${snap.gitPreview.error ?? ''}:${(snap.gitPreview.diffText ?? '').slice(0, 64)}` : '',
     snap.pairing?.deepLink ?? '',

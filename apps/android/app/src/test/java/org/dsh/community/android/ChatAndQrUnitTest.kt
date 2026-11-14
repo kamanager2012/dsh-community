@@ -11,15 +11,24 @@ import org.dsh.community.android.protocol.OfficialSessionEvent
 import org.dsh.community.android.protocol.PromptImageAttachment
 import org.dsh.community.android.protocol.RemoteFrameCodec
 import org.dsh.community.android.protocol.RemoteProtocol
+import org.dsh.community.android.protocol.SessionRef
 import org.dsh.community.android.qr.QrImageDecoder
+import org.dsh.community.android.service.PendingInteractionCountTracker
+import org.dsh.community.android.service.PendingInteractionQueue
+import org.dsh.community.android.service.RemoteSessionService
 import org.dsh.community.android.ui.AssistantTurnItem
 import org.dsh.community.android.ui.ChatMarkdownFormatter
 import org.dsh.community.android.ui.ChatTimelineStore
+import org.dsh.community.android.ui.CodeSyntaxHighlighter
 import org.dsh.community.android.ui.InlineSpanToken
 import org.dsh.community.android.ui.MarkdownBlock
+import org.dsh.community.android.ui.MarkdownRenderBlock
 import org.dsh.community.android.ui.ParsedSlashCommand
 import org.dsh.community.android.ui.PromptImageHelper
+import org.dsh.community.android.ui.SessionDashboardPlanner
+import org.dsh.community.android.ui.SessionFilter
 import org.dsh.community.android.ui.SlashCommandHelper
+import org.dsh.community.android.ui.SyntaxRole
 import org.dsh.community.android.ui.SystemNoticeItem
 import org.dsh.community.android.ui.ToolExecutionItem
 import org.dsh.community.android.ui.ToolExecutionStatus
@@ -629,5 +638,378 @@ class ChatAndQrUnitTest {
         assertEquals("+const multi = true", gitDiff.diff)
         assertEquals("src/app.ts", gitDiff.path)
         assertFalse(gitDiff.truncated)
+    }
+
+    @Test
+    fun parsesSessionWorkspaceSummaryWorktreeMetadataAndDashboardGrouping() {
+        val wtSession = RemoteFrameCodec.parseSessionRef(
+            JsonObject.of(
+                "id" to JsonString("codex:wt-1"),
+                "engine" to JsonString("codex"),
+                "title" to JsonString("Auth Refactor"),
+                "updatedAtMs" to JsonNumber(2000),
+                "cwd" to JsonString("/repos/dsh-wt-auth"),
+                "status" to JsonString("running"),
+                "model" to JsonObject.of("model" to JsonString("gpt-5-codex")),
+                "nativeSessionId" to JsonString("thread-99"),
+                "pendingApprovals" to JsonNumber(1),
+                "workspace" to JsonObject.of(
+                    "repoRoot" to JsonString("/repos/dsh-wt-auth"),
+                    "commonRepoRoot" to JsonString("/repos/dsh"),
+                    "worktreeName" to JsonString("dsh-wt-auth"),
+                    "isWorktree" to JsonBool(true),
+                    "branch" to JsonString("feat/auth"),
+                    "dirty" to JsonBool(true),
+                    "changedFiles" to JsonNumber(4),
+                    "ahead" to JsonNumber(2),
+                    "behind" to JsonNumber(1),
+                ),
+            ),
+        )
+        assertEquals("gpt-5-codex", wtSession.model)
+        assertEquals("thread-99", wtSession.nativeSessionId)
+        assertEquals("/repos/dsh", wtSession.workspace?.commonRepoRoot)
+        assertTrue(wtSession.workspace?.isWorktree == true)
+        assertEquals("dsh-wt-auth", wtSession.workspace?.worktreeName)
+        assertEquals(4, wtSession.workspace?.changedFiles)
+
+        val mainSession = RemoteFrameCodec.parseSessionRef(
+            JsonObject.of(
+                "id" to JsonString("claude:main"),
+                "engine" to JsonString("claude"),
+                "title" to JsonString("Main Review"),
+                "updatedAtMs" to JsonNumber(1500),
+                "cwd" to JsonString("/repos/dsh"),
+                "status" to JsonString("idle"),
+                "model" to JsonString("claude-sonnet-4"),
+                "workspace" to JsonObject.of(
+                    "repoRoot" to JsonString("/repos/dsh"),
+                    "commonRepoRoot" to JsonString("/repos/dsh"),
+                    "isWorktree" to JsonBool(false),
+                    "branch" to JsonString("main"),
+                    "dirty" to JsonBool(false),
+                ),
+            ),
+        )
+        assertEquals("claude-sonnet-4", mainSession.model)
+
+        val gitStatus = RemoteFrameCodec.parseGitStatusResult(
+            JsonObject.of(
+                "repoRoot" to JsonString("/repos/dsh-wt-auth"),
+                "commonRepoRoot" to JsonString("/repos/dsh"),
+                "isWorktree" to JsonBool(true),
+                "worktreeName" to JsonString("dsh-wt-auth"),
+                "branch" to JsonString("feat/auth"),
+                "ahead" to JsonNumber(2),
+                "behind" to JsonNumber(1),
+                "clean" to JsonBool(false),
+                "files" to JsonArray(emptyList()),
+            ),
+        )
+        assertEquals("/repos/dsh", gitStatus.commonRepoRoot)
+        assertTrue(gitStatus.isWorktree)
+        assertEquals("dsh-wt-auth", gitStatus.worktreeName)
+
+        val dashboard = SessionDashboardPlanner.build(
+            sessions = listOf(mainSession, wtSession),
+            statusOverrides = mapOf("claude:main" to "idle"),
+            unreadCounts = mapOf("claude:main" to 2),
+            filter = SessionFilter.ALL,
+            query = "",
+        )
+        assertEquals(2, dashboard.totalCount)
+        assertEquals(1, dashboard.runningCount)
+        assertEquals(2, dashboard.attentionCount)
+        assertEquals(1, dashboard.dirtyCount)
+        assertEquals(1, dashboard.groups.size)
+        assertEquals("dsh", dashboard.groups[0].label)
+        assertEquals(2, dashboard.groups[0].worktreeCount)
+        assertTrue(dashboard.groups[0].hasDirtyWorktree)
+        assertEquals("codex:wt-1", dashboard.groups[0].entries[0].session.id)
+
+        val dirtyOnly = SessionDashboardPlanner.build(
+            sessions = listOf(mainSession, wtSession),
+            filter = SessionFilter.DIRTY,
+            query = "feat/auth",
+        )
+        assertEquals(1, dirtyOnly.groups.size)
+        assertEquals(1, dirtyOnly.groups[0].entries.size)
+        assertEquals("codex:wt-1", dirtyOnly.groups[0].entries[0].session.id)
+    }
+
+    @Test
+    fun tracksUnreadCountsPerSessionAcrossStreamingAndReplay() {
+        val store = ChatTimelineStore()
+        // Streaming chunks of one reply count as a single unread turn
+        store.applyEvent(
+            "bg",
+            OfficialSessionEvent(seq = 10, type = "assistant/chunk", data = JsonObject.of("delta" to JsonString("Hel"))),
+        )
+        store.applyEvent(
+            "bg",
+            OfficialSessionEvent(seq = 11, type = "assistant/chunk", data = JsonObject.of("delta" to JsonString("lo"))),
+        )
+        assertEquals(1, store.unreadCount("bg"))
+
+        // Tool call adds +1 unread update
+        store.applyEvent(
+            "bg",
+            OfficialSessionEvent(seq = 12, type = "tool/call", data = JsonObject.of("callId" to JsonString("c1"), "name" to JsonString("read"))),
+        )
+        assertEquals(2, store.unreadCount("bg"))
+
+        // Viewing the session resets unread and advances lastSeenSeq
+        store.markSessionSeen("bg")
+        assertEquals(0, store.unreadCount("bg"))
+
+        // Prepending older history does not bump unread
+        val prepended = store.prependHistory(
+            "bg",
+            listOf(OfficialSessionEvent(seq = 2, type = "user/message", data = JsonObject.of("text" to JsonString("hi")))),
+        )
+        assertEquals(1, prepended)
+        assertEquals(0, store.unreadCount("bg"))
+
+        // Continued chunks & finalization on the SAME open turn after user switched away count once
+        store.applyEvent(
+            "bg",
+            OfficialSessionEvent(seq = 13, type = "assistant/chunk", data = JsonObject.of("delta" to JsonString(" world"))),
+        )
+        store.applyEvent(
+            "bg",
+            OfficialSessionEvent(seq = 14, type = "assistant/chunk", data = JsonObject.of("delta" to JsonString("!!"))),
+        )
+        store.applyEvent(
+            "bg",
+            OfficialSessionEvent(seq = 15, type = "assistant/message", data = JsonObject.of("text" to JsonString("Hello world!!"))),
+        )
+        assertEquals(1, store.unreadCount("bg"))
+
+        store.markSessionSeen("bg")
+        assertEquals(0, store.unreadCount("bg"))
+
+        // Subsequent new event increments unread again
+        store.applyEvent(
+            "bg",
+            OfficialSessionEvent(seq = 16, type = "error", data = JsonObject.of("message" to JsonString("timeout"))),
+        )
+        assertEquals(1, store.unreadCount("bg"))
+    }
+
+    @Test
+    fun tokenizesSyntaxAndParsesRichMarkdownTablesChecklistsAndAllCodeBlocks() {
+        val ktTokens = CodeSyntaxHighlighter.tokenize(
+            """
+            @Suppress("Unused")
+            suspend fun greet(name: String): Int {
+                // greeting count
+                return 42
+            }
+            """.trimIndent(),
+            "kt",
+        )
+        assertTrue(ktTokens.any { it.role == SyntaxRole.ANNOTATION })
+        assertTrue(ktTokens.any { it.role == SyntaxRole.KEYWORD })
+        assertTrue(ktTokens.any { it.role == SyntaxRole.TYPE })
+        assertTrue(ktTokens.any { it.role == SyntaxRole.COMMENT })
+        assertTrue(ktTokens.any { it.role == SyntaxRole.NUMBER })
+        assertTrue(ktTokens.any { it.role == SyntaxRole.STRING })
+        assertTrue(ktTokens.any { it.role == SyntaxRole.FUNCTION })
+
+        val jsonTokens = CodeSyntaxHighlighter.tokenize("""{"enabled": true, "port": 9000}""", "json")
+        assertTrue(jsonTokens.any { it.role == SyntaxRole.KEY })
+        assertTrue(jsonTokens.any { it.role == SyntaxRole.KEYWORD })
+        assertTrue(jsonTokens.any { it.role == SyntaxRole.NUMBER })
+
+        val diffTokens = CodeSyntaxHighlighter.tokenize(
+            "diff --git a/a.kt b/a.kt\n@@ -1 +1 @@\n-old\n+new",
+            "diff",
+        )
+        assertEquals(SyntaxRole.DIFF_HEADER, diffTokens[0].role)
+        assertEquals(SyntaxRole.DIFF_HUNK, diffTokens[1].role)
+        assertEquals(SyntaxRole.DIFF_DEL, diffTokens[2].role)
+        assertEquals(SyntaxRole.DIFF_ADD, diffTokens[3].role)
+
+        val inlineTokens = ChatMarkdownFormatter.tokenizeInline(
+            "Use _italic_, *emph*, Compute 2 * 3 * 4, and snake_case_id with ***both***",
+        )
+        assertTrue(inlineTokens.contains(InlineSpanToken.Italic("italic")))
+        assertTrue(inlineTokens.contains(InlineSpanToken.Italic("emph")))
+        assertTrue(inlineTokens.contains(InlineSpanToken.BoldItalic("both")))
+        assertFalse(inlineTokens.any { it is InlineSpanToken.Italic && it.text.contains("case") })
+        assertFalse(inlineTokens.any { it is InlineSpanToken.Italic && it.text.contains("3") })
+        assertTrue(inlineTokens.any { it is InlineSpanToken.Plain && it.text.contains("2 * 3 * 4") })
+
+        val md = """
+            #### Checklist
+            - [x] Ship protocol
+            - [ ] Verify APK
+
+            | Engine | Status |
+            | --- | --- |
+            | Codex | ready |
+            | Claude | idle |
+
+            ```kotlin
+            val first = 1
+            ```
+
+            ---
+
+            ~~~bash
+            git status
+            ~~~
+        """.trimIndent()
+        val blocks = ChatMarkdownFormatter.parseRenderBlocks(md)
+        assertTrue(blocks[0] is MarkdownRenderBlock.Prose)
+        val table = blocks[1] as MarkdownRenderBlock.Table
+        assertEquals(listOf("Engine", "Status"), table.headers)
+        assertEquals(2, table.rows.size)
+        val code1 = blocks[2] as MarkdownRenderBlock.CodeFence
+        assertEquals("kotlin", code1.language)
+        assertTrue(blocks[3] is MarkdownRenderBlock.HorizontalRule)
+        val code2 = blocks[4] as MarkdownRenderBlock.CodeFence
+        assertEquals("bash", code2.language)
+
+        val extracted = ChatMarkdownFormatter.extractAllCodeBlocks(md)
+        assertEquals(2, extracted.size)
+        assertEquals("kotlin" to "val first = 1", extracted[0])
+        assertEquals("bash" to "git status", extracted[1])
+    }
+
+    @Test
+    fun syncsLiveSessionStatusAcrossTitleUpdatesAndResets() {
+        val initial = listOf(
+            SessionRef(id = "s-1", title = "Initial", status = "idle"),
+            SessionRef(id = "s-2", title = "Other", status = "running"),
+        )
+        val runningList = RemoteSessionService.syncStatusInSessionList(initial, "s-1", "running")
+        assertEquals("running", runningList.first { it.id == "s-1" }.status)
+
+        val (afterTitleWhileRunning, renamedRunning) = RemoteSessionService.upsertSessionTitleInList(
+            sessions = runningList,
+            sessionId = "s-1",
+            title = "Auth Fix",
+            liveStatus = "running",
+        )
+        assertEquals("Auth Fix", renamedRunning.title)
+        assertEquals("running", renamedRunning.status)
+        assertEquals("running", afterTitleWhileRunning.first { it.id == "s-1" }.status)
+
+        val completedList = RemoteSessionService.syncStatusInSessionList(afterTitleWhileRunning, "s-1", "idle")
+        val (_, renamedAfterCompletion) = RemoteSessionService.upsertSessionTitleInList(
+            sessions = completedList,
+            sessionId = "s-1",
+            title = "Auth Fix Done",
+            liveStatus = "idle",
+        )
+        assertEquals("idle", renamedAfterCompletion.status)
+        assertEquals("running", completedList.first { it.id == "s-2" }.status)
+    }
+
+    @Test
+    fun feedsLiveAndResolvedPendingInteractionsIntoDashboardAttentionFilter() {
+        val baseSessions = listOf(
+            SessionRef(id = "s-1", title = "One", pendingApprovals = 0, pendingQuestions = 0),
+            SessionRef(id = "s-2", title = "Two", pendingApprovals = 1, pendingQuestions = 0),
+        )
+
+        val attentionBefore = SessionDashboardPlanner.build(
+            sessions = baseSessions,
+            filter = SessionFilter.ATTENTION,
+        )
+        assertEquals(1, attentionBefore.attentionCount)
+        assertEquals(listOf("s-2"), attentionBefore.groups.flatMap { it.entries }.map { it.session.id })
+
+        // Live approval + question arrive for s-1 after initial session.list
+        val syncedAfterLive = RemoteSessionService.syncPendingCountsInSessionList(
+            sessions = baseSessions,
+            sessionId = "s-1",
+            pendingApprovals = 1,
+            pendingQuestions = 2,
+        )
+        val attentionAfterLive = SessionDashboardPlanner.build(
+            sessions = syncedAfterLive,
+            pendingApprovalCounts = mapOf("s-1" to 1),
+            pendingQuestionCounts = mapOf("s-1" to 2),
+            filter = SessionFilter.ATTENTION,
+        )
+        assertEquals(2, attentionAfterLive.attentionCount)
+        val s1Entry = attentionAfterLive.groups.flatMap { it.entries }.first { it.session.id == "s-1" }
+        assertTrue(s1Entry.needsAttention)
+        assertEquals(1, s1Entry.session.pendingApprovals)
+        assertEquals(2, s1Entry.session.pendingQuestions)
+
+        // Resolving s-2's prior approval clears its stale badge and removes it from Attention
+        val resolvedS2 = RemoteSessionService.syncPendingCountsInSessionList(
+            sessions = syncedAfterLive,
+            sessionId = "s-2",
+            pendingApprovals = 0,
+            pendingQuestions = 0,
+        )
+        val attentionAfterResolve = SessionDashboardPlanner.build(
+            sessions = resolvedS2,
+            pendingApprovalCounts = mapOf("s-1" to 1),
+            pendingQuestionCounts = mapOf("s-1" to 2),
+            filter = SessionFilter.ATTENTION,
+        )
+        assertEquals(1, attentionAfterResolve.attentionCount)
+        assertEquals(listOf("s-1"), attentionAfterResolve.groups.flatMap { it.entries }.map { it.session.id })
+    }
+
+    @Test
+    fun extractAllCodeBlocksPreservesSignificantTrailingWhitespace() {
+        val md = "```sh\necho hi \\ \n```\n\n```kotlin\n   \n  \n```"
+        val extracted = ChatMarkdownFormatter.extractAllCodeBlocks(md)
+        assertEquals(1, extracted.size)
+        assertEquals("bash", extracted[0].first)
+        assertEquals("echo hi \\ ", extracted[0].second)
+        assertEquals("echo hi \\ ", ChatMarkdownFormatter.extractFirstCodeBlock(md))
+    }
+
+    @Test
+    fun truncatedReplayResolutionsPreserveUnreplayedPendingCounts() {
+        val queue = PendingInteractionQueue()
+        val tracker = PendingInteractionCountTracker(queue)
+        // session.list reports approval B + question Q2 still pending whose requests fell outside replay.
+        tracker.applySessionSnapshot(
+            listOf(
+                SessionRef(
+                    id = "s-1",
+                    title = "Session 1",
+                    pendingApprovals = 1,
+                    pendingQuestions = 1,
+                ),
+            ),
+        )
+
+        val batch = tracker.beginReplayBatch()
+        // Historical resolution A (request fell outside truncated replay) + historical pair C -> resolved
+        tracker.resolveApproval("s-1", "apr-A", fromReplay = true, replayBatch = batch)
+        tracker.resolveQuestion("s-1", "qst-A", fromReplay = true, replayBatch = batch)
+        tracker.enqueueApproval("apr-C", "Approve C", "s-1", fromReplay = true, replayBatch = batch)
+        tracker.resolveApproval("s-1", "apr-C", fromReplay = true, replayBatch = batch)
+        tracker.enqueueQuestion("qst-C", "Question C", "s-1", fromReplay = true, replayBatch = batch)
+        tracker.resolveQuestion("s-1", "qst-C", fromReplay = true, replayBatch = batch)
+        tracker.finishReplayBatch("s-1", batch)
+
+        // Still-pending outside-window approval B and question Q2 remain intact.
+        assertEquals(1 to 1, tracker.effectiveCounts("s-1"))
+
+        // Replaying an already-counted open request D avoids double-counting.
+        val tracker2 = PendingInteractionCountTracker(PendingInteractionQueue())
+        tracker2.applySessionSnapshot(listOf(SessionRef(id = "s-1", title = "Session 2", pendingApprovals = 2, pendingQuestions = 2)))
+        val batch2 = tracker2.beginReplayBatch()
+        tracker2.resolveApproval("s-1", "apr-old", fromReplay = true, replayBatch = batch2)
+        tracker2.enqueueApproval("apr-D", "Approve D", "s-1", fromReplay = true, replayBatch = batch2)
+        tracker2.resolveQuestion("s-1", "qst-old", fromReplay = true, replayBatch = batch2)
+        tracker2.enqueueQuestion("qst-D", "Question D", "s-1", fromReplay = true, replayBatch = batch2)
+        assertTrue(tracker2.finishReplayBatch("s-1", batch2))
+        assertEquals(2 to 2, tracker2.effectiveCounts("s-1"))
+
+        // Live resolution after snapshot clears outside-window baseline as expected.
+        tracker2.resolveApproval("s-1", "apr-outside", fromReplay = false)
+        tracker2.resolveQuestion("s-1", "qst-outside", fromReplay = false)
+        assertEquals(1 to 1, tracker2.effectiveCounts("s-1"))
     }
 }

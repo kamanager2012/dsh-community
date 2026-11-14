@@ -1,10 +1,12 @@
 import { execFile, spawn } from 'node:child_process'
 import { existsSync, realpathSync, statSync } from 'node:fs'
-import { dirname, isAbsolute, join, resolve, sep } from 'node:path'
+import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path'
 import { promisify } from 'node:util'
 import { RemoteProtocolError } from '../errors.js'
 import type {
   GitChangedFileSummary,
+  SessionRef,
+  SessionWorkspaceSummary,
   WorkspaceGitDiffParams,
   WorkspaceGitDiffResult,
   WorkspaceGitStatusResult,
@@ -17,15 +19,19 @@ const DEFAULT_MAX_DIFF_BYTES = 64 * 1024
 const HARD_MAX_DIFF_BYTES = 256 * 1024
 const MAX_STATUS_FILES = 500
 const GIT_TIMEOUT_MS = 8000
+const WORKSPACE_SUMMARY_TIMEOUT_MS = 1500
+const WORKSPACE_SUMMARY_TTL_MS = 4000
+const MAX_WORKSPACE_SUMMARY_CACHE = 128
 
 async function runGit(
   cwd: string,
   args: readonly string[],
   maxBuffer = 2 * 1024 * 1024,
+  timeoutMs = GIT_TIMEOUT_MS,
 ): Promise<{ stdout: string; stderr: string }> {
   return execFileAsync('git', ['-C', cwd, ...args], {
     env: sanitizeSubprocessEnv(),
-    timeout: GIT_TIMEOUT_MS,
+    timeout: timeoutMs,
     maxBuffer,
     windowsHide: true,
     encoding: 'utf8',
@@ -146,7 +152,10 @@ async function runGitBoundedDiff(
   })
 }
 
-export async function resolveGitRepoRoot(cwd: string): Promise<string> {
+export async function resolveGitRepoRoot(
+  cwd: string,
+  timeoutMs = GIT_TIMEOUT_MS,
+): Promise<string> {
   const trimmed = cwd.trim()
   if (!trimmed || !isAbsolute(trimmed)) {
     throw new RemoteProtocolError('INVALID_REQUEST', 'session workspace path is unavailable')
@@ -162,7 +171,7 @@ export async function resolveGitRepoRoot(cwd: string): Promise<string> {
     throw new RemoteProtocolError('INVALID_REQUEST', 'failed to resolve session workspace directory')
   }
   try {
-    const { stdout } = await runGit(realCwd, ['rev-parse', '--show-toplevel'])
+    const { stdout } = await runGit(realCwd, ['rev-parse', '--show-toplevel'], 2 * 1024 * 1024, timeoutMs)
     const rootRaw = stdout.trim()
     if (!rootRaw) {
       throw new RemoteProtocolError('INVALID_REQUEST', 'session workspace is not inside a git repository')
@@ -247,19 +256,50 @@ function parseBranchLine(header: string): {
   return { branch: branchPart.trim() || 'HEAD', ahead, behind }
 }
 
-export async function inspectWorkspaceGitStatus(
-  sessionId: string,
-  cwd: string,
-): Promise<WorkspaceGitStatusResult> {
-  const repoRoot = await resolveGitRepoRoot(cwd)
-  const { stdout } = await runGit(repoRoot, [
-    'status',
-    '--porcelain=v1',
-    '-z',
-    '-b',
-    '--untracked-files=all',
-  ])
+async function resolveGitWorktreeIdentity(
+  repoRoot: string,
+  timeoutMs = GIT_TIMEOUT_MS,
+): Promise<{
+  readonly commonRepoRoot: string
+  readonly isWorktree: boolean
+  readonly worktreeName: string
+}> {
+  const worktreeName = basename(repoRoot) || repoRoot
+  try {
+    const { stdout } = await runGit(repoRoot, ['rev-parse', '--git-common-dir'], 256 * 1024, timeoutMs)
+    const rawCommon = stdout.trim()
+    if (!rawCommon) {
+      return { commonRepoRoot: repoRoot, isWorktree: false, worktreeName }
+    }
+    const resolvedGitCommon = resolve(repoRoot, rawCommon)
+    let canonicalGitCommon = resolvedGitCommon
+    try {
+      canonicalGitCommon = realpathSync(resolvedGitCommon)
+    } catch {}
+    const commonRepoRoot =
+      basename(canonicalGitCommon) === '.git' ? dirname(canonicalGitCommon) : canonicalGitCommon
+    return {
+      commonRepoRoot,
+      isWorktree: commonRepoRoot !== repoRoot,
+      worktreeName,
+    }
+  } catch {
+    return { commonRepoRoot: repoRoot, isWorktree: false, worktreeName }
+  }
+}
 
+function parsePorcelainStatusZ(
+  stdout: string,
+  maxFiles: number,
+): {
+  readonly branch: string
+  readonly upstream?: string | undefined
+  readonly ahead: number
+  readonly behind: number
+  readonly files: GitChangedFileSummary[]
+  readonly totalEntries: number
+  readonly truncated: boolean
+} {
   const tokens = stdout.split('\0')
   let branch = 'HEAD'
   let upstream: string | undefined
@@ -278,22 +318,24 @@ export async function inspectWorkspaceGitStatus(
   }
 
   const files: GitChangedFileSummary[] = []
+  let totalEntries = 0
   let truncated = false
   for (let i = startIdx; i < tokens.length; i += 1) {
     const entry = tokens[i]
     if (!entry || entry.length < 4) continue
-    if (files.length >= MAX_STATUS_FILES) {
-      truncated = true
-      break
-    }
+    totalEntries += 1
     const indexStatus = entry[0] ?? ' '
     const worktreeStatus = entry[1] ?? ' '
-    const path = entry.slice(3)
     let origPath: string | undefined
     if ((indexStatus === 'R' || indexStatus === 'C') && i + 1 < tokens.length) {
       origPath = tokens[i + 1] || undefined
       i += 1
     }
+    if (files.length >= maxFiles) {
+      truncated = true
+      continue
+    }
+    const path = entry.slice(3)
     const untracked = indexStatus === '?' && worktreeStatus === '?'
     files.push({
       path,
@@ -306,16 +348,183 @@ export async function inspectWorkspaceGitStatus(
     })
   }
 
+  return { branch, upstream, ahead, behind, files, totalEntries, truncated }
+}
+
+const workspaceSummaryCache = new Map<
+  string,
+  { readonly expiresAt: number; readonly value: SessionWorkspaceSummary | undefined }
+>()
+const workspaceSummaryInFlight = new Map<string, Promise<SessionWorkspaceSummary | undefined>>()
+
+/**
+ * Inspects compact Git repo/worktree metadata for a session workspace directory.
+ * Returns `undefined` for missing/non-git directories and caches results briefly
+ * so `session.list` stays responsive across dozens of sessions.
+ */
+export async function inspectSessionWorkspaceSummary(
+  cwd: string,
+  options?: { readonly forceRefresh?: boolean | undefined },
+): Promise<SessionWorkspaceSummary | undefined> {
+  const trimmed = cwd.trim()
+  if (!trimmed || !isAbsolute(trimmed)) return undefined
+  const resolved = resolve(trimmed)
+  if (!existsSync(resolved) || !statSync(resolved).isDirectory()) return undefined
+
+  let cacheKey = resolved
+  try {
+    cacheKey = realpathSync(resolved)
+  } catch {
+    return undefined
+  }
+
+  const now = Date.now()
+  if (options?.forceRefresh !== true) {
+    const cached = workspaceSummaryCache.get(cacheKey)
+    if (cached && cached.expiresAt > now) {
+      workspaceSummaryCache.delete(cacheKey)
+      workspaceSummaryCache.set(cacheKey, cached)
+      return cached.value
+    }
+  }
+
+  const inflight = workspaceSummaryInFlight.get(cacheKey)
+  if (inflight) return inflight
+
+  const probe = (async (): Promise<SessionWorkspaceSummary | undefined> => {
+    try {
+      const repoRoot = await resolveGitRepoRoot(cacheKey, WORKSPACE_SUMMARY_TIMEOUT_MS)
+      const [identity, statusOut] = await Promise.all([
+        resolveGitWorktreeIdentity(repoRoot, WORKSPACE_SUMMARY_TIMEOUT_MS),
+        runGit(
+          repoRoot,
+          ['status', '--porcelain=v1', '-z', '-b', '--untracked-files=normal'],
+          512 * 1024,
+          WORKSPACE_SUMMARY_TIMEOUT_MS,
+        ),
+      ])
+      const parsed = parsePorcelainStatusZ(statusOut.stdout, MAX_STATUS_FILES)
+      const summary: SessionWorkspaceSummary = {
+        repoRoot,
+        commonRepoRoot: identity.commonRepoRoot,
+        worktreeName: identity.worktreeName,
+        ...(identity.isWorktree ? { isWorktree: true } : {}),
+        branch: parsed.branch,
+        dirty: parsed.totalEntries > 0,
+        ...(parsed.totalEntries > 0 ? { changedFiles: parsed.totalEntries } : {}),
+        ...(parsed.ahead > 0 ? { ahead: parsed.ahead } : {}),
+        ...(parsed.behind > 0 ? { behind: parsed.behind } : {}),
+      }
+      if (workspaceSummaryCache.size >= MAX_WORKSPACE_SUMMARY_CACHE) {
+        const oldestKey = workspaceSummaryCache.keys().next().value
+        if (oldestKey !== undefined) workspaceSummaryCache.delete(oldestKey)
+      }
+      workspaceSummaryCache.set(cacheKey, {
+        expiresAt: Date.now() + WORKSPACE_SUMMARY_TTL_MS,
+        value: summary,
+      })
+      return summary
+    } catch {
+      if (workspaceSummaryCache.size >= MAX_WORKSPACE_SUMMARY_CACHE) {
+        const oldestKey = workspaceSummaryCache.keys().next().value
+        if (oldestKey !== undefined) workspaceSummaryCache.delete(oldestKey)
+      }
+      workspaceSummaryCache.set(cacheKey, {
+        expiresAt: Date.now() + WORKSPACE_SUMMARY_TTL_MS,
+        value: undefined,
+      })
+      return undefined
+    } finally {
+      workspaceSummaryInFlight.delete(cacheKey)
+    }
+  })()
+
+  workspaceSummaryInFlight.set(cacheKey, probe)
+  return probe
+}
+
+/**
+ * Attaches cached Git branch/worktree summaries onto `SessionRef`s with valid `cwd`s.
+ * Deduplicates by directory and caps unique directory probes so `session.list` remains bounded.
+ */
+export async function enrichSessionsWithWorkspaceSummaries(
+  sessions: readonly SessionRef[],
+  options?: { readonly maxProbeDirs?: number | undefined; readonly forceRefresh?: boolean | undefined },
+): Promise<readonly SessionRef[]> {
+  if (sessions.length === 0) return sessions
+  const maxProbeDirs = options?.maxProbeDirs ?? 16
+  const uniqueCwds: string[] = []
+  const seenCwds = new Set<string>()
+  const prioritized = [...sessions].sort((a, b) => {
+    const aRunning = a.status === 'running' ? 1 : 0
+    const bRunning = b.status === 'running' ? 1 : 0
+    if (aRunning !== bRunning) return bRunning - aRunning
+    return (b.updatedAtMs ?? 0) - (a.updatedAtMs ?? 0)
+  })
+  for (const s of prioritized) {
+    const cwd = s.cwd?.trim()
+    if (!cwd || seenCwds.has(cwd)) continue
+    seenCwds.add(cwd)
+    uniqueCwds.push(cwd)
+    if (uniqueCwds.length >= maxProbeDirs) break
+  }
+  if (uniqueCwds.length === 0) return sessions
+
+  const resolvedByCwd = new Map<string, SessionWorkspaceSummary | undefined>()
+  await Promise.allSettled(
+    uniqueCwds.map(async (cwd) => {
+      const summary = await inspectSessionWorkspaceSummary(cwd, {
+        ...(options?.forceRefresh !== undefined ? { forceRefresh: options.forceRefresh } : {}),
+      })
+      resolvedByCwd.set(cwd, summary)
+    }),
+  )
+
+  let anyAdded = false
+  const out = sessions.map((s) => {
+    const cwd = s.cwd?.trim()
+    const summary = cwd ? resolvedByCwd.get(cwd) : undefined
+    if (summary === undefined) return s
+    anyAdded = true
+    return {
+      ...s,
+      workspace: summary,
+    }
+  })
+  return anyAdded ? out : sessions
+}
+
+export async function inspectWorkspaceGitStatus(
+  sessionId: string,
+  cwd: string,
+): Promise<WorkspaceGitStatusResult> {
+  const repoRoot = await resolveGitRepoRoot(cwd)
+  const [identity, { stdout }] = await Promise.all([
+    resolveGitWorktreeIdentity(repoRoot),
+    runGit(repoRoot, [
+      'status',
+      '--porcelain=v1',
+      '-z',
+      '-b',
+      '--untracked-files=all',
+    ]),
+  ])
+
+  const parsed = parsePorcelainStatusZ(stdout, MAX_STATUS_FILES)
+
   return {
     sessionId,
     repoRoot,
-    branch,
-    ...(upstream !== undefined ? { upstream } : {}),
-    ahead,
-    behind,
-    clean: files.length === 0,
-    files,
-    truncated,
+    commonRepoRoot: identity.commonRepoRoot,
+    ...(identity.isWorktree ? { isWorktree: true } : {}),
+    worktreeName: identity.worktreeName,
+    branch: parsed.branch,
+    ...(parsed.upstream !== undefined ? { upstream: parsed.upstream } : {}),
+    ahead: parsed.ahead,
+    behind: parsed.behind,
+    clean: parsed.files.length === 0,
+    files: parsed.files,
+    truncated: parsed.truncated,
   }
 }
 

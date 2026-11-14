@@ -4,6 +4,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
+  boundSessionListPayload,
+  enrichSessionsWithWorkspaceSummaries,
+  inspectSessionWorkspaceSummary,
   inspectWorkspaceGitDiff,
   inspectWorkspaceGitStatus,
   RemoteProtocolError,
@@ -154,5 +157,75 @@ describe('scoped read-only git review helpers', () => {
     const allDiff = await inspectWorkspaceGitDiff({ sessionId: 's-untracked' }, repoDir)
     expect(allDiff.diff).toContain('+brand new line')
     expect(allDiff.diff).toContain('+export const deep = true')
+  })
+
+  it('groups linked git worktrees under commonRepoRoot and enriches sessions without mutating non-git sessions', async () => {
+    const repoDir = mkdtempSync(join(tmpdir(), 'dsh-git-main-'))
+    const wtDir = join(tmpdir(), `dsh-git-wt-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`)
+    const plainDir = mkdtempSync(join(tmpdir(), 'dsh-plain-dir-'))
+    tempDirs.push(repoDir, wtDir, plainDir)
+    initGitRepo(repoDir)
+
+    writeFileSync(join(repoDir, 'base.ts'), 'export const base = 1\n', 'utf8')
+    execFileSync('git', ['add', 'base.ts'], { cwd: repoDir, stdio: 'pipe' })
+    execFileSync('git', ['commit', '-m', 'init main'], { cwd: repoDir, stdio: 'pipe' })
+    execFileSync('git', ['worktree', 'add', '-b', 'feat/mobile-ui', wtDir], { cwd: repoDir, stdio: 'pipe' })
+
+    writeFileSync(join(wtDir, 'feature.ts'), 'export const ui = true\n', 'utf8')
+
+    const mainSummary = await inspectSessionWorkspaceSummary(repoDir, { forceRefresh: true })
+    const wtSummary = await inspectSessionWorkspaceSummary(wtDir, { forceRefresh: true })
+    const plainSummary = await inspectSessionWorkspaceSummary(plainDir, { forceRefresh: true })
+
+    expect(mainSummary).toBeDefined()
+    expect(mainSummary?.branch).toBe('main')
+    expect(mainSummary?.dirty).toBe(false)
+    expect(mainSummary?.isWorktree).toBeUndefined()
+    expect(mainSummary?.commonRepoRoot).toBe(mainSummary?.repoRoot)
+
+    expect(wtSummary).toBeDefined()
+    expect(wtSummary?.branch).toBe('feat/mobile-ui')
+    expect(wtSummary?.dirty).toBe(true)
+    expect(wtSummary?.changedFiles).toBe(1)
+    expect(wtSummary?.isWorktree).toBe(true)
+    expect(wtSummary?.commonRepoRoot).toBe(mainSummary?.commonRepoRoot)
+
+    expect(plainSummary).toBeUndefined()
+
+    const wtStatus = await inspectWorkspaceGitStatus('s-wt', wtDir)
+    expect(wtStatus.isWorktree).toBe(true)
+    expect(wtStatus.commonRepoRoot).toBe(mainSummary?.commonRepoRoot)
+
+    const enriched = await enrichSessionsWithWorkspaceSummaries([
+      { id: 's-main', cwd: repoDir, updatedAtMs: 100 },
+      { id: 's-wt', cwd: wtDir, updatedAtMs: 200 },
+      { id: 's-plain', cwd: plainDir, updatedAtMs: 50 },
+      { id: 's-bare', title: 'No CWD' },
+    ], { forceRefresh: true })
+    expect(enriched[0]?.workspace?.branch).toBe('main')
+    expect(enriched[1]?.workspace?.commonRepoRoot).toBe(enriched[0]?.workspace?.commonRepoRoot)
+    expect(enriched[2]?.workspace).toBeUndefined()
+    expect(enriched[3]).toEqual({ id: 's-bare', title: 'No CWD' })
+  })
+
+  it('preserves oldest active sessions when bounding oversized session list payloads', () => {
+    const longTitle = 'T'.repeat(240)
+    const sessions = Array.from({ length: 150 }, (_, idx) => {
+      const isOldest = idx === 149
+      return {
+        id: `codex:sess-${String(idx).padStart(3, '0')}`,
+        engine: 'codex' as const,
+        title: `${idx}-${longTitle}`,
+        updatedAtMs: 1000 - idx,
+        status: isOldest ? ('running' as const) : ('idle' as const),
+        ...(isOldest ? { pendingApprovals: 1 } : {}),
+      }
+    })
+    const activeIds = new Set(['codex:sess-149'])
+    const bounded = boundSessionListPayload(sessions, activeIds)
+    expect(Buffer.byteLength(JSON.stringify(bounded), 'utf8')).toBeLessThanOrEqual(44 * 1024)
+    expect(bounded.some((s) => s.id === 'codex:sess-149')).toBe(true)
+    expect(bounded.length).toBeLessThan(150)
+    expect(bounded.length).toBeGreaterThan(100)
   })
 })

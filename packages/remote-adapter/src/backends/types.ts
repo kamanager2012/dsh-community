@@ -8,6 +8,7 @@ import type {
   AgentHostBackend,
   EngineDescriptor,
   OfficialSessionEvent,
+  SessionRef,
 } from '../protocol.js'
 import { isSafeSessionId } from '../session-transcript.js'
 
@@ -205,4 +206,92 @@ export function extractTextSnippet(text: string, maxChars = 120): string | undef
   const collapsed = text.trim().replace(/\s+/gu, ' ')
   if (!collapsed) return undefined
   return collapsed.length > maxChars ? `${collapsed.slice(0, maxChars - 1)}…` : collapsed
+}
+
+export const MAX_SESSION_LIST_BYTES = 44 * 1024
+
+function trimSessionRefFields(
+  ref: SessionRef,
+  level: 'strip-preview' | 'strip-verbose' | 'minimal',
+): SessionRef {
+  if (level === 'strip-preview') {
+    const { preview: _p, ...rest } = ref
+    return rest
+  }
+  if (level === 'minimal') {
+    return {
+      id: ref.id,
+      ...(ref.engine !== undefined ? { engine: ref.engine } : {}),
+      ...(ref.title !== undefined ? { title: ref.title } : {}),
+      ...(ref.updatedAtMs !== undefined ? { updatedAtMs: ref.updatedAtMs } : {}),
+      ...(ref.status !== undefined ? { status: ref.status } : {}),
+      ...(ref.pendingApprovals !== undefined ? { pendingApprovals: ref.pendingApprovals } : {}),
+      ...(ref.pendingQuestions !== undefined ? { pendingQuestions: ref.pendingQuestions } : {}),
+    }
+  }
+  const { preview: _p, cwd: _c, workspace: _w, ...rest } = ref
+  return rest
+}
+
+/**
+ * Ensures serialized `session.list` payloads stay within carrier frame budgets while
+ * keeping active sessions and compact workspace grouping metadata intact as long as possible.
+ */
+export function boundSessionListPayload(
+  items: readonly SessionRef[],
+  activeIds: ReadonlySet<string>,
+  maxBytes = MAX_SESSION_LIST_BYTES,
+): readonly SessionRef[] {
+  if (items.length === 0 || Buffer.byteLength(JSON.stringify(items), 'utf8') <= maxBytes) {
+    return Object.freeze([...items])
+  }
+  let current = items.map((item) =>
+    activeIds.has(item.id) ? item : trimSessionRefFields(item, 'strip-preview'),
+  )
+  if (Buffer.byteLength(JSON.stringify(current), 'utf8') <= maxBytes) {
+    return Object.freeze(current)
+  }
+  current = items.map((item) =>
+    activeIds.has(item.id)
+      ? trimSessionRefFields(item, 'strip-preview')
+      : trimSessionRefFields(item, 'strip-verbose'),
+  )
+  if (Buffer.byteLength(JSON.stringify(current), 'utf8') <= maxBytes) {
+    return Object.freeze(current)
+  }
+  current = current.map((item) =>
+    activeIds.has(item.id)
+      ? trimSessionRefFields(item, 'strip-verbose')
+      : trimSessionRefFields(item, 'minimal'),
+  )
+  if (Buffer.byteLength(JSON.stringify(current), 'utf8') <= maxBytes) {
+    return Object.freeze(current)
+  }
+  const minimal = current.map((item) => trimSessionRefFields(item, 'minimal'))
+  const itemByteLengths = minimal.map((item) => Buffer.byteLength(JSON.stringify(item), 'utf8'))
+  let totalBytes = 2 + itemByteLengths.reduce((sum, n) => sum + n, 0) + Math.max(0, minimal.length - 1)
+  if (totalBytes <= maxBytes) {
+    return Object.freeze(minimal)
+  }
+
+  const dropped = new Array<boolean>(minimal.length).fill(false)
+  let kept = minimal.length
+
+  // Shed rightmost inactive sessions first so active (running / awaiting approval/question) entries survive truncation.
+  for (let i = minimal.length - 1; i >= 0 && kept > 1 && totalBytes > maxBytes; i -= 1) {
+    const item = minimal[i]!
+    if (activeIds.has(item.id)) continue
+    dropped[i] = true
+    kept -= 1
+    totalBytes -= itemByteLengths[i]! + 1
+  }
+
+  for (let i = minimal.length - 1; i >= 0 && kept > 1 && totalBytes > maxBytes; i -= 1) {
+    if (dropped[i]) continue
+    dropped[i] = true
+    kept -= 1
+    totalBytes -= itemByteLengths[i]! + 1
+  }
+
+  return Object.freeze(minimal.filter((_, i) => !dropped[i]))
 }

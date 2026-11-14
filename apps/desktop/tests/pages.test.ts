@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { parseSessionWorkspaceSummary } from '../src/remote.ts'
 import {
   renderAboutPage,
   renderDiagnosticsPage,
@@ -785,5 +786,123 @@ describe('shell pages', () => {
     expect(html).not.toContain('</script><img')
     expect(html).toContain('&lt;/script&gt;&lt;img src=x&gt;')
     expect(html).not.toMatch(/style="/i)
+  })
+
+  it('groups live sessions by commonRepoRoot with worktree badges, git summary chips, and escaped paths', () => {
+    const html = renderRemotePage({
+      product: 'DSH Community',
+      phase: 'running',
+      apiKeyPresent: true,
+      dshHome: '/tmp/.dsh',
+      configDir: '/tmp/remote',
+      isolated: false,
+      pid: '888',
+      hostFingerprint: 'fp-wt',
+      lanCandidates: ['192.168.1.9'],
+      effectiveListenHost: '192.168.1.9',
+      settings: {
+        listenHost: '',
+        port: 0,
+        enableMdns: true,
+        relayUrl: '',
+        signalingUrl: '',
+        stunUrls: '',
+        engines: 'dsh,codex,claude',
+      },
+      lanUrl: 'ws://192.168.1.9:9000',
+      relayUrl: '',
+      relayRoomId: '',
+      signalingUrl: '',
+      signalingRoomId: '',
+      stunUrls: [],
+      activeConnections: 1,
+      liveSessions: [
+        {
+          id: 'codex:wt-a',
+          engine: 'codex',
+          title: 'Feature Auth',
+          status: 'running',
+          updatedAtMs: 2000,
+          cwd: '/repos/app-wt-auth',
+          pendingApprovals: 1,
+          workspace: {
+            repoRoot: '/repos/app-wt-auth',
+            commonRepoRoot: '/repos/app',
+            worktreeName: 'app-wt-auth',
+            isWorktree: true,
+            branch: 'feat/auth',
+            dirty: true,
+            changedFiles: 3,
+            ahead: 2,
+            behind: 1,
+          },
+        },
+        {
+          id: 'claude:main',
+          engine: 'claude',
+          title: 'Main Repo Review',
+          status: 'idle',
+          updatedAtMs: 1000,
+          cwd: '/repos/app',
+          workspace: {
+            repoRoot: '/repos/app',
+            commonRepoRoot: '/repos/app',
+            isWorktree: false,
+            branch: 'main',
+            dirty: false,
+            changedFiles: 0,
+          },
+        },
+        {
+          id: 'dsh:other',
+          engine: 'dsh',
+          title: 'Scratch Dir',
+          status: 'idle',
+          updatedAtMs: 500,
+          cwd: '/tmp/<script>alert(1)</script>',
+        },
+      ],
+      pendingCandidates: [],
+      devices: [],
+      logs: '',
+    })
+
+    expect(html).toContain('活跃与可接入会话 · Worktree 看板（3）')
+    expect(html).toContain('工作区组数 <strong>2</strong>')
+    expect(html).toContain('运行中 <strong>1</strong>')
+    expect(html).toContain('待处理 <strong>1</strong>')
+    expect(html).toContain('脏工作区 <strong>1</strong>')
+    expect(html).toContain('2 worktrees')
+    expect(html).toContain('Worktree · app-wt-auth')
+    expect(html).toContain('feat/auth')
+    expect(html).toContain('已改 3 项')
+    expect(html).toContain('↑2')
+    expect(html).toContain('↓1')
+    expect(html).toContain('干净')
+    expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;')
+    expect(html).not.toContain('<script>alert(1)</script>')
+  })
+
+  it('sanitizes session workspace summaries defensively', () => {
+    expect(parseSessionWorkspaceSummary(null)).toBeUndefined()
+    expect(parseSessionWorkspaceSummary({})).toBeUndefined()
+    expect(parseSessionWorkspaceSummary({
+      repoRoot: '/repo-wt',
+      commonRepoRoot: '/repo',
+      worktreeName: '',
+      isWorktree: true,
+      branch: 'feat/x',
+      dirty: true,
+      changedFiles: -1,
+      ahead: 2,
+      behind: Number.NaN,
+    })).toEqual({
+      repoRoot: '/repo-wt',
+      commonRepoRoot: '/repo',
+      isWorktree: true,
+      branch: 'feat/x',
+      dirty: true,
+      ahead: 2,
+    })
   })
 })

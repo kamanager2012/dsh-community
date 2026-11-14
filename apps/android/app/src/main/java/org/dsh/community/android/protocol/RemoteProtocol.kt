@@ -36,6 +36,18 @@ object RemoteProtocol {
     const val METHOD_WORKSPACE_UPLOAD_ABORT = "workspace.upload.abort"
 }
 
+data class SessionWorkspaceSummary(
+    val repoRoot: String? = null,
+    val commonRepoRoot: String? = null,
+    val worktreeName: String? = null,
+    val isWorktree: Boolean = false,
+    val branch: String? = null,
+    val dirty: Boolean? = null,
+    val changedFiles: Int = 0,
+    val ahead: Int = 0,
+    val behind: Int = 0,
+)
+
 data class SessionRef(
     val id: String,
     val title: String?,
@@ -46,6 +58,9 @@ data class SessionRef(
     val pendingApprovals: Int = 0,
     val pendingQuestions: Int = 0,
     val engine: String? = null,
+    val model: String? = null,
+    val nativeSessionId: String? = null,
+    val workspace: SessionWorkspaceSummary? = null,
 )
 
 data class EngineDescriptor(
@@ -70,6 +85,9 @@ data class WorkspaceGitStatusResult(
     val behind: Int,
     val clean: Boolean,
     val files: List<WorkspaceGitFile>,
+    val commonRepoRoot: String? = null,
+    val isWorktree: Boolean = false,
+    val worktreeName: String? = null,
 )
 
 data class WorkspaceGitDiffResult(
@@ -348,10 +366,40 @@ object RemoteFrameCodec {
         return arr.items.map { item -> parseSessionRef(item) }
     }
 
+    private fun parseSessionWorkspaceSummary(obj: JsonObject?): SessionWorkspaceSummary? {
+        if (obj == null) return null
+        val repoRoot = obj.str("repoRoot")?.let(DisplayTextSanitizer::sanitizeLoneSurrogates)?.takeIf { it.isNotEmpty() }
+        val commonRepoRoot = obj.str("commonRepoRoot")?.let(DisplayTextSanitizer::sanitizeLoneSurrogates)?.takeIf { it.isNotEmpty() }
+        val worktreeName = obj.str("worktreeName")?.let(DisplayTextSanitizer::sanitizeSingleLine)?.takeIf { it.isNotBlank() }
+        val isWorktree = obj.bool("isWorktree") == true
+        val branch = obj.str("branch")?.let(DisplayTextSanitizer::sanitizeSingleLine)?.takeIf { it.isNotBlank() }
+        val dirty = obj.bool("dirty")
+        val changedFiles = (obj.intVal("changedFiles") ?: 0).coerceAtLeast(0)
+        val ahead = (obj.intVal("ahead") ?: 0).coerceAtLeast(0)
+        val behind = (obj.intVal("behind") ?: 0).coerceAtLeast(0)
+        if (repoRoot == null && commonRepoRoot == null && worktreeName == null && branch == null && dirty == null && !isWorktree) {
+            return null
+        }
+        return SessionWorkspaceSummary(
+            repoRoot = repoRoot,
+            commonRepoRoot = commonRepoRoot,
+            worktreeName = worktreeName,
+            isWorktree = isWorktree,
+            branch = branch,
+            dirty = dirty,
+            changedFiles = changedFiles,
+            ahead = ahead,
+            behind = behind,
+        )
+    }
+
     fun parseSessionRef(result: JsonValue): SessionRef {
         val rawObj = result as? JsonObject
             ?: throw IllegalArgumentException("session item must be JSON object")
         val obj = rawObj.obj("session") ?: rawObj
+        val modelStr = (obj.obj("model")?.str("model") ?: obj.str("model"))
+            ?.let(DisplayTextSanitizer::sanitizeSingleLine)
+            ?.takeIf { it.isNotBlank() }
         return SessionRef(
             id = obj.str("id") ?: throw IllegalArgumentException("session item missing id"),
             title = obj.str("title")?.let(DisplayTextSanitizer::sanitizeLoneSurrogates),
@@ -364,6 +412,9 @@ object RemoteFrameCodec {
             pendingApprovals = obj.intVal("pendingApprovals") ?: 0,
             pendingQuestions = obj.intVal("pendingQuestions") ?: 0,
             engine = obj.str("engine")?.let(DisplayTextSanitizer::sanitizeSingleLine)?.takeIf { it.isNotBlank() },
+            model = modelStr,
+            nativeSessionId = obj.str("nativeSessionId")?.let(DisplayTextSanitizer::sanitizeSingleLine)?.takeIf { it.isNotBlank() },
+            workspace = parseSessionWorkspaceSummary(obj.obj("workspace")),
         )
     }
 
@@ -409,6 +460,9 @@ object RemoteFrameCodec {
             behind = obj.intVal("behind") ?: 0,
             clean = obj.bool("clean") == true,
             files = files,
+            commonRepoRoot = obj.str("commonRepoRoot")?.let(DisplayTextSanitizer::sanitizeLoneSurrogates)?.takeIf { it.isNotEmpty() },
+            isWorktree = obj.bool("isWorktree") == true,
+            worktreeName = obj.str("worktreeName")?.let(DisplayTextSanitizer::sanitizeSingleLine)?.takeIf { it.isNotBlank() },
         )
     }
 
