@@ -11,6 +11,7 @@ import org.dsh.community.android.protocol.JsonCodec
 import org.dsh.community.android.protocol.JsonObject
 import org.dsh.community.android.protocol.JsonString
 import org.dsh.community.android.service.EpochResetRecoveryGuard
+import org.dsh.community.android.service.HostEpochFence
 import org.dsh.community.android.service.PendingInteractionQueue
 import org.dsh.community.android.service.RemoteSessionService
 import org.dsh.community.android.transport.FailoverRemoteSession
@@ -587,5 +588,29 @@ class HardeningAndQueueTest {
             "subsequent outage after ACTIVE recovery is allowed one epoch-reset recovery",
             guard.tryAcquireRecovery(isRevoked = false, isEligible = true),
         )
+    }
+
+    @Test
+    fun hostEpochFenceIgnoresRetiredSessionCallbacksAcrossReset() {
+        val fence = HostEpochFence()
+        val fp = "host-fp-race"
+
+        val oldGen = fence.advanceGeneration()
+        assertTrue(fence.recordIfCurrent(oldGen, fp, 4))
+        assertEquals(4, fence.currentEpoch(fp))
+
+        // Retire old session generation and reset the host epoch fence before closing old transport.
+        val newGen = fence.advanceGeneration()
+        fence.resetHost(fp)
+        assertFalse(fence.isGenerationCurrent(oldGen))
+        assertTrue(fence.isGenerationCurrent(newGen))
+
+        // Async close callback from retired session reports old epoch 4 -> must be ignored.
+        assertFalse(fence.recordIfCurrent(oldGen, fp, 4))
+        assertEquals(0, fence.currentEpoch(fp))
+
+        // New session connects cleanly with restarted Host epoch 1.
+        assertTrue(fence.recordIfCurrent(newGen, fp, 1))
+        assertEquals(1, fence.currentEpoch(fp))
     }
 }
