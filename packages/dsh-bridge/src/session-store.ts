@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, lstatSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { zstdDecompressSync } from 'node:zlib'
 
@@ -40,7 +40,7 @@ export function listOfficialSessions(root: string): OfficialSessionRef[] {
     return []
   }
   for (const project of projects) {
-    if (!project.isDirectory()) continue
+    if (!project.isDirectory() || project.isSymbolicLink()) continue
     const projectDir = join(root, project.name)
     let sessions
     try {
@@ -49,14 +49,17 @@ export function listOfficialSessions(root: string): OfficialSessionRef[] {
       continue
     }
     for (const session of sessions) {
-      if (!session.isDirectory()) continue
+      if (!session.isDirectory() || session.isSymbolicLink()) continue
       const sessionDir = join(projectDir, session.name)
       for (const file of OFFICIAL_SESSION_FILES) {
         const transcript = join(sessionDir, file)
         if (!existsSync(transcript)) continue
         let mtimeMs: number
         try {
-          mtimeMs = statSync(transcript).mtimeMs
+          if (lstatSync(transcript).isSymbolicLink()) continue
+          const st = statSync(transcript)
+          if (!st.isFile()) continue
+          mtimeMs = st.mtimeMs
         } catch {
           continue
         }
@@ -149,10 +152,17 @@ function decodeMultiFrameZstd(raw: Buffer, maxOutputBytes: number): string | und
   return Buffer.concat(chunks).toString('utf8')
 }
 
+function truncateByCodePoints(text: string, maxCodePoints: number): string | undefined {
+  if (text.length === 0) return undefined
+  if (text.length <= maxCodePoints) return text
+  const cps = Array.from(text)
+  return cps.length > maxCodePoints ? `${cps.slice(0, maxCodePoints).join('')}…` : text
+}
+
 function extractSummaryText(content: unknown): string | undefined {
   if (typeof content === 'string') {
     const clean = content.trim().replace(/\s+/gu, ' ')
-    return clean.length > 120 ? `${clean.slice(0, 120)}…` : clean || undefined
+    return truncateByCodePoints(clean, 120)
   }
   if (!Array.isArray(content)) return undefined
   const parts: string[] = []
@@ -165,7 +175,7 @@ function extractSummaryText(content: unknown): string | undefined {
   }
   if (parts.length === 0) return undefined
   const merged = parts.join(' ').replace(/\s+/gu, ' ').trim()
-  return merged.length > 120 ? `${merged.slice(0, 120)}…` : merged
+  return truncateByCodePoints(merged, 120)
 }
 
 /**
@@ -175,6 +185,7 @@ function extractSummaryText(content: unknown): string | undefined {
 export function peekOfficialSessionSummary(transcriptPath: string): OfficialSessionSummary | undefined {
   let raw: Buffer
   try {
+    if (lstatSync(transcriptPath).isSymbolicLink()) return undefined
     const st = statSync(transcriptPath)
     if (!st.isFile() || st.size === 0 || st.size > MAX_PEEK_BYTES) return undefined
     raw = readFileSync(transcriptPath)

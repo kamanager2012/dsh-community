@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { zstdCompressSync } from 'node:zlib'
@@ -95,5 +95,25 @@ describe('official session store', () => {
       preview: 'Multi frame reply!',
       turnCount: 1,
     })
+
+    // Symlinked transcript & symlinked directories are ignored to prevent outside reads.
+    const outsideFile = join(root, 'outside-secret.jsonl')
+    writeFileSync(outsideFile, JSON.stringify({ type: 'session', cwd: '/etc/secret' }) + '\n')
+    const symDir = join(root, '--tmp-multi--', 'sess-symlink-file')
+    mkdirSync(symDir, { recursive: true })
+    symlinkSync(outsideFile, join(symDir, 'session.jsonl'))
+    expect(peekOfficialSessionSummary(join(symDir, 'session.jsonl'))).toBeUndefined()
+    expect(listOfficialSessions(root).some((s) => s.id === 'sess-symlink-file')).toBe(false)
+
+    // Emoji surrogate pair straddling the 120 code-point truncation edge is never split.
+    const emojiFile = join(multiDir, 'emoji-preview.jsonl')
+    const boundaryText = `${'x'.repeat(119)}🚀after`
+    writeFileSync(
+      emojiFile,
+      JSON.stringify({ seq: 0, type: 'assistant/message', data: { message: { content: boundaryText } } }) + '\n',
+    )
+    const emojiSummary = peekOfficialSessionSummary(emojiFile)
+    expect(emojiSummary?.preview).toBe(`${'x'.repeat(119)}🚀…`)
+    expect(() => encodeURIComponent(emojiSummary?.preview ?? '')).not.toThrow()
   })
 })
