@@ -20,6 +20,10 @@ const AUTHORITATIVE_REQUIRED_CAPABILITIES: Readonly<Partial<Record<RemoteMethod,
   'command.list': 'observe',
   'command.execute': 'prompt',
   'skill.list': 'observe',
+  'workspace.upload.open': 'prompt',
+  'workspace.upload.chunk': 'prompt',
+  'workspace.upload.commit': 'prompt',
+  'workspace.upload.abort': 'prompt',
   'stream.ack': 'observe',
 })
 

@@ -1,8 +1,15 @@
+import { createHash, randomUUID } from 'node:crypto'
 import { RemoteCryptoError } from '../crypto/errors.js'
 import { computeFingerprint } from '../crypto/host-identity.js'
 import { NoiseInitiatorSession } from '../crypto/noise.js'
 import { RemoteProtocolError, type RemoteErrorCode } from '../errors.js'
-import { REMOTE_PROTOCOL_VERSION } from '../protocol.js'
+import {
+  REMOTE_PROTOCOL_VERSION,
+  type WorkspaceUploadChunkResult,
+  type WorkspaceUploadCommitResult,
+  type WorkspaceUploadOpenResult,
+} from '../protocol.js'
+import { validateSafeUploadFilename } from '../workspace-upload.js'
 import {
   defaultSleep,
   reconnectDelayMs,
@@ -358,6 +365,76 @@ export class RemoteClientSession {
   onEvent(listener: (event: unknown) => void): () => void {
     this.eventListeners.add(listener)
     return () => this.eventListeners.delete(listener)
+  }
+
+  async uploadWorkspaceFile(options: {
+    readonly sessionId: string
+    readonly filename: string
+    readonly bytes: Uint8Array
+    readonly chunkBytes?: number | undefined
+    readonly conflictPolicy?: 'rename' | 'fail' | undefined
+    readonly onProgress?: ((sentBytes: number, totalBytes: number) => void) | undefined
+  }): Promise<WorkspaceUploadCommitResult> {
+    const filename = validateSafeUploadFilename(options.filename)
+    const buf = Buffer.isBuffer(options.bytes)
+      ? options.bytes
+      : Buffer.from(options.bytes.buffer, options.bytes.byteOffset, options.bytes.byteLength)
+    if (buf.byteLength < 1) {
+      throw new RemoteProtocolError('INVALID_REQUEST', 'workspace upload file must not be empty')
+    }
+    const sha256 = createHash('sha256').update(buf).digest('hex')
+    const transferKey = randomUUID()
+
+    const openResult = (await this.request(
+      'workspace.upload.open',
+      {
+        sessionId: options.sessionId,
+        filename,
+        sizeBytes: buf.byteLength,
+        ...(options.chunkBytes !== undefined ? { chunkBytes: options.chunkBytes } : {}),
+        sha256,
+        ...(options.conflictPolicy !== undefined ? { conflictPolicy: options.conflictPolicy } : {}),
+      },
+      { idempotencyKey: `ws-open-${transferKey}` },
+    )) as WorkspaceUploadOpenResult
+
+    const negotiatedChunk = Math.max(1, openResult.chunkBytes)
+    let offset = 0
+    try {
+      while (offset < buf.byteLength) {
+        const end = Math.min(buf.byteLength, offset + negotiatedChunk)
+        const slice = buf.subarray(offset, end)
+        const chunkRes = (await this.request(
+          'workspace.upload.chunk',
+          {
+            uploadId: openResult.uploadId,
+            offset,
+            dataBase64: slice.toString('base64'),
+          },
+          { idempotencyKey: `ws-chunk-${openResult.uploadId}-${offset}` },
+        )) as WorkspaceUploadChunkResult
+        offset = chunkRes.nextOffset
+        options.onProgress?.(offset, buf.byteLength)
+      }
+
+      return (await this.request(
+        'workspace.upload.commit',
+        {
+          uploadId: openResult.uploadId,
+          sha256,
+        },
+        { idempotencyKey: `ws-commit-${openResult.uploadId}` },
+      )) as WorkspaceUploadCommitResult
+    } catch (err) {
+      if (this.isOpen()) {
+        await this.request(
+          'workspace.upload.abort',
+          { uploadId: openResult.uploadId },
+          { idempotencyKey: `ws-abort-${openResult.uploadId}` },
+        ).catch(() => {})
+      }
+      throw err
+    }
   }
 
   async request(

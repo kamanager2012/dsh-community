@@ -1,6 +1,7 @@
 import { RemoteCryptoError } from '../crypto/errors.js'
 import type { NoiseInitiatorSession } from '../crypto/noise.js'
 import { RemoteProtocolError } from '../errors.js'
+import type { WorkspaceUploadCommitResult } from '../protocol.js'
 import { createLanTransport } from './lan-client.js'
 import { createRelayTransport, type RelayClientCarrierOptions } from './relay-client.js'
 import { isRevocationError, RemoteClientSession } from './remote-client-session.js'
@@ -53,13 +54,27 @@ export interface FailoverRemoteClientOptions {
   readonly relay?: FailoverRelayPathConfig | undefined
   readonly handshakeTimeoutMs?: number | undefined
   readonly requestTimeoutMs?: number | undefined
+  /** Optional per-carrier cooldown in ms after connection failure (default: 0). */
+  readonly failureCooldownMs?: number | undefined
   readonly sleep?: ((delayMs: number) => Promise<void>) | undefined
+}
+
+export const MAX_FAILOVER_HISTORY = 64
+
+export function sanitizeDiagnosticMessage(raw: string): string {
+  return raw
+    .replace(/([?&](?:token|key|secret|auth|password)=)[^&\s]+/giu, '$1[REDACTED]')
+    .replace(/\b(Bearer\s+)[A-Za-z0-9._-]+/giu, '$1[REDACTED]')
+    .replace(/a=(?:candidate|ice-ufrag|ice-pwd|fingerprint):[^\r\n]*/giu, '[REDACTED_ICE]')
+    .replace(/\b[0-9a-fA-F]{32,}\b/gu, '[REDACTED_HEX]')
+    .slice(0, 240)
 }
 
 export interface FailoverAttemptRecord {
   readonly kind: RemoteTransportKind
   readonly status: 'connected' | 'failed'
   readonly error?: string | undefined
+  readonly durationMs?: number | undefined
   readonly timestampMs: number
 }
 
@@ -88,9 +103,15 @@ export class FailoverRemoteClient {
   }
   private relayConnIdHex: string | undefined = undefined
   private readonly history: FailoverAttemptRecord[] = []
+  private readonly cooldownUntilByKind = new Map<RemoteTransportKind, number>()
+  private readonly failureCooldownMs: number
 
   constructor(options: FailoverRemoteClientOptions) {
     this.options = options
+    this.failureCooldownMs =
+      typeof options.failureCooldownMs === 'number' && Number.isFinite(options.failureCooldownMs) && options.failureCooldownMs > 0
+        ? Math.trunc(options.failureCooldownMs)
+        : 0
     if (options.webrtc?.ice?.stunUrls) {
       validateSelfOwnedStunUrls(options.webrtc.ice.stunUrls)
     }
@@ -243,6 +264,7 @@ export class FailoverRemoteClient {
     readonly availableTransports: readonly RemoteTransportKind[]
     readonly connectionEpoch: number
     readonly failoverAttempts: readonly FailoverAttemptRecord[]
+    readonly cooldownsMs?: Readonly<Partial<Record<RemoteTransportKind, number>>> | undefined
     readonly ice?:
       | {
           readonly connectionState: string
@@ -255,6 +277,18 @@ export class FailoverRemoteClient {
   } {
     const ice = this.getIceDiagnostics()
     const lastRttMs = this.session.getLastRttMs()
+    const now = Date.now()
+    const cooldowns: Partial<Record<RemoteTransportKind, number>> = {}
+    let hasCooldowns = false
+    for (const [kind, until] of this.cooldownUntilByKind.entries()) {
+      const rem = until - now
+      if (rem > 0) {
+        cooldowns[kind] = rem
+        hasCooldowns = true
+      } else {
+        this.cooldownUntilByKind.delete(kind)
+      }
+    }
     return {
       connected: this.isOpen(),
       revoked: this.isRevoked(),
@@ -263,40 +297,61 @@ export class FailoverRemoteClient {
       availableTransports: this.getAvailableTransports(),
       connectionEpoch: this.getConnectionEpoch(),
       failoverAttempts: this.getFailoverHistory(),
+      ...(hasCooldowns ? { cooldownsMs: Object.freeze(cooldowns) } : {}),
       ...(ice !== undefined ? { ice } : {}),
       ...(this.relayConnIdHex !== undefined ? { relayConnIdHex: this.relayConnIdHex } : {}),
       ...(lastRttMs !== undefined ? { lastRttMs } : {}),
     }
   }
 
+  resetCooldowns(): void {
+    this.cooldownUntilByKind.clear()
+  }
+
+  private pushAttempt(record: FailoverAttemptRecord): void {
+    this.history.push(Object.freeze(record))
+    if (this.history.length > MAX_FAILOVER_HISTORY) {
+      this.history.splice(0, this.history.length - MAX_FAILOVER_HISTORY)
+    }
+  }
+
   private async connectSingleOrderedPass(): Promise<void> {
     if (this.session.isOpen()) return
     let lastError: Error | undefined
+    const now = Date.now()
+    const ready = this.orderedCandidates.filter(
+      (c) => (this.cooldownUntilByKind.get(c.kind) ?? 0) <= now,
+    )
+    // Fall back to trying all paths if every configured carrier is in cooldown.
+    const candidatesToTry = ready.length > 0 ? ready : this.orderedCandidates
 
-    for (const candidate of this.orderedCandidates) {
+    for (const candidate of candidatesToTry) {
+      const attemptStart = Date.now()
       try {
         await this.session.connectWithTransport(() => candidate.createTransport())
         this.activeKind = candidate.kind
         this.lastConnectedKind = candidate.kind
-        this.history.push(
-          Object.freeze({
-            kind: candidate.kind,
-            status: 'connected',
-            timestampMs: Date.now(),
-          }),
-        )
+        this.cooldownUntilByKind.delete(candidate.kind)
+        this.pushAttempt({
+          kind: candidate.kind,
+          status: 'connected',
+          durationMs: Date.now() - attemptStart,
+          timestampMs: Date.now(),
+        })
         return
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
+        const message = sanitizeDiagnosticMessage(error instanceof Error ? error.message : String(error))
         lastError = error instanceof Error ? error : new Error(message)
-        this.history.push(
-          Object.freeze({
-            kind: candidate.kind,
-            status: 'failed',
-            error: message,
-            timestampMs: Date.now(),
-          }),
-        )
+        if (this.failureCooldownMs > 0) {
+          this.cooldownUntilByKind.set(candidate.kind, Date.now() + this.failureCooldownMs)
+        }
+        this.pushAttempt({
+          kind: candidate.kind,
+          status: 'failed',
+          error: message,
+          durationMs: Date.now() - attemptStart,
+          timestampMs: Date.now(),
+        })
         this.session.close()
         if (this.session.isRevoked() || isRevocationError(error)) {
           throw lastError
@@ -390,6 +445,17 @@ export class FailoverRemoteClient {
 
   onEvent(listener: (event: unknown) => void): () => void {
     return this.session.onEvent(listener)
+  }
+
+  async uploadWorkspaceFile(options: {
+    readonly sessionId: string
+    readonly filename: string
+    readonly bytes: Uint8Array
+    readonly chunkBytes?: number | undefined
+    readonly conflictPolicy?: 'rename' | 'fail' | undefined
+    readonly onProgress?: ((sentBytes: number, totalBytes: number) => void) | undefined
+  }): Promise<WorkspaceUploadCommitResult> {
+    return this.session.uploadWorkspaceFile(options)
   }
 
   async request(

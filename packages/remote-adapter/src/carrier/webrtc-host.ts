@@ -14,6 +14,7 @@ import type { RtcIceCandidatePayload, RtcSessionDescriptionPayload } from './sig
 import {
   createConfiguredPeerConnection,
   DSH_WEBRTC_DATA_CHANNEL_LABEL,
+  shouldAllowIceCandidate,
   toRtcIceCandidateInit,
   validateSelfOwnedStunUrls,
   WebRtcServerDataChannelTransport,
@@ -319,6 +320,9 @@ export class HostWebRtcCarrier {
     pc.onicecandidate = ({ candidate }) => {
       if (entry.closed || !this.signaling?.isOpen()) return
       const payload: RtcIceCandidatePayload | null = candidate ? candidate.toJSON() : null
+      if (!shouldAllowIceCandidate(payload, this.options.ice?.iceTransportPolicy)) {
+        return
+      }
       if (!entry.answerSent) {
         if (entry.localIceBuffer.length < MAX_ICE_QUEUE_ENTRIES) {
           entry.localIceBuffer.push(payload)
@@ -458,6 +462,9 @@ export class HostWebRtcCarrier {
       if (entry.remoteDescSet && !entry.endOfCandidatesTimer) {
         void this.flushRemoteIce(entry)
       }
+      return
+    }
+    if (!shouldAllowIceCandidate(candidate, this.options.ice?.iceTransportPolicy)) {
       return
     }
     if (entry.remoteIceQueue.length >= MAX_ICE_QUEUE_ENTRIES) {

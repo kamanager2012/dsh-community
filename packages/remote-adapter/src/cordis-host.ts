@@ -60,11 +60,22 @@ import {
   type SessionRef,
   type SessionSearchParams,
   type SessionSearchResult,
+  type WorkspaceUploadAbortParams,
+  type WorkspaceUploadAbortResult,
+  type WorkspaceUploadChunkParams,
+  type WorkspaceUploadChunkResult,
+  type WorkspaceUploadCommitParams,
+  type WorkspaceUploadCommitResult,
+  type WorkspaceUploadOpenParams,
+  type WorkspaceUploadOpenResult,
 } from './protocol.js'
 import {
   buildAttachLiveStateSnapshot,
   foldNormalizedSessionEvents,
+  type FoldedSessionEventsSummary,
 } from './session-state-fold.js'
+import { truncateByCodePoints } from './unicode.js'
+import { WorkspaceUploadManager } from './workspace-upload.js'
 import {
   findOfficialSessionTranscriptPath,
   isSafeSessionId,
@@ -535,8 +546,21 @@ export class OfficialHostCordisBridge {
   private readonly pendingQuestions = new Map<string, PendingQuestion>()
   private readonly transcriptCache = new Map<
     string,
-    { readonly mtimeMs: number; readonly decoded: DecodedOfficialSessionTranscript }
+    { readonly mtimeMs: number; readonly decoded: DecodedOfficialSessionTranscript; readonly eventCount: number }
   >()
+  private transcriptCacheEvents = 0
+  private readonly liveLogCache = new Map<
+    string,
+    {
+      readonly logRef: readonly unknown[]
+      readonly rawLength: number
+      readonly lastItemRef: unknown
+      readonly filteredLog: readonly unknown[]
+      readonly normalizedEvents: readonly NormalizedTranscriptEvent[]
+      readonly folded: FoldedSessionEventsSummary
+    }
+  >()
+  private readonly workspaceUploads = new WorkspaceUploadManager()
   private readonly bridgedStatusBySession = new Map<string, 'running' | 'idle'>()
   private readonly rootUnsubscribes: Array<() => void> = []
   private readonly seenEvents = { ingested: 0, approvals: 0, questions: 0, followups: 0 }
@@ -606,6 +630,10 @@ export class OfficialHostCordisBridge {
       listCommands: (sessionId) => this.listCommands(sessionId),
       executeCommand: (sessionId, command) => this.executeCommand(sessionId, command),
       listSkills: (sessionId) => this.listSkills(sessionId),
+      openWorkspaceUpload: (deviceId, params) => this.openWorkspaceUpload(deviceId, params),
+      appendWorkspaceUploadChunk: (deviceId, params) => this.appendWorkspaceUploadChunk(deviceId, params),
+      commitWorkspaceUpload: (deviceId, params) => this.commitWorkspaceUpload(deviceId, params),
+      abortWorkspaceUpload: (deviceId, params) => this.abortWorkspaceUpload(deviceId, params),
     }
 
     this.runtime = new RemoteHostRuntime({
@@ -1123,16 +1151,71 @@ export class OfficialHostCordisBridge {
       this.transcriptCache.set(filePath, cached)
       return cached.decoded
     }
+    if (cached) {
+      this.transcriptCache.delete(filePath)
+      this.transcriptCacheEvents = Math.max(0, this.transcriptCacheEvents - cached.eventCount)
+    }
     const decoded = readDecodedOfficialTranscript(filePath, mtimeMs)
     if (!decoded) return undefined
-    if (this.transcriptCache.size >= 48) {
+    const eventCount = decoded.normalizedEvents.length
+    while (
+      this.transcriptCache.size >= 128 ||
+      (this.transcriptCache.size > 0 && this.transcriptCacheEvents + eventCount > 250_000)
+    ) {
       const oldestKey = this.transcriptCache.keys().next().value
-      if (oldestKey !== undefined) {
-        this.transcriptCache.delete(oldestKey)
+      if (oldestKey === undefined) break
+      const evicted = this.transcriptCache.get(oldestKey)
+      this.transcriptCache.delete(oldestKey)
+      if (evicted) {
+        this.transcriptCacheEvents = Math.max(0, this.transcriptCacheEvents - evicted.eventCount)
       }
     }
-    this.transcriptCache.set(filePath, { mtimeMs, decoded })
+    this.transcriptCache.set(filePath, { mtimeMs, decoded, eventCount })
+    this.transcriptCacheEvents += eventCount
     return decoded
+  }
+
+  private getMemoizedLiveSnapshot(
+    sessionId: string,
+    rawLog: readonly unknown[],
+  ): {
+    readonly filteredLog: readonly unknown[]
+    readonly normalizedEvents: readonly NormalizedTranscriptEvent[]
+    readonly folded: FoldedSessionEventsSummary
+  } {
+    const rawLength = rawLog.length
+    const lastItemRef = rawLength > 0 ? rawLog[rawLength - 1] : undefined
+    const existing = this.liveLogCache.get(sessionId)
+    if (
+      existing &&
+      existing.logRef === rawLog &&
+      existing.rawLength === rawLength &&
+      existing.lastItemRef === lastItemRef
+    ) {
+      this.liveLogCache.delete(sessionId)
+      this.liveLogCache.set(sessionId, existing)
+      return existing
+    }
+    const filteredLog = rawLog.filter((item) => {
+      const rec = asRecord(item)
+      return rec?.type !== 'assistant/chunk'
+    })
+    const normalizedEvents = this.normalizeLogEvents(filteredLog)
+    const folded = foldNormalizedSessionEvents(normalizedEvents)
+    const entry = {
+      logRef: rawLog,
+      rawLength,
+      lastItemRef,
+      filteredLog,
+      normalizedEvents,
+      folded,
+    }
+    if (this.liveLogCache.size >= 64) {
+      const oldest = this.liveLogCache.keys().next().value
+      if (oldest !== undefined) this.liveLogCache.delete(oldest)
+    }
+    this.liveLogCache.set(sessionId, entry)
+    return entry
   }
 
   private normalizeLogEvents(
@@ -1205,10 +1288,16 @@ export class OfficialHostCordisBridge {
       allowDiskRead || (agent && (!Array.isArray(agent.session?.log) || agent.session.log.length === 0))
         ? this.readCachedTranscript(base.id)
         : undefined
-    const liveLog = Array.isArray(agent?.session?.log) && agent.session.log.length > 0
-      ? this.normalizeLogEvents(agent.session.log)
-      : decoded?.normalizedEvents ?? []
-    const folded = liveLog.length > 0 ? foldNormalizedSessionEvents(liveLog) : undefined
+    const liveSnapshot =
+      Array.isArray(agent?.session?.log) && agent.session.log.length > 0
+        ? this.getMemoizedLiveSnapshot(base.id, agent.session.log)
+        : undefined
+    const liveLog = liveSnapshot?.normalizedEvents ?? decoded?.normalizedEvents ?? []
+    const folded = liveSnapshot
+      ? liveSnapshot.folded
+      : liveLog.length > 0
+        ? foldNormalizedSessionEvents(liveLog)
+        : undefined
     const { approvals, questions } = this.collectPendingSnapshots(base.id)
     const liveModel = agent?.model?.current?.() ?? folded?.model
     const status =
@@ -1292,14 +1381,11 @@ export class OfficialHostCordisBridge {
     const live = this.bridgedSessions.get(sessionId)?.agent ?? this.ctx.agents.get(sessionId)
     const disk = this.readCachedTranscript(sessionId)
     if (live && Array.isArray(live.session?.log) && live.session.log.length > 0) {
-      const filteredLog = live.session.log.filter((item) => {
-        const rec = asRecord(item)
-        return rec?.type !== 'assistant/chunk'
-      })
+      const memo = this.getMemoizedLiveSnapshot(sessionId, live.session.log)
       return {
         source: 'live',
-        rawEvents: filteredLog,
-        normalizedEvents: this.normalizeLogEvents(filteredLog),
+        rawEvents: memo.filteredLog,
+        normalizedEvents: memo.normalizedEvents,
         title: this.sessionTitleOverrides.get(sessionId) ?? this.readLiveAgentTitle(live) ?? disk?.title,
         cwd: disk?.cwd,
         agent: live,
@@ -1462,7 +1548,7 @@ export class OfficialHostCordisBridge {
       params.title?.trim() && params.title.trim().length > 0
         ? params.title.trim()
         : parentTitle
-          ? `Fork of ${parentTitle}`.slice(0, 120)
+          ? truncateByCodePoints(`Fork of ${parentTitle}`, 120)
           : undefined
 
     const handle = await this.ctx.agents.create({
@@ -1536,7 +1622,7 @@ export class OfficialHostCordisBridge {
       })
     } else {
       const all = await this.listSessions()
-      for (const ref of all.slice(0, 60)) {
+      for (const ref of all.slice(0, 100)) {
         const col = this.getSessionEventCollection(ref.id)
         if (!col || col.normalizedEvents.length === 0) continue
         sources.push({
@@ -1731,6 +1817,58 @@ export class OfficialHostCordisBridge {
       })
     }
     return out
+  }
+
+  async openWorkspaceUpload(
+    deviceId: string,
+    params: WorkspaceUploadOpenParams,
+  ): Promise<WorkspaceUploadOpenResult> {
+    await this.assertSession(params.sessionId)
+    const collection = this.getSessionEventCollection(params.sessionId)
+    const workspaceRoot = collection?.cwd ?? this.cwd
+    return this.workspaceUploads.open({
+      deviceId,
+      sessionId: params.sessionId,
+      workspaceRoot,
+      filename: params.filename,
+      sizeBytes: params.sizeBytes,
+      ...(params.chunkBytes !== undefined ? { chunkBytes: params.chunkBytes } : {}),
+      ...(params.sha256 !== undefined ? { sha256: params.sha256 } : {}),
+      ...(params.conflictPolicy !== undefined ? { conflictPolicy: params.conflictPolicy } : {}),
+    })
+  }
+
+  async appendWorkspaceUploadChunk(
+    deviceId: string,
+    params: WorkspaceUploadChunkParams,
+  ): Promise<WorkspaceUploadChunkResult> {
+    return this.workspaceUploads.appendChunk({
+      deviceId,
+      uploadId: params.uploadId,
+      offset: params.offset,
+      dataBase64: params.dataBase64,
+    })
+  }
+
+  async commitWorkspaceUpload(
+    deviceId: string,
+    params: WorkspaceUploadCommitParams,
+  ): Promise<WorkspaceUploadCommitResult> {
+    return this.workspaceUploads.commit({
+      deviceId,
+      uploadId: params.uploadId,
+      ...(params.sha256 !== undefined ? { sha256: params.sha256 } : {}),
+    })
+  }
+
+  async abortWorkspaceUpload(
+    deviceId: string,
+    params: WorkspaceUploadAbortParams,
+  ): Promise<WorkspaceUploadAbortResult> {
+    return this.workspaceUploads.abort({
+      deviceId,
+      uploadId: params.uploadId,
+    })
   }
 
   private async buildPromptContentParts(
@@ -2101,6 +2239,7 @@ export class OfficialHostCordisBridge {
   }
 
   async revokeDevice(deviceId: string): Promise<boolean> {
+    this.workspaceUploads.revokeDevice(deviceId)
     return this.stores.trustStore.revoke(deviceId)
   }
 
@@ -2180,6 +2319,9 @@ export class OfficialHostCordisBridge {
     this.bridgedStatusBySession.clear()
     this.sessionTitleOverrides.clear()
     this.transcriptCache.clear()
+    this.transcriptCacheEvents = 0
+    this.liveLogCache.clear()
+    this.workspaceUploads.disposeAll()
     for (const unsub of this.rootUnsubscribes) {
       unsub()
     }

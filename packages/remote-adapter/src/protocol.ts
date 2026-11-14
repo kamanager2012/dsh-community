@@ -25,6 +25,10 @@ export type RemoteMethod =
   | 'command.list'
   | 'command.execute'
   | 'skill.list'
+  | 'workspace.upload.open'
+  | 'workspace.upload.chunk'
+  | 'workspace.upload.commit'
+  | 'workspace.upload.abort'
   | 'stream.ack'
   | 'ping'
 
@@ -45,6 +49,10 @@ const REMOTE_METHODS = new Set<RemoteMethod>([
   'command.list',
   'command.execute',
   'skill.list',
+  'workspace.upload.open',
+  'workspace.upload.chunk',
+  'workspace.upload.commit',
+  'workspace.upload.abort',
   'stream.ack',
   'ping',
 ])
@@ -276,6 +284,57 @@ export interface RemoteSkillSummary {
   readonly source?: string | undefined
 }
 
+export interface WorkspaceUploadOpenParams {
+  readonly sessionId: string
+  readonly filename: string
+  readonly sizeBytes: number
+  readonly chunkBytes?: number | undefined
+  readonly sha256?: string | undefined
+  readonly conflictPolicy?: 'rename' | 'fail' | undefined
+}
+
+export interface WorkspaceUploadOpenResult {
+  readonly uploadId: string
+  readonly sessionId: string
+  readonly chunkBytes: number
+  readonly maxBytes: number
+  readonly relativePath: string
+}
+
+export interface WorkspaceUploadChunkParams {
+  readonly uploadId: string
+  readonly offset: number
+  readonly dataBase64: string
+}
+
+export interface WorkspaceUploadChunkResult {
+  readonly uploadId: string
+  readonly receivedBytes: number
+  readonly nextOffset: number
+}
+
+export interface WorkspaceUploadCommitParams {
+  readonly uploadId: string
+  readonly sha256?: string | undefined
+}
+
+export interface WorkspaceUploadCommitResult {
+  readonly uploadId: string
+  readonly sessionId: string
+  readonly relativePath: string
+  readonly bytesWritten: number
+  readonly sha256: string
+}
+
+export interface WorkspaceUploadAbortParams {
+  readonly uploadId: string
+}
+
+export interface WorkspaceUploadAbortResult {
+  readonly uploadId: string
+  readonly aborted: boolean
+}
+
 export interface OfficialRemoteSeams {
   listSessions(): Promise<readonly SessionRef[]>
   assertSession(sessionId: string): Promise<void>
@@ -294,6 +353,10 @@ export interface OfficialRemoteSeams {
   listCommands?(sessionId?: string): Promise<readonly RemoteCommandDescriptor[]>
   executeCommand?(sessionId: string, command: string): Promise<{ readonly ok: boolean; readonly commandId?: string | undefined; readonly output?: string | undefined; readonly error?: string | undefined }>
   listSkills?(sessionId?: string): Promise<readonly RemoteSkillSummary[]>
+  openWorkspaceUpload?(deviceId: string, params: WorkspaceUploadOpenParams): Promise<WorkspaceUploadOpenResult>
+  appendWorkspaceUploadChunk?(deviceId: string, params: WorkspaceUploadChunkParams): Promise<WorkspaceUploadChunkResult>
+  commitWorkspaceUpload?(deviceId: string, params: WorkspaceUploadCommitParams): Promise<WorkspaceUploadCommitResult>
+  abortWorkspaceUpload?(deviceId: string, params: WorkspaceUploadAbortParams): Promise<WorkspaceUploadAbortResult>
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

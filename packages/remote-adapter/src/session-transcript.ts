@@ -1,7 +1,8 @@
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import { join, resolve, sep } from 'node:path'
 import { zstdDecompressSync } from 'node:zlib'
 import { extractPreviewTextFromEvent, foldNormalizedSessionEvents } from './session-state-fold.js'
+import { extractCodePointSnippet } from './unicode.js'
 import type { SessionSearchHit } from './protocol.js'
 
 export interface NormalizedTranscriptEvent {
@@ -165,32 +166,52 @@ function decodeTranscriptText(filePath: string): string | undefined {
   }
 }
 
+function isRealFileInsideRoot(rootRealPath: string, candidatePath: string): boolean {
+  try {
+    const st = lstatSync(candidatePath)
+    if (st.isSymbolicLink() || !st.isFile()) return false
+    const realCandidate = realpathSync(candidatePath)
+    const prefix = rootRealPath.endsWith(sep) ? rootRealPath : `${rootRealPath}${sep}`
+    return realCandidate.startsWith(prefix)
+  } catch {
+    return false
+  }
+}
+
 export function findOfficialSessionTranscriptPath(
   sessionsRoot: string,
   sessionId: string,
 ): string | undefined {
   if (!existsSync(sessionsRoot) || !isSafeSessionId(sessionId)) return undefined
+  let rootRealPath: string
+  try {
+    const rootStat = statSync(sessionsRoot)
+    if (!rootStat.isDirectory()) return undefined
+    rootRealPath = realpathSync(sessionsRoot)
+  } catch {
+    return undefined
+  }
 
   for (const name of TRANSCRIPT_FILENAMES) {
-    const legacyCandidate = join(sessionsRoot, sessionId, name)
-    if (isPathInsideRoot(sessionsRoot, legacyCandidate) && existsSync(legacyCandidate)) {
+    const legacyCandidate = join(rootRealPath, sessionId, name)
+    if (isPathInsideRoot(rootRealPath, legacyCandidate) && isRealFileInsideRoot(rootRealPath, legacyCandidate)) {
       return legacyCandidate
     }
   }
 
   let level1
   try {
-    level1 = readdirSync(sessionsRoot, { withFileTypes: true })
+    level1 = readdirSync(rootRealPath, { withFileTypes: true })
   } catch {
     return undefined
   }
 
   for (const entry of level1) {
-    if (!entry.isDirectory() || !isSafeSessionId(entry.name)) continue
-    const nestedDir = join(sessionsRoot, entry.name, sessionId)
+    if (!entry.isDirectory() || entry.isSymbolicLink() || !isSafeSessionId(entry.name)) continue
+    const nestedDir = join(rootRealPath, entry.name, sessionId)
     for (const name of TRANSCRIPT_FILENAMES) {
       const nestedCandidate = join(nestedDir, name)
-      if (isPathInsideRoot(sessionsRoot, nestedCandidate) && existsSync(nestedCandidate)) {
+      if (isPathInsideRoot(rootRealPath, nestedCandidate) && isRealFileInsideRoot(rootRealPath, nestedCandidate)) {
         return nestedCandidate
       }
     }
@@ -402,9 +423,7 @@ export function searchSessionCollections(options: {
         return { hits, hasMore }
       }
 
-      const start = Math.max(0, matchIndex - 32)
-      const end = Math.min(text.length, matchIndex + needle.length + 64)
-      const snippet = `${start > 0 ? '…' : ''}${text.slice(start, end)}${end < text.length ? '…' : ''}`
+      const snippet = extractCodePointSnippet(text, matchIndex, needle.length, 24, 48)
       hits.push({
         sessionId: source.sessionId,
         ...(source.title !== undefined ? { title: source.title } : {}),

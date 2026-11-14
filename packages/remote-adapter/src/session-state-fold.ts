@@ -6,6 +6,7 @@ import type {
   SessionUsageSnapshot,
   TodoItemSnapshot,
 } from './protocol.js'
+import { truncateByCodePoints } from './unicode.js'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -66,7 +67,7 @@ export function extractPreviewTextFromEvent(event: { readonly type: string; read
   const content = msg.content
   if (typeof content === 'string') {
     const trimmed = content.trim().replace(/\s+/gu, ' ')
-    return trimmed.length > 140 ? `${trimmed.slice(0, 140)}…` : trimmed || undefined
+    return trimmed.length > 0 ? truncateByCodePoints(trimmed, 140) : undefined
   }
   if (!Array.isArray(content)) return undefined
   const texts: string[] = []
@@ -78,7 +79,7 @@ export function extractPreviewTextFromEvent(event: { readonly type: string; read
   }
   if (texts.length === 0) return undefined
   const merged = texts.join(' ').replace(/\s+/gu, ' ').trim()
-  return merged.length > 140 ? `${merged.slice(0, 140)}…` : merged
+  return merged.length > 0 ? truncateByCodePoints(merged, 140) : undefined
 }
 
 export interface FoldedSessionEventsSummary {

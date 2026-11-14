@@ -24,6 +24,10 @@ import {
   type SessionSearchParams,
   type StreamAckParams,
   type TurnAbortParams,
+  type WorkspaceUploadAbortParams,
+  type WorkspaceUploadChunkParams,
+  type WorkspaceUploadCommitParams,
+  type WorkspaceUploadOpenParams,
 } from './protocol.js'
 import { BoundedReplayBuffer } from './replay.js'
 import { isSafeSessionId } from './session-transcript.js'
@@ -366,6 +370,77 @@ function parseCommandExecute(value: unknown): { readonly sessionId: string; read
   return { sessionId, command }
 }
 
+function parseWorkspaceUploadOpen(value: unknown): WorkspaceUploadOpenParams {
+  const object = asObject(value)
+  const sessionId = requiredSafeSessionId(object, 'sessionId')
+  const filename = requiredString(object, 'filename')
+  const sizeBytes = object.sizeBytes
+  if (!Number.isSafeInteger(sizeBytes) || (sizeBytes as number) < 1) {
+    throw new RemoteProtocolError('INVALID_REQUEST', 'sizeBytes must be a positive safe integer')
+  }
+  let chunkBytes: number | undefined
+  if (object.chunkBytes !== undefined) {
+    if (!Number.isSafeInteger(object.chunkBytes) || (object.chunkBytes as number) < 1) {
+      throw new RemoteProtocolError('INVALID_REQUEST', 'chunkBytes must be a positive safe integer')
+    }
+    chunkBytes = object.chunkBytes as number
+  }
+  let sha256: string | undefined
+  if (object.sha256 !== undefined) {
+    sha256 = requiredString(object, 'sha256')
+  }
+  let conflictPolicy: 'rename' | 'fail' | undefined
+  if (object.conflictPolicy !== undefined) {
+    if (object.conflictPolicy !== 'rename' && object.conflictPolicy !== 'fail') {
+      throw new RemoteProtocolError('INVALID_REQUEST', 'conflictPolicy must be rename or fail')
+    }
+    conflictPolicy = object.conflictPolicy
+  }
+  return {
+    sessionId,
+    filename,
+    sizeBytes: sizeBytes as number,
+    ...(chunkBytes !== undefined ? { chunkBytes } : {}),
+    ...(sha256 !== undefined ? { sha256 } : {}),
+    ...(conflictPolicy !== undefined ? { conflictPolicy } : {}),
+  }
+}
+
+function parseWorkspaceUploadChunk(value: unknown): WorkspaceUploadChunkParams {
+  const object = asObject(value)
+  const uploadId = requiredString(object, 'uploadId')
+  const offset = object.offset
+  if (!Number.isSafeInteger(offset) || (offset as number) < 0) {
+    throw new RemoteProtocolError('INVALID_REQUEST', 'offset must be a non-negative integer')
+  }
+  const dataBase64 = requiredString(object, 'dataBase64')
+  return {
+    uploadId,
+    offset: offset as number,
+    dataBase64,
+  }
+}
+
+function parseWorkspaceUploadCommit(value: unknown): WorkspaceUploadCommitParams {
+  const object = asObject(value)
+  const uploadId = requiredString(object, 'uploadId')
+  let sha256: string | undefined
+  if (object.sha256 !== undefined) {
+    sha256 = requiredString(object, 'sha256')
+  }
+  return {
+    uploadId,
+    ...(sha256 !== undefined ? { sha256 } : {}),
+  }
+}
+
+function parseWorkspaceUploadAbort(value: unknown): WorkspaceUploadAbortParams {
+  const object = asObject(value)
+  return {
+    uploadId: requiredString(object, 'uploadId'),
+  }
+}
+
 export class RemoteAdapterCore {
   readonly devices: DeviceRegistry
   readonly trustStore: DeviceTrustStore
@@ -645,6 +720,64 @@ export class RemoteAdapterCore {
               params.questionId,
               params.answer,
             )
+          },
+        )
+      case 'workspace.upload.open':
+        return this.mutate(
+          peer,
+          request,
+          parseWorkspaceUploadOpen(request.params),
+          async (params) => {
+            await this.seams.assertSession(params.sessionId)
+            if (!this.seams.openWorkspaceUpload) {
+              throw new RemoteProtocolError(
+                'INVALID_REQUEST',
+                'workspace.upload is not supported by this host',
+              )
+            }
+            return this.seams.openWorkspaceUpload(peer.deviceId, params)
+          },
+        )
+      case 'workspace.upload.chunk': {
+        // Chunk retries are deduplicated O(1) by (uploadId, offset, chunkSha256) in WorkspaceUploadManager
+        // rather than pinning multi-kilobyte base64 payloads inside IdempotencyStore.
+        const params = parseWorkspaceUploadChunk(request.params)
+        if (!this.seams.appendWorkspaceUploadChunk) {
+          throw new RemoteProtocolError(
+            'INVALID_REQUEST',
+            'workspace.upload is not supported by this host',
+          )
+        }
+        return this.seams.appendWorkspaceUploadChunk(peer.deviceId, params)
+      }
+      case 'workspace.upload.commit':
+        return this.mutate(
+          peer,
+          request,
+          parseWorkspaceUploadCommit(request.params),
+          async (params) => {
+            if (!this.seams.commitWorkspaceUpload) {
+              throw new RemoteProtocolError(
+                'INVALID_REQUEST',
+                'workspace.upload is not supported by this host',
+              )
+            }
+            return this.seams.commitWorkspaceUpload(peer.deviceId, params)
+          },
+        )
+      case 'workspace.upload.abort':
+        return this.mutate(
+          peer,
+          request,
+          parseWorkspaceUploadAbort(request.params),
+          async (params) => {
+            if (!this.seams.abortWorkspaceUpload) {
+              throw new RemoteProtocolError(
+                'INVALID_REQUEST',
+                'workspace.upload is not supported by this host',
+              )
+            }
+            return this.seams.abortWorkspaceUpload(peer.deviceId, params)
           },
         )
     }
