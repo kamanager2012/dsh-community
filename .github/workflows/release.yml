@@ -113,8 +113,12 @@ jobs:
     steps:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          path: dist-artifacts
-          merge-multiple: false
+          name: linux
+          path: dist-artifacts/linux
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: sbom
+          path: dist-artifacts/sbom
       # sigstore/cosign-installer v3.10.1 (latest v3.x line)
       # cosign v2.6.1: the installer's self-verification downloads
       # cosign-linux-amd64.sig, which the v3.x release line no longer ships
@@ -163,8 +167,12 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          path: dist-artifacts
-          merge-multiple: false
+          name: linux
+          path: dist-artifacts/linux
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: sbom
+          path: dist-artifacts/sbom
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: signed
