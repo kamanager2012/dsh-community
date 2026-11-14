@@ -1,4 +1,5 @@
 import type { UiStore } from './store.js'
+import { extractTrailingAtQuery } from './workspace.js'
 
 /**
  * Pure key handling for the terminal surface, split out of the Ink component
@@ -25,6 +26,62 @@ export interface KeyHandlerDeps {
   readonly onExit: () => void
   readonly showHelp: () => void
   readonly toggleThinking: () => void
+  readonly inspectDiff?: (argText: string) => void | Promise<void>
+  readonly completeAtFiles?: (query: string) => readonly string[] | Promise<readonly string[]>
+}
+
+const atQueryGenByStore = new WeakMap<UiStore, number>()
+
+function nextAtQueryGen(store: UiStore): number {
+  const next = (atQueryGenByStore.get(store) ?? 0) + 1
+  atQueryGenByStore.set(store, next)
+  return next
+}
+
+function applyDraftWithAtCompletion(deps: KeyHandlerDeps, nextDraft: string): void {
+  const { store } = deps
+  store.setDraft(nextDraft)
+  const match = extractTrailingAtQuery(nextDraft)
+  if (!match || !deps.completeAtFiles) {
+    nextAtQueryGen(store)
+    if (store.state.atCompletion !== undefined) store.setAtCompletion(undefined)
+    return
+  }
+
+  const gen = nextAtQueryGen(store)
+  const publish = (matches: readonly string[]): void => {
+    const cur = store.state
+    if (
+      atQueryGenByStore.get(store) !== gen
+      || cur.draft !== nextDraft
+      || cur.fatal !== undefined
+      || cur.approval !== undefined
+      || cur.questions !== undefined
+    ) {
+      return
+    }
+    if (matches.length === 0) {
+      if (cur.atCompletion !== undefined) store.setAtCompletion(undefined)
+      return
+    }
+    store.setAtCompletion({
+      query: match.query,
+      atIndex: match.atIndex,
+      matches: [...matches],
+      selectedIndex: 0,
+    })
+  }
+
+  const res = deps.completeAtFiles(match.query)
+  if (Array.isArray(res)) {
+    publish(res)
+  } else {
+    void Promise.resolve(res).then(publish, () => {
+      if (atQueryGenByStore.get(store) === gen && store.state.atCompletion !== undefined) {
+        store.setAtCompletion(undefined)
+      }
+    })
+  }
 }
 
 function dropLastCodePoint(text: string): string {
@@ -106,10 +163,20 @@ function applyChar(deps: KeyHandlerDeps, ch: string, key: KeyEvent): void {
 
   if (ch === '\r') {
     const trimmed = state.draft.trim()
+    nextAtQueryGen(store)
+    if (state.atCompletion !== undefined) store.setAtCompletion(undefined)
     store.setDraft('')
     if (trimmed === '/exit' || trimmed === '/quit') deps.onExit()
     else if (trimmed === '/help') deps.showHelp()
-    else if (trimmed === '/todos') {
+    else if (trimmed === '/diff' || trimmed.startsWith('/diff ')) {
+      if (deps.inspectDiff) {
+        void Promise.resolve(deps.inspectDiff(trimmed.slice(5).trim())).catch((err) => {
+          store.showNotice(`/diff 执行失败：${err instanceof Error ? err.message : String(err)}`, 'error')
+        })
+      } else {
+        store.showNotice('当前会话未启用 /diff 检查', 'warn')
+      }
+    } else if (trimmed === '/todos') {
       const lines = state.todos.length === 0
         ? ['暂无待办任务']
         : state.todos.map((t, i) => `${i + 1}. [${t.status}] ${t.content}`)
@@ -133,24 +200,70 @@ function applyChar(deps: KeyHandlerDeps, ch: string, key: KeyEvent): void {
     return
   }
   if (key.upArrow && ch === '') {
+    if (state.atCompletion && state.atCompletion.matches.length > 0) {
+      store.moveAtCompletionSelection(-1)
+      return
+    }
     store.recallPreviousPrompt()
     return
   }
   if (key.downArrow && ch === '') {
+    if (state.atCompletion && state.atCompletion.matches.length > 0) {
+      store.moveAtCompletionSelection(1)
+      return
+    }
     store.recallNextPrompt()
     return
   }
   if (ch === '\x7f' || ch === '\b') {
-    store.setDraft(dropLastCodePoint(state.draft))
+    applyDraftWithAtCompletion(deps, dropLastCodePoint(state.draft))
     return
   }
   if (ch === '\t') {
+    const match = extractTrailingAtQuery(state.draft)
+    const comp = state.atCompletion
+    if (match) {
+      if (comp && comp.atIndex === match.atIndex && comp.matches.length > 0) {
+        const chosen = comp.matches[comp.selectedIndex] ?? comp.matches[0]!
+        nextAtQueryGen(store)
+        store.setAtCompletion(undefined)
+        store.setDraft(`${state.draft.slice(0, match.atIndex)}@${chosen} `)
+        return
+      }
+      if (deps.completeAtFiles) {
+        const draftSnapshot = state.draft
+        const gen = nextAtQueryGen(store)
+        const applyFirst = (matches: readonly string[]): void => {
+          const chosen = matches[0]
+          if (
+            !chosen
+            || atQueryGenByStore.get(store) !== gen
+            || store.state.draft !== draftSnapshot
+          ) {
+            return
+          }
+          store.setAtCompletion(undefined)
+          store.setDraft(`${draftSnapshot.slice(0, match.atIndex)}@${chosen} `)
+        }
+        const res = deps.completeAtFiles(match.query)
+        if (Array.isArray(res)) applyFirst(res)
+        else void Promise.resolve(res).then(applyFirst, () => {})
+        return
+      }
+    }
     deps.toggleThinking()
     return
   }
   if (ch === '\x1b' || key.escape) {
+    if (state.atCompletion !== undefined) {
+      nextAtQueryGen(store)
+      store.setAtCompletion(undefined)
+      return
+    }
     deps.onCancel()
     return
   }
-  if (ch >= ' ' && ch !== '\x7f') store.setDraft(state.draft + ch)
+  if (ch >= ' ' && ch !== '\x7f') {
+    applyDraftWithAtCompletion(deps, state.draft + ch)
+  }
 }

@@ -5,7 +5,9 @@
 import { Box, Text, useInput } from 'ink'
 import { createElement, useState, useSyncExternalStore, type FC } from 'react'
 import { handleKey } from './keys.js'
+import { renderMarkdownToAnsi, stripUnsafeTerminalControls } from './markdown.js'
 import type { UiItem, UiStore } from './store.js'
+import { inspectLocalGitDiff, listLocalWorkspaceFiles, parseDiffCommandArgs } from './workspace.js'
 
 interface AppProps {
   readonly store: UiStore
@@ -13,6 +15,7 @@ interface AppProps {
   readonly onSend: (text: string) => void
   readonly onCancel: () => void
   readonly onExit: () => void
+  readonly cwd?: string
 }
 
 const MUTED = '#6d7686'
@@ -46,14 +49,14 @@ function renderItem(item: UiItem, thinkingOpen: boolean): ReturnType<typeof crea
     )
   }
   const reasoning = thinkingOpen
-    ? createElement(Text, { color: MUTED }, item.reasoning)
+    ? createElement(Text, { color: MUTED }, stripUnsafeTerminalControls(item.reasoning))
     : item.reasoning !== ''
       ? createElement(Text, { color: MUTED }, `思考 ${item.reasoning.length} 字 · Tab 展开`)
       : null
   return createElement(Box, { key: item.id, flexDirection: 'column', marginBottom: 1 },
     createElement(Text, { color: '#8fbc8f', bold: true }, '助手'),
     reasoning,
-    createElement(Text, null, item.text),
+    createElement(Text, null, renderMarkdownToAnsi(item.text)),
   )
 }
 
@@ -78,14 +81,16 @@ const Transcript: FC<{ store: UiStore; thinkingOpen: boolean }> = ({ store, thin
 const HELP_TEXT = `dsh-community-tui 帮助
   /help     显示本帮助
   /commands 查看官方斜杠命令
+  /diff     查看本地 Git 变更（/diff [path] [--staged]）
   /todos    查看当前任务清单
   /usage    查看会话状态与 Token 用量
   /exit     退出（同 /quit 或 Ctrl+C / Ctrl+Q）
   /image "图1.png" ["图2.webp"] -- 可选提示词
             图片先交给官方 attachment store 校验/规范化/持久化
+  @path     输入 @ 触发文件补全，↑/↓ 切换，Tab 补全，Esc 收起
   ↑/↓       浏览历史输入
   Esc       打断回答 / 拒绝审批 / 取消提问
-  Tab       展开/折叠思考过程
+  Tab       补全 @file 候选，否则展开/折叠思考过程
   y/n       审批弹窗:允许一次/拒绝
   数字键    提问弹窗:选择选项`
 
@@ -112,9 +117,31 @@ const InputBar: FC<{ store: UiStore }> = ({ store }) => {
   const state = useSyncExternalStore(store.subscribe, () => store.state)
   if (state.fatal !== undefined || state.approval !== undefined || state.questions !== undefined) return null
   if (draft === '') {
-    return createElement(Text, { color: MUTED, wrap: 'wrap' }, '输入任务，回车发送（/help /commands /todos /usage /image /exit）')
+    return createElement(Text, { color: MUTED, wrap: 'wrap' }, '输入任务，回车发送（@file /help /diff /commands /todos /usage /image /exit）')
   }
   return createElement(Text, { wrap: 'wrap' }, '> ', draft, createElement(Text, { color: MUTED }, '█'))
+}
+
+const AtFileBar: FC<{ store: UiStore }> = ({ store }) => {
+  const comp = useSyncExternalStore(store.subscribe, () => store.state.atCompletion)
+  const state = useSyncExternalStore(store.subscribe, () => store.state)
+  if (
+    comp === undefined
+    || comp.matches.length === 0
+    || state.fatal !== undefined
+    || state.approval !== undefined
+    || state.questions !== undefined
+  ) {
+    return null
+  }
+  return createElement(Box, { borderStyle: 'round', borderColor: ACCENT, flexDirection: 'column', paddingX: 1, marginTop: 1 },
+    createElement(Text, { color: ACCENT, bold: true }, `工作区文件补全 @${comp.query}（↑/↓ 选择 · Tab 补全 · Esc 收起）`),
+    ...comp.matches.slice(0, 8).map((file, idx) => {
+      const selected = idx === comp.selectedIndex
+      return createElement(Text, { key: file, color: selected ? ACCENT : MUTED, bold: selected },
+        `${selected ? '▶ ' : '  '}${file}`)
+    }),
+  )
 }
 
 const StatusBar: FC<{ store: UiStore; dualBadge: string }> = ({ store, dualBadge }) => {
@@ -171,8 +198,9 @@ const QuestionsView: FC<{ store: UiStore }> = ({ store }) => {
   )
 }
 
-export const App: FC<AppProps> = ({ store, dualBadge, onSend, onCancel, onExit }) => {
+export const App: FC<AppProps> = ({ store, dualBadge, onSend, onCancel, onExit, cwd }) => {
   const [thinkingOpen, setThinkingOpen] = useState(false)
+  const workspaceRoot = cwd ?? process.cwd()
   useInput((input, key) => {
     handleKey({
       store,
@@ -181,6 +209,17 @@ export const App: FC<AppProps> = ({ store, dualBadge, onSend, onCancel, onExit }
       onExit,
       showHelp: () => store.showHelp(HELP_TEXT),
       toggleThinking: () => setThinkingOpen((open) => !open),
+      inspectDiff: async (argText) => {
+        const parsed = parseDiffCommandArgs(argText)
+        if ('error' in parsed) {
+          store.showNotice(parsed.error, 'warn')
+          return
+        }
+        const res = await inspectLocalGitDiff(workspaceRoot, parsed)
+        if (res.ok) store.showHelp(res.output)
+        else store.showNotice(res.error, 'warn')
+      },
+      completeAtFiles: (query) => listLocalWorkspaceFiles(workspaceRoot, { query, limit: 8 }),
     }, typeof input === 'string' ? input : '', key)
   })
 
@@ -192,6 +231,7 @@ export const App: FC<AppProps> = ({ store, dualBadge, onSend, onCancel, onExit }
     createElement(Box, { marginTop: 1 },
       createElement(InputBar, { store }),
     ),
+    createElement(AtFileBar, { store }),
     createElement(StatusBar, { store, dualBadge }),
   )
 }

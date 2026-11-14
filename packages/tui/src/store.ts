@@ -42,6 +42,13 @@ export interface QuestionPrompt {
   readonly collectedAnswers: readonly UserQuestionAnswerItem[]
 }
 
+export interface AtFileCompletionState {
+  readonly query: string
+  readonly atIndex: number
+  readonly matches: readonly string[]
+  readonly selectedIndex: number
+}
+
 export interface UiState {
   readonly draft: string
   readonly items: readonly UiItem[]
@@ -53,6 +60,7 @@ export interface UiState {
   readonly commands: readonly CommandSummary[]
   readonly approval: ApprovalPrompt | undefined
   readonly questions: QuestionPrompt | undefined
+  readonly atCompletion: AtFileCompletionState | undefined
   readonly fatal: string | undefined
 }
 
@@ -75,6 +83,7 @@ const EMPTY: UiState = {
   commands: [],
   approval: undefined,
   questions: undefined,
+  atCompletion: undefined,
   fatal: undefined,
 }
 
@@ -224,6 +233,8 @@ export interface UiStore {
   setCommands(commands: readonly CommandSummary[]): void
   setFatal(message: string): void
   setDraft(text: string): void
+  setAtCompletion(completion: AtFileCompletionState | undefined): void
+  moveAtCompletionSelection(delta: number): void
   recordPrompt(prompt: string): void
   recallPreviousPrompt(): void
   recallNextPrompt(): void
@@ -452,11 +463,21 @@ export function createStore(): UiStore {
       set({ commands: [...commands] })
     },
     setFatal(message) {
-      set({ fatal: message })
+      set({ fatal: message, atCompletion: undefined })
     },
     setDraft(text) {
       historyCursor = -1
       set({ draft: text })
+    },
+    setAtCompletion(completion) {
+      set({ atCompletion: completion })
+    },
+    moveAtCompletionSelection(delta) {
+      const comp = state.atCompletion
+      if (!comp || comp.matches.length === 0) return
+      const len = comp.matches.length
+      const nextIdx = ((comp.selectedIndex + delta) % len + len) % len
+      set({ atCompletion: { ...comp, selectedIndex: nextIdx } })
     },
     recordPrompt(prompt) {
       const clean = prompt.trim()
@@ -466,6 +487,7 @@ export function createStore(): UiStore {
       }
       historyCursor = -1
       stashedDraft = ''
+      if (state.atCompletion !== undefined) set({ atCompletion: undefined })
     },
     recallPreviousPrompt() {
       if (promptHistory.length === 0) return
@@ -475,16 +497,16 @@ export function createStore(): UiStore {
       } else if (historyCursor > 0) {
         historyCursor -= 1
       }
-      set({ draft: promptHistory[historyCursor] ?? '' })
+      set({ draft: promptHistory[historyCursor] ?? '', atCompletion: undefined })
     },
     recallNextPrompt() {
       if (historyCursor === -1) return
       if (historyCursor < promptHistory.length - 1) {
         historyCursor += 1
-        set({ draft: promptHistory[historyCursor] ?? '' })
+        set({ draft: promptHistory[historyCursor] ?? '', atCompletion: undefined })
       } else {
         historyCursor = -1
-        set({ draft: stashedDraft })
+        set({ draft: stashedDraft, atCompletion: undefined })
       }
     },
     showHelp(text) {
@@ -502,7 +524,7 @@ export function createStore(): UiStore {
       if (signal?.aborted) {
         return Promise.resolve('cancelled')
       }
-      set({ approval: prompt })
+      set({ approval: prompt, atCompletion: undefined })
       return new Promise<string>((resolve) => {
         approvalWaiter = resolve
         if (signal !== undefined) {
@@ -535,7 +557,7 @@ export function createStore(): UiStore {
       if (request.signal?.aborted) {
         return Promise.reject(new Error('question request aborted'))
       }
-      set({ questions: { request, currentIndex: 0, collectedAnswers: [] } })
+      set({ questions: { request, currentIndex: 0, collectedAnswers: [] }, atCompletion: undefined })
       return new Promise<UserQuestionAnswer>((resolve, reject) => {
         questionWaiter = { resolve, reject }
         const signal = request.signal
