@@ -235,7 +235,7 @@ const extra = resumeId === undefined
       id: resumeId,
       rest: launch.kind === 'resume' ? launch.rest : [],
     })
-const env = tuiLaunchEnv(process.env, launch, resumeId)
+const env = tuiLaunchEnv(process.env, launch, resumeId, process.cwd())
 
 const install = resolveOfficialDsh({ from: import.meta.url })
 const result = spawnSync(

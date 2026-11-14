@@ -174,6 +174,17 @@ function createMockMultiAgentBackend(workspaceRoot: string): {
       bytes: 79,
       truncated: false,
     }),
+    listWorkspaceFiles: async ({ sessionId, query }) => {
+      const all = ['README.md', 'src/index.ts', 'src/client/timeline.ts']
+      const filtered = query ? all.filter((f) => f.toLowerCase().includes(query.toLowerCase())) : all
+      return {
+        sessionId,
+        root: workspaceRoot,
+        files: filtered,
+        totalMatched: filtered.length,
+        truncated: false,
+      }
+    },
     listModels: async () => ({
       current: { provider: 'anthropic', model: 'sonnet' },
       models: [{ provider: 'anthropic', model: 'opus', name: 'Claude Opus' }],
@@ -279,6 +290,8 @@ describe('remote-web live E2EE host interoperability', () => {
     expect(gitStatus.files[0]?.path).toBe('src/index.ts')
     const gitDiff = await client.getWorkspaceGitDiff('claude--s1', { staged: true })
     expect(gitDiff.diff).toContain('+const a = 2')
+    const wsFiles = await client.listWorkspaceFiles('claude--s1', { query: 'timeline' })
+    expect(wsFiles.files).toEqual(['src/client/timeline.ts'])
 
     // Test Create Session
     const created = await client.createSession({ engine: 'claude', title: 'Browser Spawned' })

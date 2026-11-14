@@ -275,6 +275,14 @@ export interface WorkspaceGitDiffResult {
   readonly truncated: boolean
 }
 
+export interface WorkspaceFilesResult {
+  readonly sessionId: string
+  readonly root: string
+  readonly files: readonly string[]
+  readonly totalMatched: number
+  readonly truncated: boolean
+}
+
 export interface RemoteCommandDescriptor {
   readonly name: string
   readonly description: string

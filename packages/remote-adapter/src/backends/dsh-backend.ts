@@ -16,12 +16,18 @@ import type {
   SessionRef,
   SessionSearchParams,
   SessionSearchResult,
+  WorkspaceFilesParams,
+  WorkspaceFilesResult,
   WorkspaceGitDiffParams,
   WorkspaceGitDiffResult,
   WorkspaceGitStatusParams,
   WorkspaceGitStatusResult,
 } from '../protocol.js'
-import { inspectWorkspaceGitDiff, inspectWorkspaceGitStatus } from './git-review.js'
+import {
+  inspectWorkspaceFiles,
+  inspectWorkspaceGitDiff,
+  inspectWorkspaceGitStatus,
+} from './git-review.js'
 import {
   findBinaryOnPath,
   probeBinaryVersion,
@@ -193,6 +199,14 @@ export class DshAgentBackend implements ManagedAgentBackend {
     }
     const cwd = (await this.getSessionCwd(params.sessionId)) ?? this.defaultCwd
     return inspectWorkspaceGitDiff(params, cwd)
+  }
+
+  async listWorkspaceFiles(params: WorkspaceFilesParams): Promise<WorkspaceFilesResult> {
+    if (this.options.seams.listWorkspaceFiles) {
+      return this.options.seams.listWorkspaceFiles(params)
+    }
+    const cwd = (await this.getSessionCwd(params.sessionId)) ?? this.defaultCwd
+    return inspectWorkspaceFiles(params, cwd)
   }
 
   onEvent?: (listener: (sessionId: string, events: readonly OfficialSessionEvent[]) => void) => () => void

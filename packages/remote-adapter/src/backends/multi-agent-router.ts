@@ -18,6 +18,8 @@ import type {
   SessionRef,
   SessionSearchParams,
   SessionSearchResult,
+  WorkspaceFilesParams,
+  WorkspaceFilesResult,
   WorkspaceGitDiffParams,
   WorkspaceGitDiffResult,
   WorkspaceGitStatusParams,
@@ -34,6 +36,7 @@ import type {
 import { WorkspaceUploadManager } from '../workspace-upload.js'
 import {
   enrichSessionsWithWorkspaceSummaries,
+  inspectWorkspaceFiles,
   inspectWorkspaceGitDiff,
   inspectWorkspaceGitStatus,
 } from './git-review.js'
@@ -487,6 +490,15 @@ export class MultiAgentHostRouter implements AgentHostBackend {
     }
     const cwd = (await backend.getSessionCwd?.(params.sessionId)) ?? this.defaultCwd
     return inspectWorkspaceGitDiff(params, cwd)
+  }
+
+  async listWorkspaceFiles(params: WorkspaceFilesParams): Promise<WorkspaceFilesResult> {
+    const backend = await this.resolveBackendForSession(params.sessionId)
+    if (backend.listWorkspaceFiles) {
+      return backend.listWorkspaceFiles(params)
+    }
+    const cwd = (await backend.getSessionCwd?.(params.sessionId)) ?? this.defaultCwd
+    return inspectWorkspaceFiles(params, cwd)
   }
 
   async openWorkspaceUpload(deviceId: string, params: WorkspaceUploadOpenParams): Promise<WorkspaceUploadOpenResult> {

@@ -19,6 +19,7 @@ export {
   enrichSessionsWithWorkspaceSummaries,
   inspectWorkspaceGitStatus,
   inspectWorkspaceGitDiff,
+  inspectWorkspaceFiles,
 } from './git-review.js'
 export {
   DshAgentBackend,

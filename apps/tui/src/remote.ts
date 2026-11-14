@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { createInterface } from 'node:readline'
 import { StringDecoder } from 'node:string_decoder'
 import { fileURLToPath } from 'node:url'
@@ -20,15 +20,20 @@ import {
 } from '@dsh-community/dsh-bridge'
 import {
   type AgentEngineId,
+  BlindGatewayServer,
   BlindRelayServer,
   defaultRemoteConfigDir,
   defaultRemoteDshHome,
+  encodePairingWebUrl,
   findBinaryOnPath,
   openPersistentRemoteStores,
+  parsePairingInput,
   parseRequestedEngines,
+  parseTrustedProxyList,
   resolveRemoteDefaultTransportEnv,
   SelfHostedSignalingServer,
   SelfHostedStunServer,
+  validatePairingWebUrl,
 } from '@dsh-community/remote-adapter'
 
 export { buildLoopbackPairingWarning, composeRemoteHostPatchYaml, detectLanIpv4Candidates }
@@ -42,6 +47,7 @@ export const COMMUNITY_REMOTE_HELP = `dsh-community remote — 多引擎 E2EE �
     --port <n>                          监听端口（默认 0 自动分配）
     --mdns                              发布局域网 mDNS (_dsh-remote._tcp) 提示
     --qr                                启动后在终端输出可扫码 UTF-8 二维码
+    --web-url <https://...|loopback>    可选 Remote Web PWA 入口地址（仅允许 https:// 或本机 loopback http://；或设 DSH_REMOTE_WEB_URL）
     --relay-url <ws(s)://...>           可选社区盲中继地址（或设 DSH_REMOTE_DEFAULT_RELAY_URL）
     --relay-room <id>                   可选中继房间 ID
     --signaling-url <ws(s)://...>       可选 WebRTC 信令地址（或设 DSH_REMOTE_DEFAULT_SIGNALING_URL）
@@ -57,6 +63,7 @@ export const COMMUNITY_REMOTE_HELP = `dsh-community remote — 多引擎 E2EE �
     --port <n>                          TCP/WS 端口（默认 8787；0 为系统分配）
     --allow-wildcard                    显式允许 0.0.0.0 / :: 通配地址监听
     --host-secret <secret>              可选宿主注册鉴权密钥（或设 DSH_REMOTE_RELAY_HOST_SECRET）
+    --trusted-proxies <cidrs>           可选可信反向代理 IP/CIDR 列表（逗号分隔；或设 DSH_REMOTE_RELAY_TRUSTED_PROXIES）
     --max-rooms <n>                     最大房间数（默认 64）
     --max-frame-bytes <n>               单帧密文上限字节（默认 65536）
     --max-fps <n>                       单连接每秒帧率上限（默认 240）
@@ -69,7 +76,23 @@ export const COMMUNITY_REMOTE_HELP = `dsh-community remote — 多引擎 E2EE �
     --stun-port <n>                     可选同时拉起自建 STUN Server（UDP 端口，0 为自动分配）
     --allow-wildcard                    显式允许 0.0.0.0 / :: 通配地址监听
     --host-secret <secret>              可选宿主注册鉴权密钥（或设 DSH_REMOTE_SIGNALING_HOST_SECRET）
+    --trusted-proxies <cidrs>           可选可信反向代理 IP/CIDR 列表（逗号分隔；或设 DSH_REMOTE_SIGNALING_TRUSTED_PROXIES）
     --max-rooms <n>                     最大房间数（默认 64）
+    --json                              输出单行 JSON 就绪信息（不含任何密钥）
+
+  dsh-community remote gateway [选项]   单端口复用网关（/healthz + WS /relay + WS /signal + 可选只读 /app/）
+    --host <ip>                         绑定 IP 地址（默认 127.0.0.1）
+    --port <n>                          HTTP/WS 端口（默认 8787；0 为系统分配）
+    --allow-wildcard                    显式允许 0.0.0.0 / :: 通配地址监听
+    --host-secret <secret>              可选宿主注册鉴权密钥（或设 DSH_REMOTE_GATEWAY_HOST_SECRET）
+    --trusted-proxies <cidrs>           可选可信反向代理 IP/CIDR 列表（逗号分隔；或设 DSH_REMOTE_GATEWAY_TRUSTED_PROXIES）
+    --stun-host <ip>                    可选 STUN UDP 绑定 IP（默认复用 --host）
+    --stun-port <n>                     可选同时拉起自建 STUN Server（UDP 端口，0 为自动分配）
+    --serve-web                         可选在 /app/ 只读托管构建后的 Remote Web PWA
+    --web-dir <dir>                     显式指定只读 /app/ 静态资源目录（默认关闭静态托管）
+    --max-rooms <n>                     最大房间数（默认 64）
+    --max-frame-bytes <n>               单帧密文上限字节（默认 65536）
+    --max-fps <n>                       单连接每秒帧率上限（默认 240）
     --json                              输出单行 JSON 就绪信息（不含任何密钥）
 
   dsh-community remote devices [--json] 列出已配对/已吊销设备
@@ -93,6 +116,7 @@ interface StartFlags {
   readonly port: string
   readonly mdns: boolean
   readonly qr: boolean
+  readonly webUrl?: string | undefined
   readonly relayUrl?: string | undefined
   readonly relayRoom?: string | undefined
   readonly signalingUrl?: string | undefined
@@ -134,6 +158,7 @@ function parseStartFlags(args: readonly string[], defaultCwd: string): StartFlag
   let port = '0'
   let mdns = false
   let qr = false
+  let webUrl: string | undefined
   let relayUrl: string | undefined
   let relayRoom: string | undefined
   let signalingUrl: string | undefined
@@ -156,6 +181,7 @@ function parseStartFlags(args: readonly string[], defaultCwd: string): StartFlag
     else if (arg === '--port') port = String(parsePortValue(readVal(), '--port'))
     else if (arg === '--mdns') mdns = true
     else if (arg === '--qr') qr = true
+    else if (arg === '--web-url') webUrl = readVal()
     else if (arg === '--relay-url') relayUrl = readVal()
     else if (arg === '--relay-room') relayRoom = readVal()
     else if (arg === '--signaling-url') signalingUrl = readVal()
@@ -175,6 +201,7 @@ function parseStartFlags(args: readonly string[], defaultCwd: string): StartFlag
     port,
     mdns,
     qr,
+    webUrl,
     relayUrl,
     relayRoom,
     signalingUrl,
@@ -202,11 +229,22 @@ function handleRemoteFlagParseError(err: unknown): number {
   return 2
 }
 
+function resolveTrustedProxiesOption(
+  cliEntries: readonly string[],
+  envValue: string | undefined,
+): readonly string[] | undefined {
+  if (cliEntries.length > 0) return cliEntries
+  const raw = envValue?.trim()
+  if (!raw) return undefined
+  return parseTrustedProxyList(raw)
+}
+
 interface RelayFlags {
   readonly host: string
   readonly port: number
   readonly allowWildcard: boolean
   readonly hostSecret?: string | undefined
+  readonly trustedProxies?: readonly string[] | undefined
   readonly maxRooms?: number | undefined
   readonly maxFrameBytes?: number | undefined
   readonly maxFps?: number | undefined
@@ -218,6 +256,7 @@ function parseRelayFlags(args: readonly string[], env: NodeJS.ProcessEnv): Relay
   let port = 8787
   let allowWildcard = false
   let hostSecret = env.DSH_REMOTE_RELAY_HOST_SECRET?.trim() || undefined
+  const cliTrustedProxies: string[] = []
   let maxRooms: number | undefined
   let maxFrameBytes: number | undefined
   let maxFps: number | undefined
@@ -234,6 +273,7 @@ function parseRelayFlags(args: readonly string[], env: NodeJS.ProcessEnv): Relay
     else if (arg === '--port') port = parsePortValue(readVal(), '--port')
     else if (arg === '--allow-wildcard') allowWildcard = true
     else if (arg === '--host-secret') hostSecret = readVal()
+    else if (arg === '--trusted-proxies') cliTrustedProxies.push(...parseTrustedProxyList(readVal()))
     else if (arg === '--max-rooms') maxRooms = parsePositiveIntValue(readVal(), '--max-rooms')
     else if (arg === '--max-frame-bytes') maxFrameBytes = parsePositiveIntValue(readVal(), '--max-frame-bytes')
     else if (arg === '--max-fps') maxFps = parsePositiveIntValue(readVal(), '--max-fps')
@@ -241,7 +281,11 @@ function parseRelayFlags(args: readonly string[], env: NodeJS.ProcessEnv): Relay
     else handleUnknownRemoteFlag(arg)
   }
 
-  return { host, port, allowWildcard, hostSecret, maxRooms, maxFrameBytes, maxFps, json }
+  const trustedProxies = resolveTrustedProxiesOption(
+    cliTrustedProxies,
+    env.DSH_REMOTE_RELAY_TRUSTED_PROXIES,
+  )
+  return { host, port, allowWildcard, hostSecret, trustedProxies, maxRooms, maxFrameBytes, maxFps, json }
 }
 
 interface SignalingFlags {
@@ -251,6 +295,7 @@ interface SignalingFlags {
   readonly stunPort?: number | undefined
   readonly allowWildcard: boolean
   readonly hostSecret?: string | undefined
+  readonly trustedProxies?: readonly string[] | undefined
   readonly maxRooms?: number | undefined
   readonly json: boolean
 }
@@ -262,6 +307,7 @@ function parseSignalingFlags(args: readonly string[], env: NodeJS.ProcessEnv): S
   let stunPort: number | undefined
   let allowWildcard = false
   let hostSecret = env.DSH_REMOTE_SIGNALING_HOST_SECRET?.trim() || undefined
+  const cliTrustedProxies: string[] = []
   let maxRooms: number | undefined
   let json = false
 
@@ -278,12 +324,126 @@ function parseSignalingFlags(args: readonly string[], env: NodeJS.ProcessEnv): S
     else if (arg === '--stun-port') stunPort = parsePortValue(readVal(), '--stun-port')
     else if (arg === '--allow-wildcard') allowWildcard = true
     else if (arg === '--host-secret') hostSecret = readVal()
+    else if (arg === '--trusted-proxies') cliTrustedProxies.push(...parseTrustedProxyList(readVal()))
     else if (arg === '--max-rooms') maxRooms = parsePositiveIntValue(readVal(), '--max-rooms')
     else if (arg === '--json') json = true
     else handleUnknownRemoteFlag(arg)
   }
 
-  return { host, port, stunHost, stunPort, allowWildcard, hostSecret, maxRooms, json }
+  const trustedProxies = resolveTrustedProxiesOption(
+    cliTrustedProxies,
+    env.DSH_REMOTE_SIGNALING_TRUSTED_PROXIES,
+  )
+  return { host, port, stunHost, stunPort, allowWildcard, hostSecret, trustedProxies, maxRooms, json }
+}
+
+interface GatewayFlags {
+  readonly host: string
+  readonly port: number
+  readonly allowWildcard: boolean
+  readonly hostSecret?: string | undefined
+  readonly trustedProxies?: readonly string[] | undefined
+  readonly stunHost?: string | undefined
+  readonly stunPort?: number | undefined
+  readonly serveWeb: boolean
+  readonly webDir?: string | undefined
+  readonly maxRooms?: number | undefined
+  readonly maxFrameBytes?: number | undefined
+  readonly maxFps?: number | undefined
+  readonly json: boolean
+}
+
+function parseGatewayFlags(args: readonly string[], env: NodeJS.ProcessEnv): GatewayFlags {
+  let host = '127.0.0.1'
+  let port = 8787
+  let allowWildcard = false
+  let hostSecret =
+    env.DSH_REMOTE_GATEWAY_HOST_SECRET?.trim() ||
+    env.DSH_REMOTE_RELAY_HOST_SECRET?.trim() ||
+    undefined
+  const cliTrustedProxies: string[] = []
+  let stunHost: string | undefined
+  let stunPort: number | undefined
+  let serveWeb = false
+  let webDir: string | undefined
+  let maxRooms: number | undefined
+  let maxFrameBytes: number | undefined
+  let maxFps: number | undefined
+  let json = false
+
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i]!
+    const readVal = (): string => {
+      const res = takeFlagValue(args, i, arg)
+      i = res.nextIndex
+      return res.value
+    }
+    if (arg === '--host') host = readVal()
+    else if (arg === '--port') port = parsePortValue(readVal(), '--port')
+    else if (arg === '--allow-wildcard') allowWildcard = true
+    else if (arg === '--host-secret') hostSecret = readVal()
+    else if (arg === '--trusted-proxies') cliTrustedProxies.push(...parseTrustedProxyList(readVal()))
+    else if (arg === '--stun-host') stunHost = readVal()
+    else if (arg === '--stun-port') stunPort = parsePortValue(readVal(), '--stun-port')
+    else if (arg === '--serve-web') serveWeb = true
+    else if (arg === '--web-dir') webDir = readVal()
+    else if (arg === '--max-rooms') maxRooms = parsePositiveIntValue(readVal(), '--max-rooms')
+    else if (arg === '--max-frame-bytes') maxFrameBytes = parsePositiveIntValue(readVal(), '--max-frame-bytes')
+    else if (arg === '--max-fps') maxFps = parsePositiveIntValue(readVal(), '--max-fps')
+    else if (arg === '--json') json = true
+    else handleUnknownRemoteFlag(arg)
+  }
+
+  const trustedProxies = resolveTrustedProxiesOption(
+    cliTrustedProxies,
+    env.DSH_REMOTE_GATEWAY_TRUSTED_PROXIES,
+  )
+  return {
+    host,
+    port,
+    allowWildcard,
+    hostSecret,
+    trustedProxies,
+    stunHost,
+    stunPort,
+    serveWeb,
+    webDir,
+    maxRooms,
+    maxFrameBytes,
+    maxFps,
+    json,
+  }
+}
+
+function resolveDefaultRemoteWebDistDir(env: NodeJS.ProcessEnv): string {
+  const fromEnv = env.DSH_REMOTE_WEB_DIST_DIR?.trim()
+  if (fromEnv) return resolve(fromEnv)
+  const here = dirname(fileURLToPath(import.meta.url))
+  return resolve(here, '..', '..', 'remote-web', 'dist')
+}
+
+function validateHttpWebUrl(raw: string): string {
+  try {
+    return validatePairingWebUrl(raw).toString()
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err)
+    throw new Error(`选项 --web-url 无效（仅允许 https:// 或本机 loopback http://）: ${detail}`)
+  }
+}
+
+function buildWebPairingUrlIfConfigured(
+  webUrl: string | undefined,
+  readyLike: { readonly pairingJson?: unknown; readonly deepLink?: unknown },
+): string | undefined {
+  if (!webUrl) return undefined
+  const raw =
+    typeof readyLike.pairingJson === 'string' && readyLike.pairingJson.length > 0
+      ? readyLike.pairingJson
+      : typeof readyLike.deepLink === 'string' && readyLike.deepLink.length > 0
+        ? readyLike.deepLink
+        : undefined
+  if (!raw) return undefined
+  return encodePairingWebUrl(webUrl, parsePairingInput(raw))
 }
 
 async function waitForShutdownSignal(stopFn: () => Promise<void>): Promise<void> {
@@ -664,8 +824,13 @@ export async function runRemoteCommand(
 
   if (sub === 'start') {
     let flags: StartFlags
+    let webUrl: string | undefined
     try {
       flags = parseStartFlags(args.slice(1), process.cwd())
+      const rawWebUrl = flags.webUrl ?? (env.DSH_REMOTE_WEB_URL?.trim() || undefined)
+      if (rawWebUrl) {
+        webUrl = validateHttpWebUrl(rawWebUrl)
+      }
     } catch (err) {
       return handleRemoteFlagParseError(err)
     }
@@ -823,8 +988,10 @@ export async function runRemoteCommand(
           })
         } catch {}
       }
+      const webPairingUrl = buildWebPairingUrlIfConfigured(webUrl, ready)
       if (flags.json) {
-        process.stdout.write(`${JSON.stringify(ready)}\n`)
+        const jsonReady = webPairingUrl !== undefined ? { ...ready, webPairingUrl } : ready
+        process.stdout.write(`${JSON.stringify(jsonReady)}\n`)
       } else {
         const lines = [
           `dsh-community remote 已就绪`,
@@ -842,16 +1009,18 @@ export async function runRemoteCommand(
           lines.push(`  STUN 地址: ${ready.stunUrls.join(', ')}`)
         }
         if (ready.relayUrl) lines.push(`  盲中继地址: ${String(ready.relayUrl)}`)
+        const qrTarget = webPairingUrl ?? (typeof ready.deepLink === 'string' ? ready.deepLink : '')
         lines.push(
           `  配置目录: ${String(ready.configDir ?? '')}`,
           `  配对链接: ${String(ready.deepLink ?? '')}`,
+          ...(webPairingUrl ? [`  Web 配对链接: ${webPairingUrl}`] : []),
           `  配对 JSON: ${String(ready.pairingJson ?? '')}`,
           ...((() => {
             const warning = buildLoopbackPairingWarning(ready)
             return warning ? [warning] : []
           })()),
-          ...(flags.qr && typeof ready.deepLink === 'string' && ready.deepLink.length > 0
-            ? [formatPairingQrBlock(ready.deepLink, Boolean(process.stdout.isTTY))]
+          ...(flags.qr && qrTarget.length > 0
+            ? [formatPairingQrBlock(qrTarget, Boolean(process.stdout.isTTY))]
             : []),
           `交互命令: ${REMOTE_REPL_COMMAND_SUMMARY}`,
         )
@@ -989,8 +1158,12 @@ export async function runRemoteCommand(
               })
               const data = (await res.json()) as { deepLink?: string; pairingJson?: string }
               const deepLink = data.deepLink ?? ''
+              const webPairingUrl = buildWebPairingUrlIfConfigured(webUrl, data)
               process.stdout.write(`新配对链接：${deepLink}\n`)
-              const qrBlock = formatPairingQrBlock(deepLink, Boolean(process.stdout.isTTY))
+              if (webPairingUrl) {
+                process.stdout.write(`Web 配对链接：${webPairingUrl}\n`)
+              }
+              const qrBlock = formatPairingQrBlock(webPairingUrl ?? deepLink, Boolean(process.stdout.isTTY))
               if (qrBlock.length > 0) {
                 process.stdout.write(`${qrBlock}\n`)
               }
@@ -1042,6 +1215,7 @@ export async function runRemoteCommand(
       port: flags.port,
       allowWildcardHost: flags.allowWildcard,
       ...(flags.hostSecret !== undefined ? { hostAuthSecret: flags.hostSecret } : {}),
+      ...(flags.trustedProxies !== undefined ? { trustedProxies: flags.trustedProxies } : {}),
       ...(flags.maxRooms !== undefined ? { maxRooms: flags.maxRooms } : {}),
       ...(flags.maxFrameBytes !== undefined ? { maxOpaquePayloadBytes: flags.maxFrameBytes } : {}),
       ...(flags.maxFps !== undefined ? { maxFramesPerSecond: flags.maxFps } : {}),
@@ -1065,6 +1239,7 @@ export async function runRemoteCommand(
           endpointUrl,
           healthzUrl,
           authRequired: flags.hostSecret !== undefined && flags.hostSecret.length > 0,
+          ...(flags.trustedProxies !== undefined ? { trustedProxies: flags.trustedProxies } : {}),
         })}\n`,
       )
     } else {
@@ -1074,6 +1249,7 @@ export async function runRemoteCommand(
           `  WS 地址: ${endpointUrl}`,
           `  健康检查: ${healthzUrl}`,
           `  宿主鉴权: ${flags.hostSecret ? '已启用 (hostAuthSecret)' : '未启用'}`,
+          `  可信代理: ${flags.trustedProxies ? flags.trustedProxies.join(', ') : '未启用（直连模式，忽略转发头）'}`,
           `按 Ctrl+C / SIGTERM 优雅关闭。`,
         ].join('\n') + '\n',
       )
@@ -1097,6 +1273,7 @@ export async function runRemoteCommand(
       port: flags.port,
       allowWildcardHost: flags.allowWildcard,
       ...(flags.hostSecret !== undefined ? { hostAuthSecret: flags.hostSecret } : {}),
+      ...(flags.trustedProxies !== undefined ? { trustedProxies: flags.trustedProxies } : {}),
       ...(flags.maxRooms !== undefined ? { maxRooms: flags.maxRooms } : {}),
     })
     const stun =
@@ -1132,6 +1309,7 @@ export async function runRemoteCommand(
           endpointUrl,
           healthzUrl,
           authRequired: flags.hostSecret !== undefined && flags.hostSecret.length > 0,
+          ...(flags.trustedProxies !== undefined ? { trustedProxies: flags.trustedProxies } : {}),
           ...(stunUrl !== undefined ? { stunUrl } : {}),
         })}\n`,
       )
@@ -1141,6 +1319,7 @@ export async function runRemoteCommand(
         `  WS 地址: ${endpointUrl}`,
         `  健康检查: ${healthzUrl}`,
         `  宿主鉴权: ${flags.hostSecret ? '已启用 (hostAuthSecret)' : '未启用'}`,
+        `  可信代理: ${flags.trustedProxies ? flags.trustedProxies.join(', ') : '未启用（直连模式，忽略转发头）'}`,
       ]
       if (stunUrl) {
         lines.push(`  STUN 地址: ${stunUrl}`)
@@ -1151,6 +1330,98 @@ export async function runRemoteCommand(
 
     await waitForShutdownSignal(async () => {
       await Promise.allSettled([signaling.stop(), stun ? stun.stop() : Promise.resolve()])
+    })
+    return 0
+  }
+
+  if (sub === 'gateway') {
+    let flags: GatewayFlags
+    try {
+      flags = parseGatewayFlags(args.slice(1), env)
+    } catch (err) {
+      return handleRemoteFlagParseError(err)
+    }
+
+    const webAppDir =
+      flags.webDir !== undefined
+        ? flags.webDir
+        : flags.serveWeb
+          ? resolveDefaultRemoteWebDistDir(env)
+          : undefined
+
+    const gateway = new BlindGatewayServer({
+      enabled: true,
+      host: flags.host,
+      port: flags.port,
+      allowWildcardHost: flags.allowWildcard,
+      ...(flags.hostSecret !== undefined ? { hostAuthSecret: flags.hostSecret } : {}),
+      ...(flags.trustedProxies !== undefined ? { trustedProxies: flags.trustedProxies } : {}),
+      ...(flags.maxRooms !== undefined ? { maxRooms: flags.maxRooms } : {}),
+      ...(flags.maxFrameBytes !== undefined ? { maxOpaquePayloadBytes: flags.maxFrameBytes } : {}),
+      ...(flags.maxFps !== undefined ? { maxFramesPerSecond: flags.maxFps } : {}),
+      ...(webAppDir !== undefined ? { webAppDir } : {}),
+    })
+    const stun =
+      flags.stunPort !== undefined
+        ? new SelfHostedStunServer({
+            enabled: true,
+            host: flags.stunHost ?? flags.host,
+            port: flags.stunPort,
+          })
+        : undefined
+
+    try {
+      await gateway.start()
+      if (stun) {
+        await stun.start()
+      }
+    } catch (err) {
+      await Promise.allSettled([gateway.stop(), stun ? stun.stop() : Promise.resolve()])
+      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`)
+      return 1
+    }
+
+    const bound = gateway.getBoundAddress()
+    const httpBase = gateway.getHttpBaseUrl() ?? ''
+    const relayEndpointUrl = gateway.getRelayEndpointUrl() ?? ''
+    const signalingEndpointUrl = gateway.getSignalingEndpointUrl() ?? ''
+    const healthzUrl = `${httpBase}/healthz`
+    const webAppUrl = gateway.getWebAppUrl()
+    const stunUrl = stun?.getStunUrl()
+    if (flags.json) {
+      process.stdout.write(
+        `${JSON.stringify({
+          kind: 'blind-gateway',
+          host: bound?.host ?? flags.host,
+          port: bound?.port ?? flags.port,
+          relayEndpointUrl,
+          signalingEndpointUrl,
+          healthzUrl,
+          ...(webAppUrl !== undefined ? { webAppUrl } : {}),
+          ...(stunUrl !== undefined ? { stunUrl } : {}),
+          authRequired: flags.hostSecret !== undefined && flags.hostSecret.length > 0,
+          ...(flags.trustedProxies !== undefined ? { trustedProxies: flags.trustedProxies } : {}),
+        })}\n`,
+      )
+    } else {
+      const lines = [
+        `dsh-community 单端口盲中继网关 (BlindGatewayServer) 已监听`,
+        `  WS 中继: ${relayEndpointUrl}`,
+        `  WS 信令: ${signalingEndpointUrl}`,
+        `  健康检查: ${healthzUrl}`,
+        `  Web 托管: ${webAppUrl ?? '未启用（使用 --serve-web 或 --web-dir 开启只读 /app/）'}`,
+        `  宿主鉴权: ${flags.hostSecret ? '已启用 (hostAuthSecret)' : '未启用'}`,
+        `  可信代理: ${flags.trustedProxies ? flags.trustedProxies.join(', ') : '未启用（直连模式，忽略转发头）'}`,
+      ]
+      if (stunUrl) {
+        lines.push(`  STUN 地址: ${stunUrl}`)
+      }
+      lines.push(`按 Ctrl+C / SIGTERM 优雅关闭。`)
+      process.stdout.write(`${lines.join('\n')}\n`)
+    }
+
+    await waitForShutdownSignal(async () => {
+      await Promise.allSettled([gateway.stop(), stun ? stun.stop() : Promise.resolve()])
     })
     return 0
   }

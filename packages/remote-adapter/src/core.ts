@@ -25,6 +25,7 @@ import {
   type SessionSearchParams,
   type StreamAckParams,
   type TurnAbortParams,
+  type WorkspaceFilesParams,
   type WorkspaceGitDiffParams,
   type WorkspaceGitStatusParams,
   type WorkspaceUploadAbortParams,
@@ -48,6 +49,10 @@ export interface RemoteAdapterOptions {
   readonly terminalStateCapacity?: number
   readonly connectionStateCapacity?: number
   readonly maxDevices?: number
+  readonly maxConcurrentWorkspaceFilesPerDevice?: number
+  readonly maxConcurrentWorkspaceFilesGlobal?: number
+  readonly maxWorkspaceFilesRequestsPerWindow?: number
+  readonly workspaceFilesRateWindowMs?: number
   readonly trustStore?: DeviceTrustStore
   readonly hostIdentityStore?: HostIdentityStore
 }
@@ -529,6 +534,55 @@ function parseWorkspaceGitDiff(value: unknown): WorkspaceGitDiffParams {
   }
 }
 
+function parseWorkspaceFiles(value: unknown): WorkspaceFilesParams {
+  const object = asObject(value)
+  const sessionId = requiredSafeSessionId(object, 'sessionId')
+  let query: string | undefined
+  if (object.query !== undefined) {
+    if (typeof object.query !== 'string') {
+      throw new RemoteProtocolError('INVALID_REQUEST', 'query must be a string')
+    }
+    if (object.query.length > 256 || /[\u0000-\u001f\u007f]/u.test(object.query)) {
+      throw new RemoteProtocolError('INVALID_REQUEST', 'query must be a valid short string')
+    }
+    const trimmed = object.query.trim()
+    if (trimmed.length > 0) query = trimmed
+  }
+  let prefix: string | undefined
+  if (object.prefix !== undefined) {
+    if (typeof object.prefix !== 'string') {
+      throw new RemoteProtocolError('INVALID_REQUEST', 'prefix must be a string')
+    }
+    const normalized = object.prefix.replace(/\\/gu, '/').trim()
+    const base = normalized.endsWith('/') ? normalized.slice(0, -1) : normalized
+    if (
+      base.length === 0
+      || normalized.length > 256
+      || normalized.startsWith('-')
+      || normalized.startsWith('/')
+      || normalized.startsWith('~')
+      || /[\u0000-\u001f\u007f]/u.test(normalized)
+      || base.split('/').some((seg) => seg === '..' || seg === '.' || seg === '')
+    ) {
+      throw new RemoteProtocolError('INVALID_REQUEST', 'workspace files prefix must be a safe relative path')
+    }
+    prefix = normalized
+  }
+  let limit: number | undefined
+  if (object.limit !== undefined) {
+    if (!Number.isSafeInteger(object.limit) || (object.limit as number) < 1 || (object.limit as number) > 2_000) {
+      throw new RemoteProtocolError('INVALID_REQUEST', 'limit must be an integer between 1 and 2000')
+    }
+    limit = object.limit as number
+  }
+  return {
+    sessionId,
+    ...(query !== undefined ? { query } : {}),
+    ...(prefix !== undefined ? { prefix } : {}),
+    ...(limit !== undefined ? { limit } : {}),
+  }
+}
+
 export class RemoteAdapterCore {
   readonly devices: DeviceRegistry
   readonly trustStore: DeviceTrustStore
@@ -542,6 +596,13 @@ export class RemoteAdapterCore {
   private readonly maxReplaySessions: number
   private readonly terminalStateCapacity: number
   private readonly connectionStateCapacity: number
+  private readonly maxConcurrentWorkspaceFilesPerDevice: number
+  private readonly maxConcurrentWorkspaceFilesGlobal: number
+  private readonly maxWorkspaceFilesRequestsPerWindow: number
+  private readonly workspaceFilesRateWindowMs: number
+  private inFlightWorkspaceFilesTotal = 0
+  private readonly inFlightWorkspaceFilesByDevice = new Map<string, number>()
+  private readonly workspaceFilesRequestTimestampsByDevice = new Map<string, number[]>()
 
   constructor(
     private readonly seams: OfficialRemoteSeams,
@@ -555,6 +616,34 @@ export class RemoteAdapterCore {
     }
     this.terminalStateCapacity = options.terminalStateCapacity ?? 4096
     this.connectionStateCapacity = options.connectionStateCapacity ?? 1024
+    this.maxConcurrentWorkspaceFilesPerDevice = options.maxConcurrentWorkspaceFilesPerDevice ?? 2
+    if (
+      !Number.isInteger(this.maxConcurrentWorkspaceFilesPerDevice)
+      || this.maxConcurrentWorkspaceFilesPerDevice < 1
+    ) {
+      throw new Error('maxConcurrentWorkspaceFilesPerDevice must be a positive integer')
+    }
+    this.maxConcurrentWorkspaceFilesGlobal = options.maxConcurrentWorkspaceFilesGlobal ?? 6
+    if (
+      !Number.isInteger(this.maxConcurrentWorkspaceFilesGlobal)
+      || this.maxConcurrentWorkspaceFilesGlobal < 1
+    ) {
+      throw new Error('maxConcurrentWorkspaceFilesGlobal must be a positive integer')
+    }
+    this.maxWorkspaceFilesRequestsPerWindow = options.maxWorkspaceFilesRequestsPerWindow ?? 20
+    if (
+      !Number.isInteger(this.maxWorkspaceFilesRequestsPerWindow)
+      || this.maxWorkspaceFilesRequestsPerWindow < 1
+    ) {
+      throw new Error('maxWorkspaceFilesRequestsPerWindow must be a positive integer')
+    }
+    this.workspaceFilesRateWindowMs = options.workspaceFilesRateWindowMs ?? 5_000
+    if (
+      !Number.isInteger(this.workspaceFilesRateWindowMs)
+      || this.workspaceFilesRateWindowMs < 1
+    ) {
+      throw new Error('workspaceFilesRateWindowMs must be a positive integer')
+    }
     this.hostIdentityStore = options.hostIdentityStore ?? new InMemoryHostIdentityStore()
     this.devices = new DeviceRegistry(
       options.trustStore ?? options.maxDevices ?? 128,
@@ -600,6 +689,47 @@ export class RemoteAdapterCore {
     }
   }
 
+  private consumeWorkspaceFilesRateBudget(deviceId: string): void {
+    const now = Date.now()
+    const cutoff = now - this.workspaceFilesRateWindowMs
+    let timestamps = this.workspaceFilesRequestTimestampsByDevice.get(deviceId)
+    if (!timestamps) {
+      if (this.workspaceFilesRequestTimestampsByDevice.size >= this.connectionStateCapacity) {
+        for (const [key, list] of this.workspaceFilesRequestTimestampsByDevice) {
+          if (list.length === 0 || list[list.length - 1]! <= cutoff) {
+            this.workspaceFilesRequestTimestampsByDevice.delete(key)
+          }
+        }
+        if (this.workspaceFilesRequestTimestampsByDevice.size >= this.connectionStateCapacity) {
+          const oldestKey = this.workspaceFilesRequestTimestampsByDevice.keys().next().value
+          if (oldestKey !== undefined) {
+            this.workspaceFilesRequestTimestampsByDevice.delete(oldestKey)
+          }
+        }
+      }
+      timestamps = []
+    } else {
+      let trimCount = 0
+      while (trimCount < timestamps.length && timestamps[trimCount]! <= cutoff) {
+        trimCount += 1
+      }
+      if (trimCount > 0) {
+        timestamps.splice(0, trimCount)
+      }
+      this.workspaceFilesRequestTimestampsByDevice.delete(deviceId)
+    }
+
+    if (timestamps.length >= this.maxWorkspaceFilesRequestsPerWindow) {
+      this.workspaceFilesRequestTimestampsByDevice.set(deviceId, timestamps)
+      throw new RemoteProtocolError(
+        'STATE_CAPACITY_EXCEEDED',
+        'workspace.files rate limit exceeded for device',
+      )
+    }
+    timestamps.push(now)
+    this.workspaceFilesRequestTimestampsByDevice.set(deviceId, timestamps)
+  }
+
   closeConnection(peer: AuthenticatedPeer): void {
     this.lastRequestSeq.delete(`${peer.deviceId}:${peer.connectionEpoch}`)
   }
@@ -641,6 +771,43 @@ export class RemoteAdapterCore {
           )
         }
         return this.seams.getWorkspaceGitDiff(params)
+      }
+      case 'workspace.files': {
+        const params = parseWorkspaceFiles(request.params)
+        if (!this.seams.listWorkspaceFiles) {
+          throw new RemoteProtocolError(
+            'INVALID_REQUEST',
+            'workspace.files is not supported by this host',
+          )
+        }
+        this.consumeWorkspaceFilesRateBudget(peer.deviceId)
+        const perDeviceActive = this.inFlightWorkspaceFilesByDevice.get(peer.deviceId) ?? 0
+        if (perDeviceActive >= this.maxConcurrentWorkspaceFilesPerDevice) {
+          throw new RemoteProtocolError(
+            'STATE_CAPACITY_EXCEEDED',
+            'too many concurrent workspace.files requests for device',
+          )
+        }
+        if (this.inFlightWorkspaceFilesTotal >= this.maxConcurrentWorkspaceFilesGlobal) {
+          throw new RemoteProtocolError(
+            'STATE_CAPACITY_EXCEEDED',
+            'too many concurrent workspace.files requests',
+          )
+        }
+        this.inFlightWorkspaceFilesByDevice.set(peer.deviceId, perDeviceActive + 1)
+        this.inFlightWorkspaceFilesTotal += 1
+        try {
+          await this.seams.assertSession(params.sessionId)
+          return await this.seams.listWorkspaceFiles(params)
+        } finally {
+          const remaining = (this.inFlightWorkspaceFilesByDevice.get(peer.deviceId) ?? 1) - 1
+          if (remaining <= 0) {
+            this.inFlightWorkspaceFilesByDevice.delete(peer.deviceId)
+          } else {
+            this.inFlightWorkspaceFilesByDevice.set(peer.deviceId, remaining)
+          }
+          this.inFlightWorkspaceFilesTotal = Math.max(0, this.inFlightWorkspaceFilesTotal - 1)
+        }
       }
       case 'session.create':
         return this.mutate(

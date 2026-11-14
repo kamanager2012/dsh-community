@@ -1,12 +1,14 @@
 import { execFile, spawn } from 'node:child_process'
-import { existsSync, realpathSync, statSync } from 'node:fs'
-import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path'
+import { existsSync, lstatSync, readdirSync, realpathSync, statSync } from 'node:fs'
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { promisify } from 'node:util'
 import { RemoteProtocolError } from '../errors.js'
 import type {
   GitChangedFileSummary,
   SessionRef,
   SessionWorkspaceSummary,
+  WorkspaceFilesParams,
+  WorkspaceFilesResult,
   WorkspaceGitDiffParams,
   WorkspaceGitDiffResult,
   WorkspaceGitStatusResult,
@@ -18,10 +20,24 @@ const execFileAsync = promisify(execFile)
 const DEFAULT_MAX_DIFF_BYTES = 64 * 1024
 const HARD_MAX_DIFF_BYTES = 256 * 1024
 const MAX_STATUS_FILES = 500
+const DEFAULT_WORKSPACE_FILES_LIMIT = 200
+const HARD_MAX_WORKSPACE_FILES_LIMIT = 2_000
+const MAX_WORKSPACE_FILES_PAYLOAD_BYTES = 44 * 1024
+const MAX_FALLBACK_WALK_DEPTH = 10
+const MAX_FALLBACK_WALK_ENTRIES = 20_000
+const FALLBACK_SKIP_DIRS = new Set(['.git', 'node_modules', '.next', '.turbo', 'dist'])
 const GIT_TIMEOUT_MS = 8000
 const WORKSPACE_SUMMARY_TIMEOUT_MS = 1500
 const WORKSPACE_SUMMARY_TTL_MS = 4000
 const MAX_WORKSPACE_SUMMARY_CACHE = 128
+const WORKSPACE_FILES_CACHE_TTL_MS = 4000
+const MAX_WORKSPACE_FILES_CACHE = 32
+const MAX_WORKSPACE_FILES_QUERY_CACHE = 64
+const MAX_WORKSPACE_FILES_INDEX_ENTRIES = 50_000
+const MAX_CONCURRENT_WORKSPACE_INDEX_BUILDS = 4
+const MAX_WORKSPACE_FILES_RANK_SLACK = 256
+const MAX_WORKSPACE_FILES_TOP_K_CAP = 4_096
+const WORKSPACE_FILES_COLLATOR = new Intl.Collator('en')
 
 async function runGit(
   cwd: string,
@@ -656,5 +672,471 @@ export async function inspectWorkspaceGitDiff(
     diff: bounded.text,
     bytes: bounded.bytes,
     truncated: bounded.truncated,
+  }
+}
+
+function resolveExistingDirectoryRealpath(cwd: string): string {
+  const trimmed = cwd.trim()
+  if (!trimmed || !isAbsolute(trimmed)) {
+    throw new RemoteProtocolError('INVALID_REQUEST', 'session workspace path is unavailable')
+  }
+  const resolved = resolve(trimmed)
+  if (!existsSync(resolved) || !statSync(resolved).isDirectory()) {
+    throw new RemoteProtocolError('INVALID_REQUEST', 'session workspace directory does not exist')
+  }
+  try {
+    return realpathSync(resolved)
+  } catch {
+    throw new RemoteProtocolError('INVALID_REQUEST', 'failed to resolve session workspace directory')
+  }
+}
+
+function rankIndexedWorkspaceFileMatch(
+  pathLower: string,
+  baseLower: string,
+  queryLower: string,
+): number {
+  if (baseLower === queryLower) return 0
+  if (baseLower.startsWith(queryLower)) return 1
+  if (baseLower.includes(queryLower)) return 2
+  if (pathLower.startsWith(queryLower)) return 3
+  if (pathLower.includes(queryLower)) return 4
+  return 5
+}
+
+function collectFilesFallbackWalk(
+  realRoot: string,
+  prefixRel?: string,
+): { paths: string[]; walkTruncated: boolean } {
+  const paths: string[] = []
+  let walkTruncated = false
+  let visited = 0
+
+  const startSub = prefixRel ? prefixRel.replace(/\/+$/u, '') : ''
+  const startDir = startSub ? resolve(realRoot, startSub) : realRoot
+  let walkStart = realRoot
+  if (startSub) {
+    // Walk closest existing ancestor inside realRoot when prefix is a partial path
+    let probe = startDir
+    while (!existsSync(probe) || !statSync(probe).isDirectory()) {
+      const parent = dirname(probe)
+      if (parent === probe || parent.length < realRoot.length) break
+      probe = parent
+    }
+    try {
+      const realProbe = realpathSync(probe)
+      const rootPrefix = realRoot.endsWith(sep) ? realRoot : `${realRoot}${sep}`
+      if (realProbe === realRoot || realProbe.startsWith(rootPrefix)) {
+        walkStart = realProbe
+      }
+    } catch {}
+  }
+
+  const stack: Array<{ dir: string; depth: number }> = [{ dir: walkStart, depth: 0 }]
+  while (stack.length > 0) {
+    const current = stack.pop()!
+    if (current.depth > MAX_FALLBACK_WALK_DEPTH) {
+      walkTruncated = true
+      continue
+    }
+    let entries
+    try {
+      entries = readdirSync(current.dir, { withFileTypes: true })
+    } catch {
+      continue
+    }
+    for (const entry of entries) {
+      visited += 1
+      if (visited > MAX_FALLBACK_WALK_ENTRIES) {
+        walkTruncated = true
+        return { paths, walkTruncated }
+      }
+      if (entry.isSymbolicLink()) continue
+      if (FALLBACK_SKIP_DIRS.has(entry.name)) continue
+      const abs = join(current.dir, entry.name)
+      if (entry.isDirectory()) {
+        if (current.depth + 1 <= MAX_FALLBACK_WALK_DEPTH) {
+          stack.push({ dir: abs, depth: current.depth + 1 })
+        } else {
+          walkTruncated = true
+        }
+        continue
+      }
+      if (!entry.isFile()) continue
+      const rel = relative(realRoot, abs).replace(/\\/gu, '/')
+      if (!rel || rel.startsWith('..') || rel.split('/').includes('.git')) continue
+      paths.push(rel)
+      if (paths.length >= MAX_FALLBACK_WALK_ENTRIES) {
+        walkTruncated = true
+        return { paths, walkTruncated }
+      }
+    }
+  }
+  return { paths, walkTruncated }
+}
+
+interface WorkspaceFilesIndexItem {
+  readonly path: string
+  readonly lowerPath: string
+  readonly lowerBase: string
+}
+
+interface WorkspaceFilesCachedQuery {
+  readonly root: string
+  readonly files: readonly string[]
+  readonly totalMatched: number
+  readonly truncated: boolean
+}
+
+interface WorkspaceFilesIndexEntry {
+  readonly expiresAt: number
+  readonly entries: readonly WorkspaceFilesIndexItem[]
+  readonly walkTruncated: boolean
+  readonly queryCache: Map<string, WorkspaceFilesCachedQuery>
+}
+
+interface ScoredWorkspaceMatch {
+  readonly index: number
+  readonly rank: number
+  readonly pathLen: number
+}
+
+function isWorseScoredMatch(a: ScoredWorkspaceMatch, b: ScoredWorkspaceMatch): boolean {
+  if (a.rank !== b.rank) return a.rank > b.rank
+  if (a.pathLen !== b.pathLen) return a.pathLen > b.pathLen
+  return a.index > b.index
+}
+
+function siftUpMaxHeap(heap: ScoredWorkspaceMatch[], startIdx: number): void {
+  let idx = startIdx
+  const item = heap[idx]!
+  while (idx > 0) {
+    const parentIdx = (idx - 1) >> 1
+    const parent = heap[parentIdx]!
+    if (!isWorseScoredMatch(item, parent)) break
+    heap[idx] = parent
+    idx = parentIdx
+  }
+  heap[idx] = item
+}
+
+function siftDownMaxHeap(heap: ScoredWorkspaceMatch[], startIdx: number): void {
+  let idx = startIdx
+  const len = heap.length
+  const item = heap[idx]!
+  while (true) {
+    const leftIdx = (idx << 1) + 1
+    if (leftIdx >= len) break
+    const rightIdx = leftIdx + 1
+    let worstChildIdx = leftIdx
+    if (rightIdx < len && isWorseScoredMatch(heap[rightIdx]!, heap[leftIdx]!)) {
+      worstChildIdx = rightIdx
+    }
+    if (!isWorseScoredMatch(heap[worstChildIdx]!, item)) break
+    heap[idx] = heap[worstChildIdx]!
+    idx = worstChildIdx
+  }
+  heap[idx] = item
+}
+
+function matchesWorkspacePrefix(
+  relPath: string,
+  normalizedPrefix: string | undefined,
+  prefixDirOnly: boolean,
+): boolean {
+  if (!normalizedPrefix) return true
+  if (prefixDirOnly) {
+    return relPath === normalizedPrefix || relPath.startsWith(`${normalizedPrefix}/`)
+  }
+  return relPath.startsWith(normalizedPrefix)
+}
+
+function validateWorkspaceCandidate(
+  realRoot: string,
+  rootPrefix: string,
+  candidate: string,
+): string | undefined {
+  try {
+    const safeRel = assertSafeRepoRelativePath(realRoot, candidate)
+    const absTarget = join(realRoot, safeRel)
+    if (lstatSync(absTarget).isSymbolicLink()) {
+      const canonicalTarget = realpathSync(absTarget)
+      if (canonicalTarget !== realRoot && !canonicalTarget.startsWith(rootPrefix)) {
+        return undefined
+      }
+    }
+    return safeRel
+  } catch {
+    return undefined
+  }
+}
+
+const workspaceFilesIndexCache = new Map<string, WorkspaceFilesIndexEntry>()
+const workspaceFilesIndexInFlight = new Map<string, Promise<WorkspaceFilesIndexEntry>>()
+let activeWorkspaceIndexBuilds = 0
+
+async function loadWorkspaceFilesIndex(
+  realRoot: string,
+  forceRefresh = false,
+): Promise<WorkspaceFilesIndexEntry> {
+  const now = Date.now()
+  if (!forceRefresh) {
+    const cached = workspaceFilesIndexCache.get(realRoot)
+    if (cached && cached.expiresAt > now) {
+      workspaceFilesIndexCache.delete(realRoot)
+      workspaceFilesIndexCache.set(realRoot, cached)
+      return cached
+    }
+    const existing = workspaceFilesIndexInFlight.get(realRoot)
+    if (existing) {
+      return existing
+    }
+  }
+
+  if (activeWorkspaceIndexBuilds >= MAX_CONCURRENT_WORKSPACE_INDEX_BUILDS) {
+    throw new RemoteProtocolError(
+      'STATE_CAPACITY_EXCEEDED',
+      'workspace index build capacity exceeded',
+    )
+  }
+
+  activeWorkspaceIndexBuilds += 1
+  const loadPromise = (async (): Promise<WorkspaceFilesIndexEntry> => {
+    try {
+      let candidates: string[] = []
+      let walkTruncated = false
+      let usedGit = false
+
+      try {
+        await runGit(realRoot, ['rev-parse', '--show-toplevel'], 256 * 1024, GIT_TIMEOUT_MS)
+        const { stdout } = await runGit(
+          realRoot,
+          ['ls-files', '--cached', '--others', '--exclude-standard', '-z'],
+          8 * 1024 * 1024,
+          GIT_TIMEOUT_MS,
+        )
+        usedGit = true
+        for (const rawEntry of stdout.split('\0')) {
+          if (!rawEntry) continue
+          const normalized = rawEntry.replace(/\\/gu, '/')
+          if (
+            normalized.startsWith('/')
+            || normalized.startsWith('..')
+            || normalized.split('/').some((seg) => seg === '..' || seg === '.' || seg === '.git' || seg === '')
+          ) {
+            continue
+          }
+          candidates.push(normalized)
+          if (candidates.length >= MAX_WORKSPACE_FILES_INDEX_ENTRIES) {
+            walkTruncated = true
+            break
+          }
+        }
+      } catch {
+        usedGit = false
+      }
+
+      if (!usedGit) {
+        const walked = collectFilesFallbackWalk(realRoot)
+        candidates = walked.paths
+        walkTruncated = walked.walkTruncated
+      }
+
+      const seen = new Set<string>()
+      const paths: string[] = []
+      for (const p of candidates) {
+        if (seen.has(p)) continue
+        seen.add(p)
+        paths.push(p)
+      }
+      // Pre-sort once per index build so empty queries require zero sorting and
+      // top-K tie-breaking uses integer index order instead of repeated localeCompare.
+      paths.sort((a, b) => WORKSPACE_FILES_COLLATOR.compare(a, b))
+      const entries: WorkspaceFilesIndexItem[] = paths.map((path) => {
+        const lowerPath = path.toLowerCase()
+        return {
+          path,
+          lowerPath,
+          lowerBase: basename(lowerPath),
+        }
+      })
+
+      const entry: WorkspaceFilesIndexEntry = {
+        expiresAt: Date.now() + WORKSPACE_FILES_CACHE_TTL_MS,
+        entries,
+        walkTruncated,
+        queryCache: new Map(),
+      }
+      workspaceFilesIndexCache.delete(realRoot)
+      if (workspaceFilesIndexCache.size >= MAX_WORKSPACE_FILES_CACHE) {
+        const oldestKey = workspaceFilesIndexCache.keys().next().value
+        if (oldestKey !== undefined) workspaceFilesIndexCache.delete(oldestKey)
+      }
+      workspaceFilesIndexCache.set(realRoot, entry)
+      return entry
+    } finally {
+      activeWorkspaceIndexBuilds = Math.max(0, activeWorkspaceIndexBuilds - 1)
+    }
+  })()
+
+  if (!forceRefresh) {
+    workspaceFilesIndexInFlight.set(realRoot, loadPromise)
+  }
+  try {
+    return await loadPromise
+  } finally {
+    if (!forceRefresh && workspaceFilesIndexInFlight.get(realRoot) === loadPromise) {
+      workspaceFilesIndexInFlight.delete(realRoot)
+    }
+  }
+}
+
+/**
+ * Lists read-only workspace-relative file paths for `@file` mentions and search.
+ * Uses a shared single-flight TTL-cached workspace index keyed by canonical root,
+ * bounded per-query result cache + top-K selection to avoid post-cache O(n log n) sorts,
+ * global index-build concurrency caps, and canonical containment + payload byte bounds.
+ */
+export async function inspectWorkspaceFiles(
+  params: WorkspaceFilesParams,
+  cwd: string,
+  options?: { readonly forceRefresh?: boolean | undefined },
+): Promise<WorkspaceFilesResult> {
+  const realRoot = resolveExistingDirectoryRealpath(cwd)
+  const limit = Math.min(
+    HARD_MAX_WORKSPACE_FILES_LIMIT,
+    Math.max(1, params.limit ?? DEFAULT_WORKSPACE_FILES_LIMIT),
+  )
+
+  let normalizedPrefix: string | undefined
+  let prefixDirOnly = false
+  if (params.prefix !== undefined) {
+    const rawPrefix = params.prefix.replace(/\\/gu, '/').trim()
+    prefixDirOnly = rawPrefix.endsWith('/')
+    const cleanBase = rawPrefix.replace(/\/+$/u, '')
+    normalizedPrefix = assertSafeRepoRelativePath(realRoot, cleanBase)
+  }
+
+  const forceRefresh = options?.forceRefresh === true
+  const indexEntry = await loadWorkspaceFilesIndex(realRoot, forceRefresh)
+  const queryTrimmed = params.query?.trim().toLowerCase() ?? ''
+  const sessionIdBytes = Buffer.byteLength(params.sessionId, 'utf8')
+  const queryCacheKey = `${sessionIdBytes}\0${prefixDirOnly ? 'd' : 'p'}\0${normalizedPrefix ?? ''}\0${queryTrimmed}\0${limit}`
+
+  if (!forceRefresh) {
+    const cachedQuery = indexEntry.queryCache.get(queryCacheKey)
+    if (cachedQuery) {
+      indexEntry.queryCache.delete(queryCacheKey)
+      indexEntry.queryCache.set(queryCacheKey, cachedQuery)
+      return {
+        sessionId: params.sessionId,
+        root: cachedQuery.root,
+        files: [...cachedQuery.files],
+        totalMatched: cachedQuery.totalMatched,
+        truncated: cachedQuery.truncated,
+      }
+    }
+  }
+
+  const walkTruncated = indexEntry.walkTruncated
+  const rootPrefix = realRoot.endsWith(sep) ? realRoot : `${realRoot}${sep}`
+  const queryTokens = queryTrimmed.length > 0 ? queryTrimmed.split(/\s+/u).filter(Boolean) : []
+  const files: string[] = []
+  let byteBudgetUsed = 256 + sessionIdBytes + Buffer.byteLength(realRoot, 'utf8')
+  let budgetTruncated = false
+  let totalMatched = 0
+
+  if (queryTokens.length === 0) {
+    let collectionDone = false
+    for (const item of indexEntry.entries) {
+      if (!matchesWorkspacePrefix(item.path, normalizedPrefix, prefixDirOnly)) continue
+      totalMatched += 1
+      if (collectionDone) continue
+      if (files.length >= limit) {
+        budgetTruncated = true
+        collectionDone = true
+        continue
+      }
+      const safeRel = validateWorkspaceCandidate(realRoot, rootPrefix, item.path)
+      if (!safeRel) continue
+      const entryBytes = Buffer.byteLength(JSON.stringify(safeRel), 'utf8') + 1
+      if (byteBudgetUsed + entryBytes > MAX_WORKSPACE_FILES_PAYLOAD_BYTES) {
+        budgetTruncated = true
+        collectionDone = true
+        continue
+      }
+      byteBudgetUsed += entryBytes
+      files.push(safeRel)
+    }
+  } else {
+    const heapCap = Math.min(
+      indexEntry.entries.length,
+      Math.max(limit * 2, limit + MAX_WORKSPACE_FILES_RANK_SLACK),
+      MAX_WORKSPACE_FILES_TOP_K_CAP,
+    )
+    const heap: ScoredWorkspaceMatch[] = []
+    for (let i = 0; i < indexEntry.entries.length; i += 1) {
+      const item = indexEntry.entries[i]!
+      if (!matchesWorkspacePrefix(item.path, normalizedPrefix, prefixDirOnly)) continue
+      if (!queryTokens.every((tok) => item.lowerPath.includes(tok))) continue
+      totalMatched += 1
+      const candidate: ScoredWorkspaceMatch = {
+        index: i,
+        rank: rankIndexedWorkspaceFileMatch(item.lowerPath, item.lowerBase, queryTrimmed),
+        pathLen: item.path.length,
+      }
+      if (heap.length < heapCap) {
+        heap.push(candidate)
+        siftUpMaxHeap(heap, heap.length - 1)
+      } else if (heapCap > 0 && isWorseScoredMatch(heap[0]!, candidate)) {
+        heap[0] = candidate
+        siftDownMaxHeap(heap, 0)
+      }
+    }
+
+    heap.sort((a, b) => (isWorseScoredMatch(a, b) ? 1 : isWorseScoredMatch(b, a) ? -1 : 0))
+    for (const matchItem of heap) {
+      if (files.length >= limit) {
+        budgetTruncated = true
+        break
+      }
+      const safeRel = validateWorkspaceCandidate(
+        realRoot,
+        rootPrefix,
+        indexEntry.entries[matchItem.index]!.path,
+      )
+      if (!safeRel) continue
+      const entryBytes = Buffer.byteLength(JSON.stringify(safeRel), 'utf8') + 1
+      if (byteBudgetUsed + entryBytes > MAX_WORKSPACE_FILES_PAYLOAD_BYTES) {
+        budgetTruncated = true
+        break
+      }
+      byteBudgetUsed += entryBytes
+      files.push(safeRel)
+    }
+    if (!budgetTruncated && totalMatched > heap.length && files.length < limit) {
+      budgetTruncated = true
+    }
+  }
+
+  const truncated = walkTruncated || budgetTruncated
+  indexEntry.queryCache.delete(queryCacheKey)
+  if (indexEntry.queryCache.size >= MAX_WORKSPACE_FILES_QUERY_CACHE) {
+    const oldestQueryKey = indexEntry.queryCache.keys().next().value
+    if (oldestQueryKey !== undefined) indexEntry.queryCache.delete(oldestQueryKey)
+  }
+  indexEntry.queryCache.set(queryCacheKey, {
+    root: realRoot,
+    files: [...files],
+    totalMatched,
+    truncated,
+  })
+
+  return {
+    sessionId: params.sessionId,
+    root: realRoot,
+    files,
+    totalMatched,
+    truncated,
   }
 }

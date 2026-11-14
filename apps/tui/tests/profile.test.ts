@@ -152,4 +152,11 @@ describe('our TUI profile', () => {
     expect(installEnv.pnpm_config_update_notifier).toBe('false')
     expect(installEnv.CUSTOM).toBe('1')
   })
+
+  it('propagates explicit caller workspace cwd via DSH_COMMUNITY_WORKSPACE_CWD', () => {
+    const run = parseCommunityLaunch(['inspect', 'repo'])
+    const withCwd = tuiLaunchEnv({}, run, undefined, '/workspace/caller-repo')
+    expect(withCwd.DSH_COMMUNITY_WORKSPACE_CWD).toBe('/workspace/caller-repo')
+    expect(tuiLaunchEnv({}, run).DSH_COMMUNITY_WORKSPACE_CWD).toBeUndefined()
+  })
 })

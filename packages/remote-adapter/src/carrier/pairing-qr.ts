@@ -253,6 +253,75 @@ export function encodePairingDeepLink(descriptor: PairingBootstrapDescriptor): s
 }
 
 /**
+ * Returns true when a URL hostname is strictly a loopback target
+ * (`localhost`, `127.0.0.0/8`, or `[::1]` / `::1`).
+ */
+export function isLoopbackPairingHostname(hostname: string): boolean {
+  const lower = hostname.trim().toLowerCase()
+  if (lower === 'localhost' || lower === '[::1]' || lower === '::1') {
+    return true
+  }
+  const ipv4Match = /^127\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(lower)
+  if (ipv4Match) {
+    return ipv4Match
+      .slice(1)
+      .every((octet) => Number(octet) >= 0 && Number(octet) <= 255)
+  }
+  return false
+}
+
+/**
+ * Validates that a web pairing base URL uses `https://`, or plain `http://`
+ * strictly for loopback origins (so unauthenticated cleartext HTTP on LAN/public
+ * networks cannot tamper with delivered app.js before `#pair=` is read), and
+ * never embeds credentials.
+ */
+export function validatePairingWebUrl(webUrl: string): URL {
+  const trimmed = webUrl.trim()
+  let parsed: URL
+  try {
+    parsed = new URL(trimmed)
+  } catch {
+    throw new RemoteCryptoError('HANDSHAKE_FAILED', `invalid web pairing URL: ${webUrl}`)
+  }
+  if (parsed.username !== '' || parsed.password !== '') {
+    throw new RemoteCryptoError(
+      'HANDSHAKE_FAILED',
+      'web pairing URL must not embed credentials',
+    )
+  }
+  if (parsed.protocol === 'https:') {
+    return parsed
+  }
+  if (parsed.protocol === 'http:') {
+    if (isLoopbackPairingHostname(parsed.hostname)) {
+      return parsed
+    }
+    throw new RemoteCryptoError(
+      'HANDSHAKE_FAILED',
+      `non-loopback http:// pairing URLs are forbidden; use https:// (got '${parsed.hostname}')`,
+    )
+  }
+  throw new RemoteCryptoError(
+    'HANDSHAKE_FAILED',
+    'web pairing URL must use https:// (or loopback http://)',
+  )
+}
+
+/**
+ * Encodes a PairingBootstrapDescriptor into a browser PWA pairing URL
+ * (`https://example.com/app/#pair=<base64url>`). Using a URL fragment ensures
+ * pairing material stays client-side and is never transmitted in HTTP requests.
+ */
+export function encodePairingWebUrl(webUrl: string, descriptor: PairingBootstrapDescriptor): string {
+  const parsed = validatePairingWebUrl(webUrl)
+  assertNoSessionOrCredentialsInDescriptor(descriptor as unknown as Record<string, unknown>)
+  const encoded = Buffer.from(JSON.stringify(descriptor), 'utf8').toString('base64url')
+  parsed.hash = `pair=${encoded}`
+  return parsed.toString()
+}
+
+/**
  * Parses either raw QR descriptor JSON or a `dsh-remote://pair?...` deep-link URI.
  */
 export function parsePairingInput(raw: string): PairingBootstrapDescriptor {

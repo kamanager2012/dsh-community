@@ -168,10 +168,12 @@ export function apply(ctx: CordisContext): (() => void) | void {
   }
 
   store.setStatus('booting')
+  const workspaceCwd = process.env.DSH_COMMUNITY_WORKSPACE_CWD?.trim() || process.cwd()
   const ui = render(
     createElement(App, {
       store,
       dualBadge: formatDualBadge(),
+      cwd: workspaceCwd,
       onSend: enqueueUserInput,
       onCancel: () => {
         if (current?.agent.status === 'running') {

@@ -725,4 +725,178 @@ async function spawnCliUntilReadyJson<T>(
     expect(ioBadSig.stderr()).toContain('DSH_REMOTE_DEFAULT_SIGNALING_URL')
     expect(ioBadSig.stderr()).toContain('ws:// 或 wss://')
   })
+
+  it('spawns dsh-community remote gateway with --web-dir and includes webPairingUrl on remote start --web-url', async () => {
+    expect(COMMUNITY_REMOTE_HELP).toContain('dsh-community remote gateway')
+    expect(COMMUNITY_REMOTE_HELP).toContain('--web-url')
+
+    const root = makeTempDir('dsh-remote-gateway-cli-')
+    const dshHome = join(root, 'official-dsh-home')
+    const configDir = join(root, 'community-remote-config')
+    const repoDir = join(root, 'repo')
+    const fakeBinDir = join(root, 'fake-bin')
+    const webDir = join(root, 'pwa-dist')
+    mkdirSync(repoDir, { recursive: true })
+    mkdirSync(fakeBinDir, { recursive: true })
+    mkdirSync(webDir, { recursive: true })
+    writeFileSync(join(webDir, 'index.html'), '<!doctype html><html><body>PWA</body></html>\n', 'utf8')
+
+    const fakeCodex = join(fakeBinDir, 'codex')
+    writeFileSync(
+      fakeCodex,
+      [
+        '#!/usr/bin/env node',
+        'if (process.argv[2] === "--version") { console.log("codex-cli 0.169.0"); process.exit(0); }',
+        'process.exit(0);',
+      ].join('\n'),
+      'utf8',
+    )
+    chmodSync(fakeCodex, 0o755)
+
+    const binPath = ensureBuiltTuiBin()
+    const gwEnv: NodeJS.ProcessEnv = {
+      ...process.env,
+      DSH_REMOTE_GATEWAY_HOST_SECRET: 'gw-cli-secret',
+    }
+    const { ready: gwReady, stopAndWait: stopGateway } = await spawnCliUntilReadyJson<{
+      kind: string
+      relayEndpointUrl: string
+      signalingEndpointUrl: string
+      healthzUrl: string
+      webAppUrl?: string
+      authRequired: boolean
+    }>(binPath, ['remote', 'gateway', '--port', '0', '--web-dir', webDir, '--json'], gwEnv)
+
+    try {
+      expect(gwReady.kind).toBe('blind-gateway')
+      expect(gwReady.relayEndpointUrl.endsWith('/relay')).toBe(true)
+      expect(gwReady.signalingEndpointUrl.endsWith('/signal')).toBe(true)
+      expect(gwReady.webAppUrl?.endsWith('/app/')).toBe(true)
+      expect(gwReady.authRequired).toBe(true)
+      expect(JSON.stringify(gwReady)).not.toContain('gw-cli-secret')
+
+      const healthRes = await fetch(gwReady.healthzUrl)
+      expect(healthRes.status).toBe(200)
+      const appRes = await fetch(gwReady.webAppUrl!)
+      expect(appRes.status).toBe(200)
+      expect(await appRes.text()).toContain('PWA')
+
+      const hostEnv: NodeJS.ProcessEnv = {
+        ...process.env,
+        PATH: `${fakeBinDir}:${process.env.PATH ?? ''}`,
+        HOME: root,
+        CODEX_HOME: join(root, '.codex'),
+        DSH_HOME: dshHome,
+        DSH_REMOTE_CONFIG_DIR: configDir,
+        DSH_REMOTE_RELAY_HOST_SECRET: 'gw-cli-secret',
+        DSH_REMOTE_SIGNALING_HOST_SECRET: 'gw-cli-secret',
+      }
+      delete hostEnv.DEEPSEEK_API_KEY
+      const { ready: hostReady, stopAndWait: stopHost } = await spawnCliUntilReadyJson<{
+        deepLink: string
+        webPairingUrl?: string
+        relayUrl?: string
+        signalingUrl?: string
+      }>(
+        binPath,
+        [
+          'remote',
+          'start',
+          '--engines',
+          'codex',
+          '--relay-url',
+          gwReady.relayEndpointUrl,
+          '--signaling-url',
+          gwReady.signalingEndpointUrl,
+          '--web-url',
+          gwReady.webAppUrl!,
+          '--json',
+          '--cwd',
+          repoDir,
+        ],
+        hostEnv,
+      )
+      try {
+        expect(hostReady.relayUrl).toBe(gwReady.relayEndpointUrl)
+        expect(hostReady.signalingUrl).toBe(gwReady.signalingEndpointUrl)
+        expect(hostReady.webPairingUrl?.startsWith(`${gwReady.webAppUrl!}#pair=`)).toBe(true)
+      } finally {
+        expect(await stopHost()).toBe(0)
+      }
+    } finally {
+      expect(await stopGateway()).toBe(0)
+    }
+  })
+
+  it('rejects invalid and non-loopback HTTP --web-url on remote start', async () => {
+    const root = makeTempDir('dsh-remote-bad-weburl-')
+    for (const badUrl of [
+      'javascript:alert(1)',
+      'http://192.168.1.25:8080/app/',
+      'http://example.com/app/',
+      'https://user:pass@example.com/app/',
+    ]) {
+      const io = captureOutputs()
+      expect(
+        await runRemoteCommand(
+          ['start', '--web-url', badUrl, '--cwd', root],
+          { DSH_HOME: join(root, 'dsh'), DSH_REMOTE_CONFIG_DIR: join(root, 'cfg') },
+          join(root, 'dsh'),
+        ),
+      ).toBe(2)
+      expect(io.stderr()).toContain('--web-url')
+    }
+
+    const envIo = captureOutputs()
+    expect(
+      await runRemoteCommand(
+        ['start', '--cwd', root],
+        {
+          DSH_HOME: join(root, 'dsh'),
+          DSH_REMOTE_CONFIG_DIR: join(root, 'cfg'),
+          DSH_REMOTE_WEB_URL: 'http://10.0.0.8:8080/app/',
+        },
+        join(root, 'dsh'),
+      ),
+    ).toBe(2)
+    expect(envIo.stderr()).toContain('--web-url')
+  })
+
+  it('parses --trusted-proxies / env on remote gateway and fails closed on invalid CIDRs', async () => {
+    expect(COMMUNITY_REMOTE_HELP).toContain('--trusted-proxies')
+
+    for (const badCidr of ['not-a-cidr', '0.0.0.0/0', '::/0', '127.0.0.1/33', '127.0.0.1,']) {
+      const io = captureOutputs()
+      expect(
+        await runRemoteCommand(['gateway', '--trusted-proxies', badCidr], {}, process.cwd()),
+      ).toBe(2)
+      expect(io.stderr()).toMatch(/trusted prox(y|ies)/i)
+    }
+
+    const badEnvIo = captureOutputs()
+    expect(
+      await runRemoteCommand(
+        ['gateway'],
+        { DSH_REMOTE_GATEWAY_TRUSTED_PROXIES: 'invalid-proxy' },
+        process.cwd(),
+      ),
+    ).toBe(2)
+    expect(badEnvIo.stderr()).toMatch(/trusted prox(y|ies)/i)
+
+    const binPath = ensureBuiltTuiBin()
+    const { ready, stopAndWait } = await spawnCliUntilReadyJson<{
+      kind: string
+      trustedProxies?: string[]
+    }>(
+      binPath,
+      ['remote', 'gateway', '--port', '0', '--trusted-proxies', '127.0.0.1,10.0.0.0/8', '--json'],
+      {},
+    )
+    try {
+      expect(ready.kind).toBe('blind-gateway')
+      expect(ready.trustedProxies).toEqual(['127.0.0.1', '10.0.0.0/8'])
+    } finally {
+      await stopAndWait()
+    }
+  })
 })

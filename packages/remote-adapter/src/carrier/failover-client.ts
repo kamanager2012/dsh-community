@@ -5,6 +5,8 @@ import type {
   CreateSessionParams,
   EngineDescriptor,
   SessionRef,
+  WorkspaceFilesParams,
+  WorkspaceFilesResult,
   WorkspaceGitDiffParams,
   WorkspaceGitDiffResult,
   WorkspaceGitStatusResult,
@@ -472,6 +474,10 @@ export class FailoverRemoteClient {
 
   async getWorkspaceGitDiff(params: WorkspaceGitDiffParams): Promise<WorkspaceGitDiffResult> {
     return this.session.getWorkspaceGitDiff(params)
+  }
+
+  async listWorkspaceFiles(params: WorkspaceFilesParams): Promise<WorkspaceFilesResult> {
+    return this.session.listWorkspaceFiles(params)
   }
 
   async uploadWorkspaceFile(options: {
