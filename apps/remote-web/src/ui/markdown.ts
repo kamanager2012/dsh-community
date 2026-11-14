@@ -15,49 +15,213 @@ export function isSafeLinkUrl(raw: string): boolean {
   }
 }
 
-const CODE_KEYWORD_RE =
-  /\b(?:async|await|break|case|catch|class|const|continue|default|else|enum|export|extends|false|finally|for|from|fn|func|function|if|impl|import|in|interface|let|match|mut|new|null|pub|readonly|return|self|static|struct|switch|throw|true|try|type|typeof|undefined|use|val|var|void|while|yield)\b/g
-const CODE_COMMENT_RE = /(\/\/[^\n]*|\/\*[\s\S]*?\*\/|#[^\n]*$)/gm
-const CODE_STRING_RE = /("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`)/g
-const CODE_NUMBER_RE = /\b(?:0x[0-9a-fA-F]+|\d+(?:\.\d+)?)\b/g
+const CODE_KEYWORDS = new Set([
+  'async',
+  'await',
+  'break',
+  'case',
+  'catch',
+  'class',
+  'const',
+  'continue',
+  'default',
+  'else',
+  'enum',
+  'export',
+  'extends',
+  'false',
+  'finally',
+  'for',
+  'from',
+  'fn',
+  'func',
+  'function',
+  'if',
+  'impl',
+  'import',
+  'in',
+  'interface',
+  'let',
+  'match',
+  'mut',
+  'new',
+  'null',
+  'pub',
+  'readonly',
+  'return',
+  'self',
+  'static',
+  'struct',
+  'switch',
+  'throw',
+  'true',
+  'try',
+  'type',
+  'typeof',
+  'undefined',
+  'use',
+  'val',
+  'var',
+  'void',
+  'while',
+  'yield',
+])
+
+function isCodeWordChar(code: number): boolean {
+  return (
+    (code >= 48 && code <= 57) || // 0-9
+    (code >= 65 && code <= 90) || // A-Z
+    (code >= 97 && code <= 122) || // a-z
+    code === 95 // _
+  )
+}
+
+function isHexDigitCode(code: number): boolean {
+  return (
+    (code >= 48 && code <= 57) || // 0-9
+    (code >= 65 && code <= 70) || // A-F
+    (code >= 97 && code <= 102) // a-f
+  )
+}
+
+function findClosingQuote(text: string, start: number, quote: string): number {
+  for (let j = start + 1; j < text.length; j += 1) {
+    const ch = text[j]!
+    if (ch === '\\') {
+      j += 1
+      continue
+    }
+    if (ch === quote) {
+      return j
+    }
+  }
+  return -1
+}
 
 function appendHighlightedCodeLine(doc: Document, parent: HTMLElement, text: string): void {
-  // Deterministic token classification without regex backtracking bombs or HTML injection
-  interface Span {
-    start: number
-    end: number
-    cls: string
-  }
-  const spans: Span[] = []
-
-  const collect = (re: RegExp, cls: string): void => {
-    re.lastIndex = 0
-    let match: RegExpExecArray | null
-    while ((match = re.exec(text)) !== null) {
-      if (match[0].length === 0) break
-      spans.push({ start: match.index, end: match.index + match[0].length, cls })
-    }
-  }
-
-  collect(CODE_COMMENT_RE, 'tok-comment')
-  collect(CODE_STRING_RE, 'tok-str')
-  collect(CODE_KEYWORD_RE, 'tok-kw')
-  collect(CODE_NUMBER_RE, 'tok-num')
-
-  spans.sort((a, b) => a.start - b.start || b.end - a.end)
-
+  // Single-pass O(n) token classifier without regex backtracking bombs or HTML injection.
+  // Once an opener scans to EOF without a closing delimiter, mark that delimiter exhausted
+  // so subsequent unclosed openers skip redundant tail scans.
   let cursor = 0
-  for (const sp of spans) {
-    if (sp.start < cursor) continue
-    if (sp.start > cursor) {
-      parent.appendChild(doc.createTextNode(text.slice(cursor, sp.start)))
+  let i = 0
+  let blockCommentExhausted = false
+  let doubleQuoteExhausted = false
+  let singleQuoteExhausted = false
+  let backtickExhausted = false
+
+  const emitToken = (start: number, end: number, cls: string): void => {
+    if (start > cursor) {
+      parent.appendChild(doc.createTextNode(text.slice(cursor, start)))
     }
     const el = doc.createElement('span')
-    el.className = sp.cls
-    el.textContent = text.slice(sp.start, sp.end)
+    el.className = cls
+    el.textContent = text.slice(start, end)
     parent.appendChild(el)
-    cursor = sp.end
+    cursor = end
+    i = end
   }
+
+  while (i < text.length) {
+    const ch = text[i]!
+
+    if ((ch === '/' && text[i + 1] === '/') || ch === '#') {
+      const nl = text.indexOf('\n', i + 1)
+      const end = nl === -1 ? text.length : nl
+      emitToken(i, end, 'tok-comment')
+      continue
+    }
+
+    if (ch === '/' && text[i + 1] === '*') {
+      if (!blockCommentExhausted) {
+        const close = text.indexOf('*/', i + 2)
+        if (close !== -1) {
+          emitToken(i, close + 2, 'tok-comment')
+          continue
+        }
+        blockCommentExhausted = true
+      }
+      i += 1
+      continue
+    }
+
+    if (ch === '"' || ch === "'" || ch === '`') {
+      const exhausted =
+        ch === '"'
+          ? doubleQuoteExhausted
+          : ch === "'"
+            ? singleQuoteExhausted
+            : backtickExhausted
+      if (!exhausted) {
+        const close = findClosingQuote(text, i, ch)
+        if (close !== -1) {
+          emitToken(i, close + 1, 'tok-str')
+          continue
+        }
+        if (ch === '"') doubleQuoteExhausted = true
+        else if (ch === "'") singleQuoteExhausted = true
+        else backtickExhausted = true
+      }
+      i += 1
+      continue
+    }
+
+    const code = ch.charCodeAt(0)
+    if (isCodeWordChar(code) && (i === 0 || !isCodeWordChar(text.charCodeAt(i - 1)))) {
+      if (code >= 48 && code <= 57) {
+        let end = i
+        if (
+          ch === '0' &&
+          text[i + 1] === 'x' &&
+          i + 2 < text.length &&
+          isHexDigitCode(text.charCodeAt(i + 2))
+        ) {
+          end = i + 2
+          while (end < text.length && isHexDigitCode(text.charCodeAt(end))) {
+            end += 1
+          }
+        } else {
+          while (end < text.length && text.charCodeAt(end) >= 48 && text.charCodeAt(end) <= 57) {
+            end += 1
+          }
+          if (
+            end < text.length &&
+            text[end] === '.' &&
+            end + 1 < text.length &&
+            text.charCodeAt(end + 1) >= 48 &&
+            text.charCodeAt(end + 1) <= 57
+          ) {
+            end += 1
+            while (end < text.length && text.charCodeAt(end) >= 48 && text.charCodeAt(end) <= 57) {
+              end += 1
+            }
+          }
+        }
+        if (end === text.length || !isCodeWordChar(text.charCodeAt(end))) {
+          emitToken(i, end, 'tok-num')
+          continue
+        }
+        while (end < text.length && isCodeWordChar(text.charCodeAt(end))) {
+          end += 1
+        }
+        i = end
+        continue
+      }
+
+      let end = i + 1
+      while (end < text.length && isCodeWordChar(text.charCodeAt(end))) {
+        end += 1
+      }
+      if (CODE_KEYWORDS.has(text.slice(i, end))) {
+        emitToken(i, end, 'tok-kw')
+      } else {
+        i = end
+      }
+      continue
+    }
+
+    i += 1
+  }
+
   if (cursor < text.length) {
     parent.appendChild(doc.createTextNode(text.slice(cursor)))
   }
@@ -219,9 +383,21 @@ function isTableSeparator(line: string): boolean {
   return /^\|?(?:\s*:?-{3,}:?\s*\|)+(?:\s*:?-{3,}:?\s*)?\|?$/.test(trimmed)
 }
 
+const MAX_MARKDOWN_BLOCK_DEPTH = 16
+
 export function renderMarkdown(doc: Document, source: string): HTMLElement {
   const root = doc.createElement('div')
   root.className = 'md-root'
+  renderMarkdownBlock(doc, source, 0, root)
+  return root
+}
+
+function renderMarkdownBlock(
+  doc: Document,
+  source: string,
+  depth: number,
+  root: HTMLElement,
+): void {
   const lines = source.replace(/\r\n?/g, '\n').split('\n')
 
   let i = 0
@@ -300,17 +476,14 @@ export function renderMarkdown(doc: Document, source: string): HTMLElement {
     }
 
     // Blockquote
-    if (trimmed.startsWith('>')) {
+    if (depth < MAX_MARKDOWN_BLOCK_DEPTH && trimmed.startsWith('>')) {
       const quoteLines: string[] = []
       while (i < lines.length && lines[i]!.trim().startsWith('>')) {
         quoteLines.push(lines[i]!.trim().replace(/^>\s?/, ''))
         i += 1
       }
       const bq = doc.createElement('blockquote')
-      const inner = renderMarkdown(doc, quoteLines.join('\n'))
-      while (inner.firstChild) {
-        bq.appendChild(inner.firstChild)
-      }
+      renderMarkdownBlock(doc, quoteLines.join('\n'), depth + 1, bq)
       root.appendChild(bq)
       continue
     }
@@ -388,7 +561,7 @@ export function renderMarkdown(doc: Document, source: string): HTMLElement {
       if (
         !curTrim ||
         curTrim.startsWith('```') ||
-        curTrim.startsWith('>') ||
+        (depth < MAX_MARKDOWN_BLOCK_DEPTH && curTrim.startsWith('>')) ||
         /^(#{1,6})\s+/.test(curTrim) ||
         /^[-*+]\s+/.test(curTrim) ||
         /^\d+\.\s+/.test(curTrim) ||
@@ -403,8 +576,6 @@ export function renderMarkdown(doc: Document, source: string): HTMLElement {
     appendInlineMarkdown(doc, p, paraLines.join('\n'))
     root.appendChild(p)
   }
-
-  return root
 }
 
 export function renderUnifiedDiff(doc: Document, diffText: string): HTMLElement {

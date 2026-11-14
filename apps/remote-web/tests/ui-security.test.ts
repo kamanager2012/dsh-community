@@ -1102,5 +1102,58 @@ describe('remote-web pairing security, safe Markdown/Diff DOM, and CSP hygiene',
     expect(tags).toContain('EM')
     expect(tags).toContain('CODE')
     expect(hrefs).toEqual(['https://example.com'])
+
+    // 10. Deeply nested blockquotes stay bounded in stack depth without RangeError
+    const deepQuoteStart = performance.now()
+    const deepQuoteRoot = renderMarkdown(fakeDoc, '>'.repeat(5_000) + ' nested text')
+    expect(performance.now() - deepQuoteStart).toBeLessThan(1_000)
+    const quoteTags: string[] = []
+    const quoteHrefs: string[] = []
+    collectTagsAndLinks(deepQuoteRoot, quoteTags, quoteHrefs)
+    const blockquoteCount = quoteTags.filter((t) => t === 'BLOCKQUOTE').length
+    expect(blockquoteCount).toBe(16)
+    const collectText = (node: unknown): string => {
+      if (!node || typeof node !== 'object') return ''
+      const cur = node as { textContent?: string; children?: unknown[] }
+      let out = typeof cur.textContent === 'string' ? cur.textContent : ''
+      if (Array.isArray(cur.children)) {
+        for (const ch of cur.children) out += collectText(ch)
+      }
+      return out
+    }
+    expect(collectText(deepQuoteRoot)).toContain('nested text')
+
+    // 11. Fenced-code highlighting runs in strictly linear time on unclosed /* and quote bombs
+    const codeBombStart = performance.now()
+    renderMarkdown(fakeDoc, ['```ts', '/*a'.repeat(20_000), '```'].join('\n'))
+    renderMarkdown(fakeDoc, ['```ts', '"\\'.repeat(20_000), '```'].join('\n'))
+    expect(performance.now() - codeBombStart).toBeLessThan(1_000)
+
+    const highlightedCode = renderMarkdown(
+      fakeDoc,
+      [
+        '```ts',
+        '/* block */',
+        'const n = 0x1a + 3.5 // line',
+        'const s = "hello"',
+        '```',
+      ].join('\n'),
+    )
+    const codeClasses = new Set<string>()
+    const collectClasses = (node: unknown): void => {
+      if (!node || typeof node !== 'object') return
+      const cur = node as { className?: string; children?: unknown[] }
+      if (typeof cur.className === 'string' && cur.className) {
+        codeClasses.add(cur.className)
+      }
+      if (Array.isArray(cur.children)) {
+        for (const ch of cur.children) collectClasses(ch)
+      }
+    }
+    collectClasses(highlightedCode)
+    expect(codeClasses.has('tok-comment')).toBe(true)
+    expect(codeClasses.has('tok-kw')).toBe(true)
+    expect(codeClasses.has('tok-num')).toBe(true)
+    expect(codeClasses.has('tok-str')).toBe(true)
   })
 })
