@@ -703,4 +703,72 @@ describe('shell pages', () => {
     })
     expect(remoteEmpty).toContain('id="copy-remote-logs-btn" disabled title="暂无可复制日志"')
   })
+
+  it('renders multi-agent engine chips, diff buttons, and escaped read-only Git preview under strict CSP', () => {
+    const html = renderRemotePage({
+      product: 'DSH Community',
+      phase: 'running',
+      apiKeyPresent: false,
+      dshHome: '/tmp/.dsh',
+      configDir: '/tmp/remote',
+      isolated: false,
+      pid: '777',
+      hostFingerprint: 'fp-multi',
+      lanCandidates: ['192.168.1.9'],
+      effectiveListenHost: '192.168.1.9',
+      settings: {
+        listenHost: '',
+        port: 0,
+        enableMdns: true,
+        relayUrl: '',
+        signalingUrl: '',
+        stunUrls: '',
+        engines: 'codex,claude',
+      },
+      lanUrl: 'ws://192.168.1.9:9000',
+      relayUrl: '',
+      relayRoomId: '',
+      signalingUrl: '',
+      signalingRoomId: '',
+      stunUrls: [],
+      activeConnections: 1,
+      engines: [
+        { id: 'codex', displayName: 'Codex CLI', available: true, version: '0.169.0' },
+        { id: 'claude', displayName: 'Claude Code', available: false },
+      ],
+      liveSessions: [
+        {
+          id: 'codex:s-1',
+          engine: 'codex',
+          title: 'Multi-Agent Task',
+          status: 'running',
+          model: 'gpt-5-codex',
+        },
+      ],
+      gitPreview: {
+        sessionId: 'codex:s-1',
+        repoRoot: '/repo',
+        branch: 'feat/</script><img src=x>',
+        ahead: 2,
+        behind: 0,
+        clean: false,
+        files: [{ path: 'src/main.ts', indexStatus: ' ', workTreeStatus: 'M', untracked: false }],
+        diffPath: 'src/main.ts',
+        diffText: '+const evil = "</script><img src=x onerror=alert(1)>"',
+        truncated: false,
+      },
+      pendingCandidates: [],
+      devices: [],
+      logs: '',
+    })
+    expect(html).toContain('Codex CLI 0.169.0')
+    expect(html).toContain('Claude Code 未就绪')
+    expect(html).toContain('data-git-inspect="codex:s-1"')
+    expect(html).toContain('id="remote-engines"')
+    expect(html).toContain('value="codex,claude"')
+    expect(html).toContain('Git 只读变更审阅')
+    expect(html).not.toContain('</script><img')
+    expect(html).toContain('&lt;/script&gt;&lt;img src=x&gt;')
+    expect(html).not.toMatch(/style="/i)
+  })
 })

@@ -27,6 +27,9 @@ object RemoteProtocol {
     const val METHOD_COMMAND_LIST = "command.list"
     const val METHOD_COMMAND_EXECUTE = "command.execute"
     const val METHOD_SKILL_LIST = "skill.list"
+    const val METHOD_ENGINE_LIST = "engine.list"
+    const val METHOD_WORKSPACE_GIT_STATUS = "workspace.git.status"
+    const val METHOD_WORKSPACE_GIT_DIFF = "workspace.git.diff"
     const val METHOD_WORKSPACE_UPLOAD_OPEN = "workspace.upload.open"
     const val METHOD_WORKSPACE_UPLOAD_CHUNK = "workspace.upload.chunk"
     const val METHOD_WORKSPACE_UPLOAD_COMMIT = "workspace.upload.commit"
@@ -42,6 +45,39 @@ data class SessionRef(
     val preview: String? = null,
     val pendingApprovals: Int = 0,
     val pendingQuestions: Int = 0,
+    val engine: String? = null,
+)
+
+data class EngineDescriptor(
+    val id: String,
+    val displayName: String,
+    val available: Boolean,
+    val version: String? = null,
+    val error: String? = null,
+)
+
+data class WorkspaceGitFile(
+    val path: String,
+    val indexStatus: String,
+    val workTreeStatus: String,
+    val untracked: Boolean,
+)
+
+data class WorkspaceGitStatusResult(
+    val repoRoot: String,
+    val branch: String,
+    val ahead: Int,
+    val behind: Int,
+    val clean: Boolean,
+    val files: List<WorkspaceGitFile>,
+)
+
+data class WorkspaceGitDiffResult(
+    val repoRoot: String,
+    val diff: String,
+    val truncated: Boolean,
+    val path: String? = null,
+    val staged: Boolean = false,
 )
 
 data class SessionHistoryResult(
@@ -327,6 +363,64 @@ object RemoteFrameCodec {
             },
             pendingApprovals = obj.intVal("pendingApprovals") ?: 0,
             pendingQuestions = obj.intVal("pendingQuestions") ?: 0,
+            engine = obj.str("engine")?.let(DisplayTextSanitizer::sanitizeSingleLine)?.takeIf { it.isNotBlank() },
+        )
+    }
+
+    fun parseEngineList(result: JsonValue): List<EngineDescriptor> {
+        val arr = when (result) {
+            is JsonArray -> result.items
+            is JsonObject -> result.arr("engines")?.items.orEmpty()
+            else -> emptyList()
+        }
+        return arr.mapNotNull { item ->
+            val obj = item as? JsonObject ?: return@mapNotNull null
+            val id = obj.str("id")?.trim()?.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+            val displayName = obj.str("displayName")?.let(DisplayTextSanitizer::sanitizeSingleLine)
+                ?.takeIf { it.isNotBlank() } ?: id
+            EngineDescriptor(
+                id = id,
+                displayName = displayName,
+                available = obj.bool("available") == true,
+                version = obj.str("version")?.let(DisplayTextSanitizer::sanitizeSingleLine)?.takeIf { it.isNotBlank() },
+                error = obj.str("error")?.let(DisplayTextSanitizer::sanitizeSingleLine)?.takeIf { it.isNotBlank() },
+            )
+        }
+    }
+
+    fun parseGitStatusResult(result: JsonValue): WorkspaceGitStatusResult {
+        val obj = result as? JsonObject
+            ?: throw IllegalArgumentException("workspace.git.status result must be JSON object")
+        val files = obj.arr("files")?.items.orEmpty().mapNotNull { item ->
+            val fObj = item as? JsonObject ?: return@mapNotNull null
+            val path = fObj.str("path")?.let(DisplayTextSanitizer::sanitizeSingleLine)
+                ?.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+            WorkspaceGitFile(
+                path = path,
+                indexStatus = fObj.str("indexStatus") ?: " ",
+                workTreeStatus = fObj.str("workTreeStatus") ?: " ",
+                untracked = fObj.bool("untracked") == true,
+            )
+        }
+        return WorkspaceGitStatusResult(
+            repoRoot = obj.str("repoRoot")?.let(DisplayTextSanitizer::sanitizeLoneSurrogates) ?: "",
+            branch = obj.str("branch")?.let(DisplayTextSanitizer::sanitizeSingleLine) ?: "HEAD",
+            ahead = obj.intVal("ahead") ?: 0,
+            behind = obj.intVal("behind") ?: 0,
+            clean = obj.bool("clean") == true,
+            files = files,
+        )
+    }
+
+    fun parseGitDiffResult(result: JsonValue): WorkspaceGitDiffResult {
+        val obj = result as? JsonObject
+            ?: throw IllegalArgumentException("workspace.git.diff result must be JSON object")
+        return WorkspaceGitDiffResult(
+            repoRoot = obj.str("repoRoot")?.let(DisplayTextSanitizer::sanitizeLoneSurrogates) ?: "",
+            diff = obj.str("diff")?.let(DisplayTextSanitizer::sanitizeLoneSurrogates) ?: "",
+            truncated = obj.bool("truncated") == true,
+            path = obj.str("path")?.let(DisplayTextSanitizer::sanitizeSingleLine)?.takeIf { it.isNotBlank() },
+            staged = obj.bool("staged") == true,
         )
     }
 

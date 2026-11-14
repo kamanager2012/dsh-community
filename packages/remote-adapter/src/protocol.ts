@@ -8,6 +8,8 @@ export type Capability =
   | 'approve'
   | 'answer-question'
 
+export type AgentEngineId = 'dsh' | 'claude' | 'codex' | 'opencode' | 'acp' | (string & {})
+
 export type RemoteMethod =
   | 'session.list'
   | 'session.attach'
@@ -16,6 +18,9 @@ export type RemoteMethod =
   | 'session.create'
   | 'session.rename'
   | 'session.fork'
+  | 'engine.list'
+  | 'workspace.git.status'
+  | 'workspace.git.diff'
   | 'prompt.submit'
   | 'turn.abort'
   | 'approval.respond'
@@ -40,6 +45,9 @@ const REMOTE_METHODS = new Set<RemoteMethod>([
   'session.create',
   'session.rename',
   'session.fork',
+  'engine.list',
+  'workspace.git.status',
+  'workspace.git.diff',
   'prompt.submit',
   'turn.abort',
   'approval.respond',
@@ -75,6 +83,8 @@ export interface AuthenticatedPeer {
 
 export interface SessionRef {
   readonly id: string
+  readonly engine?: AgentEngineId | undefined
+  readonly nativeSessionId?: string | undefined
   readonly title?: string
   readonly updatedAtMs?: number | undefined
   readonly cwd?: string | undefined
@@ -141,6 +151,9 @@ export interface FollowupOptions {
 export interface CreateSessionParams {
   readonly sessionId?: string | undefined
   readonly title?: string | undefined
+  readonly engine?: AgentEngineId | undefined
+  readonly cwd?: string | undefined
+  readonly model?: ModelSelectionParams | undefined
 }
 
 export interface RenameSessionParams {
@@ -335,12 +348,82 @@ export interface WorkspaceUploadAbortResult {
   readonly aborted: boolean
 }
 
-export interface OfficialRemoteSeams {
+export interface EngineCapabilityFlags {
+  readonly createSession: boolean
+  readonly listSessions: boolean
+  readonly history: boolean
+  readonly abortTurn: boolean
+  readonly approvals: boolean
+  readonly questions: boolean
+  readonly streaming: boolean
+  readonly models: boolean
+  readonly gitReview: boolean
+}
+
+export interface EngineDescriptor {
+  readonly id: AgentEngineId
+  readonly displayName: string
+  readonly available: boolean
+  readonly running: boolean
+  readonly binaryPath?: string | undefined
+  readonly version?: string | undefined
+  readonly error?: string | undefined
+  readonly capabilities: EngineCapabilityFlags
+}
+
+export interface WorkspaceGitStatusParams {
+  readonly sessionId: string
+}
+
+export interface GitChangedFileSummary {
+  readonly path: string
+  readonly origPath?: string | undefined
+  readonly indexStatus: string
+  readonly worktreeStatus: string
+  readonly staged: boolean
+  readonly unstaged: boolean
+  readonly untracked: boolean
+}
+
+export interface WorkspaceGitStatusResult {
+  readonly sessionId: string
+  readonly repoRoot: string
+  readonly branch: string
+  readonly upstream?: string | undefined
+  readonly ahead: number
+  readonly behind: number
+  readonly clean: boolean
+  readonly files: readonly GitChangedFileSummary[]
+  readonly truncated: boolean
+}
+
+export interface WorkspaceGitDiffParams {
+  readonly sessionId: string
+  readonly path?: string | undefined
+  readonly staged?: boolean | undefined
+  readonly maxBytes?: number | undefined
+}
+
+export interface WorkspaceGitDiffResult {
+  readonly sessionId: string
+  readonly repoRoot: string
+  readonly branch: string
+  readonly staged: boolean
+  readonly path?: string | undefined
+  readonly diff: string
+  readonly bytes: number
+  readonly truncated: boolean
+}
+
+export interface AgentHostBackend {
   listSessions(): Promise<readonly SessionRef[]>
   assertSession(sessionId: string): Promise<void>
   followup(sessionId: string, prompt: string, options?: FollowupOptions): Promise<unknown>
   respondApproval(callId: string, decision: 'approved' | 'rejected'): Promise<unknown>
   respondQuestion(questionId: string, answer: unknown): Promise<unknown>
+  listEngines?(): Promise<readonly EngineDescriptor[]>
+  getWorkspaceGitStatus?(params: WorkspaceGitStatusParams): Promise<WorkspaceGitStatusResult>
+  getWorkspaceGitDiff?(params: WorkspaceGitDiffParams): Promise<WorkspaceGitDiffResult>
   createSession?(options?: CreateSessionParams): Promise<SessionRef>
   renameSession?(sessionId: string, title: string): Promise<SessionRef>
   abortTurn?(sessionId: string, options?: { readonly keepInbox?: boolean | undefined }): Promise<unknown>
@@ -358,6 +441,8 @@ export interface OfficialRemoteSeams {
   commitWorkspaceUpload?(deviceId: string, params: WorkspaceUploadCommitParams): Promise<WorkspaceUploadCommitResult>
   abortWorkspaceUpload?(deviceId: string, params: WorkspaceUploadAbortParams): Promise<WorkspaceUploadAbortResult>
 }
+
+export type OfficialRemoteSeams = AgentHostBackend
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)

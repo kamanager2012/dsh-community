@@ -16,6 +16,18 @@
     "./stores": {
       "types": "./dist/stores.d.ts",
       "import": "./dist/stores.js"
+    },
+    "./backends": {
+      "types": "./dist/backends/index.d.ts",
+      "import": "./dist/backends/index.js"
+    },
+    "./standalone-cli": {
+      "types": "./dist/standalone-cli.d.ts",
+      "import": "./dist/standalone-cli.js"
+    },
+    "./remote-env": {
+      "types": "./dist/remote-env.d.ts",
+      "import": "./dist/remote-env.js"
     }
   },
   "scripts": {

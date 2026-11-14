@@ -10,7 +10,8 @@
 
 1. 官方 DeepSeek Harness 是内核：Agent loop、Session persistence、Tool execution、官方 Web 与 Windows/macOS Desktop 都在官方上游。
 2. 社区只做官方没有的互补端，当前发行两个入口：WSL/Linux 上的 `dsh-community` 终端与 Linux AppImage；Android（Labs / Remote Client）保持 `[UNVERIFIED]` 且不进入 Latest（历史版本 `v0.1.1-rc.2` 曾打包 Win/macOS，后续版本已退役并收敛为 Linux AppImage）。
-3. 插件可以很多,但哪些真的能装、能跑、适配当前官方 pin、会申请什么权限,社区注册表逐个验证后告诉你。
+3. 远程控制平面升级为 **Multi-Agent 统一安全控制面**（`packages/remote-adapter`）：基于 Noise IK 端到端加密、LAN/WebRTC/自建盲中继与幂等重放保护，同时纳管官方 DSH 与本机 **Claude Code / Codex CLI / OpenCode (ACP)**，并提供受限工作区 Git Diff 只读代码审阅（不依赖云端 SaaS，也不修改官方内核）。
+4. 插件可以很多,但哪些真的能装、能跑、适配当前官方 pin、会申请什么权限,社区注册表逐个验证后告诉你。
 
 ## 与其它 Desktop 项目的差别(客观口径)
 

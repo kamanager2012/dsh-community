@@ -80,6 +80,24 @@ Community-owned Desktop state such as logs, window state, crash reports, and
 runtime cache belongs in Electron userData. It must not become a second
 equivalent Session store.
 
+## Multi-Agent Unified Control Plane
+
+`@dsh-community/remote-adapter` extends the Complementary Edition remote surface
+into a unified **Noise IK E2EE Multi-Agent Control Plane** via
+`MultiAgentHostRouter`:
+
+- **Zero vendoring & zero extra third-party runtime packages**: `@deepseek-ai/dsh`
+  remains unvendored and external coding CLIs (**Claude Code**, **Codex CLI**,
+  **OpenCode / ACP**) are discovered from the user's `PATH` and invoked over
+  structured `node:child_process` stdio rather than bundled as npm dependencies.
+- **Native session stores respected**: each agent retains its own native durable
+  storage (including official `~/.dsh` for DSH), while remote trust records stay
+  strictly separated in `DSH_REMOTE_CONFIG_DIR` (`XDG_CONFIG_HOME/dsh-community/remote`).
+- **Scoped read-only Git code review**: `workspace.git.status` and
+  `workspace.git.diff` execute under `observe` capability, repo-root path
+  containment, symlink-escape rejection, and flag-injection guards without
+  opening a generic remote shell or arbitrary filesystem read API.
+
 ## Compatibility layer
 
 Upstream changes follow this path:

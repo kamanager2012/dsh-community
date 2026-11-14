@@ -26,27 +26,31 @@ Official DeepSeek Harness is the kernel. `dsh-community` is the Complementary Ed
 
 There is no second agent runtime in the middle.
 
-## Remote Host-Client target
+## Remote Host-Client target & Multi-Agent Control Plane
 
-Android's target architecture is now a **remote-only client**, not an embedded Node/DSH runtime. The Host keeps the official Runtime, repository, toolchain, credentials, filesystem access, tool execution, and Session truth. Remote clients project only the interaction surface.
+Android's target architecture is a **remote-only client**, not an embedded Node/DSH runtime. The Host keeps local execution, repositories, toolchains, credentials, filesystem access, and durable Session truth; remote clients project the interaction surface over **Noise IK** end-to-end encryption.
+
+`@dsh-community/remote-adapter` acts as a **Multi-Agent Unified Secure Control Plane** via `MultiAgentHostRouter`:
 
 ```text
-Official DSH Runtime
-        |
- verified public seams
-        |
- Remote Host Adapter
-        |
- Noise IK E2EE
-        |
- LAN -> WebRTC P2P -> blind WebSocket relay
-        |
- Web / Android / TUI / editor clients
+DSH Kernel (@deepseek-ai/dsh)    Claude Code    Codex CLI    OpenCode (ACP)
+           │                          │             │              │
+           └──────────────┬───────────┴─────────────┴──────────────┘
+                          │  AgentHostBackend / MultiAgentHostRouter
+                          │  (+ scoped read-only workspace.git.status/diff)
+                          │
+                   Noise IK E2EE + Idempotency + Replay Window
+                          │
+           LAN WebSocket -> WebRTC P2P -> Self-Hosted Blind Relay
+                          │
+              Android / Desktop / CLI Remote Clients
 ```
 
-The first Remote baseline is tracked in [docs/remote-host-client.md](docs/remote-host-client.md) and issue #67. It is currently **[LABS] / [UNVERIFIED]**: no transport, Noise, relay, or Android production claim is implied by this architecture decision.
+Two Host launch modes share the same encrypted protocol and trust store (`DSH_REMOTE_CONFIG_DIR`, strictly outside `DSH_HOME`):
+1. **Hybrid Cordis Mode** (with `DEEPSEEK_API_KEY`): `@dsh-community/remote-adapter/cordis-plugin` attaches inside official `@deepseek-ai/dsh --profile headless --patch ...` using verified seams (`ctx.agents`, `session/event`, `Agent.followup`, `userQuestions`, official approval seam), optionally routing additional local CLIs (`claude`, `codex`, `opencode`).
+2. **Standalone Multi-Agent Mode** (no `DEEPSEEK_API_KEY` required): `MultiAgentRemoteHost` (`@dsh-community/remote-adapter/standalone-cli`) drives `claude`, `codex`, and/or `opencode` over isolated child-process stdio (`node:child_process`) with host-secret environment scrubbing and scoped read-only Git review.
 
-The adapter may use only verified/public seams such as `ctx.agents`, `session/event`, `Agent.followup`, `userQuestions`, and the official approval seam. It must not use stdout as a protocol, private DSH internals, a second Session store, a generic remote shell, or a second tool-execution path.
+The first Remote baseline is tracked in [docs/remote-host-client.md](docs/remote-host-client.md) and issue #67; Android remains **[LABS] / [UNVERIFIED]** on physical `arm64-v8a` hardware until explicit R6 hardware gate signoff.
 
 
 ## What official currently signals

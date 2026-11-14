@@ -27,4 +27,6 @@ contextBridge.exposeInMainWorld('dshCommunity', {
     ipcRenderer.invoke(DESKTOP_IPC.remoteConfirmPairing, payload),
   remoteRevokeDevice: (deviceId: string) =>
     ipcRenderer.invoke(DESKTOP_IPC.remoteRevokeDevice, deviceId),
+  remoteGitInspect: (payload: { sessionId: string; path?: string; staged?: boolean }) =>
+    ipcRenderer.invoke(DESKTOP_IPC.remoteGitInspect, payload),
 })

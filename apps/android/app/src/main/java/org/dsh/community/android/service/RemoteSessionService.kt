@@ -24,6 +24,7 @@ import org.dsh.community.android.crypto.TrustedHostRecord
 import org.dsh.community.android.protocol.AttachResumeResult
 import org.dsh.community.android.protocol.CommandExecuteResult
 import org.dsh.community.android.protocol.DisplayTextSanitizer
+import org.dsh.community.android.protocol.EngineDescriptor
 import org.dsh.community.android.protocol.JsonCodec
 import org.dsh.community.android.protocol.JsonNumber
 import org.dsh.community.android.protocol.JsonObject
@@ -38,6 +39,8 @@ import org.dsh.community.android.protocol.RemoteSkillSummary
 import org.dsh.community.android.protocol.SessionHistoryResult
 import org.dsh.community.android.protocol.SessionRef
 import org.dsh.community.android.protocol.SessionSearchResult
+import org.dsh.community.android.protocol.WorkspaceGitDiffResult
+import org.dsh.community.android.protocol.WorkspaceGitStatusResult
 import org.dsh.community.android.transport.AndroidWebRtcPeerEngine
 import org.dsh.community.android.transport.DiscoveredLanHost
 import org.dsh.community.android.transport.FailoverRemoteSession
@@ -112,9 +115,11 @@ class RemoteSessionService : Service() {
             message: String,
         )
         fun onSessionsUpdated(sessions: List<SessionRef>)
+        fun onEnginesListed(engines: List<EngineDescriptor>) {}
         fun onSessionCreated(session: SessionRef) {}
         fun onSessionRenamed(session: SessionRef) {}
         fun onSessionForked(session: SessionRef) {}
+        fun onWorkspaceGitDiffLoaded(sessionId: String, status: WorkspaceGitStatusResult, diff: WorkspaceGitDiffResult) {}
         fun onSessionHistoryLoaded(history: SessionHistoryResult) {}
         fun onSessionSearchResults(results: SessionSearchResult) {}
         fun onCommandsListed(sessionId: String?, commands: List<RemoteCommandDescriptor>) {}
@@ -529,6 +534,12 @@ class RemoteSessionService : Service() {
         ioExecutor.execute {
             val session = activeSession ?: return@execute
             try {
+                try {
+                    val engines = session.listEngines()
+                    uiObservers.forEach { it.onEnginesListed(engines) }
+                } catch (_: Throwable) {
+                    // Older single-engine DSH hosts may not implement engine.list yet.
+                }
                 val list = session.listSessions()
                 lastSessions = list
                 uiObservers.forEach { it.onSessionsUpdated(list) }
@@ -538,7 +549,20 @@ class RemoteSessionService : Service() {
         }
     }
 
-    fun createSessionAsync(title: String? = null, autoAttach: Boolean = true) {
+    fun listEnginesAsync() {
+        ioExecutor.execute {
+            val session = activeSession ?: return@execute
+            try {
+                val engines = session.listEngines()
+                uiObservers.forEach { it.onEnginesListed(engines) }
+            } catch (t: Throwable) {
+                val reason = sanitizeErr(t)
+                uiObservers.forEach { it.onActionFailed("engine.list", reason) }
+            }
+        }
+    }
+
+    fun createSessionAsync(title: String? = null, autoAttach: Boolean = true, engine: String? = null) {
         ioExecutor.execute {
             val session = activeSession ?: run {
                 uiObservers.forEach { it.onActionFailed("session.create", "Not connected to Host") }
@@ -546,7 +570,7 @@ class RemoteSessionService : Service() {
             }
             val opKey = session.newOperationKey("session-create")
             try {
-                val created = session.createSession(title = title, idempotencyKey = opKey)
+                val created = session.createSession(title = title, engine = engine, idempotencyKey = opKey)
                 val refreshed = try {
                     session.listSessions()
                 } catch (_: Throwable) {
@@ -957,6 +981,28 @@ class RemoteSessionService : Service() {
             } catch (t: Throwable) {
                 val reason = sanitizeErr(t)
                 uiObservers.forEach { it.onActionFailed("skill.list", reason) }
+            }
+        }
+    }
+
+    fun fetchWorkspaceGitDiffAsync(
+        sessionId: String,
+        path: String? = null,
+        staged: Boolean = false,
+    ) {
+        ioExecutor.execute {
+            val session = activeSession ?: run {
+                uiObservers.forEach { it.onActionFailed("workspace.git.diff", "Not connected to Host") }
+                return@execute
+            }
+            try {
+                val status = session.getWorkspaceGitStatus(sessionId)
+                val diff = session.getWorkspaceGitDiff(sessionId, path = path, staged = staged)
+                uiObservers.forEach { it.onWorkspaceGitDiffLoaded(sessionId, status, diff) }
+                uiObservers.forEach { it.onActionSucceeded("workspace.git.diff", sessionId) }
+            } catch (t: Throwable) {
+                val reason = sanitizeErr(t)
+                uiObservers.forEach { it.onActionFailed("workspace.git.diff", reason) }
             }
         }
     }

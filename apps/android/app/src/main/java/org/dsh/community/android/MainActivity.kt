@@ -36,6 +36,7 @@ import org.dsh.community.android.crypto.DeviceIdentity
 import org.dsh.community.android.crypto.TrustedHostRecord
 import org.dsh.community.android.protocol.CommandExecuteResult
 import org.dsh.community.android.protocol.DisplayTextSanitizer
+import org.dsh.community.android.protocol.EngineDescriptor
 import org.dsh.community.android.protocol.JsonArray
 import org.dsh.community.android.protocol.JsonObject
 import org.dsh.community.android.protocol.JsonString
@@ -49,6 +50,8 @@ import org.dsh.community.android.protocol.RemoteSkillSummary
 import org.dsh.community.android.protocol.SessionHistoryResult
 import org.dsh.community.android.protocol.SessionRef
 import org.dsh.community.android.protocol.SessionSearchResult
+import org.dsh.community.android.protocol.WorkspaceGitDiffResult
+import org.dsh.community.android.protocol.WorkspaceGitStatusResult
 import org.dsh.community.android.qr.QrScanActivity
 import org.dsh.community.android.service.BackgroundLifecycleStats
 import org.dsh.community.android.service.DiscoverySelectOutcome
@@ -148,6 +151,7 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
     private var attachedSessionId: String? = null
     private var lastEventSessionId: String? = null
     private var lastSessions: List<SessionRef> = emptyList()
+    private var lastEngines: List<EngineDescriptor> = emptyList()
     private var lastModelCatalog: ModelCatalogResult? = null
     private var onSessionsRefreshedInDialog: (() -> Unit)? = null
     private var currentPhase: RemoteConnectionPhase = RemoteConnectionPhase.DISCONNECTED
@@ -393,7 +397,7 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
 
         findViewById<Button>(R.id.btn_new_session).setOnClickListener {
             stickyStatusError = null
-            service?.createSessionAsync(title = null, autoAttach = true)
+            createSessionWithOptionalEnginePicker(title = null)
         }
 
         btnModelPicker.setOnClickListener {
@@ -620,6 +624,62 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
             }
             renderSessionChips(sessions)
             onSessionsRefreshedInDialog?.invoke()
+        }
+    }
+
+    override fun onEnginesListed(engines: List<EngineDescriptor>) {
+        runOnUiThread {
+            lastEngines = engines
+        }
+    }
+
+    override fun onWorkspaceGitDiffLoaded(
+        sessionId: String,
+        status: WorkspaceGitStatusResult,
+        diff: WorkspaceGitDiffResult,
+    ) {
+        runOnUiThread {
+            if (isFinishing || isDestroyed) return@runOnUiThread
+            val header = buildString {
+                append("Branch: ${status.branch} (↑${status.ahead} ↓${status.behind})\n")
+                append("Repo: ${status.repoRoot}\n")
+                if (status.files.isEmpty()) {
+                    append("Changed files: clean working tree\n")
+                } else {
+                    append("Changed files (${status.files.size}):\n")
+                    for (file in status.files.take(25)) {
+                        val badge = if (file.untracked) "?" else "${file.indexStatus}${file.workTreeStatus}".trim().ifBlank { "M" }
+                        append("  [$badge] ${file.path}\n")
+                    }
+                    if (status.files.size > 25) {
+                        append("  ... and ${status.files.size - 25} more files\n")
+                    }
+                }
+                if (diff.truncated) {
+                    append("\n[Diff truncated to wire budget]\n")
+                }
+            }
+            val diffBody = diff.diff.ifBlank { "(No unified text diff in current scope.)" }
+            val pad = dpToPx(14)
+            val view = ScrollView(this).apply {
+                val tv = TextView(this@MainActivity).apply {
+                    setTextIsSelectable(true)
+                    typeface = android.graphics.Typeface.MONOSPACE
+                    textSize = 11f
+                    setPadding(pad, dpToPx(10), pad, dpToPx(10))
+                    setTextColor(ContextCompat.getColor(this@MainActivity, R.color.dsh_text_primary))
+                    text = "$header\n$diffBody"
+                }
+                addView(tv)
+            }
+            AlertDialog.Builder(this)
+                .setTitle("Git Diff · ${DisplayTextSanitizer.sanitizeSingleLine(sessionId).take(24)}")
+                .setView(view)
+                .setNeutralButton("Copy Diff") { _, _ ->
+                    copyTextToClipboard("Git Diff", diffBody, "Copied diff")
+                }
+                .setNegativeButton("Close", null)
+                .show()
         }
     }
 
@@ -1426,9 +1486,10 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
             }
             for (s in filtered) {
                 val cleanTitle = DisplayTextSanitizer.sanitizeSingleLine(s.title).ifBlank { "(Untitled)" }
+                val engPrefix = s.engine?.let { "[${it.take(10)}] " } ?: ""
                 val isSelected = s.id == selectedId
                 val rowBtn = Button(this).apply {
-                    text = (if (isSelected) "● " else "") + "$cleanTitle\n${s.id}"
+                    text = (if (isSelected) "● " else "") + "$engPrefix$cleanTitle\n${s.id}"
                     textSize = 12f
                     isAllCaps = false
                     gravity = android.view.Gravity.START or android.view.Gravity.CENTER_VERTICAL
@@ -1475,7 +1536,7 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
             .setView(root)
             .setPositiveButton("New Session") { _, _ ->
                 stickyStatusError = null
-                service?.createSessionAsync(title = null, autoAttach = true)
+                createSessionWithOptionalEnginePicker(title = null)
             }
             .setNegativeButton("Close", null)
         if (activeForButton != null) {
@@ -1491,10 +1552,31 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
         dlg.show()
     }
 
+    private fun createSessionWithOptionalEnginePicker(title: String?) {
+        val available = lastEngines.filter { it.available }
+        if (available.size <= 1) {
+            service?.createSessionAsync(title = title, autoAttach = true, engine = available.firstOrNull()?.id)
+            return
+        }
+        val labels = available.map { eng ->
+            val ver = eng.version?.let { " ($it)" } ?: ""
+            "${eng.displayName}$ver"
+        }.toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle("Create Session · Choose Agent Engine")
+            .setItems(labels) { _, which ->
+                val chosen = available[which]
+                service?.createSessionAsync(title = title, autoAttach = true, engine = chosen.id)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
     private fun showSessionActionDialog(session: SessionRef) {
         val title = DisplayTextSanitizer.sanitizeSingleLine(session.title).ifBlank { session.id }
         val actions = arrayOf(
             "Switch to Session",
+            "Review Git Diff (Read-Only)",
             "Rename Session",
             "Fork Session",
             "Load Older History",
@@ -1505,13 +1587,14 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
             .setItems(actions) { _, which ->
                 when (which) {
                     0 -> selectAndAttachSession(session.id)
-                    1 -> showRenameSessionDialog(session)
-                    2 -> service?.forkSessionAsync(session.id, autoAttach = true)
-                    3 -> {
+                    1 -> service?.fetchWorkspaceGitDiffAsync(session.id)
+                    2 -> showRenameSessionDialog(session)
+                    3 -> service?.forkSessionAsync(session.id, autoAttach = true)
+                    4 -> {
                         val before = timelineStore.oldestLoadedSeq(session.id)
                         service?.loadHistoryAsync(session.id, beforeSeq = before)
                     }
-                    4 -> copyTextToClipboard("Session ID", session.id, "Copied session ID")
+                    5 -> copyTextToClipboard("Session ID", session.id, "Copied session ID")
                 }
             }
             .setNegativeButton("Cancel", null)
@@ -1727,7 +1810,8 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
             emptyHintResId = R.string.session_picker_hint,
             chips = sessions.map { session ->
                 val cleanTitle = DisplayTextSanitizer.sanitizeSingleLine(session.title).take(22)
-                val label = cleanTitle.takeIf { it.isNotBlank() } ?: session.id.take(14)
+                val baseLabel = cleanTitle.takeIf { it.isNotBlank() } ?: session.id.take(14)
+                val label = session.engine?.let { "[${it.take(8)}] $baseLabel" } ?: baseLabel
                 val selected = session.id == selectedId
                 ChipSpec(
                     label = label,
