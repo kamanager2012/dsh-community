@@ -66,8 +66,7 @@ object ChatMarkdownFormatter {
         parseRenderBlocks(markdown)
             .filterIsInstance<MarkdownRenderBlock.CodeFence>()
             .mapNotNull { fence ->
-                val code = fence.code.trimEnd()
-                if (code.isBlank()) null else fence.language to code
+                if (fence.code.isBlank()) null else fence.language to fence.code
             }
 
     fun isHorizontalRule(line: String): Boolean {

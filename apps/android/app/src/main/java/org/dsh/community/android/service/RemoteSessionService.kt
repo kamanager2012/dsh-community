@@ -33,6 +33,7 @@ import org.dsh.community.android.protocol.JsonValue
 import org.dsh.community.android.protocol.ModelCatalogResult
 import org.dsh.community.android.protocol.OfficialSessionEvent
 import org.dsh.community.android.protocol.PromptImageAttachment
+import org.dsh.community.android.protocol.QuestionSpec
 import org.dsh.community.android.protocol.RemoteCommandDescriptor
 import org.dsh.community.android.protocol.RemoteFrameCodec
 import org.dsh.community.android.protocol.RemoteSkillSummary
@@ -91,6 +92,203 @@ object BackoffPolicy {
         val clamped = attempt.coerceIn(0, 10)
         val raw = baseMs shl clamped
         return minOf(raw, maxMs)
+    }
+}
+
+class ReplayBatchContext {
+    internal val addedApprovals = LinkedHashMap<String, String>()
+    internal val addedQuestions = LinkedHashMap<String, String>()
+}
+
+/**
+ * Tracks unreplayed snapshot pending interaction baselines separately from live post-snapshot
+ * resolutions so truncated initial `session.attach` replays never let historical resolutions erase
+ * unrelated unresolved interactions that fell outside the replay window.
+ */
+class PendingInteractionCountTracker(
+    private val queue: PendingInteractionQueue = PendingInteractionQueue(),
+) {
+    private val lock = Any()
+    private val unreplayedApprovalsBySession = HashMap<String, Int>()
+    private val unreplayedQuestionsBySession = HashMap<String, Int>()
+
+    fun clearBaselines() {
+        synchronized(lock) {
+            unreplayedApprovalsBySession.clear()
+            unreplayedQuestionsBySession.clear()
+        }
+    }
+
+    fun clearSessionBaseline(sessionId: String): Boolean = synchronized(lock) {
+        val removedA = unreplayedApprovalsBySession.remove(sessionId) ?: 0
+        val removedQ = unreplayedQuestionsBySession.remove(sessionId) ?: 0
+        removedA > 0 || removedQ > 0
+    }
+
+    fun applySessionSnapshot(sessions: List<SessionRef>) {
+        synchronized(lock) {
+            val approvals = queue.listApprovals()
+            val questions = queue.listQuestions()
+            unreplayedApprovalsBySession.clear()
+            unreplayedQuestionsBySession.clear()
+            for (ref in sessions) {
+                val liveA = approvals.count { it.sessionId == ref.id }
+                val liveQ = questions.count { it.sessionId == ref.id }
+                unreplayedApprovalsBySession[ref.id] = (ref.pendingApprovals - liveA).coerceAtLeast(0)
+                unreplayedQuestionsBySession[ref.id] = (ref.pendingQuestions - liveQ).coerceAtLeast(0)
+            }
+        }
+    }
+
+    fun effectiveCounts(sessionId: String): Pair<Int, Int> = synchronized(lock) {
+        val liveA = queue.listApprovals().count { it.sessionId == sessionId }
+        val liveQ = queue.listQuestions().count { it.sessionId == sessionId }
+        val effA = (unreplayedApprovalsBySession[sessionId] ?: 0) + liveA
+        val effQ = (unreplayedQuestionsBySession[sessionId] ?: 0) + liveQ
+        effA to effQ
+    }
+
+    fun beginReplayBatch(): ReplayBatchContext = ReplayBatchContext()
+
+    fun enqueueApproval(
+        callId: String,
+        summary: String,
+        sessionId: String?,
+        fromReplay: Boolean = false,
+        replayBatch: ReplayBatchContext? = null,
+    ): Boolean {
+        val added = queue.enqueueApproval(callId, summary, sessionId)
+        if (added && fromReplay && !sessionId.isNullOrBlank()) {
+            if (replayBatch != null) {
+                replayBatch.addedApprovals[callId] = sessionId
+            } else {
+                consumeUnreplayedApproval(sessionId, 1)
+            }
+        }
+        return added
+    }
+
+    fun enqueueQuestion(
+        questionId: String,
+        prompt: String,
+        sessionId: String?,
+        specs: List<QuestionSpec> = emptyList(),
+        fromReplay: Boolean = false,
+        replayBatch: ReplayBatchContext? = null,
+    ): Boolean {
+        val added = queue.enqueueQuestion(questionId, prompt, sessionId, specs)
+        if (added && fromReplay && !sessionId.isNullOrBlank()) {
+            if (replayBatch != null) {
+                replayBatch.addedQuestions[questionId] = sessionId
+            } else {
+                consumeUnreplayedQuestion(sessionId, 1)
+            }
+        }
+        return added
+    }
+
+    fun resolveApproval(
+        sessionId: String,
+        callId: String?,
+        fromReplay: Boolean = false,
+        replayBatch: ReplayBatchContext? = null,
+    ): String {
+        if (callId != null) {
+            val removed = queue.removeApproval(callId)
+            replayBatch?.addedApprovals?.remove(callId)
+            if (removed != null) {
+                return removed.sessionId ?: sessionId
+            }
+            if (!fromReplay) {
+                consumeUnreplayedApproval(sessionId, 1)
+            }
+            return sessionId
+        }
+        for (item in queue.listApprovals()) {
+            if (item.sessionId == null || item.sessionId == sessionId) {
+                queue.removeApproval(item.callId)
+                replayBatch?.addedApprovals?.remove(item.callId)
+            }
+        }
+        if (!fromReplay) {
+            synchronized(lock) {
+                unreplayedApprovalsBySession.remove(sessionId)
+            }
+        }
+        return sessionId
+    }
+
+    fun resolveQuestion(
+        sessionId: String,
+        questionId: String?,
+        fromReplay: Boolean = false,
+        replayBatch: ReplayBatchContext? = null,
+    ): String {
+        if (questionId != null) {
+            val removed = queue.removeQuestion(questionId)
+            replayBatch?.addedQuestions?.remove(questionId)
+            if (removed != null) {
+                return removed.sessionId ?: sessionId
+            }
+            if (!fromReplay) {
+                consumeUnreplayedQuestion(sessionId, 1)
+            }
+            return sessionId
+        }
+        for (item in queue.listQuestions()) {
+            if (item.sessionId == null || item.sessionId == sessionId) {
+                queue.removeQuestion(item.questionId)
+                replayBatch?.addedQuestions?.remove(item.questionId)
+            }
+        }
+        if (!fromReplay) {
+            synchronized(lock) {
+                unreplayedQuestionsBySession.remove(sessionId)
+            }
+        }
+        return sessionId
+    }
+
+    fun finishReplayBatch(sessionId: String, replayBatch: ReplayBatchContext): Boolean {
+        val stillOpenApprovals = replayBatch.addedApprovals.values.count { it == sessionId }
+        val stillOpenQuestions = replayBatch.addedQuestions.values.count { it == sessionId }
+        if (stillOpenApprovals <= 0 && stillOpenQuestions <= 0) return false
+        synchronized(lock) {
+            var changed = false
+            if (stillOpenApprovals > 0) {
+                val cur = unreplayedApprovalsBySession[sessionId] ?: 0
+                if (cur > 0) {
+                    unreplayedApprovalsBySession[sessionId] = (cur - stillOpenApprovals).coerceAtLeast(0)
+                    changed = true
+                }
+            }
+            if (stillOpenQuestions > 0) {
+                val cur = unreplayedQuestionsBySession[sessionId] ?: 0
+                if (cur > 0) {
+                    unreplayedQuestionsBySession[sessionId] = (cur - stillOpenQuestions).coerceAtLeast(0)
+                    changed = true
+                }
+            }
+            return changed
+        }
+    }
+
+    private fun consumeUnreplayedApproval(sessionId: String, amount: Int) {
+        synchronized(lock) {
+            val cur = unreplayedApprovalsBySession[sessionId] ?: 0
+            if (cur > 0) {
+                unreplayedApprovalsBySession[sessionId] = (cur - amount).coerceAtLeast(0)
+            }
+        }
+    }
+
+    private fun consumeUnreplayedQuestion(sessionId: String, amount: Int) {
+        synchronized(lock) {
+            val cur = unreplayedQuestionsBySession[sessionId] ?: 0
+            if (cur > 0) {
+                unreplayedQuestionsBySession[sessionId] = (cur - amount).coerceAtLeast(0)
+            }
+        }
     }
 }
 
@@ -234,6 +432,7 @@ class RemoteSessionService : Service() {
     private val networkObserverRegistered = AtomicBoolean(false)
     private val autoReconnectEligible = AtomicBoolean(false)
     private val pendingInteractions = PendingInteractionQueue()
+    private val pendingTracker = PendingInteractionCountTracker(pendingInteractions)
     private val pendingAckSeqs = ConcurrentHashMap<String, Long>()
     private val ackScheduled = ConcurrentHashMap<String, AtomicBoolean>()
     private val highestEpochByHost = ConcurrentHashMap<String, Int>()
@@ -272,8 +471,6 @@ class RemoteSessionService : Service() {
     @Volatile
     private var lastModelCatalog: ModelCatalogResult? = null
     private val agentStatusBySession = ConcurrentHashMap<String, String>()
-    private val unreplayedApprovalsBySession = ConcurrentHashMap<String, Int>()
-    private val unreplayedQuestionsBySession = ConcurrentHashMap<String, Int>()
 
     @Volatile
     private var lastProfile: RemoteEndpointProfile? = null
@@ -444,8 +641,7 @@ class RemoteSessionService : Service() {
                 pendingInteractions.clearAll()
                 synchronized(sessionsLock) {
                     lastSessions = emptyList()
-                    unreplayedApprovalsBySession.clear()
-                    unreplayedQuestionsBySession.clear()
+                    pendingTracker.clearBaselines()
                 }
                 attachedSessionId = null
                 lastModelCatalog = null
@@ -547,8 +743,7 @@ class RemoteSessionService : Service() {
                 lastProfile = null
                 synchronized(sessionsLock) {
                     lastSessions = emptyList()
-                    unreplayedApprovalsBySession.clear()
-                    unreplayedQuestionsBySession.clear()
+                    pendingTracker.clearBaselines()
                 }
                 attachedSessionId = null
                 lastModelCatalog = null
@@ -678,9 +873,14 @@ class RemoteSessionService : Service() {
         try {
             when (val result = session.attachSession(sessionId)) {
                 is AttachResumeResult.Events -> {
+                    val replayBatch = pendingTracker.beginReplayBatch()
                     for (evt in result.events) {
                         enqueueReplayEvent(sessionId, evt)
-                        dispatchEventToObservers(sessionId, evt, fromReplay = true)
+                        dispatchEventToObservers(sessionId, evt, fromReplay = true, replayBatch = replayBatch)
+                    }
+                    if (pendingTracker.finishReplayBatch(sessionId, replayBatch)) {
+                        syncCachedSessionPendingCounts(sessionId)
+                        refreshPendingUi(approvalsChanged = true, questionsChanged = true)
                     }
                     result.events.lastOrNull()?.let { lastEvt ->
                         enqueueStreamAck(session, sessionId, lastEvt.seq)
@@ -1148,8 +1348,7 @@ class RemoteSessionService : Service() {
         activeSession = null
         synchronized(sessionsLock) {
             lastSessions = emptyList()
-            unreplayedApprovalsBySession.clear()
-            unreplayedQuestionsBySession.clear()
+            pendingTracker.clearBaselines()
         }
         attachedSessionId = null
         lastModelCatalog = null
@@ -1182,8 +1381,7 @@ class RemoteSessionService : Service() {
         if (hostChanged) {
             synchronized(sessionsLock) {
                 lastSessions = emptyList()
-                unreplayedApprovalsBySession.clear()
-                unreplayedQuestionsBySession.clear()
+                pendingTracker.clearBaselines()
             }
             attachedSessionId = null
             lastModelCatalog = null
@@ -1408,55 +1606,24 @@ class RemoteSessionService : Service() {
 
     private fun storeHostSessionsSnapshot(sessions: List<SessionRef>) {
         synchronized(sessionsLock) {
-            val approvals = pendingInteractions.listApprovals()
-            val questions = pendingInteractions.listQuestions()
-            unreplayedApprovalsBySession.clear()
-            unreplayedQuestionsBySession.clear()
+            pendingTracker.applySessionSnapshot(sessions)
             lastSessions = sessions
             for (ref in sessions) {
                 val st = ref.status?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }
                 if (st != null) {
                     agentStatusBySession[ref.id] = st
                 }
-                val liveA = approvals.count { it.sessionId == ref.id }
-                val liveQ = questions.count { it.sessionId == ref.id }
-                unreplayedApprovalsBySession[ref.id] = (ref.pendingApprovals - liveA).coerceAtLeast(0)
-                unreplayedQuestionsBySession[ref.id] = (ref.pendingQuestions - liveQ).coerceAtLeast(0)
             }
         }
     }
 
-    private fun clearSessionPendingBaseline(sessionId: String): Boolean = synchronized(sessionsLock) {
-        val removedA = unreplayedApprovalsBySession.remove(sessionId) ?: 0
-        val removedQ = unreplayedQuestionsBySession.remove(sessionId) ?: 0
-        removedA > 0 || removedQ > 0
-    }
+    private fun clearSessionPendingBaseline(sessionId: String): Boolean =
+        pendingTracker.clearSessionBaseline(sessionId)
 
     private fun syncCachedSessionPendingCounts(sessionId: String) {
+        val (effA, effQ) = pendingTracker.effectiveCounts(sessionId)
         synchronized(sessionsLock) {
-            val liveA = pendingInteractions.listApprovals().count { it.sessionId == sessionId }
-            val liveQ = pendingInteractions.listQuestions().count { it.sessionId == sessionId }
-            val effA = (unreplayedApprovalsBySession[sessionId] ?: 0) + liveA
-            val effQ = (unreplayedQuestionsBySession[sessionId] ?: 0) + liveQ
             lastSessions = syncPendingCountsInSessionList(lastSessions, sessionId, effA, effQ)
-        }
-    }
-
-    private fun consumeUnreplayedApproval(sessionId: String, amount: Int = 1) {
-        synchronized(sessionsLock) {
-            val cur = unreplayedApprovalsBySession[sessionId] ?: 0
-            if (cur > 0) {
-                unreplayedApprovalsBySession[sessionId] = (cur - amount).coerceAtLeast(0)
-            }
-        }
-    }
-
-    private fun consumeUnreplayedQuestion(sessionId: String, amount: Int = 1) {
-        synchronized(sessionsLock) {
-            val cur = unreplayedQuestionsBySession[sessionId] ?: 0
-            if (cur > 0) {
-                unreplayedQuestionsBySession[sessionId] = (cur - amount).coerceAtLeast(0)
-            }
         }
     }
 
@@ -1486,6 +1653,7 @@ class RemoteSessionService : Service() {
         sessionId: String,
         event: OfficialSessionEvent,
         fromReplay: Boolean = false,
+        replayBatch: ReplayBatchContext? = null,
     ) {
         uiObservers.forEach { it.onEventReceived(sessionId, event) }
         val dataObj = event.data as? JsonObject ?: return
@@ -1525,23 +1693,13 @@ class RemoteSessionService : Service() {
         }
         if (event.type == "approval.resolved") {
             val resolvedCallId = dataObj.str("callId")
-            var removedSessionId: String? = null
-            if (resolvedCallId != null) {
-                val removed = pendingInteractions.removeApproval(resolvedCallId)
-                if (removed != null) {
-                    removedSessionId = removed.sessionId
-                } else {
-                    consumeUnreplayedApproval(sessionId, 1)
-                }
-            } else {
-                for (item in pendingInteractions.listApprovals()) {
-                    if (item.sessionId == null || item.sessionId == sessionId) {
-                        pendingInteractions.removeApproval(item.callId)
-                    }
-                }
-                unreplayedApprovalsBySession.remove(sessionId)
-            }
-            syncCachedSessionPendingCounts(removedSessionId ?: sessionId)
+            val removedSessionId = pendingTracker.resolveApproval(
+                sessionId = sessionId,
+                callId = resolvedCallId,
+                fromReplay = fromReplay,
+                replayBatch = replayBatch,
+            )
+            syncCachedSessionPendingCounts(removedSessionId)
             refreshPendingUi(approvalsChanged = true)
             val nextApproval = pendingInteractions.peekApproval()
             if (nextApproval == null) {
@@ -1553,23 +1711,13 @@ class RemoteSessionService : Service() {
         }
         if (event.type == "question.resolved") {
             val resolvedQuestionId = dataObj.str("questionId")
-            var removedSessionId: String? = null
-            if (resolvedQuestionId != null) {
-                val removed = pendingInteractions.removeQuestion(resolvedQuestionId)
-                if (removed != null) {
-                    removedSessionId = removed.sessionId
-                } else {
-                    consumeUnreplayedQuestion(sessionId, 1)
-                }
-            } else {
-                for (item in pendingInteractions.listQuestions()) {
-                    if (item.sessionId == null || item.sessionId == sessionId) {
-                        pendingInteractions.removeQuestion(item.questionId)
-                    }
-                }
-                unreplayedQuestionsBySession.remove(sessionId)
-            }
-            syncCachedSessionPendingCounts(removedSessionId ?: sessionId)
+            val removedSessionId = pendingTracker.resolveQuestion(
+                sessionId = sessionId,
+                questionId = resolvedQuestionId,
+                fromReplay = fromReplay,
+                replayBatch = replayBatch,
+            )
+            syncCachedSessionPendingCounts(removedSessionId)
             refreshPendingUi(questionsChanged = true)
             return
         }
@@ -1579,10 +1727,13 @@ class RemoteSessionService : Service() {
             val reason = dataObj.str("reason")
             val rawSummary = if (!reason.isNullOrBlank()) "$toolLabel — $reason" else toolLabel
             val summary = DisplayTextSanitizer.sanitizeSingleLine(rawSummary)
-            val added = pendingInteractions.enqueueApproval(callId, summary, sessionId)
-            if (added && fromReplay) {
-                consumeUnreplayedApproval(sessionId, 1)
-            }
+            val added = pendingTracker.enqueueApproval(
+                callId = callId,
+                summary = summary,
+                sessionId = sessionId,
+                fromReplay = fromReplay,
+                replayBatch = replayBatch,
+            )
             syncCachedSessionPendingCounts(sessionId)
             val approvals = pendingInteractions.listApprovals()
             uiObservers.forEach { it.onPendingApprovalsChanged(approvals) }
@@ -1603,10 +1754,14 @@ class RemoteSessionService : Service() {
                 ?: firstQuestion?.str("header")
                 ?: event.type
             val prompt = DisplayTextSanitizer.sanitizeSingleLine(rawPrompt)
-            val added = pendingInteractions.enqueueQuestion(questionId, prompt, sessionId, specs)
-            if (added && fromReplay) {
-                consumeUnreplayedQuestion(sessionId, 1)
-            }
+            val added = pendingTracker.enqueueQuestion(
+                questionId = questionId,
+                prompt = prompt,
+                sessionId = sessionId,
+                specs = specs,
+                fromReplay = fromReplay,
+                replayBatch = replayBatch,
+            )
             syncCachedSessionPendingCounts(sessionId)
             val questions = pendingInteractions.listQuestions()
             uiObservers.forEach { it.onPendingQuestionsChanged(questions) }

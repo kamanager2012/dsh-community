@@ -13,6 +13,8 @@ import org.dsh.community.android.protocol.RemoteFrameCodec
 import org.dsh.community.android.protocol.RemoteProtocol
 import org.dsh.community.android.protocol.SessionRef
 import org.dsh.community.android.qr.QrImageDecoder
+import org.dsh.community.android.service.PendingInteractionCountTracker
+import org.dsh.community.android.service.PendingInteractionQueue
 import org.dsh.community.android.service.RemoteSessionService
 import org.dsh.community.android.ui.AssistantTurnItem
 import org.dsh.community.android.ui.ChatMarkdownFormatter
@@ -953,5 +955,61 @@ class ChatAndQrUnitTest {
         )
         assertEquals(1, attentionAfterResolve.attentionCount)
         assertEquals(listOf("s-1"), attentionAfterResolve.groups.flatMap { it.entries }.map { it.session.id })
+    }
+
+    @Test
+    fun extractAllCodeBlocksPreservesSignificantTrailingWhitespace() {
+        val md = "```sh\necho hi \\ \n```\n\n```kotlin\n   \n  \n```"
+        val extracted = ChatMarkdownFormatter.extractAllCodeBlocks(md)
+        assertEquals(1, extracted.size)
+        assertEquals("bash", extracted[0].first)
+        assertEquals("echo hi \\ ", extracted[0].second)
+        assertEquals("echo hi \\ ", ChatMarkdownFormatter.extractFirstCodeBlock(md))
+    }
+
+    @Test
+    fun truncatedReplayResolutionsPreserveUnreplayedPendingCounts() {
+        val queue = PendingInteractionQueue()
+        val tracker = PendingInteractionCountTracker(queue)
+        // session.list reports approval B + question Q2 still pending whose requests fell outside replay.
+        tracker.applySessionSnapshot(
+            listOf(
+                SessionRef(
+                    id = "s-1",
+                    title = "Session 1",
+                    pendingApprovals = 1,
+                    pendingQuestions = 1,
+                ),
+            ),
+        )
+
+        val batch = tracker.beginReplayBatch()
+        // Historical resolution A (request fell outside truncated replay) + historical pair C -> resolved
+        tracker.resolveApproval("s-1", "apr-A", fromReplay = true, replayBatch = batch)
+        tracker.resolveQuestion("s-1", "qst-A", fromReplay = true, replayBatch = batch)
+        tracker.enqueueApproval("apr-C", "Approve C", "s-1", fromReplay = true, replayBatch = batch)
+        tracker.resolveApproval("s-1", "apr-C", fromReplay = true, replayBatch = batch)
+        tracker.enqueueQuestion("qst-C", "Question C", "s-1", fromReplay = true, replayBatch = batch)
+        tracker.resolveQuestion("s-1", "qst-C", fromReplay = true, replayBatch = batch)
+        tracker.finishReplayBatch("s-1", batch)
+
+        // Still-pending outside-window approval B and question Q2 remain intact.
+        assertEquals(1 to 1, tracker.effectiveCounts("s-1"))
+
+        // Replaying an already-counted open request D avoids double-counting.
+        val tracker2 = PendingInteractionCountTracker(PendingInteractionQueue())
+        tracker2.applySessionSnapshot(listOf(SessionRef(id = "s-1", title = "Session 2", pendingApprovals = 2, pendingQuestions = 2)))
+        val batch2 = tracker2.beginReplayBatch()
+        tracker2.resolveApproval("s-1", "apr-old", fromReplay = true, replayBatch = batch2)
+        tracker2.enqueueApproval("apr-D", "Approve D", "s-1", fromReplay = true, replayBatch = batch2)
+        tracker2.resolveQuestion("s-1", "qst-old", fromReplay = true, replayBatch = batch2)
+        tracker2.enqueueQuestion("qst-D", "Question D", "s-1", fromReplay = true, replayBatch = batch2)
+        assertTrue(tracker2.finishReplayBatch("s-1", batch2))
+        assertEquals(2 to 2, tracker2.effectiveCounts("s-1"))
+
+        // Live resolution after snapshot clears outside-window baseline as expected.
+        tracker2.resolveApproval("s-1", "apr-outside", fromReplay = false)
+        tracker2.resolveQuestion("s-1", "qst-outside", fromReplay = false)
+        assertEquals(1 to 1, tracker2.effectiveCounts("s-1"))
     }
 }
