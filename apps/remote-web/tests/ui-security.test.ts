@@ -1083,16 +1083,18 @@ describe('remote-web pairing security, safe Markdown/Diff DOM, and CSP hygiene',
     expect(mainSrc).toContain('buildQuestionSubmissionAnswers(qList, draftMap, customDraftMap)')
 
     // 9. Inline markdown rendering remains strictly linear on 60,000 unmatched brackets/stars/backticks
+    //    and repeated unterminated `[x](` link destinations
     const fakeDoc = createMinimalDoc()
     const tStart = performance.now()
     renderMarkdown(fakeDoc, '['.repeat(60_000))
     renderMarkdown(fakeDoc, 'a '.repeat(15_000) + '[ '.repeat(30_000))
+    renderMarkdown(fakeDoc, '[x]('.repeat(15_000))
     renderMarkdown(fakeDoc, '*'.repeat(60_000))
     renderMarkdown(fakeDoc, '`'.repeat(60_000))
     expect(performance.now() - tStart).toBeLessThan(1_000)
     const renderedSample = renderMarkdown(
       fakeDoc,
-      'See **bold**, ~~old~~, *em*, `code`, [ok](https://example.com), and [bad](javascript:alert(1)).',
+      'See **bold**, ~~old~~, *em*, `code`, [a](unterminated [b](https://example.com), [c](bad[d ](https://sub.example.com), and [bad](javascript:alert(1)).',
     )
     const tags: string[] = []
     const hrefs: string[] = []
@@ -1101,7 +1103,7 @@ describe('remote-web pairing security, safe Markdown/Diff DOM, and CSP hygiene',
     expect(tags).toContain('DEL')
     expect(tags).toContain('EM')
     expect(tags).toContain('CODE')
-    expect(hrefs).toEqual(['https://example.com'])
+    expect(hrefs).toEqual(['https://example.com', 'https://sub.example.com'])
 
     // 10. Deeply nested blockquotes stay bounded in stack depth without RangeError
     const deepQuoteStart = performance.now()

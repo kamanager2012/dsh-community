@@ -239,7 +239,8 @@ function appendInlineMarkdown(doc: Document, parent: HTMLElement, text: string, 
   let doubleStarExhausted = false
   let strikeExhausted = false
   let singleStarFailUntil = -1
-  let linkFailUntil = -1
+  let bracketFailUntil = -1
+  let destFailUntil = -1
 
   const flushPlain = (end: number): void => {
     if (end > cursor) {
@@ -324,7 +325,7 @@ function appendInlineMarkdown(doc: Document, parent: HTMLElement, text: string, 
       continue
     }
 
-    if (ch === '[' && i > linkFailUntil) {
+    if (ch === '[' && i > bracketFailUntil) {
       let closeBracket = i + 1
       while (closeBracket < text.length && text[closeBracket] !== ']' && text[closeBracket] !== '\n') {
         closeBracket += 1
@@ -335,34 +336,45 @@ function appendInlineMarkdown(doc: Document, parent: HTMLElement, text: string, 
         closeBracket > i + 1 &&
         text[closeBracket + 1] === '('
       ) {
-        let closeParen = closeBracket + 2
-        while (
-          closeParen < text.length &&
-          text[closeParen] !== ')' &&
-          !/\s/u.test(text[closeParen]!)
-        ) {
-          closeParen += 1
-        }
-        if (closeParen < text.length && text[closeParen] === ')' && closeParen > closeBracket + 2) {
-          flushPlain(i)
-          const label = text.slice(i + 1, closeBracket)
-          const href = text.slice(closeBracket + 2, closeParen)
-          if (isSafeLinkUrl(href)) {
-            const a = doc.createElement('a')
-            a.href = href
-            a.target = '_blank'
-            a.rel = 'noopener noreferrer'
-            a.textContent = label
-            parent.appendChild(a)
-          } else {
-            parent.appendChild(doc.createTextNode(`${label} (${href})`))
+        const destStart = closeBracket + 2
+        if (destStart > destFailUntil) {
+          let closeParen = destStart
+          while (
+            closeParen < text.length &&
+            text[closeParen] !== ')' &&
+            !/\s/u.test(text[closeParen]!)
+          ) {
+            closeParen += 1
           }
-          i = closeParen + 1
-          cursor = i
-          continue
+          if (closeParen < text.length && text[closeParen] === ')' && closeParen > destStart) {
+            flushPlain(i)
+            const label = text.slice(i + 1, closeBracket)
+            const href = text.slice(destStart, closeParen)
+            if (isSafeLinkUrl(href)) {
+              const a = doc.createElement('a')
+              a.href = href
+              a.target = '_blank'
+              a.rel = 'noopener noreferrer'
+              a.textContent = label
+              parent.appendChild(a)
+            } else {
+              parent.appendChild(doc.createTextNode(`${label} (${href})`))
+            }
+            i = closeParen + 1
+            cursor = i
+            continue
+          }
+          if (
+            (closeParen === text.length || /\s/u.test(text[closeParen]!)) &&
+            closeParen > destFailUntil
+          ) {
+            destFailUntil = closeParen
+          }
         }
       }
-      linkFailUntil = closeBracket
+      if (closeBracket > bracketFailUntil) {
+        bracketFailUntil = closeBracket
+      }
       i += 1
       continue
     }
