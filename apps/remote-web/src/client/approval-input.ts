@@ -60,12 +60,45 @@ export function formatApprovalArgsDetailed(rawArgs: unknown): FormattedApprovalA
   }
 }
 
+export function isWindowFramed(win?: Window | undefined): boolean {
+  const target = win ?? (typeof window !== 'undefined' ? window : undefined)
+  if (!target) return false
+  try {
+    if (target.self !== target.top) return true
+  } catch {
+    return true
+  }
+  try {
+    if (target.frameElement !== null) return true
+  } catch {
+    return true
+  }
+  try {
+    const ancestors = (target.location as Location & { readonly ancestorOrigins?: { readonly length: number } }).ancestorOrigins
+    if (ancestors && ancestors.length > 0) return true
+  } catch {
+    return true
+  }
+  return false
+}
+
 export function assessApprovalInputSecurity(
   approval: PendingApprovalSnapshot,
   matchedToolArgsText?: string,
+  framed = isWindowFramed(),
 ): ApprovalInputSecurityAssessment {
   const effectiveRawArgs = approval.args !== undefined ? approval.args : matchedToolArgsText
   const formatted = formatApprovalArgsDetailed(effectiveRawArgs)
+  if (framed) {
+    return {
+      formatted,
+      truncated: false,
+      unavailable: false,
+      allowBlocked: true,
+      blockReason:
+        'Embedded frame execution blocked by anti-clickjacking policy. Open in a top-level tab.',
+    }
+  }
   const truncated =
     approval.argsTruncated === true ||
     formatted.truncated ||

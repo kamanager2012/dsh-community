@@ -455,17 +455,42 @@ export class SessionTimelineState implements SessionStoreState {
     this.historyHydrated = true
   }
 
+  mergeReplayEvents(events: readonly OfficialSessionEvent[]): void {
+    let added = false
+    for (const ev of events) {
+      if (typeof ev.seq === 'number' && ev.seq > 0) {
+        const key = `${ev.seq}:${ev.type}`
+        if (!this.rawEvents.has(key) && !(this.compactedBaseline && this.seenKeys.has(key))) {
+          this.rememberRawEvent(key, ev)
+          added = true
+        }
+      } else {
+        this.applyEvent(ev, { markUnread: false })
+      }
+    }
+    if (added) {
+      this.rebuildChronological({ preserveRuntimeState: this.hasAuthoritativeSnapshot })
+    }
+  }
+
   applyResetRecoveryHistory(
     events: readonly OfficialSessionEvent[],
     hasMore: boolean,
     oldestSeq: number | null,
+    options?: { readonly preserveAfterSeq?: number | undefined },
   ): void {
     if (events.length > 0) {
       let minRecSeq = Number.POSITIVE_INFINITY
+      let maxRecSeq = Number.NEGATIVE_INFINITY
       for (const ev of events) {
         if (ev.seq < minRecSeq) minRecSeq = ev.seq
+        if (ev.seq > maxRecSeq) maxRecSeq = ev.seq
       }
       for (const [k, ev] of this.rawEvents.entries()) {
+        // Never discard live events received ahead of the returned recovery window.
+        if (ev.seq > maxRecSeq) {
+          continue
+        }
         if (!hasMore || ev.seq >= minRecSeq || (isChunkEventType(ev.type) && ev.seq >= minRecSeq)) {
           this.rawEvents.delete(k)
         }
@@ -478,13 +503,23 @@ export class SessionTimelineState implements SessionStoreState {
         preserveRuntimeState: this.hasAuthoritativeSnapshot,
       })
     } else {
+      const cutoff = options?.preserveAfterSeq ?? 0
+      let hasNewer = false
       for (const [k, ev] of this.rawEvents.entries()) {
+        if (ev.seq > cutoff) {
+          hasNewer = true
+          continue
+        }
         if (!hasMore && isChunkEventType(ev.type)) {
           this.rawEvents.delete(k)
         }
       }
-      finalizeOpenAssistants(this.items)
-      this.unmergedStreamedAssistantId = undefined
+      if (hasNewer) {
+        this.rebuildChronological({ preserveRuntimeState: this.hasAuthoritativeSnapshot })
+      } else {
+        finalizeOpenAssistants(this.items)
+        this.unmergedStreamedAssistantId = undefined
+      }
     }
 
     this.hasMoreHistory = hasMore

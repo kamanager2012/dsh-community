@@ -1,5 +1,5 @@
 import { base64Encode, hexToBytes, randomUuid, sha256Hex } from './crypto/bytes.ts'
-import { assessApprovalInputSecurity, formatApprovalArgsDetailed } from './client/approval-input.ts'
+import { assessApprovalInputSecurity, formatApprovalArgsDetailed, isWindowFramed } from './client/approval-input.ts'
 import { RemoteWebKeyStore, type ClientDeviceIdentity } from './client/keystore.ts'
 import {
   consumePairFragmentFromLocation,
@@ -340,7 +340,22 @@ async function attachActiveSession(sessionId: string): Promise<void> {
         if (typeof ev.seq === 'number' && ev.seq > 0) {
           minAttachedSeq = minAttachedSeq === undefined ? ev.seq : Math.min(minAttachedSeq, ev.seq)
         }
-        tl.applyEvent(ev, { markUnread: false })
+      }
+      const existingHighestSeq = tl.highestSeq
+      const hadExistingEvents = tl.items.length > 0 || existingHighestSeq > 0
+      const needsChronologicalMerge =
+        attached.events.length > 0 &&
+        hadExistingEvents &&
+        (!wasHydrated ||
+          (minAttachedSeq !== undefined &&
+            existingHighestSeq > 0 &&
+            minAttachedSeq <= existingHighestSeq))
+      if (needsChronologicalMerge) {
+        tl.mergeReplayEvents(attached.events)
+      } else {
+        for (const ev of attached.events) {
+          tl.applyEvent(ev, { markUnread: false })
+        }
       }
       const snapOldest = attached.liveState?.oldestSeq ?? null
       const needsResetHistory =
@@ -352,9 +367,12 @@ async function attachActiveSession(sessionId: string): Promise<void> {
         (attached.liveState?.hasMoreHistory === true ||
           (snapOldest !== null && minAttachedSeq > snapOldest))
       if (needsResetHistory) {
+        const recoveryWatermarkSeq = tl.highestSeq
         const hist = await client.getSessionHistory(sessionId, { limit: 80 })
         if (captureResetGen !== hostResetGeneration) return
-        tl.applyResetRecoveryHistory(hist.events, hist.hasMore, hist.oldestSeq)
+        tl.applyResetRecoveryHistory(hist.events, hist.hasMore, hist.oldestSeq, {
+          preserveAfterSeq: recoveryWatermarkSeq,
+        })
       } else if (needsInitialBackfill && minAttachedSeq !== undefined) {
         if (tl.oldestSeq === null || minAttachedSeq < tl.oldestSeq) {
           tl.oldestSeq = minAttachedSeq
@@ -370,9 +388,12 @@ async function attachActiveSession(sessionId: string): Promise<void> {
       }
     } else {
       // Window reset: fetch latest durable history and merge/reconcile chronologically
+      const recoveryWatermarkSeq = tl.highestSeq
       const hist = await client.getSessionHistory(sessionId, { limit: 80 })
       if (captureResetGen !== hostResetGeneration) return
-      tl.applyResetRecoveryHistory(hist.events, hist.hasMore, hist.oldestSeq)
+      tl.applyResetRecoveryHistory(hist.events, hist.hasMore, hist.oldestSeq, {
+        preserveAfterSeq: recoveryWatermarkSeq,
+      })
     }
 
     const [modelsRes, cmdsRes] = await Promise.allSettled([
@@ -2191,6 +2212,20 @@ function renderApp(): void {
 }
 
 async function bootstrap(): Promise<void> {
+  if (isWindowFramed()) {
+    const appRoot = document.getElementById('app')
+    if (appRoot) {
+      appRoot.replaceChildren(
+        el(
+          'div',
+          'notice-card',
+          'Security block: DSH Remote cannot run embedded inside an iframe (anti-clickjacking policy). Open directly in a top-level tab.',
+        ),
+      )
+    }
+    return
+  }
+
   // Synchronously read and scrub #pair= URL fragment BEFORE network I/O or renders
   const hashPairPayload =
     typeof window !== 'undefined' ? consumePairFragmentFromLocation(window) : undefined

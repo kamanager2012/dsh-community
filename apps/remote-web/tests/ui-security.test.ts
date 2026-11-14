@@ -3,7 +3,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { InMemoryHostIdentityStore, computeFingerprint } from '@dsh-community/remote-adapter'
-import { assessApprovalInputSecurity } from '../src/client/approval-input.ts'
+import { assessApprovalInputSecurity, isWindowFramed } from '../src/client/approval-input.ts'
 import { parsePairingInput, validateStunOnlyUrls } from '../src/client/pairing.ts'
 import { estimateRpcEnvelopeBytes } from '../src/client/remote-client.ts'
 import { SessionTimelineState } from '../src/client/timeline.ts'
@@ -790,6 +790,7 @@ describe('remote-web pairing security, safe Markdown/Diff DOM, and CSP hygiene',
     )
     expect(attachBlock).toContain('const wasHydrated = tl.historyHydrated')
     expect(attachBlock).toContain('const afterSeq = wasHydrated && tl.highestSeq > 0 ? tl.highestSeq : undefined')
+    expect(attachBlock).toContain('tl.mergeReplayEvents(attached.events)')
     expect(attachBlock).toContain('captureResetGen !== hostResetGeneration')
   })
 
@@ -852,5 +853,66 @@ describe('remote-web pairing security, safe Markdown/Diff DOM, and CSP hygiene',
     expect(cardBlock).toContain('assessApprovalInputSecurity')
     expect(cardBlock).toContain('if (security.allowBlocked)')
     expect(cardBlock).toContain('allowBtn.disabled = true')
+  })
+
+  it('merges pre-attach live events chronologically with initial replay, preserves concurrent live events above history recovery, and enforces anti-framing', () => {
+    // 1. Pre-attach chunk seq=3 followed by full replay 1..3 must reorder chronologically and merge chunk 2+3
+    const tlPreAttach = new SessionTimelineState('sess-preattach-order')
+    tlPreAttach.applyEvent({
+      seq: 3,
+      type: 'assistant/chunk',
+      data: { text: 'world', chunk: { type: 'text-delta', text: 'world' } },
+    })
+    tlPreAttach.mergeReplayEvents([
+      { seq: 1, type: 'user/message', data: { message: { role: 'user', content: 'Say hi' } } },
+      { seq: 2, type: 'assistant/chunk', data: { text: 'hello ', chunk: { type: 'text-delta', text: 'hello ' } } },
+      { seq: 3, type: 'assistant/chunk', data: { text: 'world', chunk: { type: 'text-delta', text: 'world' } } },
+    ])
+    expect(tlPreAttach.items.map((it) => it.kind)).toEqual(['user', 'assistant'])
+    expect((tlPreAttach.items[0] as Extract<(typeof tlPreAttach.items)[number], { kind: 'user' }>).text).toBe('Say hi')
+    expect(
+      (tlPreAttach.items[1] as Extract<(typeof tlPreAttach.items)[number], { kind: 'assistant' }>).markdownText,
+    ).toBe('hello world')
+    expect(tlPreAttach.oldestSeq).toBe(1)
+    expect(tlPreAttach.highestSeq).toBe(3)
+
+    // 2. Concurrent live event seq=4 arriving while history recovery returns [1..3] must NOT be deleted
+    const tlRecovery = new SessionTimelineState('sess-recovery-preserve')
+    tlRecovery.applyEvent({ seq: 2, type: 'assistant/chunk', data: { text: 'stale-2' } })
+    tlRecovery.applyEvent({ seq: 4, type: 'assistant/chunk', data: { text: 'Final live answer' } })
+    tlRecovery.applyResetRecoveryHistory(
+      [
+        { seq: 1, type: 'user/message', data: { message: { role: 'user', content: 'Question' } } },
+        { seq: 3, type: 'assistant/message', data: { message: { role: 'assistant', content: 'Prior turn' } } },
+      ],
+      false,
+      1,
+      { preserveAfterSeq: 2 },
+    )
+    expect(tlRecovery.highestSeq).toBe(4)
+    expect(tlRecovery.items.map((it) => it.kind)).toEqual(['user', 'assistant', 'assistant'])
+    expect(
+      (tlRecovery.items[2] as Extract<(typeof tlRecovery.items)[number], { kind: 'assistant' }>).markdownText,
+    ).toBe('Final live answer')
+
+    // 3. Empty recovery response must still preserve live events arriving after recovery watermark
+    const tlEmptyRecovery = new SessionTimelineState('sess-recovery-empty')
+    const watermark = tlEmptyRecovery.highestSeq
+    tlEmptyRecovery.applyEvent({ seq: 5, type: 'assistant/chunk', data: { text: 'Streamed during await' } })
+    tlEmptyRecovery.applyResetRecoveryHistory([], false, null, { preserveAfterSeq: watermark })
+    expect(tlEmptyRecovery.highestSeq).toBe(5)
+    expect(tlEmptyRecovery.items).toHaveLength(1)
+
+    // 4. Checked-in deployment headers + runtime frame guard enforce frame-ancestors 'none' & DENY
+    const headersFile = readFileSync(join(APP_ROOT, 'public/_headers'), 'utf8')
+    expect(headersFile).toContain("frame-ancestors 'none'")
+    expect(headersFile).toContain('X-Frame-Options: DENY')
+    expect(isWindowFramed({ self: {} as Window, top: {} as Window, frameElement: null, location: {} } as unknown as Window)).toBe(true)
+    const framedAssessment = assessApprovalInputSecurity(
+      { callId: 'appr-framed', toolName: 'Bash', args: { command: 'echo hi' } },
+      undefined,
+      true,
+    )
+    expect(framedAssessment.allowBlocked).toBe(true)
   })
 })
