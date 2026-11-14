@@ -316,6 +316,44 @@ export class BlindRelayServer {
     this.isRunning = true
   }
 
+  /**
+   * Handles a WebSocket upgrade delegated from a shared HTTP gateway (e.g. BlindGatewayServer).
+   * Enforces the same enabled/per-IP limits as the standalone listener before upgrading.
+   */
+  handleUpgradeRequest(req: IncomingMessage, socket: Socket, head: Buffer): void {
+    if (this.options.enabled !== true) {
+      socket.write('HTTP/1.1 503 Service Unavailable\r\n\r\n')
+      socket.destroy()
+      return
+    }
+    this.isRunning = true
+    if (!this.socketIps.has(socket)) {
+      const ip = normalizeRemoteIp(socket.remoteAddress)
+      const ipCount = this.connectionsPerIp.get(ip) ?? 0
+      if (ipCount >= this.maxConnectionsPerIp) {
+        this.rejectedPerIpCap += 1
+        socket.write('HTTP/1.1 429 Too Many Requests\r\n\r\n')
+        socket.destroy()
+        return
+      }
+      this.socketIps.set(socket, ip)
+      this.connectionsPerIp.set(ip, ipCount + 1)
+      socket.once('close', () => {
+        const trackedIp = this.socketIps.get(socket)
+        if (trackedIp !== undefined) {
+          this.socketIps.delete(socket)
+          const remaining = (this.connectionsPerIp.get(trackedIp) ?? 1) - 1
+          if (remaining <= 0) {
+            this.connectionsPerIp.delete(trackedIp)
+          } else {
+            this.connectionsPerIp.set(trackedIp, remaining)
+          }
+        }
+      })
+    }
+    this.handleUpgrade(req, socket, head)
+  }
+
   private handleUpgrade(req: IncomingMessage, socket: Socket, head: Buffer): void {
     const preTimer = this.preUpgradeSockets.get(socket)
     if (preTimer) {

@@ -1,0 +1,261 @@
+import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, describe, expect, it } from 'vitest'
+// @ts-ignore - noise-handshake/dh.js
+import dh from 'noise-handshake/dh.js'
+import {
+  BlindGatewayServer,
+  encodePairingWebUrl,
+  FailoverRemoteClient,
+  InMemoryDeviceTrustStore,
+  InMemoryHostIdentityStore,
+  PairingCoordinator,
+  PairingTokenRegistry,
+  parsePairingInput,
+  RemoteHostRuntime,
+  type OfficialRemoteSeams,
+} from '../src/index.js'
+import { createPairingBootstrapDescriptor } from '../src/carrier/pairing-qr.js'
+import { SignalingClient } from '../src/carrier/signaling-client.js'
+
+interface DhModule {
+  generateKeyPair(): { publicKey: Buffer; secretKey: Buffer }
+}
+
+const dhHelper: DhModule =
+  (dh as unknown as { default?: DhModule }).default ?? (dh as unknown as DhModule)
+
+function makeKeyPair() {
+  const raw = dhHelper.generateKeyPair()
+  return {
+    publicKey: new Uint8Array(raw.publicKey),
+    secretKey: new Uint8Array(raw.secretKey),
+  }
+}
+
+const cleanups: Array<() => Promise<void>> = []
+
+afterEach(async () => {
+  while (cleanups.length > 0) {
+    const fn = cleanups.pop()!
+    await Promise.resolve(fn()).catch(() => {})
+  }
+})
+
+describe('BlindGatewayServer', () => {
+  it('fails closed unless enabled is explicitly true and explicit non-wildcard host is set', async () => {
+    const disabled = new BlindGatewayServer({ host: '127.0.0.1', port: 0 })
+    await expect(disabled.start()).rejects.toThrow(/disabled by default/i)
+
+    const wildcardDenied = new BlindGatewayServer({ enabled: true, host: '0.0.0.0', port: 0 })
+    await expect(wildcardDenied.start()).rejects.toThrow(/wildcard binding is disabled/i)
+
+    const badHost = new BlindGatewayServer({ enabled: true, host: 'localhost', port: 0 })
+    await expect(badHost.start()).rejects.toThrow(/explicit IP address/i)
+  })
+
+  it('multiplexes /healthz, WS /relay, WS /signal, and rejects unconfigured /app/ on a single port', async () => {
+    const gateway = new BlindGatewayServer({
+      enabled: true,
+      host: '127.0.0.1',
+      port: 0,
+      hostAuthSecret: 'gw-secret-123',
+    })
+    await gateway.start()
+    cleanups.push(() => gateway.stop())
+
+    const relayUrl = gateway.getRelayEndpointUrl()!
+    const signalingUrl = gateway.getSignalingEndpointUrl()!
+    const httpBase = gateway.getHttpBaseUrl()!
+
+    expect(relayUrl.endsWith('/relay')).toBe(true)
+    expect(signalingUrl.endsWith('/signal')).toBe(true)
+    expect(gateway.getWebAppUrl()).toBeUndefined()
+
+    const healthRes = await fetch(`${httpBase}/healthz`)
+    expect(healthRes.status).toBe(200)
+    const health = (await healthRes.json()) as {
+      ok: boolean
+      mode: string
+      endpoints: { relay: string; signaling: string; app: null | string }
+    }
+    expect(health.ok).toBe(true)
+    expect(health.mode).toBe('gateway')
+    expect(health.endpoints).toEqual({ relay: '/relay', signaling: '/signal', app: null })
+    expect(JSON.stringify(health)).not.toContain('gw-secret-123')
+
+    const appMissing = await fetch(`${httpBase}/app/`)
+    expect(appMissing.status).toBe(404)
+
+    // 1. Test /relay end-to-end encrypted traffic
+    const hostStore = new InMemoryHostIdentityStore()
+    const trustStore = new InMemoryDeviceTrustStore()
+    const tokenRegistry = new PairingTokenRegistry()
+    const coordinator = new PairingCoordinator(hostStore, trustStore, tokenRegistry)
+    const seams: OfficialRemoteSeams = {
+      listSessions: async () => [{ id: 's-gw', title: 'Gateway Session' }],
+      assertSession: async () => {},
+      followup: async () => ({}),
+      respondApproval: async () => ({}),
+      respondQuestion: async () => ({}),
+    }
+    const runtime = new RemoteHostRuntime({
+      seams,
+      trustStore,
+      hostIdentityStore: hostStore,
+      pairingCoordinator: coordinator,
+      carrier: { enabled: false },
+      relay: {
+        enabled: true,
+        relayUrl,
+        hostAuthSecret: 'gw-secret-123',
+        roomId: 'gw-room-0001',
+      },
+    })
+    await runtime.start()
+    cleanups.push(() => runtime.stop())
+
+    const host = await hostStore.loadOrCreate()
+    const tokenRecord = tokenRegistry.createToken({
+      trustDomainId: host.identity.trustDomainId,
+      hostGeneration: host.identity.generation,
+      allowedCapabilities: ['observe'],
+      ttlMs: 60_000,
+    })
+
+    const clientKeys = makeKeyPair()
+    const client = new FailoverRemoteClient({
+      clientKeyPair: clientKeys,
+      hostPublicKey: host.identity.publicKey,
+      priorityOrder: ['relay'],
+      relay: {
+        relayUrl,
+        roomId: 'gw-room-0001',
+      },
+    })
+    await client.connect()
+    cleanups.push(async () => client.close())
+    const pairReq = (await client.request('pairing.request', {
+      token: tokenRecord.token,
+      displayName: 'Gateway Client',
+    })) as { candidateId: string }
+    await coordinator.confirmPairing({
+      candidateId: pairReq.candidateId,
+      grantedCapabilities: ['observe'],
+    })
+    client.close()
+    await client.connect()
+    const sessions = (await client.request('session.list')) as Array<{ id: string }>
+    expect(sessions[0]?.id).toBe('s-gw')
+
+    // 2. Test /signal WebRTC signaling rendezvous on the exact same port
+    const hostSignal = new SignalingClient(signalingUrl)
+    await hostSignal.registerHost({
+      roomId: 'gw-sig-room-1',
+      hostAuthSecret: 'gw-secret-123',
+    })
+    cleanups.push(async () => hostSignal.close())
+
+    const clientSignal = new SignalingClient(signalingUrl)
+    const seenOffer = new Promise<string>((resolve) => {
+      clientSignal.setHandlers({
+        onOffer: (msg) => resolve(msg.sdp.sdp),
+      })
+    })
+    const joined = await clientSignal.joinRoom({ roomId: 'gw-sig-room-1' })
+    cleanups.push(async () => clientSignal.close())
+
+    hostSignal.sendOffer(joined.peerId, { type: 'offer', sdp: 'v=0\r\n' })
+    expect(await seenOffer).toBe('v=0\r\n')
+
+    // 3. Unknown WS upgrade path is rejected cleanly
+    const unknownClosed = await new Promise<boolean>((resolve) => {
+      const ws = new WebSocket(`${httpBase.replace('http:', 'ws:')}/unknown`)
+      ws.onerror = () => resolve(true)
+      ws.onclose = () => resolve(true)
+      ws.onopen = () => {
+        ws.close()
+        resolve(false)
+      }
+    })
+    expect(unknownClosed).toBe(true)
+
+    const stats = gateway.getStats()
+    expect(stats.relay.opaqueFramesRelayed).toBeGreaterThan(0)
+    expect(stats.signaling.relayedMessages).toBeGreaterThanOrEqual(1)
+    expect(stats.unknownUpgradeRequests).toBe(1)
+  })
+
+  it('serves opt-in /app/ assets with strict CSP, path-traversal containment, and symlink rejection', async () => {
+    const tmp = await mkdtemp(join(tmpdir(), 'dsh-gw-webapp-'))
+    const outside = await mkdtemp(join(tmpdir(), 'dsh-gw-outside-'))
+    cleanups.push(() => rm(tmp, { recursive: true, force: true }))
+    cleanups.push(() => rm(outside, { recursive: true, force: true }))
+
+    await writeFile(join(outside, 'secret.html'), '<h1>secret</h1>', 'utf8')
+    await writeFile(join(tmp, 'index.html'), '<!doctype html><html><body>OK</body></html>', 'utf8')
+    await writeFile(join(tmp, 'app.js'), 'console.log("ok")\n', 'utf8')
+    await writeFile(join(tmp, 'app.js.map'), '{"version":3}', 'utf8')
+    await mkdir(join(tmp, 'sub'))
+    await writeFile(join(tmp, '.hidden.html'), 'hidden', 'utf8')
+    await symlink(join(outside, 'secret.html'), join(tmp, 'leak.html'))
+
+    const gateway = new BlindGatewayServer({
+      enabled: true,
+      host: '127.0.0.1',
+      port: 0,
+      webAppDir: tmp,
+    })
+    await gateway.start()
+    cleanups.push(() => gateway.stop())
+
+    const base = gateway.getHttpBaseUrl()!
+    expect(gateway.getWebAppUrl()).toBe(`${base}/app/`)
+
+    // Redirect /app -> /app/
+    const redir = await fetch(`${base}/app`, { redirect: 'manual' })
+    expect(redir.status).toBe(302)
+    expect(redir.headers.get('location')).toBe('/app/')
+
+    // Serve /app/ (index.html) with no-store & CSP
+    const indexRes = await fetch(`${base}/app/`)
+    expect(indexRes.status).toBe(200)
+    expect(indexRes.headers.get('x-content-type-options')).toBe('nosniff')
+    expect(indexRes.headers.get('cache-control')).toBe('no-store')
+    expect(indexRes.headers.get('content-security-policy')).toContain("default-src 'self'")
+    expect(await indexRes.text()).toContain('OK')
+
+    // Serve allowlisted .js with cache header
+    const jsRes = await fetch(`${base}/app/app.js`)
+    expect(jsRes.status).toBe(200)
+    expect(jsRes.headers.get('content-type')).toContain('application/javascript')
+    expect(jsRes.headers.get('cache-control')).toBe('public, max-age=300')
+
+    // Reject .map, dotfiles, path traversal, and symlinks
+    expect((await fetch(`${base}/app/app.js.map`)).status).toBe(404)
+    expect((await fetch(`${base}/app/.hidden.html`)).status).toBe(404)
+    expect((await fetch(`${base}/app/%2e%2e/outside/secret.html`)).status).toBe(404)
+    expect((await fetch(`${base}/app/leak.html`)).status).toBe(404)
+  })
+
+  it('encodes companion Web pairing URL using #pair fragment', () => {
+    const serverKeys = makeKeyPair()
+    const descriptor = createPairingBootstrapDescriptor({
+      protocolVersion: 1,
+      hostPublicKey: serverKeys.publicKey,
+      bootstrapToken: 'tok-12345678',
+      endpointUrl: 'ws://127.0.0.1:9000/ws',
+      relayUrl: 'wss://gateway.example.com/relay',
+      relayRoomId: 'room-12345678',
+      expiresAt: Date.now() + 60_000,
+    })
+
+    const webUrl = encodePairingWebUrl('https://gateway.example.com/app/#stale', descriptor)
+    expect(webUrl.startsWith('https://gateway.example.com/app/#pair=')).toBe(true)
+    const encodedPair = webUrl.split('#pair=')[1]!
+    const parsed = parsePairingInput(Buffer.from(encodedPair, 'base64url').toString('utf8'))
+    expect(parsed.hostFingerprint).toBe(descriptor.hostFingerprint)
+    expect(parsed.relayUrl).toBe('wss://gateway.example.com/relay')
+  })
+})

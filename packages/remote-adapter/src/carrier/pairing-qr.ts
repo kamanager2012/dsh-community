@@ -253,6 +253,28 @@ export function encodePairingDeepLink(descriptor: PairingBootstrapDescriptor): s
 }
 
 /**
+ * Encodes a PairingBootstrapDescriptor into a browser PWA pairing URL
+ * (`https://example.com/app/#pair=<base64url>`). Using a URL fragment ensures
+ * pairing material stays client-side and is never transmitted in HTTP requests.
+ */
+export function encodePairingWebUrl(webUrl: string, descriptor: PairingBootstrapDescriptor): string {
+  const trimmed = webUrl.trim()
+  let parsed: URL
+  try {
+    parsed = new URL(trimmed)
+  } catch {
+    throw new RemoteCryptoError('HANDSHAKE_FAILED', `invalid web pairing URL: ${webUrl}`)
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new RemoteCryptoError('HANDSHAKE_FAILED', 'web pairing URL must use http:// or https://')
+  }
+  assertNoSessionOrCredentialsInDescriptor(descriptor as unknown as Record<string, unknown>)
+  const encoded = Buffer.from(JSON.stringify(descriptor), 'utf8').toString('base64url')
+  parsed.hash = `pair=${encoded}`
+  return parsed.toString()
+}
+
+/**
  * Parses either raw QR descriptor JSON or a `dsh-remote://pair?...` deep-link URI.
  */
 export function parsePairingInput(raw: string): PairingBootstrapDescriptor {

@@ -274,6 +274,20 @@ export class SelfHostedSignalingServer {
     this.isRunning = true
   }
 
+  /**
+   * Handles a WebSocket upgrade delegated from a shared HTTP gateway (e.g. BlindGatewayServer).
+   * Fails closed unless `options.enabled === true`.
+   */
+  handleUpgradeRequest(req: IncomingMessage, socket: Socket, head: Buffer): void {
+    if (this.options.enabled !== true) {
+      socket.write('HTTP/1.1 503 Service Unavailable\r\n\r\n')
+      socket.destroy()
+      return
+    }
+    this.isRunning = true
+    this.handleUpgrade(req, socket, head)
+  }
+
   private handleUpgrade(req: IncomingMessage, socket: Socket, head: Buffer): void {
     const preTimer = this.preUpgradeSockets.get(socket)
     if (preTimer) {
