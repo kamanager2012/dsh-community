@@ -619,9 +619,11 @@ function remoteUiKey(snap: Awaited<ReturnType<DesktopRemoteController['snapshot'
     String(snap.activeConnections),
     String(snap.pendingApprovals ?? 0),
     String(snap.pendingQuestions ?? 0),
+    (snap.engines ?? []).map((e) => `${e.id}:${e.available ? '1' : '0'}`).join(','),
     (snap.liveSessions ?? [])
-      .map((s) => `${s.id}:${s.status ?? ''}:${String(s.pendingApprovals ?? 0)}:${String(s.pendingQuestions ?? 0)}`)
+      .map((s) => `${s.engine ?? ''}:${s.id}:${s.status ?? ''}:${String(s.pendingApprovals ?? 0)}:${String(s.pendingQuestions ?? 0)}`)
       .join(','),
+    snap.gitPreview ? `${snap.gitPreview.sessionId}:${snap.gitPreview.diffPath ?? ''}:${String(snap.gitPreview.files.length)}:${snap.gitPreview.error ?? ''}:${(snap.gitPreview.diffText ?? '').slice(0, 64)}` : '',
     snap.pairing?.deepLink ?? '',
     String(snap.pendingCandidates.length),
     snap.pendingCandidates.map((c) => `${c.candidateId}:${c.state}`).join(','),
@@ -678,9 +680,11 @@ async function captureRemoteFormDraft(): Promise<RemotePageModel['settings'] | u
       const relayEl = document.getElementById('remote-relay');
       const sigEl = document.getElementById('remote-signaling');
       const stunEl = document.getElementById('remote-stun');
+      const engEl = document.getElementById('remote-engines');
       if (!hs || !portEl) return null;
       const listenHost = hs.value === '__custom__' ? (hc ? hc.value : '') : (hs.value || '');
       const portNum = Number(portEl.value);
+      const enginesVal = engEl ? engEl.value.trim() : '';
       return {
         listenHost,
         port: Number.isFinite(portNum) ? portNum : 0,
@@ -688,6 +692,7 @@ async function captureRemoteFormDraft(): Promise<RemotePageModel['settings'] | u
         relayUrl: relayEl ? relayEl.value : '',
         signalingUrl: sigEl ? sigEl.value : '',
         stunUrls: stunEl ? stunEl.value : '',
+        ...(enginesVal ? { engines: enginesVal } : {}),
       };
     })()`, true)) as RemotePageModel['settings'] | null
     return raw ?? undefined
@@ -1066,6 +1071,11 @@ function bindIpc(): void {
     if (deviceId === undefined) return
     await ensureRemoteController().revokeDevice(deviceId)
     await finishRemoteAction({ preserveDraft: true })
+  })
+  ipcMain.handle(DESKTOP_IPC.remoteGitInspect, async (event, raw: unknown) => {
+    assertAuthorizedSender(event)
+    await ensureRemoteController().inspectSessionGit(raw)
+    await finishRemoteAction({ refreshLive: false, preserveDraft: true })
   })
 }
 

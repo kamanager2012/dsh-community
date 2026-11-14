@@ -554,4 +554,80 @@ class ChatAndQrUnitTest {
         assertEquals(listOf("shot.jpg"), failedItem.attachmentLabels)
         assertFalse(store.markOptimisticUserFailed("s-fail", optimisticId, "twice"))
     }
+
+    @Test
+    fun parsesMultiAgentEngineListAndGitReviewPayloads() {
+        assertEquals("engine.list", RemoteProtocol.METHOD_ENGINE_LIST)
+        assertEquals("workspace.git.status", RemoteProtocol.METHOD_WORKSPACE_GIT_STATUS)
+        assertEquals("workspace.git.diff", RemoteProtocol.METHOD_WORKSPACE_GIT_DIFF)
+
+        val engineSession = RemoteFrameCodec.parseSessionRef(
+            JsonObject.of(
+                "id" to JsonString("codex:sess-1"),
+                "title" to JsonString("Refactor Auth"),
+                "engine" to JsonString("codex"),
+            ),
+        )
+        assertEquals("codex", engineSession.engine)
+
+        val engines = RemoteFrameCodec.parseEngineList(
+            JsonObject.of(
+                "engines" to JsonArray(
+                    listOf(
+                        JsonObject.of(
+                            "id" to JsonString("codex"),
+                            "displayName" to JsonString("Codex CLI"),
+                            "available" to JsonBool(true),
+                            "version" to JsonString("0.169.0"),
+                        ),
+                        JsonObject.of(
+                            "id" to JsonString("claude"),
+                            "displayName" to JsonString("Claude Code"),
+                            "available" to JsonBool(false),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        assertEquals(2, engines.size)
+        assertEquals("Codex CLI", engines[0].displayName)
+        assertTrue(engines[0].available)
+        assertFalse(engines[1].available)
+
+        val gitStatus = RemoteFrameCodec.parseGitStatusResult(
+            JsonObject.of(
+                "repoRoot" to JsonString("/repo"),
+                "branch" to JsonString("feat/multi"),
+                "ahead" to JsonNumber(1),
+                "behind" to JsonNumber(0),
+                "clean" to JsonBool(false),
+                "files" to JsonArray(
+                    listOf(
+                        JsonObject.of(
+                            "path" to JsonString("src/app.ts"),
+                            "indexStatus" to JsonString("M"),
+                            "workTreeStatus" to JsonString(" "),
+                            "untracked" to JsonBool(false),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        assertEquals("feat/multi", gitStatus.branch)
+        assertEquals(1, gitStatus.files.size)
+        assertEquals("src/app.ts", gitStatus.files[0].path)
+
+        val gitDiff = RemoteFrameCodec.parseGitDiffResult(
+            JsonObject.of(
+                "repoRoot" to JsonString("/repo"),
+                "diff" to JsonString("+const multi = true"),
+                "truncated" to JsonBool(false),
+                "path" to JsonString("src/app.ts"),
+                "staged" to JsonBool(false),
+            ),
+        )
+        assertEquals("+const multi = true", gitDiff.diff)
+        assertEquals("src/app.ts", gitDiff.path)
+        assertFalse(gitDiff.truncated)
+    }
 }

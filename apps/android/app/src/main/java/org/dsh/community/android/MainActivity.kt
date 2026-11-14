@@ -8,13 +8,20 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
+import android.graphics.Color
+import android.graphics.Typeface
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
 import android.provider.Settings
 import android.text.Editable
+import android.text.Spannable
+import android.text.SpannableStringBuilder
 import android.text.TextWatcher
+import android.text.style.BackgroundColorSpan
+import android.text.style.ForegroundColorSpan
+import android.text.style.StyleSpan
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.widget.Button
@@ -35,7 +42,10 @@ import androidx.recyclerview.widget.RecyclerView
 import org.dsh.community.android.crypto.DeviceIdentity
 import org.dsh.community.android.crypto.TrustedHostRecord
 import org.dsh.community.android.protocol.CommandExecuteResult
+import org.dsh.community.android.protocol.DiffDisplayFormatter
+import org.dsh.community.android.protocol.DiffLineKind
 import org.dsh.community.android.protocol.DisplayTextSanitizer
+import org.dsh.community.android.protocol.EngineDescriptor
 import org.dsh.community.android.protocol.JsonArray
 import org.dsh.community.android.protocol.JsonObject
 import org.dsh.community.android.protocol.JsonString
@@ -49,6 +59,8 @@ import org.dsh.community.android.protocol.RemoteSkillSummary
 import org.dsh.community.android.protocol.SessionHistoryResult
 import org.dsh.community.android.protocol.SessionRef
 import org.dsh.community.android.protocol.SessionSearchResult
+import org.dsh.community.android.protocol.WorkspaceGitDiffResult
+import org.dsh.community.android.protocol.WorkspaceGitStatusResult
 import org.dsh.community.android.qr.QrScanActivity
 import org.dsh.community.android.service.BackgroundLifecycleStats
 import org.dsh.community.android.service.DiscoverySelectOutcome
@@ -119,7 +131,9 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
     private lateinit var btnStopTurn: Button
     private lateinit var btnApprove: Button
     private lateinit var btnReject: Button
+    private lateinit var btnApprovalDiff: Button
     private lateinit var btnAnswerQuestion: Button
+    private var activeDiffDialog: AlertDialog? = null
     private lateinit var btnAttachImage: Button
     private lateinit var btnClearAttachments: Button
     private lateinit var slashSuggestionsScroll: HorizontalScrollView
@@ -148,6 +162,7 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
     private var attachedSessionId: String? = null
     private var lastEventSessionId: String? = null
     private var lastSessions: List<SessionRef> = emptyList()
+    private var lastEngines: List<EngineDescriptor> = emptyList()
     private var lastModelCatalog: ModelCatalogResult? = null
     private var onSessionsRefreshedInDialog: (() -> Unit)? = null
     private var currentPhase: RemoteConnectionPhase = RemoteConnectionPhase.DISCONNECTED
@@ -277,6 +292,7 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
         btnStopTurn = findViewById(R.id.btn_stop_turn)
         btnApprove = findViewById(R.id.btn_approve)
         btnReject = findViewById(R.id.btn_reject)
+        btnApprovalDiff = findViewById(R.id.btn_approval_diff)
         btnAnswerQuestion = findViewById(R.id.btn_answer_question)
         btnAttachImage = findViewById(R.id.btn_attach_image)
         btnClearAttachments = findViewById(R.id.btn_clear_attachments)
@@ -393,7 +409,7 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
 
         findViewById<Button>(R.id.btn_new_session).setOnClickListener {
             stickyStatusError = null
-            service?.createSessionAsync(title = null, autoAttach = true)
+            createSessionWithOptionalEnginePicker(title = null)
         }
 
         btnModelPicker.setOnClickListener {
@@ -461,6 +477,18 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
         btnReject.setOnClickListener {
             val cid = pendingCallId ?: return@setOnClickListener
             service?.respondApprovalAsync(cid, approved = false)
+        }
+
+        btnApprovalDiff.setOnClickListener {
+            val targetSid = activeTimelineSessionId()
+                ?: attachedSessionId
+                ?: sessionIdInput.text?.toString()?.trim()?.ifEmpty { null }
+                ?: lastSessions.firstOrNull()?.id
+            if (targetSid.isNullOrBlank()) {
+                Toast.makeText(this, "Attach a session first to review Git diff", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            service?.fetchWorkspaceGitDiffAsync(targetSid)
         }
 
         btnAnswerQuestion.setOnClickListener {
@@ -620,6 +648,168 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
             }
             renderSessionChips(sessions)
             onSessionsRefreshedInDialog?.invoke()
+        }
+    }
+
+    override fun onEnginesListed(engines: List<EngineDescriptor>) {
+        runOnUiThread {
+            lastEngines = engines
+        }
+    }
+
+    private fun buildHighlightedDiffSpannable(diffBody: String): SpannableStringBuilder {
+        val builder = SpannableStringBuilder()
+        val parsed = DiffDisplayFormatter.parseLines(diffBody)
+        for ((index, entry) in parsed.withIndex()) {
+            val start = builder.length
+            builder.append(entry.text)
+            if (index < parsed.lastIndex) builder.append('\n')
+            val end = builder.length
+            when (entry.kind) {
+                DiffLineKind.FILE_HEADER -> {
+                    builder.setSpan(ForegroundColorSpan(Color.parseColor("#79C0FF")), start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    builder.setSpan(BackgroundColorSpan(Color.parseColor("#131C2B")), start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    builder.setSpan(StyleSpan(Typeface.BOLD), start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                }
+                DiffLineKind.HUNK -> {
+                    builder.setSpan(ForegroundColorSpan(Color.parseColor("#D2A8FF")), start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    builder.setSpan(BackgroundColorSpan(Color.parseColor("#1E1930")), start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                }
+                DiffLineKind.ADD -> {
+                    builder.setSpan(ForegroundColorSpan(Color.parseColor("#7EE787")), start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    builder.setSpan(BackgroundColorSpan(Color.parseColor("#14331C")), start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                }
+                DiffLineKind.DEL -> {
+                    builder.setSpan(ForegroundColorSpan(Color.parseColor("#FFA198")), start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    builder.setSpan(BackgroundColorSpan(Color.parseColor("#38171A")), start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                }
+                DiffLineKind.CONTEXT -> {
+                    builder.setSpan(ForegroundColorSpan(Color.parseColor("#B8C0CC")), start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                }
+            }
+        }
+        return builder
+    }
+
+    override fun onWorkspaceGitDiffLoaded(
+        sessionId: String,
+        status: WorkspaceGitStatusResult,
+        diff: WorkspaceGitDiffResult,
+    ) {
+        runOnUiThread {
+            if (isFinishing || isDestroyed) return@runOnUiThread
+            activeDiffDialog?.dismiss()
+
+            val diffBody = diff.diff.ifBlank { "(No unified text diff in current scope.)" }
+            val stats = DiffDisplayFormatter.summarize(diff.diff)
+            val summaryText = buildString {
+                append("${status.branch} (↑${status.ahead} ↓${status.behind}) · ${status.files.size} files")
+                if (diff.diff.isNotBlank()) {
+                    append(" · +${stats.additions} / -${stats.deletions}")
+                }
+                if (diff.path != null) append("\nFile: ${diff.path}")
+                if (diff.truncated) append(" · [truncated]")
+            }
+
+            val root = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dpToPx(12), dpToPx(10), dpToPx(12), dpToPx(6))
+            }
+
+            val summaryView = TextView(this).apply {
+                text = summaryText
+                textSize = 11f
+                typeface = Typeface.MONOSPACE
+                setTextColor(ContextCompat.getColor(this@MainActivity, R.color.dsh_text_secondary))
+                setPadding(0, 0, 0, dpToPx(8))
+            }
+            root.addView(summaryView)
+
+            val chipRow = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+            }
+            fun addFilterChip(label: String, active: Boolean, onTap: () -> Unit) {
+                val chip = Button(this).apply {
+                    text = label
+                    textSize = 11f
+                    isAllCaps = false
+                    minHeight = 0
+                    minimumHeight = 0
+                    minWidth = 0
+                    minimumWidth = 0
+                    setPadding(dpToPx(10), dpToPx(5), dpToPx(10), dpToPx(5))
+                    setBackgroundResource(if (active) R.drawable.bg_chip_accent else R.drawable.bg_chip_neutral)
+                    setTextColor(ContextCompat.getColor(this@MainActivity, R.color.dsh_text_primary))
+                    setOnClickListener { onTap() }
+                }
+                val lp = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                ).apply {
+                    marginEnd = dpToPx(6)
+                }
+                chipRow.addView(chip, lp)
+            }
+
+            addFilterChip("Unstaged", active = !diff.staged) {
+                if (diff.staged) service?.fetchWorkspaceGitDiffAsync(sessionId, path = diff.path, staged = false)
+            }
+            addFilterChip("Staged", active = diff.staged) {
+                if (!diff.staged) service?.fetchWorkspaceGitDiffAsync(sessionId, path = diff.path, staged = true)
+            }
+            addFilterChip("All Files", active = diff.path == null) {
+                if (diff.path != null) service?.fetchWorkspaceGitDiffAsync(sessionId, path = null, staged = diff.staged)
+            }
+            for (file in status.files.take(25)) {
+                val badge = if (file.untracked) "?" else "${file.indexStatus}${file.workTreeStatus}".trim().ifBlank { "M" }
+                val shortName = file.path.substringAfterLast('/')
+                addFilterChip("[$badge] $shortName", active = diff.path == file.path) {
+                    service?.fetchWorkspaceGitDiffAsync(sessionId, path = file.path, staged = diff.staged)
+                }
+            }
+
+            val chipScroll = HorizontalScrollView(this).apply {
+                isHorizontalScrollBarEnabled = false
+                setPadding(0, 0, 0, dpToPx(8))
+                addView(chipRow)
+            }
+            root.addView(chipScroll)
+
+            val hScroll = HorizontalScrollView(this).apply {
+                isFillViewport = true
+                setBackgroundResource(R.drawable.bg_code_surface)
+            }
+            val diffTv = TextView(this).apply {
+                setTextIsSelectable(true)
+                typeface = Typeface.MONOSPACE
+                textSize = 11f
+                setPadding(dpToPx(10), dpToPx(8), dpToPx(10), dpToPx(8))
+                setTextColor(ContextCompat.getColor(this@MainActivity, R.color.dsh_text_primary))
+                setHorizontallyScrolling(true)
+                text = if (diff.diff.isBlank()) diffBody else buildHighlightedDiffSpannable(diffBody)
+            }
+            hScroll.addView(diffTv)
+
+            val vScroll = ScrollView(this).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    dpToPx(320),
+                )
+                addView(hScroll)
+            }
+            root.addView(vScroll)
+
+            val scopeLabel = if (diff.staged) "Staged Diff" else "Git Diff"
+            val dlg = AlertDialog.Builder(this)
+                .setTitle("$scopeLabel · ${DisplayTextSanitizer.sanitizeSingleLine(sessionId).take(22)}")
+                .setView(root)
+                .setNeutralButton("Copy Diff") { _, _ ->
+                    copyTextToClipboard("Git Diff", diffBody, "Copied diff")
+                }
+                .setNegativeButton("Close", null)
+                .create()
+            activeDiffDialog = dlg
+            dlg.show()
         }
     }
 
@@ -1426,9 +1616,10 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
             }
             for (s in filtered) {
                 val cleanTitle = DisplayTextSanitizer.sanitizeSingleLine(s.title).ifBlank { "(Untitled)" }
+                val engPrefix = s.engine?.let { "[${it.take(10)}] " } ?: ""
                 val isSelected = s.id == selectedId
                 val rowBtn = Button(this).apply {
-                    text = (if (isSelected) "● " else "") + "$cleanTitle\n${s.id}"
+                    text = (if (isSelected) "● " else "") + "$engPrefix$cleanTitle\n${s.id}"
                     textSize = 12f
                     isAllCaps = false
                     gravity = android.view.Gravity.START or android.view.Gravity.CENTER_VERTICAL
@@ -1475,7 +1666,7 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
             .setView(root)
             .setPositiveButton("New Session") { _, _ ->
                 stickyStatusError = null
-                service?.createSessionAsync(title = null, autoAttach = true)
+                createSessionWithOptionalEnginePicker(title = null)
             }
             .setNegativeButton("Close", null)
         if (activeForButton != null) {
@@ -1491,10 +1682,31 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
         dlg.show()
     }
 
+    private fun createSessionWithOptionalEnginePicker(title: String?) {
+        val available = lastEngines.filter { it.available }
+        if (available.size <= 1) {
+            service?.createSessionAsync(title = title, autoAttach = true, engine = available.firstOrNull()?.id)
+            return
+        }
+        val labels = available.map { eng ->
+            val ver = eng.version?.let { " ($it)" } ?: ""
+            "${eng.displayName}$ver"
+        }.toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle("Create Session · Choose Agent Engine")
+            .setItems(labels) { _, which ->
+                val chosen = available[which]
+                service?.createSessionAsync(title = title, autoAttach = true, engine = chosen.id)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
     private fun showSessionActionDialog(session: SessionRef) {
         val title = DisplayTextSanitizer.sanitizeSingleLine(session.title).ifBlank { session.id }
         val actions = arrayOf(
             "Switch to Session",
+            "Review Git Diff (Read-Only)",
             "Rename Session",
             "Fork Session",
             "Load Older History",
@@ -1505,13 +1717,14 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
             .setItems(actions) { _, which ->
                 when (which) {
                     0 -> selectAndAttachSession(session.id)
-                    1 -> showRenameSessionDialog(session)
-                    2 -> service?.forkSessionAsync(session.id, autoAttach = true)
-                    3 -> {
+                    1 -> service?.fetchWorkspaceGitDiffAsync(session.id)
+                    2 -> showRenameSessionDialog(session)
+                    3 -> service?.forkSessionAsync(session.id, autoAttach = true)
+                    4 -> {
                         val before = timelineStore.oldestLoadedSeq(session.id)
                         service?.loadHistoryAsync(session.id, beforeSeq = before)
                     }
-                    4 -> copyTextToClipboard("Session ID", session.id, "Copied session ID")
+                    5 -> copyTextToClipboard("Session ID", session.id, "Copied session ID")
                 }
             }
             .setNegativeButton("Cancel", null)
@@ -1727,7 +1940,8 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
             emptyHintResId = R.string.session_picker_hint,
             chips = sessions.map { session ->
                 val cleanTitle = DisplayTextSanitizer.sanitizeSingleLine(session.title).take(22)
-                val label = cleanTitle.takeIf { it.isNotBlank() } ?: session.id.take(14)
+                val baseLabel = cleanTitle.takeIf { it.isNotBlank() } ?: session.id.take(14)
+                val label = session.engine?.let { "[${it.take(8)}] $baseLabel" } ?: baseLabel
                 val selected = session.id == selectedId
                 ChipSpec(
                     label = label,
@@ -1995,6 +2209,7 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
                 pendingCard.visibility = View.VISIBLE
                 btnApprove.visibility = View.VISIBLE
                 btnReject.visibility = View.VISIBLE
+                btnApprovalDiff.visibility = View.VISIBLE
                 etAnswerVisibility(visible = false)
                 questionOptionsScroll.visibility = View.GONE
             }
@@ -2014,6 +2229,7 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
                 pendingCard.visibility = View.VISIBLE
                 btnApprove.visibility = View.GONE
                 btnReject.visibility = View.GONE
+                btnApprovalDiff.visibility = View.GONE
                 etAnswerVisibility(visible = true)
                 renderQuestionOptionChips(headQuestion)
             }

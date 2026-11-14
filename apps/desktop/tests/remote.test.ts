@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import { EventEmitter } from 'node:events'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { PassThrough } from 'node:stream'
@@ -11,11 +11,14 @@ import { readLiveControlEndpoint, writeLiveControlEndpoint } from '@dsh-communit
 import { openPersistentRemoteStores } from '@dsh-community/remote-adapter/stores'
 import {
   DesktopRemoteController,
+  detectInstalledExternalEngines,
   parseConfirmPairingInput,
   parseDesktopRemoteSettings,
+  parseRemoteGitInspectInput,
   parseRevokeDeviceInput,
   resolveDesktopRemoteConfigDir,
   resolveDesktopRemotePluginPath,
+  resolveDesktopStandaloneHostPath,
   resolveEffectiveListenHost,
   validateRemoteStartInput,
   type DesktopRemoteContext,
@@ -136,6 +139,40 @@ async function startMockControlServer(): Promise<{
       }
       if (reqUrl === '/shutdown') {
         res.end(JSON.stringify({ ok: true }))
+        return
+      }
+      if (reqUrl === '/engines') {
+        res.end(
+          JSON.stringify({
+            engines: [
+              { id: 'codex', displayName: 'Codex CLI', available: true, version: '0.169.0' },
+              { id: 'claude', displayName: 'Claude Code', available: false },
+            ],
+          }),
+        )
+        return
+      }
+      if (reqUrl.startsWith('/git/status')) {
+        res.end(
+          JSON.stringify({
+            repoRoot: '/tmp/mock-repo',
+            branch: 'feat/test',
+            ahead: 1,
+            behind: 0,
+            clean: false,
+            files: [{ path: 'src/index.ts', indexStatus: ' ', workTreeStatus: 'M', untracked: false }],
+          }),
+        )
+        return
+      }
+      if (reqUrl.startsWith('/git/diff')) {
+        res.end(
+          JSON.stringify({
+            repoRoot: '/tmp/mock-repo',
+            diff: 'diff --git a/src/index.ts b/src/index.ts\n+export const ok = true\n',
+            truncated: false,
+          }),
+        )
         return
       }
       res.statusCode = 404
@@ -427,6 +464,105 @@ describe('desktop remote controller & validators', () => {
       expect(controller.isRunning()).toBe(false)
       expect(existsSync(join(configDir, '.control.json'))).toBe(false)
       expect(killed).toBe(false)
+    } finally {
+      await mock.close()
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('launches standalone multi-agent host without DEEPSEEK_API_KEY and inspects read-only Git diff', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'dsh-desktop-multi-agent-'))
+    const mock = await startMockControlServer()
+    try {
+      const binDir = join(dir, 'fake-bin')
+      mkdirSync(binDir, { recursive: true })
+      const fakeCodex = join(binDir, 'codex')
+      writeFileSync(fakeCodex, '#!/bin/sh\necho codex 0.169.0\n', 'utf8')
+      chmodSync(fakeCodex, 0o755)
+
+      const ctx = makeTestContext(dir, {
+        env: { PATH: binDir },
+      })
+      const standaloneEntry = join(dir, 'remote-bundle', 'standalone-cli.mjs')
+      writeFileSync(standaloneEntry, 'export async function runStandaloneMultiAgentHost() {}\n', 'utf8')
+      expect(detectInstalledExternalEngines(ctx.env)).toEqual(['codex'])
+      expect(resolveDesktopStandaloneHostPath(ctx)).toBe(standaloneEntry)
+
+      expect(validateRemoteStartInput({ engines: 'invalid-engine' }).ok).toBe(false)
+      expect(validateRemoteStartInput({ engines: 'Claude, Codex' })).toMatchObject({
+        ok: true,
+        settings: { engines: 'claude,codex' },
+      })
+      expect(parseDesktopRemoteSettings({ engines: 'codex' }).engines).toBe('codex')
+      expect(parseRemoteGitInspectInput({ clear: true })).toEqual({ action: 'clear' })
+      expect(parseRemoteGitInspectInput({ sessionId: 'bad id' })).toBeUndefined()
+      expect(parseRemoteGitInspectInput({ sessionId: 'codex:s1', path: 'src/index.ts' })).toEqual({
+        action: 'inspect',
+        sessionId: 'codex:s1',
+        path: 'src/index.ts',
+      })
+
+      let spawnedArgs: readonly string[] = []
+      let spawnedEnv: Record<string, string | undefined> = {}
+      const fakeChild = Object.assign(new EventEmitter(), {
+        pid: 65432,
+        exitCode: null as number | null,
+        killed: false,
+        stdout: new PassThrough(),
+        stderr: new PassThrough(),
+        kill: () => {
+          ;(fakeChild as unknown as { exitCode: number | null }).exitCode = 0
+          fakeChild.emit('exit', 0, null)
+          return true
+        },
+      })
+
+      const controller = new DesktopRemoteController({
+        getContext: () => ctx,
+        spawnFn: ((_exe: string, args: readonly string[], opts: { env?: NodeJS.ProcessEnv }) => {
+          spawnedArgs = args
+          spawnedEnv = { ...(opts.env ?? {}) }
+          const readyPath = spawnedEnv.DSH_REMOTE_READY_FILE!
+          setTimeout(() => {
+            writeFileSync(
+              readyPath,
+              JSON.stringify({
+                mode: 'multi-agent-standalone',
+                controlUrl: mock.baseUrl,
+                deepLink: 'dshremote://pair?multi=1',
+                pairingJson: '{"v":1,"multi":true}',
+                lanUrl: 'ws://192.168.1.99:9555',
+                hostFingerprint: 'fp-multi-agent',
+              }),
+            )
+          }, 15)
+          return fakeChild
+        }) as unknown as typeof import('node:child_process').spawn,
+      })
+
+      await controller.start({ engines: 'codex' })
+      expect(spawnedArgs).toEqual([standaloneEntry])
+      expect(spawnedEnv.DSH_REMOTE_ENGINES).toBe('codex')
+
+      await controller.inspectSessionGit({ sessionId: 'codex:mock-1', path: 'src/index.ts' })
+      const snap = await controller.snapshot({ refreshLive: true })
+      expect(snap.phase).toBe('running')
+      expect(snap.engines?.find((e) => e.id === 'codex')?.available).toBe(true)
+      expect(snap.gitPreview?.branch).toBe('feat/test')
+      expect(snap.gitPreview?.staged).toBe(false)
+      expect(snap.gitPreview?.files[0]?.path).toBe('src/index.ts')
+      expect(snap.gitPreview?.diffText).toContain('+export const ok = true')
+
+      await controller.inspectSessionGit({ sessionId: 'codex:mock-1', path: 'src/index.ts', staged: true })
+      const stagedSnap = await controller.snapshot({ refreshLive: false })
+      expect(stagedSnap.gitPreview?.staged).toBe(true)
+      expect(stagedSnap.gitPreview?.diffPath).toBe('src/index.ts')
+
+      await controller.inspectSessionGit({ clear: true })
+      const cleared = await controller.snapshot({ refreshLive: false })
+      expect(cleared.gitPreview).toBeUndefined()
+
+      await controller.shutdown()
     } finally {
       await mock.close()
       rmSync(dir, { recursive: true, force: true })

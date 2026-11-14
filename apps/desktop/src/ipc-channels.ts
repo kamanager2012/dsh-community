@@ -32,6 +32,7 @@ export const DESKTOP_IPC = {
   remoteNewPairing: 'dsh:desktop:remote-new-pairing',
   remoteConfirmPairing: 'dsh:desktop:remote-confirm-pairing',
   remoteRevokeDevice: 'dsh:desktop:remote-revoke-device',
+  remoteGitInspect: 'dsh:desktop:remote-git-inspect',
 } as const
 
 export const IPC = { ...LIFECYCLE_IPC, ...DESKTOP_IPC }
@@ -61,4 +62,5 @@ export const DESKTOP_IPC_KEYS = [
   'dsh:desktop:remote-new-pairing',
   'dsh:desktop:remote-confirm-pairing',
   'dsh:desktop:remote-revoke-device',
+  'dsh:desktop:remote-git-inspect',
 ] as const

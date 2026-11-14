@@ -614,6 +614,20 @@
                 android:textColor="@color/dsh_text_primary"
                 android:textSize="11sp" />
 
+            <Button
+                android:id="@+id/btn_approval_diff"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/bg_button_secondary"
+                android:minWidth="0dp"
+                android:paddingHorizontal="10dp"
+                android:text="@string/action_inspect_diff"
+                android:textAllCaps="false"
+                android:textColor="@color/dsh_text_primary"
+                android:textSize="11sp"
+                android:visibility="gone" />
+
             <EditText
                 android:id="@+id/et_answer"
                 android:layout_width="0dp"

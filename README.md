@@ -64,7 +64,7 @@ session persistence, official UI, and core lifecycle.
 | Run the official Runtime / Win & macOS Desktop | [`deepseek-ai/deepseek-harness`](https://github.com/deepseek-ai/deepseek-harness) (`npx @deepseek-ai/dsh web`) |
 | Download Linux AppImage (or inspect historical `v0.1.1-rc.2`) | [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) — exact tag/file names: `docs/current-release.json`; cosign verification: [release docs](docs/release.md#artifact-signing-keyless) |
 | Use the WSL/Linux Terminal / TUI | `pnpm tui` or `dsh-community` after a source install |
-| LAN Remote Host access / Mobile foundation | In-repo `packages/remote-adapter` (Noise IK + LAN transport merged; Android Remote endpoint remains `[UNVERIFIED]`) |
+| Multi-Agent E2EE Remote Control Plane (DSH / Claude Code / Codex / OpenCode + Git review) | `dsh-community remote start [--engines claude,codex,opencode] --qr` or Linux Desktop "远程" tab (`packages/remote-adapter`; Android Remote endpoint remains `[UNVERIFIED]`) |
 | Run or package Linux Desktop from source | `pnpm desktop` / `pnpm desktop:package -- --appimage` |
 | Read operational guidance | [DeepSeek Harness Handbook](https://kamanager2012.github.io/dsh-community/) |
 | Verified community plugins | Desktop marketplace page, in-repo `pnpm marketplace`, and [`packages/marketplace/catalog.json`](packages/marketplace/catalog.json) — not an awesome list |
@@ -83,7 +83,7 @@ Earlier independent numbers `v0.1.2`–`v0.1.6` are historical only, and Windows
 
 ## From source
 
-Requirements: Node.js 22.15+, pnpm, and a configured `DEEPSEEK_API_KEY`.
+Requirements: Node.js 22.15+, pnpm, and either a configured `DEEPSEEK_API_KEY` (for DSH / hybrid mode) or local **Claude Code / Codex CLI / OpenCode** binaries on `PATH` (for standalone Multi-Agent Remote Control Plane mode).
 Since official 0.1.0-rc.8, session JSONL uses `node:zlib` zstd APIs added in 22.15. Candidate Source pin comes from `packages/dsh-bridge/src/pin.ts` / `current-release.json`; `latest-tested.json` is compatibility evidence, not the pin source of truth.
 Sessions continue to use the official `~/.dsh` data source.
 
@@ -147,7 +147,7 @@ repository and deleted on 2026-09-13.
 contracts/              Official CLI and package surface snapshots
 packages/dsh-bridge     Runtime process and lifecycle boundary
 packages/marketplace    Plugin discovery CLI + catalog.json
-packages/remote-adapter Remote control adapter, Noise IK E2EE, LAN carrier & session stream projection
+packages/remote-adapter Multi-Agent E2EE control plane (DSH, Claude Code, Codex CLI, OpenCode ACP + scoped Git diff review) over Noise IK & LAN/WebRTC/Relay
 packages/tui            Community terminal UI library (@dsh-community/tui-surface, Ink-based)
 packages/tui-adapter    Community TUI adapter and patch surface
 packages/shared-types   Community-owned types, not an official event fork

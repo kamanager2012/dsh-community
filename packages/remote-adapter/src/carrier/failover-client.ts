@@ -1,7 +1,15 @@
 import { RemoteCryptoError } from '../crypto/errors.js'
 import type { NoiseInitiatorSession } from '../crypto/noise.js'
 import { RemoteProtocolError } from '../errors.js'
-import type { WorkspaceUploadCommitResult } from '../protocol.js'
+import type {
+  CreateSessionParams,
+  EngineDescriptor,
+  SessionRef,
+  WorkspaceGitDiffParams,
+  WorkspaceGitDiffResult,
+  WorkspaceGitStatusResult,
+  WorkspaceUploadCommitResult,
+} from '../protocol.js'
 import { createLanTransport } from './lan-client.js'
 import { createRelayTransport, type RelayClientCarrierOptions } from './relay-client.js'
 import { isRevocationError, RemoteClientSession } from './remote-client-session.js'
@@ -445,6 +453,25 @@ export class FailoverRemoteClient {
 
   onEvent(listener: (event: unknown) => void): () => void {
     return this.session.onEvent(listener)
+  }
+
+  async listEngines(): Promise<readonly EngineDescriptor[]> {
+    return this.session.listEngines()
+  }
+
+  async createSession(
+    params: CreateSessionParams = {},
+    options?: { readonly idempotencyKey?: string | undefined },
+  ): Promise<SessionRef> {
+    return this.session.createSession(params, options)
+  }
+
+  async getWorkspaceGitStatus(sessionId: string): Promise<WorkspaceGitStatusResult> {
+    return this.session.getWorkspaceGitStatus(sessionId)
+  }
+
+  async getWorkspaceGitDiff(params: WorkspaceGitDiffParams): Promise<WorkspaceGitDiffResult> {
+    return this.session.getWorkspaceGitDiff(params)
   }
 
   async uploadWorkspaceFile(options: {

@@ -83,19 +83,28 @@ async function stageRemoteBundle(outputRoot = appRoot) {
     throw new Error(`Missing sodium-native prebuild at ${addonSource}`)
   }
 
-  await esbuild.build({
-    ...common,
-    entryPoints: [resolve(workspace, 'packages/remote-adapter/src/cordis-plugin.ts')],
-    outfile: join(remoteOut, 'cordis-plugin.mjs'),
-    plugins: [sodiumBindingPlugin],
-    banner: {
-      js: [
-        "import { createRequire as __dshCreateRequire } from 'node:module';",
-        'const require = __dshCreateRequire(import.meta.url);',
-        'const __dshLoadAddon = (relPath) => require(relPath);',
-      ].join(' '),
-    },
-  })
+  const standaloneBannerJs = [
+    "import { createRequire as __dshCreateRequire } from 'node:module';",
+    'const require = __dshCreateRequire(import.meta.url);',
+    'const __dshLoadAddon = (relPath) => require(relPath);',
+  ].join(' ')
+
+  await Promise.all([
+    esbuild.build({
+      ...common,
+      entryPoints: [resolve(workspace, 'packages/remote-adapter/src/cordis-plugin.ts')],
+      outfile: join(remoteOut, 'cordis-plugin.mjs'),
+      plugins: [sodiumBindingPlugin],
+      banner: { js: standaloneBannerJs },
+    }),
+    esbuild.build({
+      ...common,
+      entryPoints: [resolve(workspace, 'packages/remote-adapter/src/standalone-cli.ts')],
+      outfile: join(remoteOut, 'standalone-cli.mjs'),
+      plugins: [sodiumBindingPlugin],
+      banner: { js: standaloneBannerJs },
+    }),
+  ])
 
   const prebuildDest = join(remoteOut, 'prebuilds', targetPrebuild)
   await mkdir(prebuildDest, { recursive: true })

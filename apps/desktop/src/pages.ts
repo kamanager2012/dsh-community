@@ -256,6 +256,16 @@ function shellDocument(
       .custom-host-input { margin-top: 6px; }
       .pending-item { border: 1px solid #2f6fed; border-radius: 8px; padding: 12px; margin-top: 10px; background: #0b1120; }
       .status-line { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 8px 0; }
+      .diff-viewer { max-height: 24rem; overflow: auto; background: #0b0d12; border: 1px solid #2a303b;
+        border-radius: 8px; padding: 8px 0; font: 12px/1.45 ui-monospace, SFMono-Regular, monospace; }
+      .diff-line { display: block; padding: 1px 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+      .diff-file-hdr { background: #131c2b; color: #79c0ff; font-weight: 600; }
+      .diff-hunk { background: #1a162d; color: #d2a8ff; }
+      .diff-add { background: #0f291a; color: #7ee787; }
+      .diff-del { background: #2e1215; color: #ffa198; }
+      .diff-ctx { color: #b8c0cc; }
+      .chip.diff-stat-add { color: #7ee787; border-color: #1f6f4a; background: #0b1a12; }
+      .chip.diff-stat-del { color: #ffa198; border-color: #7a2929; background: #1c0c0e; }
     </style>
   </head>
   <body>
@@ -753,6 +763,48 @@ function renderSafeQrSvg(svg: string): string {
   return `<p class="meta">无效二维码载荷</p>`
 }
 
+function summarizeUnifiedDiff(diffText: string): { additions: number; deletions: number; hunks: number } {
+  let additions = 0
+  let deletions = 0
+  let hunks = 0
+  if (!diffText) return { additions, deletions, hunks }
+  for (const line of diffText.split('\n')) {
+    if (line.startsWith('@@ ')) {
+      hunks += 1
+    } else if (line.startsWith('+') && !line.startsWith('+++ ')) {
+      additions += 1
+    } else if (line.startsWith('-') && !line.startsWith('--- ')) {
+      deletions += 1
+    }
+  }
+  return { additions, deletions, hunks }
+}
+
+function renderColoredDiffHtml(diffText: string): string {
+  const lines = diffText.replaceAll('\r\n', '\n').split('\n')
+  const rows = lines.map((line) => {
+    let cls = 'diff-ctx'
+    if (
+      line.startsWith('diff --git ')
+      || line.startsWith('index ')
+      || line.startsWith('--- ')
+      || line.startsWith('+++ ')
+      || line.startsWith('new file mode ')
+      || line.startsWith('deleted file mode ')
+    ) {
+      cls = 'diff-file-hdr'
+    } else if (line.startsWith('@@ ')) {
+      cls = 'diff-hunk'
+    } else if (line.startsWith('+')) {
+      cls = 'diff-add'
+    } else if (line.startsWith('-')) {
+      cls = 'diff-del'
+    }
+    return `<span class="diff-line ${cls}">${escapeHtml(line) || '&nbsp;'}</span>`
+  }).join('')
+  return `<div class="diff-viewer" role="region" aria-label="Git Unified Diff">${rows}</div>`
+}
+
 export function renderRemotePage(model: RemotePageModel): string {
   const presetHosts = new Set<string>(['', ...model.lanCandidates, '0.0.0.0', '127.0.0.1'])
   const isCustomHost = !presetHosts.has(model.settings.listenHost)
@@ -769,11 +821,25 @@ export function renderRemotePage(model: RemotePageModel): string {
     `<option value="__custom__"${selectedHost === '__custom__' ? ' selected' : ''}>自定义监听地址…</option>`,
   ].join('')
 
+  const engineChips = (model.engines ?? []).map((eng) => {
+    const label = eng.displayName ?? eng.id
+    const ver = eng.version ? ` ${eng.version}` : ''
+    return eng.available
+      ? `<span class="chip ok">${escapeHtml(label)}${escapeHtml(ver)}</span>`
+      : `<span class="chip">${escapeHtml(label)} 未就绪</span>`
+  }).join('')
+
+  const hasStandaloneEngineReady = (model.engines ?? []).some((e) => e.available && e.id !== 'dsh')
+  const apiKeyChip = model.apiKeyPresent
+    ? '<span class="chip ok">DEEPSEEK_API_KEY 已配置</span>'
+    : hasStandaloneEngineReady
+      ? '<span class="chip ok">Standalone 多引擎模式（无需 DEEPSEEK_API_KEY）</span>'
+      : '<span class="chip risk-high">缺少 DEEPSEEK_API_KEY</span>'
+
   const statusLine = `<div class="status-line">
     ${remotePhaseBadge(model.phase)}
-    ${model.apiKeyPresent
-      ? '<span class="chip ok">DEEPSEEK_API_KEY 已配置</span>'
-      : '<span class="chip risk-high">缺少 DEEPSEEK_API_KEY</span>'}
+    ${apiKeyChip}
+    ${engineChips}
     <span class="chip">在线连接 ${String(model.activeConnections)}</span>
     ${(model.pendingApprovals ?? 0) > 0 ? `<span class="chip risk-med">待审批 ${String(model.pendingApprovals)}</span>` : ''}
     ${(model.pendingQuestions ?? 0) > 0 ? `<span class="chip risk-med">待回答 ${String(model.pendingQuestions)}</span>` : ''}
@@ -888,10 +954,11 @@ export function renderRemotePage(model: RemotePageModel): string {
     ? `<section class="panel">
         <h2>活跃与可接入会话（${String(liveSessions.length)}）</h2>
         <table>
-          <thead><tr><th>会话与摘要</th><th>模型 / 状态</th><th>待处理</th></tr></thead>
+          <thead><tr><th>会话与摘要</th><th>模型 / 状态</th><th>待处理</th><th>代码审阅</th></tr></thead>
           <tbody>${liveSessions.map((s) => {
             const title = s.title ? `<div><strong>${escapeHtml(s.title)}</strong></div>` : ''
             const preview = s.preview ? `<div class="session-sub">${escapeHtml(s.preview)}</div>` : ''
+            const engineBadge = s.engine ? `<span class="chip">${escapeHtml(s.engine)}</span> ` : ''
             const statusBadge = s.status === 'running'
               ? '<span class="chip ok">运行中</span>'
               : s.status === 'idle'
@@ -903,14 +970,63 @@ export function renderRemotePage(model: RemotePageModel): string {
               ...(s.pendingQuestions ? [`<span class="chip risk-med">提问 ${String(s.pendingQuestions)}</span>`] : []),
             ].join(' ') || '<span class="meta">—</span>'
             return `<tr>
-              <td>${title}<code>${escapeHtml(s.id)}</code>${preview}</td>
+              <td>${title}${engineBadge}<code>${escapeHtml(s.id)}</code>${preview}</td>
               <td>${statusBadge}${modelBadge}</td>
               <td>${pendingBadges}</td>
+              <td><button class="secondary small" data-git-inspect="${escapeHtml(s.id)}">查看 Diff</button></td>
             </tr>`
           }).join('')}</tbody>
         </table>
       </section>`
     : ''
+
+  const gitPreview = model.gitPreview
+  const gitPreviewBlock = gitPreview === undefined
+    ? ''
+    : (() => {
+        const sidEsc = escapeHtml(gitPreview.sessionId)
+        const isStaged = gitPreview.staged === true
+        const pathAttr = gitPreview.diffPath ? ` data-git-path="${escapeHtml(gitPreview.diffPath)}"` : ''
+        const diffRaw = gitPreview.diffText ?? ''
+        const hasDiffText = diffRaw.trim() !== ''
+        const diffStats = summarizeUnifiedDiff(diffRaw)
+        const statsChips = hasDiffText
+          ? `<span class="chip diff-stat-add">+${String(diffStats.additions)}</span> <span class="chip diff-stat-del">-${String(diffStats.deletions)}</span> <span class="chip">${String(diffStats.hunks)} hunks</span>`
+          : ''
+        return `<section class="panel" id="remote-git-preview">
+        <h2>Git 只读变更审阅 · <code>${sidEsc}</code></h2>
+        ${gitPreview.error
+          ? `<pre class="error">${escapeHtml(gitPreview.error)}</pre>`
+          : `<div class="chips">
+               <span class="chip">分支 ${escapeHtml(gitPreview.branch || 'HEAD')} (↑${String(gitPreview.ahead)} ↓${String(gitPreview.behind)})</span>
+               <span class="chip">变更文件 ${String(gitPreview.files.length)}</span>
+               ${statsChips}
+               ${gitPreview.truncated ? '<span class="chip risk-med">Diff 已按上限截断</span>' : ''}
+             </div>
+             <p class="meta">工作区 <code>${escapeHtml(gitPreview.repoRoot)}</code>${gitPreview.diffPath ? ` · 筛选文件 <code>${escapeHtml(gitPreview.diffPath)}</code>` : ''}</p>
+             <div class="row">
+               <button class="${isStaged ? 'secondary small' : 'small'}" data-git-scope="unstaged" data-git-inspect="${sidEsc}"${pathAttr}>工作区未暂存</button>
+               <button class="${isStaged ? 'small' : 'secondary small'}" data-git-scope="staged" data-git-inspect="${sidEsc}"${pathAttr}>已暂存 Staged</button>
+               <button class="${gitPreview.diffPath ? 'secondary small' : 'small'}" data-git-inspect="${sidEsc}" data-git-staged="${isStaged ? '1' : '0'}">全部文件</button>
+             </div>
+             ${gitPreview.files.length === 0
+               ? '<p class="meta">当前工作区干净，暂无未提交改动。</p>'
+               : `<div class="chips">${gitPreview.files.map((f) => {
+                   const activeFile = gitPreview.diffPath === f.path
+                   const tag = f.untracked ? '?' : `${f.indexStatus}${f.workTreeStatus}`.trim() || 'M'
+                   return `<button class="${activeFile ? 'small' : 'secondary small'}" data-git-inspect-file="${escapeHtml(f.path)}" data-git-session="${sidEsc}" data-git-staged="${isStaged ? '1' : '0'}">${escapeHtml(tag)} ${escapeHtml(f.path)}</button>`
+                 }).join('')}</div>`}
+             ${hasDiffText
+               ? renderColoredDiffHtml(diffRaw)
+               : '<pre>（当前筛选范围无文本 Diff，可能为纯未跟踪/空白改动或工作区干净）</pre>'}`}
+        <template id="copy-remote-diff">${escapeHtml(diffRaw)}</template>
+        <div class="row">
+          <button class="secondary small" data-git-inspect="${sidEsc}" data-git-staged="${isStaged ? '1' : '0'}"${pathAttr}>刷新当前视图</button>
+          <button class="secondary small" id="copy-remote-diff-btn"${copyDisabledAttrs(diffRaw)}>复制 Diff</button>
+          <button class="secondary small" id="remote-git-clear">关闭 Diff 面板</button>
+        </div>
+      </section>`
+      })()
 
   const devicesBlock = `<section class="panel">
     <h2>已信任设备（${String(model.devices.length)}）</h2>
@@ -954,6 +1070,10 @@ export function renderRemotePage(model: RemotePageModel): string {
         <label for="remote-stun">STUN 地址（逗号分隔）</label>
         <input type="text" id="remote-stun" value="${escapeHtml(model.settings.stunUrls)}" placeholder="可选，如 stun:stun.l.google.com:19302" />
       </div>
+      <div class="field">
+        <label for="remote-engines">Agent 引擎（auto/dsh/claude/codex/opencode）</label>
+        <input type="text" id="remote-engines" value="${escapeHtml(model.settings.engines ?? '')}" placeholder="默认自动检测本机全部已安装引擎" />
+      </div>
     </div>
     <label class="opt">
       <input type="checkbox" id="remote-mdns"${model.settings.enableMdns ? ' checked' : ''} />
@@ -973,7 +1093,7 @@ export function renderRemotePage(model: RemotePageModel): string {
   return shellDocument(
     `${model.product} · 远程控制`,
     (nonce) => `<h1>远程控制与手机配对</h1>
-     <p>拉起官方 <code>@deepseek-ai/dsh</code> headless + Cordis 远程插件宿主，供移动端扫码直连或经盲中继端到端加密访问。不解析 stdout 伪造协议。</p>
+     <p>拉起 Multi-Agent 安全控制面宿主机（DSH / Claude Code / Codex CLI / OpenCode ACP），供移动端扫码经 Noise IK 端到端加密访问与 Git Diff 代码审阅。</p>
      ${statusLine}
      ${errorBanner}
      ${noticeBanner}
@@ -985,6 +1105,7 @@ export function renderRemotePage(model: RemotePageModel): string {
      ${pendingBlock}
      ${pairingBlock}
      ${liveSessionsBlock}
+     ${gitPreviewBlock}
      ${devicesBlock}
      ${configBlock}
      ${logsBlock}
@@ -1009,6 +1130,7 @@ export function renderRemotePage(model: RemotePageModel): string {
          const listenHost = hostSelect?.value === '__custom__'
            ? (hostCustom?.value ?? '')
            : (hostSelect?.value ?? '')
+         const enginesVal = (document.getElementById('remote-engines')?.value ?? '').trim()
          window.dshCommunity?.remoteStart({
            listenHost,
            port: Number(document.getElementById('remote-port')?.value ?? 0),
@@ -1016,6 +1138,7 @@ export function renderRemotePage(model: RemotePageModel): string {
            relayUrl: document.getElementById('remote-relay')?.value ?? '',
            signalingUrl: document.getElementById('remote-signaling')?.value ?? '',
            stunUrls: document.getElementById('remote-stun')?.value ?? '',
+           ...(enginesVal ? { engines: enginesVal } : {}),
          })
        })
        document.getElementById('remote-stop')?.addEventListener('click', () => {
@@ -1060,6 +1183,37 @@ export function renderRemotePage(model: RemotePageModel): string {
            const deviceId = btn.getAttribute('data-revoke-device') ?? ''
            if (deviceId) window.dshCommunity?.remoteRevokeDevice(deviceId)
          })
+       })
+       const copyRemoteDiffBtn = document.getElementById('copy-remote-diff-btn')
+       copyRemoteDiffBtn?.addEventListener('click', () => {
+         copyWithFeedback(copyRemoteDiffBtn, readTpl('copy-remote-diff'))
+       })
+       document.querySelectorAll('[data-git-inspect]').forEach((btn) => {
+         btn.addEventListener('click', () => {
+           const sessionId = btn.getAttribute('data-git-inspect') ?? ''
+           const scope = btn.getAttribute('data-git-scope')
+           const stagedAttr = btn.getAttribute('data-git-staged')
+           const path = btn.getAttribute('data-git-path') ?? ''
+           const staged = scope ? scope === 'staged' : (stagedAttr === '1')
+           if (sessionId) {
+             window.dshCommunity?.remoteGitInspect({
+               sessionId,
+               staged,
+               ...(path ? { path } : {}),
+             })
+           }
+         })
+       })
+       document.querySelectorAll('[data-git-inspect-file]').forEach((btn) => {
+         btn.addEventListener('click', () => {
+           const path = btn.getAttribute('data-git-inspect-file') ?? ''
+           const sessionId = btn.getAttribute('data-git-session') ?? ''
+           const staged = btn.getAttribute('data-git-staged') === '1'
+           if (sessionId && path) window.dshCommunity?.remoteGitInspect({ sessionId, path, staged })
+         })
+       })
+       document.getElementById('remote-git-clear')?.addEventListener('click', () => {
+         window.dshCommunity?.remoteGitInspect({ clear: true })
        })
      </script>`,
     'remote',

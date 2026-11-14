@@ -362,22 +362,21 @@ Final Android acceptance requires the APK to contain **no Node runtime and no of
 
 This architecture is not:
 
-- a second DSH Agent runtime;
-- a fork of official Web;
+- a fork of official `@deepseek-ai/dsh` or official Web;
 - a cloud account service;
 - a hosted SaaS Remote backend;
-- a Codex bridge;
 - a generic remote desktop;
-- SSH replacement;
+- an arbitrary interactive SSH / remote shell replacement;
+- an unconstrained filesystem read/write bridge (`workspace.git.status`/`workspace.git.diff` are strictly read-only, Git-repo-contained, and symlink/flag-injection hardened);
 - a distributed Session database.
 
-It is a secure, minimal remote projection of the official Host runtime.
+It is a secure, E2EE multi-agent control plane unifying official DSH with local external coding CLIs (`Claude Code`, `Codex CLI`, `OpenCode ACP`).
 
 ## 15. R6 Official Host Bridge & Android Instrumentation
 
 - **Official Host Cordis Bridge (`@dsh-community/remote-adapter`)**: `OfficialHostCordisBridge` and `@dsh-community/remote-adapter/cordis-plugin` attach directly inside official `@deepseek-ai/dsh --profile headless --patch ...` via Cordis events (`session/event`, `agent/assistant-stream`, `agent/error`, `approval/request`, `user-questions/request`) while keeping `DSH_REMOTE_CONFIG_DIR` strictly outside `DSH_HOME` (`~/.dsh`), emitting encrypted `peer.revoked` prior to channel teardown and `stream.reset` on replay window invalidation.
 - **Host & Ops CLI (`dsh-community remote`)**:
-  - `dsh-community remote start [--host <ip>] [--port <n>] [--mdns] [--qr] [--relay-url <url>] [--signaling-url <url>] [--signaling-room <id>] [--stun <urls>] [--session <id>] [--json]`
+  - `dsh-community remote start [--engines <auto|dsh,claude,codex,opencode>] [--default-engine <id>] [--host <ip>] [--port <n>] [--mdns] [--qr] [--relay-url <url>] [--signaling-url <url>] [--signaling-room <id>] [--stun <urls>] [--session <id>] [--json]`
   - `dsh-community remote relay [--host <ip>] [--port <n>] [--allow-wildcard] [--host-secret <secret>] [--json]`
   - `dsh-community remote signaling [--host <ip>] [--port <n>] [--stun-port <n>] [--allow-wildcard] [--host-secret <secret>] [--json]`
   - `dsh-community remote devices [--json]`
@@ -387,3 +386,17 @@ It is a secure, minimal remote projection of the official Host runtime.
   - `MainActivity` handles `dsh-remote://pair?data=<base64url>` (`ACTION_VIEW`), system `ACTION_SEND` (`text/plain`), and one-tap clipboard **Paste** extraction through `PairingInputHelper` + `PairingQrParser` (never embedding session IDs or credentials inside the URI), and requests runtime `POST_NOTIFICATIONS` on Android 13+.
   - `EncryptedTrustedHostStore` (`AndroidKeyStore` AES-256-GCM in `noBackupFilesDir`) persists paired Hosts without `bootstrapToken` for tokenless reconnect, matches mDNS `_dsh-remote._tcp.` discoveries by `hostFingerprint` while preserving `discovery !== trust` for unpaired Hosts, supports Forget Host, clears stale buffers on `stream.reset`, and halts reconnects fail-closed on `peer.revoked`.
   - `apps/android/app/src/androidTest/.../RemoteClientInstrumentationTest.kt` and `scripts/accept-android-r6-device.mjs` verify `AndroidKeyStore`, `RemoteSessionService` (`dataSync`), native `AndroidWebRtcPeerEngine` (`Dead-LAN -> WebRTC P2P`), `Dead-LAN -> Blind Relay` failover, stream resume/reset, and revocation on `x86_64` KVM emulator while leaving `arm64RealDeviceSmoke` fail-closed (`false`) until verified on physical `arm64-v8a` hardware.
+
+## 16. Multi-Agent Unified Control Plane & Scoped Git Review
+
+- **Multi-Engine Multiplexing (`MultiAgentHostRouter`)**: `@dsh-community/remote-adapter/backends` defines `AgentHostBackend` with native adapters for:
+  - `dsh` (`DshAgentBackend` via Cordis seams),
+  - `claude` (`ClaudeCodeBackend` via headless `claude` stream-json stdio),
+  - `codex` (`CodexCliBackend` via `codex exec --json` / `codex app-server`),
+  - `opencode` (`OpenCodeAcpBackend` via ACP JSON-RPC 2.0 stdio).
+- **Standalone Multi-Agent Mode (`MultiAgentRemoteHost` / `@dsh-community/remote-adapter/standalone-cli`)**: Runs end-to-end without `DEEPSEEK_API_KEY` or Cordis whenever local `claude`, `codex`, or `opencode` CLIs are configured/detected, automatically launched by `dsh-community remote start` and Desktop `DesktopRemoteController.start()` when DSH API key is absent.
+- **Host Secret Scrubbing (`@dsh-community/remote-adapter/remote-env`)**: `scrubChildProcessEnv` removes control tokens, relay secrets, and signaling secrets (`DSH_REMOTE_CONTROL_TOKEN`, `DSH_REMOTE_RELAY_HOST_SECRET`, `DSH_REMOTE_RELAY_CLIENT_TOKEN`, `DSH_REMOTE_SIGNALING_HOST_SECRET`, `DSH_REMOTE_SIGNALING_JOIN_TOKEN`) before spawning any external agent subprocess.
+- **Scoped Read-Only Git Code Review**:
+  - RPC methods `engine.list`, `workspace.git.status`, `workspace.git.diff` (plus optional `engine` parameter on `session.create`) are exposed over Noise IK RPC and mapped to loopback control routes `GET /engines`, `GET /git/status`, and `GET /git/diff`.
+  - Git inspection requires only the `observe` capability, runs `git` via `execFile` (no shell) under resolved `session.cwd`, verifies repo-root containment via `realpathSync`, blocks `..` / NUL / symlink escapes / `--option` flag injection, and bounds UTF-8 diff output cleanly at multibyte boundaries.
+  - CLI (`engines`, `git <sessionId>`, `diff <sessionId> [path]`), Desktop (`remoteGitInspect` Diff viewer + engine chips), and Android (`engine.list`, multi-engine `session.create`, `[engine]` chips, read-only Diff dialog) consume these RPCs while keeping `DshApp.REAL_DEVICE_ACCEPTANCE_READY = false`.

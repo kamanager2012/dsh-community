@@ -1,6 +1,6 @@
 import { createServer } from 'node:http'
 import { spawn, spawnSync } from 'node:child_process'
-import { chmodSync, existsSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve, sep } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -11,6 +11,8 @@ import {
   COMMUNITY_REMOTE_HELP,
   composeRemoteHostPatchYaml,
   detectLanIpv4Candidates,
+  formatColoredDiff,
+  formatGitStatusSummary,
   formatPairingQrBlock,
   parseRemoteReplLine,
   REMOTE_REPL_COMMAND_SUMMARY,
@@ -297,12 +299,20 @@ async function spawnCliUntilReadyJson<T>(
     expect(resolve(parsed.configDir)).toBe(resolve(configDir))
     expect(resolve(parsed.dshHome)).toBe(resolve(dshHome))
 
-    const startRes = spawnSync(process.execPath, [binPath, 'remote', 'start'], {
+    const emptyBinDir = makeTempDir('dsh-remote-no-agents-')
+    const startNoAgentsRes = spawnSync(process.execPath, [binPath, 'remote', 'start'], {
+      env: { ...childEnv, PATH: emptyBinDir },
+      encoding: 'utf8',
+    })
+    expect(startNoAgentsRes.status).toBe(2)
+    expect(startNoAgentsRes.stderr).toContain('DEEPSEEK_API_KEY')
+
+    const startDshOnlyRes = spawnSync(process.execPath, [binPath, 'remote', 'start', '--engines', 'dsh'], {
       env: childEnv,
       encoding: 'utf8',
     })
-    expect(startRes.status).toBe(2)
-    expect(startRes.stderr).toContain('DEEPSEEK_API_KEY')
+    expect(startDshOnlyRes.status).toBe(2)
+    expect(startDshOnlyRes.stderr).toContain('DEEPSEEK_API_KEY')
   })
 
   it('launches self-hosted BlindRelayServer via remote relay --json without leaking hostSecret', async () => {
@@ -567,7 +577,54 @@ async function spawnCliUntilReadyJson<T>(
   it('parses interactive remote start REPL commands with explicit usage and unknown feedback', () => {
     expect(REMOTE_REPL_COMMAND_SUMMARY).toContain('help')
     expect(REMOTE_REPL_COMMAND_SUMMARY).toContain('status')
+    expect(REMOTE_REPL_COMMAND_SUMMARY).toContain('engines')
+    expect(REMOTE_REPL_COMMAND_SUMMARY).toContain('git <sessionId>')
+    expect(REMOTE_REPL_COMMAND_SUMMARY).toContain('diff <sessionId> [path]')
     expect(parseRemoteReplLine('')).toEqual({ kind: 'empty' })
+    expect(parseRemoteReplLine('engines')).toEqual({ kind: 'engines' })
+    expect(parseRemoteReplLine('git')).toEqual({ kind: 'usage', usage: '用法: git <sessionId>' })
+    expect(parseRemoteReplLine('git codex:s1')).toEqual({ kind: 'git', sessionId: 'codex:s1' })
+    expect(parseRemoteReplLine('diff')).toEqual({ kind: 'usage', usage: '用法: diff <sessionId> [path] [--staged]' })
+    expect(parseRemoteReplLine('diff codex:s1 src/app.ts')).toEqual({
+      kind: 'diff',
+      sessionId: 'codex:s1',
+      path: 'src/app.ts',
+    })
+    expect(parseRemoteReplLine('diff codex:s1 --staged')).toEqual({
+      kind: 'diff',
+      sessionId: 'codex:s1',
+      staged: true,
+    })
+    expect(parseRemoteReplLine('diff codex:s1 src/app.ts --staged')).toEqual({
+      kind: 'diff',
+      sessionId: 'codex:s1',
+      path: 'src/app.ts',
+      staged: true,
+    })
+
+    const coloredDiff = formatColoredDiff(
+      'diff --git a/a.ts b/a.ts\n@@ -1 +1 @@\n-old\n+new\n',
+      true,
+    )
+    expect(coloredDiff).toContain('\x1b[1;36mdiff --git')
+    expect(coloredDiff).toContain('\x1b[32m+new\x1b[0m')
+    expect(coloredDiff).toContain('\x1b[31m-old\x1b[0m')
+    const plainDiff = formatColoredDiff('+a\n-b\n', false)
+    expect(plainDiff).toContain('(+1 / -1 lines)')
+    expect(plainDiff).not.toContain('\x1b[')
+
+    const statusSummary = formatGitStatusSummary(
+      JSON.stringify({
+        branch: 'feat/ux',
+        repoRoot: '/tmp/repo',
+        ahead: 1,
+        behind: 0,
+        files: [{ path: 'src/main.ts', indexStatus: ' ', workTreeStatus: 'M', untracked: false }],
+      }),
+      false,
+    )
+    expect(statusSummary).toContain('Branch: feat/ux (↑1 ↓0)')
+    expect(statusSummary).toContain('[M] src/main.ts')
     expect(parseRemoteReplLine('confirm')).toEqual({ kind: 'usage', usage: '用法: confirm <candidateId>' })
     expect(parseRemoteReplLine('confirm cand-42')).toEqual({ kind: 'confirm', candidateId: 'cand-42' })
     expect(parseRemoteReplLine('revoke')).toEqual({ kind: 'usage', usage: '用法: revoke <deviceId>' })
@@ -575,5 +632,60 @@ async function spawnCliUntilReadyJson<T>(
     expect(parseRemoteReplLine('foobar')).toEqual({ kind: 'unknown', command: 'foobar' })
     expect(parseRemoteReplLine('help')).toEqual({ kind: 'help' })
     expect(parseRemoteReplLine('exit')).toEqual({ kind: 'quit' })
+  })
+
+  it('starts multi-agent standalone host via remote start --engines codex --json without DEEPSEEK_API_KEY', async () => {
+    const root = makeTempDir('dsh-remote-standalone-cli-')
+    const dshHome = join(root, 'official-dsh-home')
+    const configDir = join(root, 'community-remote-config')
+    const repoDir = join(root, 'repo')
+    const fakeBinDir = join(root, 'bin')
+    mkdirSync(repoDir, { recursive: true })
+    mkdirSync(fakeBinDir, { recursive: true })
+    const fakeCodex = join(fakeBinDir, 'codex')
+    writeFileSync(
+      fakeCodex,
+      '#!/usr/bin/env node\nif (process.argv.includes("--version")) { console.log("codex-cli 0.169.0"); process.exit(0); }\nprocess.exit(0);\n',
+      'utf8',
+    )
+    chmodSync(fakeCodex, 0o755)
+
+    const binPath = ensureBuiltTuiBin()
+    const childEnv: NodeJS.ProcessEnv = {
+      ...process.env,
+      PATH: `${fakeBinDir}:${process.env.PATH ?? ''}`,
+      HOME: root,
+      CODEX_HOME: join(root, '.codex'),
+      DSH_HOME: dshHome,
+      DSH_REMOTE_CONFIG_DIR: configDir,
+    }
+    delete childEnv.DEEPSEEK_API_KEY
+
+    const { ready, stopAndWait } = await spawnCliUntilReadyJson<{
+      mode: string
+      controlUrl: string
+      controlToken: string
+      deepLink: string
+      lanUrl: string
+      engines: Array<{ id: string; available: boolean; version?: string }>
+    }>(binPath, ['remote', 'start', '--engines', 'codex', '--json', '--cwd', repoDir], childEnv)
+
+    try {
+      expect(ready.mode).toBe('multi-agent-standalone')
+      expect(ready.deepLink).toContain('pair')
+      expect(ready.lanUrl).toMatch(/^ws:\/\//u)
+      const codexEngine = ready.engines.find((e) => e.id === 'codex')
+      expect(codexEngine?.available).toBe(true)
+      expect(codexEngine?.version).toContain('0.169.0')
+
+      const enginesRes = await fetch(`${ready.controlUrl}/engines`, {
+        headers: { authorization: `Bearer ${ready.controlToken}` },
+      })
+      expect(enginesRes.status).toBe(200)
+      const enginesJson = (await enginesRes.json()) as { engines: Array<{ id: string; available: boolean }> }
+      expect(enginesJson.engines.some((e) => e.id === 'codex' && e.available)).toBe(true)
+    } finally {
+      expect(await stopAndWait()).toBe(0)
+    }
   })
 })

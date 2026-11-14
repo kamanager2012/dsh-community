@@ -6,6 +6,7 @@ import { InMemoryHostIdentityStore, type HostIdentityStore } from './crypto/host
 import {
   REMOTE_PROTOCOL_VERSION,
   parseRemoteRequest,
+  type AgentEngineId,
   type ApprovalRespondParams,
   type AuthenticatedPeer,
   type CreateSessionParams,
@@ -24,6 +25,8 @@ import {
   type SessionSearchParams,
   type StreamAckParams,
   type TurnAbortParams,
+  type WorkspaceGitDiffParams,
+  type WorkspaceGitStatusParams,
   type WorkspaceUploadAbortParams,
   type WorkspaceUploadChunkParams,
   type WorkspaceUploadCommitParams,
@@ -190,9 +193,41 @@ function parseCreateSession(value: unknown): CreateSessionParams {
     }
     title = object.title.trim()
   }
+  let engine: AgentEngineId | undefined
+  if (object.engine !== undefined) {
+    const rawEngine = requiredString(object, 'engine').trim().toLowerCase()
+    if (!/^[a-z0-9_-]{1,32}$/u.test(rawEngine)) {
+      throw new RemoteProtocolError('INVALID_REQUEST', 'engine must match [a-z0-9_-]{1,32}')
+    }
+    engine = rawEngine as AgentEngineId
+  }
+  let cwd: string | undefined
+  if (object.cwd !== undefined) {
+    const rawCwd = requiredString(object, 'cwd').trim()
+    if (rawCwd.length === 0 || rawCwd.length > 1024 || /[\u0000-\u001f\u007f]/u.test(rawCwd)) {
+      throw new RemoteProtocolError('INVALID_REQUEST', 'cwd must be a valid path string')
+    }
+    cwd = rawCwd
+  }
+  let model: ModelSelectionParams | undefined
+  if (object.model !== undefined) {
+    const rec = asObject(object.model)
+    let reasoningEffort: string | undefined
+    if (rec.reasoningEffort !== undefined) {
+      reasoningEffort = requiredString(rec, 'reasoningEffort')
+    }
+    model = {
+      provider: requiredString(rec, 'provider'),
+      model: requiredString(rec, 'model'),
+      ...(reasoningEffort !== undefined ? { reasoningEffort } : {}),
+    }
+  }
   return {
     ...(sessionId !== undefined ? { sessionId } : {}),
     ...(title !== undefined ? { title } : {}),
+    ...(engine !== undefined ? { engine } : {}),
+    ...(cwd !== undefined ? { cwd } : {}),
+    ...(model !== undefined ? { model } : {}),
   }
 }
 
@@ -441,6 +476,54 @@ function parseWorkspaceUploadAbort(value: unknown): WorkspaceUploadAbortParams {
   }
 }
 
+function parseWorkspaceGitStatus(value: unknown): WorkspaceGitStatusParams {
+  const object = asObject(value)
+  return {
+    sessionId: requiredSafeSessionId(object, 'sessionId'),
+  }
+}
+
+function parseWorkspaceGitDiff(value: unknown): WorkspaceGitDiffParams {
+  const object = asObject(value)
+  const sessionId = requiredSafeSessionId(object, 'sessionId')
+  let path: string | undefined
+  if (object.path !== undefined) {
+    const raw = requiredString(object, 'path').trim()
+    if (
+      raw.length === 0
+      || raw.length > 512
+      || raw.startsWith('-')
+      || raw.startsWith('/')
+      || raw.startsWith('~')
+      || /[\u0000-\u001f\u007f]/u.test(raw)
+      || raw.split(/[\\/]+/u).some((seg) => seg === '..' || seg === '')
+    ) {
+      throw new RemoteProtocolError('INVALID_REQUEST', 'workspace git diff path must be a safe repo-relative path')
+    }
+    path = raw
+  }
+  let staged: boolean | undefined
+  if (object.staged !== undefined) {
+    if (typeof object.staged !== 'boolean') {
+      throw new RemoteProtocolError('INVALID_REQUEST', 'staged must be a boolean')
+    }
+    staged = object.staged
+  }
+  let maxBytes: number | undefined
+  if (object.maxBytes !== undefined) {
+    if (!Number.isSafeInteger(object.maxBytes) || (object.maxBytes as number) < 1024 || (object.maxBytes as number) > 262_144) {
+      throw new RemoteProtocolError('INVALID_REQUEST', 'maxBytes must be an integer between 1024 and 262144')
+    }
+    maxBytes = object.maxBytes as number
+  }
+  return {
+    sessionId,
+    ...(path !== undefined ? { path } : {}),
+    ...(staged !== undefined ? { staged } : {}),
+    ...(maxBytes !== undefined ? { maxBytes } : {}),
+  }
+}
+
 export class RemoteAdapterCore {
   readonly devices: DeviceRegistry
   readonly trustStore: DeviceTrustStore
@@ -528,6 +611,32 @@ export class RemoteAdapterCore {
         return { ok: true }
       case 'session.list':
         return this.seams.listSessions()
+      case 'engine.list': {
+        const engines = this.seams.listEngines ? await this.seams.listEngines() : []
+        return { engines }
+      }
+      case 'workspace.git.status': {
+        const params = parseWorkspaceGitStatus(request.params)
+        await this.seams.assertSession(params.sessionId)
+        if (!this.seams.getWorkspaceGitStatus) {
+          throw new RemoteProtocolError(
+            'INVALID_REQUEST',
+            'workspace.git.status is not supported by this host',
+          )
+        }
+        return this.seams.getWorkspaceGitStatus(params)
+      }
+      case 'workspace.git.diff': {
+        const params = parseWorkspaceGitDiff(request.params)
+        await this.seams.assertSession(params.sessionId)
+        if (!this.seams.getWorkspaceGitDiff) {
+          throw new RemoteProtocolError(
+            'INVALID_REQUEST',
+            'workspace.git.diff is not supported by this host',
+          )
+        }
+        return this.seams.getWorkspaceGitDiff(params)
+      }
       case 'session.create':
         return this.mutate(
           peer,

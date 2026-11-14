@@ -5,6 +5,12 @@ import { NoiseInitiatorSession } from '../crypto/noise.js'
 import { RemoteProtocolError, type RemoteErrorCode } from '../errors.js'
 import {
   REMOTE_PROTOCOL_VERSION,
+  type CreateSessionParams,
+  type EngineDescriptor,
+  type SessionRef,
+  type WorkspaceGitDiffParams,
+  type WorkspaceGitDiffResult,
+  type WorkspaceGitStatusResult,
   type WorkspaceUploadChunkResult,
   type WorkspaceUploadCommitResult,
   type WorkspaceUploadOpenResult,
@@ -365,6 +371,28 @@ export class RemoteClientSession {
   onEvent(listener: (event: unknown) => void): () => void {
     this.eventListeners.add(listener)
     return () => this.eventListeners.delete(listener)
+  }
+
+  async listEngines(): Promise<readonly EngineDescriptor[]> {
+    const res = (await this.request('engine.list', {})) as { engines?: readonly EngineDescriptor[] }
+    return Array.isArray(res?.engines) ? res.engines : []
+  }
+
+  async createSession(
+    params: CreateSessionParams = {},
+    options?: { readonly idempotencyKey?: string | undefined },
+  ): Promise<SessionRef> {
+    return (await this.request('session.create', { ...params }, {
+      idempotencyKey: options?.idempotencyKey ?? randomUUID(),
+    })) as SessionRef
+  }
+
+  async getWorkspaceGitStatus(sessionId: string): Promise<WorkspaceGitStatusResult> {
+    return (await this.request('workspace.git.status', { sessionId })) as WorkspaceGitStatusResult
+  }
+
+  async getWorkspaceGitDiff(params: WorkspaceGitDiffParams): Promise<WorkspaceGitDiffResult> {
+    return (await this.request('workspace.git.diff', { ...params })) as WorkspaceGitDiffResult
   }
 
   async uploadWorkspaceFile(options: {

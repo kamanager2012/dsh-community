@@ -7,6 +7,7 @@ import org.dsh.community.android.protocol.AttachResumeResult
 import org.dsh.community.android.protocol.ClientOperationFactory
 import org.dsh.community.android.protocol.CommandExecuteResult
 import org.dsh.community.android.protocol.DisplayTextSanitizer
+import org.dsh.community.android.protocol.EngineDescriptor
 import org.dsh.community.android.protocol.InboundHostFrame
 import org.dsh.community.android.protocol.JsonArray
 import org.dsh.community.android.protocol.JsonBool
@@ -27,6 +28,8 @@ import org.dsh.community.android.protocol.RpcErrorPayload
 import org.dsh.community.android.protocol.SessionHistoryResult
 import org.dsh.community.android.protocol.SessionRef
 import org.dsh.community.android.protocol.SessionSearchResult
+import org.dsh.community.android.protocol.WorkspaceGitDiffResult
+import org.dsh.community.android.protocol.WorkspaceGitStatusResult
 import org.dsh.community.android.protocol.WorkspaceUploadAbortResult
 import org.dsh.community.android.protocol.WorkspaceUploadCommitResult
 import java.io.IOException
@@ -295,6 +298,11 @@ class FailoverRemoteSession(
         return (res as? JsonObject)?.bool("ok") == true
     }
 
+    fun listEngines(): List<EngineDescriptor> {
+        val res = dispatchRpc(RemoteProtocol.METHOD_ENGINE_LIST, JsonObject.of())
+        return RemoteFrameCodec.parseEngineList(res)
+    }
+
     fun listSessions(): List<SessionRef> {
         val res = dispatchRpc(RemoteProtocol.METHOD_SESSION_LIST, JsonObject.of())
         return RemoteFrameCodec.parseSessionList(res)
@@ -304,13 +312,39 @@ class FailoverRemoteSession(
         title: String? = null,
         sessionId: String? = null,
         idempotencyKey: String = newOperationKey("create"),
+        engine: String? = null,
+        cwd: String? = null,
     ): SessionRef {
         val params = JsonObject.of(
             "sessionId" to sessionId?.takeIf { it.isNotBlank() }?.let { JsonString(it) },
             "title" to title?.takeIf { it.isNotBlank() }?.let { JsonString(it) },
+            "engine" to engine?.takeIf { it.isNotBlank() }?.let { JsonString(it) },
+            "cwd" to cwd?.takeIf { it.isNotBlank() }?.let { JsonString(it) },
         )
         val res = dispatchRpc(RemoteProtocol.METHOD_SESSION_CREATE, params, idempotencyKey = idempotencyKey)
         return RemoteFrameCodec.parseSessionRef(res)
+    }
+
+    fun getWorkspaceGitStatus(sessionId: String): WorkspaceGitStatusResult {
+        val params = JsonObject.of("sessionId" to JsonString(sessionId))
+        val res = dispatchRpc(RemoteProtocol.METHOD_WORKSPACE_GIT_STATUS, params)
+        return RemoteFrameCodec.parseGitStatusResult(res)
+    }
+
+    fun getWorkspaceGitDiff(
+        sessionId: String,
+        path: String? = null,
+        staged: Boolean = false,
+        maxBytes: Int? = null,
+    ): WorkspaceGitDiffResult {
+        val params = JsonObject.of(
+            "sessionId" to JsonString(sessionId),
+            "path" to path?.takeIf { it.isNotBlank() }?.let { JsonString(it) },
+            "staged" to if (staged) JsonBool(true) else null,
+            "maxBytes" to maxBytes?.takeIf { it > 0 }?.let { JsonNumber(it) },
+        )
+        val res = dispatchRpc(RemoteProtocol.METHOD_WORKSPACE_GIT_DIFF, params)
+        return RemoteFrameCodec.parseGitDiffResult(res)
     }
 
     fun renameSession(

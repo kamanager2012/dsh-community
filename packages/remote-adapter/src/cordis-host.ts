@@ -38,10 +38,17 @@ export {
   openPersistentRemoteStores,
   type PersistentRemoteStores,
 }
+import { DshAgentBackend } from './backends/dsh-backend.js'
+import { MultiAgentHostRouter } from './backends/multi-agent-router.js'
+import type { ManagedAgentBackend } from './backends/types.js'
 import { RemoteHostRuntime, type RemoteHostRuntimeOptions } from './host-runtime.js'
 import {
   REMOTE_PROTOCOL_VERSION,
+  type AgentEngineId,
+  type AgentHostBackend,
   type Capability,
+  type CreateSessionParams,
+  type EngineDescriptor,
   type FollowupOptions,
   type ModelCatalogResult,
   type ModelOptionRef,
@@ -60,6 +67,10 @@ import {
   type SessionRef,
   type SessionSearchParams,
   type SessionSearchResult,
+  type WorkspaceGitDiffParams,
+  type WorkspaceGitDiffResult,
+  type WorkspaceGitStatusParams,
+  type WorkspaceGitStatusResult,
   type WorkspaceUploadAbortParams,
   type WorkspaceUploadAbortResult,
   type WorkspaceUploadChunkParams,
@@ -206,6 +217,25 @@ export interface BridgeControlServerHandle {
   close(): Promise<void>
 }
 
+export interface RemoteControlBridgeLike {
+  readonly pairingCoordinator: ObservablePairingCoordinator
+  getStatus(): Promise<unknown>
+  listSessions(): Promise<readonly SessionRef[]>
+  createSession(options?: CreateSessionParams): Promise<SessionRef>
+  listEngines?(): Promise<readonly EngineDescriptor[]>
+  getWorkspaceGitStatus?(params: WorkspaceGitStatusParams): Promise<WorkspaceGitStatusResult>
+  getWorkspaceGitDiff?(params: WorkspaceGitDiffParams): Promise<WorkspaceGitDiffResult>
+  resetSessionStream(sessionId: string, reason?: string): void
+  issuePairingDescriptor(options?: {
+    readonly ttlMs?: number | undefined
+    readonly allowedCapabilities?: readonly Capability[] | undefined
+    readonly endpointUrl?: string | undefined
+  }): Promise<PairingIssueResult>
+  listTrustedDevices(): Promise<readonly DeviceRecord[]>
+  revokeDevice(deviceId: string): Promise<boolean>
+  stop(): Promise<void>
+}
+
 export interface OfficialHostCordisBridgeOptions {
   readonly ctx: OfficialCordisContextLike
   readonly configDir?: string | undefined
@@ -213,6 +243,8 @@ export interface OfficialHostCordisBridgeOptions {
   readonly sessionRoot?: string | undefined
   readonly cwd?: string | undefined
   readonly listPersistedSessions?: (() => Promise<readonly SessionRef[]> | readonly SessionRef[]) | undefined
+  readonly extraBackends?: readonly ManagedAgentBackend[] | undefined
+  readonly defaultEngine?: AgentEngineId | undefined
   readonly carrier?: Omit<
     HostLanCarrierOptions,
     'core' | 'trustStore' | 'hostIdentityStore' | 'pairingCoordinator' | 'epochAllocator'
@@ -377,6 +409,7 @@ function trimSessionRefFields(
   if (level === 'minimal') {
     return {
       id: ref.id,
+      ...(ref.engine !== undefined ? { engine: ref.engine } : {}),
       ...(ref.title !== undefined ? { title: ref.title } : {}),
       ...(ref.updatedAtMs !== undefined ? { updatedAtMs: ref.updatedAtMs } : {}),
       ...(ref.status !== undefined ? { status: ref.status } : {}),
@@ -532,6 +565,8 @@ export class OfficialHostCordisBridge {
   readonly stores: PersistentRemoteStores
   readonly tokenRegistry: PairingTokenRegistry
   readonly pairingCoordinator: ObservablePairingCoordinator
+  readonly dshBackend: DshAgentBackend
+  readonly router: MultiAgentHostRouter
   readonly runtime: RemoteHostRuntime
 
   private readonly ctx: OfficialCordisContextLike
@@ -612,13 +647,13 @@ export class OfficialHostCordisBridge {
       this.rootUnsubscribes.push(unsub)
     }
 
-    const seams: OfficialRemoteSeams = {
-      listSessions: () => this.listSessions(),
+    const dshSeams: AgentHostBackend = {
+      listSessions: () => this.listDshSessions(),
       assertSession: (sessionId) => this.assertSession(sessionId),
       followup: (sessionId, prompt, options) => this.followup(sessionId, prompt, options),
       respondApproval: (callId, decision) => this.respondApproval(callId, decision),
       respondQuestion: (questionId, answer) => this.respondQuestion(questionId, answer),
-      createSession: (options) => this.createSession(options),
+      createSession: (options) => this.createDshSession(options),
       renameSession: (sessionId, title) => this.renameSession(sessionId, title),
       abortTurn: (sessionId, options) => this.abortTurn(sessionId, options),
       listModels: (sessionId) => this.listModels(sessionId),
@@ -636,6 +671,19 @@ export class OfficialHostCordisBridge {
       abortWorkspaceUpload: (deviceId, params) => this.abortWorkspaceUpload(deviceId, params),
     }
 
+    this.dshBackend = new DshAgentBackend({
+      seams: dshSeams,
+      defaultCwd: this.cwd,
+    })
+
+    this.router = new MultiAgentHostRouter({
+      backends: [this.dshBackend, ...(options.extraBackends ?? [])],
+      defaultEngine: options.defaultEngine ?? 'dsh',
+      defaultCwd: this.cwd,
+    })
+
+    const seams: OfficialRemoteSeams = this.router
+
     this.runtime = new RemoteHostRuntime({
       seams,
       trustStore: this.stores.trustStore,
@@ -650,6 +698,11 @@ export class OfficialHostCordisBridge {
       ...(options.webrtc !== undefined ? { webrtc: options.webrtc } : {}),
       ...(options.relay !== undefined ? { relay: options.relay } : {}),
     })
+
+    const unsubRouterEvents = this.router.onEvent((sessionId, events) => {
+      this.runtime.ingestSessionEventBatch(sessionId, { log: events })
+    })
+    this.rootUnsubscribes.push(unsubRouterEvents)
   }
 
   async start(): Promise<void> {
@@ -657,6 +710,7 @@ export class OfficialHostCordisBridge {
     await this.stores.hostIdentityStore.loadOrCreate()
     await this.awaitCordisLoader()
     this.installRootListeners()
+    await this.router.start()
     await this.runtime.start()
     this.started = true
   }
@@ -991,7 +1045,11 @@ export class OfficialHostCordisBridge {
     }
   }
 
-  async createSession(options?: {
+  async createSession(options?: CreateSessionParams): Promise<SessionRef> {
+    return this.router.createSession(options)
+  }
+
+  private async createDshSession(options?: {
     readonly sessionId?: string | undefined
     readonly cwd?: string | undefined
     readonly title?: string | undefined
@@ -1111,7 +1169,7 @@ export class OfficialHostCordisBridge {
   }
 
   private async findSessionRef(sessionId: string): Promise<SessionRef | undefined> {
-    const all = await this.listSessions()
+    const all = await this.listDshSessions()
     return all.find((s) => s.id === sessionId)
   }
 
@@ -1323,6 +1381,22 @@ export class OfficialHostCordisBridge {
   }
 
   async listSessions(): Promise<readonly SessionRef[]> {
+    return this.router.listSessions()
+  }
+
+  async listEngines(): Promise<readonly EngineDescriptor[]> {
+    return this.router.listEngines()
+  }
+
+  async getWorkspaceGitStatus(params: WorkspaceGitStatusParams): Promise<WorkspaceGitStatusResult> {
+    return this.router.getWorkspaceGitStatus(params)
+  }
+
+  async getWorkspaceGitDiff(params: WorkspaceGitDiffParams): Promise<WorkspaceGitDiffResult> {
+    return this.router.getWorkspaceGitDiff(params)
+  }
+
+  private async listDshSessions(): Promise<readonly SessionRef[]> {
     const merged = new Map<string, SessionRef>()
     const activeIds = new Set<string>()
     const persisted = await this.listPersistedRefs()
@@ -1621,7 +1695,7 @@ export class OfficialHostCordisBridge {
         events: col.normalizedEvents,
       })
     } else {
-      const all = await this.listSessions()
+      const all = await this.listDshSessions()
       for (const ref of all.slice(0, 100)) {
         const col = this.getSessionEventCollection(ref.id)
         if (!col || col.normalizedEvents.length === 0) continue
@@ -2240,6 +2314,7 @@ export class OfficialHostCordisBridge {
 
   async revokeDevice(deviceId: string): Promise<boolean> {
     this.workspaceUploads.revokeDevice(deviceId)
+    this.router.revokeDeviceUploads(deviceId)
     return this.stores.trustStore.revoke(deviceId)
   }
 
@@ -2267,6 +2342,7 @@ export class OfficialHostCordisBridge {
     readonly pendingApprovals: number
     readonly pendingQuestions: number
     readonly pendingPairingCandidates: number
+    readonly engines: readonly EngineDescriptor[]
     readonly metrics: {
       readonly ingested: number
       readonly followups: number
@@ -2280,7 +2356,10 @@ export class OfficialHostCordisBridge {
     } catch {
       hostFingerprint = undefined
     }
-    const devices = await this.stores.trustStore.list()
+    const [devices, engines] = await Promise.all([
+      this.stores.trustStore.list(),
+      this.listEngines(),
+    ])
     return {
       started: this.started && !this.stopped,
       configDir: this.stores.configDir,
@@ -2294,6 +2373,7 @@ export class OfficialHostCordisBridge {
       pendingApprovals: this.pendingApprovals.size,
       pendingQuestions: this.pendingQuestions.size,
       pendingPairingCandidates: this.pairingCoordinator.listPendingCandidates().length,
+      engines,
       metrics: { ...this.seenEvents },
     }
   }
@@ -2344,6 +2424,7 @@ export class OfficialHostCordisBridge {
     }
     this.ownedHandles.clear()
 
+    await this.router.stop()
     await this.runtime.stop()
   }
 }
@@ -2466,7 +2547,7 @@ function hasValidBearerToken(req: IncomingMessage, expectedToken: string): boole
 }
 
 export async function createBridgeControlServer(
-  bridge: OfficialHostCordisBridge,
+  bridge: RemoteControlBridgeLike,
   options?: {
     readonly port?: number | undefined
     readonly controlToken?: string | undefined
@@ -2490,17 +2571,77 @@ export async function createBridgeControlServer(
         sendJson(res, 401, { error: 'unauthorized control request' })
         return
       }
+      if (req.method === 'GET' && reqUrl.pathname === '/engines') {
+        const engines = bridge.listEngines ? await bridge.listEngines() : []
+        sendJson(res, 200, { engines })
+        return
+      }
       if (req.method === 'GET' && reqUrl.pathname === '/sessions') {
         sendJson(res, 200, { sessions: await bridge.listSessions() })
         return
       }
       if (req.method === 'POST' && reqUrl.pathname === '/sessions') {
         const body = await readJsonBody(req)
+        const engine = typeof body.engine === 'string' ? (body.engine as AgentEngineId) : undefined
+        let model: ModelSelectionParams | undefined
+        if (typeof body.model === 'string' && body.model.trim().length > 0) {
+          model = { provider: engine ?? 'default', model: body.model.trim() }
+        } else if (body.model && typeof body.model === 'object') {
+          const rec = body.model as Record<string, unknown>
+          if (typeof rec.model === 'string' && rec.model.trim().length > 0) {
+            model = {
+              provider: typeof rec.provider === 'string' ? rec.provider : (engine ?? 'default'),
+              model: rec.model.trim(),
+              ...(typeof rec.reasoningEffort === 'string' ? { reasoningEffort: rec.reasoningEffort } : {}),
+            }
+          }
+        }
         const session = await bridge.createSession({
           ...(typeof body.sessionId === 'string' ? { sessionId: body.sessionId } : {}),
+          ...(engine !== undefined ? { engine } : {}),
           ...(typeof body.cwd === 'string' ? { cwd: body.cwd } : {}),
+          ...(typeof body.title === 'string' ? { title: body.title } : {}),
+          ...(model !== undefined ? { model } : {}),
         })
         sendJson(res, 200, { session })
+        return
+      }
+      if (req.method === 'GET' && reqUrl.pathname === '/git/status') {
+        if (!bridge.getWorkspaceGitStatus) {
+          sendJson(res, 404, { error: 'git review not supported' })
+          return
+        }
+        const sessionId = reqUrl.searchParams.get('sessionId')?.trim()
+        if (!sessionId) {
+          sendJson(res, 400, { error: 'sessionId query parameter is required' })
+          return
+        }
+        const result = await bridge.getWorkspaceGitStatus({ sessionId })
+        sendJson(res, 200, result)
+        return
+      }
+      if (req.method === 'GET' && reqUrl.pathname === '/git/diff') {
+        if (!bridge.getWorkspaceGitDiff) {
+          sendJson(res, 404, { error: 'git review not supported' })
+          return
+        }
+        const sessionId = reqUrl.searchParams.get('sessionId')?.trim()
+        if (!sessionId) {
+          sendJson(res, 400, { error: 'sessionId query parameter is required' })
+          return
+        }
+        const filePath = reqUrl.searchParams.get('path') ?? undefined
+        const stagedParam = reqUrl.searchParams.get('staged')
+        const staged = stagedParam === '1' || stagedParam === 'true' ? true : undefined
+        const maxBytesRaw = reqUrl.searchParams.get('maxBytes')
+        const maxBytes = maxBytesRaw !== null && maxBytesRaw.trim() !== '' ? Number(maxBytesRaw) : undefined
+        const result = await bridge.getWorkspaceGitDiff({
+          sessionId,
+          ...(filePath !== undefined && filePath.length > 0 ? { path: filePath } : {}),
+          ...(staged !== undefined ? { staged } : {}),
+          ...(maxBytes !== undefined && Number.isFinite(maxBytes) ? { maxBytes } : {}),
+        })
+        sendJson(res, 200, result)
         return
       }
       if (req.method === 'POST' && reqUrl.pathname === '/sessions/reset') {

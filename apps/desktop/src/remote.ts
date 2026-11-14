@@ -15,7 +15,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { delimiter, join } from 'node:path'
 import { StringDecoder } from 'node:string_decoder'
 import { pathToFileURL } from 'node:url'
 import {
@@ -39,6 +39,38 @@ import { assertHostLaunchPaths, type HostLaunchPaths } from './paths.ts'
 
 export type DesktopRemotePhase = 'stopped' | 'starting' | 'running' | 'external' | 'error'
 
+export type DesktopRemoteEngineId = 'dsh' | 'claude' | 'codex' | 'opencode'
+
+export interface DesktopRemoteEngineView {
+  readonly id: string
+  readonly displayName?: string | undefined
+  readonly available: boolean
+  readonly version?: string | undefined
+  readonly error?: string | undefined
+}
+
+export interface DesktopGitFileView {
+  readonly path: string
+  readonly indexStatus: string
+  readonly workTreeStatus: string
+  readonly untracked: boolean
+}
+
+export interface DesktopGitPreviewView {
+  readonly sessionId: string
+  readonly repoRoot: string
+  readonly branch: string
+  readonly ahead: number
+  readonly behind: number
+  readonly clean: boolean
+  readonly files: readonly DesktopGitFileView[]
+  readonly diffPath?: string | undefined
+  readonly staged?: boolean | undefined
+  readonly diffText?: string | undefined
+  readonly truncated?: boolean | undefined
+  readonly error?: string | undefined
+}
+
 export interface DesktopRemoteSettings {
   readonly listenHost: string
   readonly port: number
@@ -46,6 +78,7 @@ export interface DesktopRemoteSettings {
   readonly relayUrl: string
   readonly signalingUrl: string
   readonly stunUrls: string
+  readonly engines?: string | undefined
 }
 
 export interface DesktopRemoteDeviceView {
@@ -76,6 +109,7 @@ export interface DesktopRemotePairingView {
 
 export interface DesktopLiveSessionView {
   readonly id: string
+  readonly engine?: string | undefined
   readonly title?: string | undefined
   readonly status?: string | undefined
   readonly preview?: string | undefined
@@ -104,7 +138,9 @@ export interface DesktopRemoteSnapshot {
   readonly activeConnections: number
   readonly pendingApprovals?: number | undefined
   readonly pendingQuestions?: number | undefined
+  readonly engines?: readonly DesktopRemoteEngineView[] | undefined
   readonly liveSessions?: readonly DesktopLiveSessionView[] | undefined
+  readonly gitPreview?: DesktopGitPreviewView | undefined
   readonly pairing?: DesktopRemotePairingView | undefined
   readonly pendingCandidates: readonly DesktopPendingCandidateView[]
   readonly devices: readonly DesktopRemoteDeviceView[]
@@ -191,6 +227,116 @@ export function resolveDesktopRemotePluginPath(options: {
   throw new Error(`未找到 Remote Host 插件入口（${packagedPlugin} / ${devBundledPlugin}）`)
 }
 
+export function resolveDesktopStandaloneHostPath(options: {
+  readonly isPackaged: boolean
+  readonly mainDir: string
+  readonly resourcesPath: string
+  readonly workspaceRoot: string
+  readonly desktopRoot: string
+}): string {
+  const packagedStandalone = join(options.resourcesPath, 'remote', 'standalone-cli.mjs')
+  if (options.isPackaged && existsSync(packagedStandalone)) {
+    return packagedStandalone
+  }
+  const devBundledStandalone = join(options.mainDir, '..', 'remote-bundle', 'standalone-cli.mjs')
+  if (!options.isPackaged && existsSync(devBundledStandalone)) {
+    return devBundledStandalone
+  }
+  const workspaceStandalone = join(
+    options.workspaceRoot,
+    'packages',
+    'remote-adapter',
+    'dist',
+    'standalone-cli.js',
+  )
+  if (!options.isPackaged && existsSync(workspaceStandalone)) {
+    return workspaceStandalone
+  }
+  throw new Error(`未找到独立 Multi-Agent Host 入口（${packagedStandalone} / ${devBundledStandalone}）`)
+}
+
+const VALID_ENGINE_IDS = new Set<DesktopRemoteEngineId>(['dsh', 'claude', 'codex', 'opencode'])
+const EXTERNAL_ENGINE_BINARIES: readonly { readonly id: 'claude' | 'codex' | 'opencode'; readonly bin: string }[] = [
+  { id: 'claude', bin: 'claude' },
+  { id: 'codex', bin: 'codex' },
+  { id: 'opencode', bin: 'opencode' },
+]
+
+function findBinaryOnPath(command: string, env: NodeJS.ProcessEnv): string | undefined {
+  const rawPath = env.PATH ?? ''
+  if (rawPath.trim() === '') return undefined
+  const suffixes =
+    process.platform === 'win32'
+      ? (env.PATHEXT ?? '.EXE;.CMD;.BAT;.COM').split(';').filter(Boolean)
+      : ['']
+  for (const dir of rawPath.split(delimiter)) {
+    if (!dir) continue
+    for (const suffix of suffixes) {
+      const candidate = join(dir, `${command}${suffix}`)
+      if (existsSync(candidate)) return candidate
+    }
+  }
+  return undefined
+}
+
+export function detectInstalledExternalEngines(
+  env: NodeJS.ProcessEnv,
+): readonly ('claude' | 'codex' | 'opencode')[] {
+  return EXTERNAL_ENGINE_BINARIES.filter((entry) => findBinaryOnPath(entry.bin, env) !== undefined).map(
+    (entry) => entry.id,
+  )
+}
+
+function parseDesktopEngineList(raw: string | undefined): {
+  readonly ok: true
+  readonly engines?: string | undefined
+  readonly list: readonly DesktopRemoteEngineId[]
+  readonly explicit: boolean
+} | {
+  readonly ok: false
+  readonly error: string
+} {
+  if (raw === undefined) {
+    return { ok: true, list: ['dsh', 'claude', 'codex', 'opencode'], explicit: false }
+  }
+  const trimmed = raw.trim()
+  if (trimmed === '' || trimmed.toLowerCase() === 'auto') {
+    return {
+      ok: true,
+      ...(trimmed.toLowerCase() === 'auto' ? { engines: 'auto' } : {}),
+      list: ['dsh', 'claude', 'codex', 'opencode'],
+      explicit: false,
+    }
+  }
+  if (trimmed.length > 128 || /[\u0000-\u001f]/u.test(trimmed)) {
+    return { ok: false, error: 'Agent 引擎列表过长或包含非法控制字符' }
+  }
+  const tokens = trimmed
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter((s) => s.length > 0)
+  if (tokens.length === 0) {
+    return { ok: true, list: ['dsh', 'claude', 'codex', 'opencode'], explicit: false }
+  }
+  if (tokens.includes('auto')) {
+    return {
+      ok: true,
+      engines: 'auto',
+      list: ['dsh', 'claude', 'codex', 'opencode'],
+      explicit: false,
+    }
+  }
+  const unique: DesktopRemoteEngineId[] = []
+  for (const token of tokens) {
+    if (!VALID_ENGINE_IDS.has(token as DesktopRemoteEngineId)) {
+      return { ok: false, error: `未知 Agent 引擎: ${token}（支持 auto,dsh,claude,codex,opencode）` }
+    }
+    const id = token as DesktopRemoteEngineId
+    if (!unique.includes(id)) unique.push(id)
+  }
+  return { ok: true, engines: unique.join(','), list: unique, explicit: true }
+}
+
 export function parseDesktopRemoteSettings(raw: unknown): DesktopRemoteSettings {
   if (raw === null || typeof raw !== 'object') return DEFAULT_DESKTOP_REMOTE_SETTINGS
   const rec = raw as Record<string, unknown>
@@ -218,7 +364,18 @@ export function parseDesktopRemoteSettings(raw: unknown): DesktopRemoteSettings 
     typeof rec.stunUrls === 'string' && rec.stunUrls.length <= MAX_URL_CHARS
       ? rec.stunUrls.trim()
       : ''
-  return { listenHost, port, enableMdns, relayUrl, signalingUrl, stunUrls }
+  const parsedEngines =
+    typeof rec.engines === 'string' ? parseDesktopEngineList(rec.engines) : { ok: true as const, engines: undefined }
+  const engines = parsedEngines.ok ? parsedEngines.engines : undefined
+  return {
+    listenHost,
+    port,
+    enableMdns,
+    relayUrl,
+    signalingUrl,
+    stunUrls,
+    ...(engines !== undefined ? { engines } : {}),
+  }
 }
 
 function validateWsUrl(raw: string, fieldLabel: string): string | undefined {
@@ -284,9 +441,49 @@ export function validateRemoteStartInput(
     }
   }
 
+  const parsedEngines = parseDesktopEngineList(typeof rec.engines === 'string' ? rec.engines : undefined)
+  if (!parsedEngines.ok) {
+    return { ok: false, error: parsedEngines.error }
+  }
+
   return {
     ok: true,
-    settings: { listenHost, port, enableMdns, relayUrl, signalingUrl, stunUrls },
+    settings: {
+      listenHost,
+      port,
+      enableMdns,
+      relayUrl,
+      signalingUrl,
+      stunUrls,
+      ...(parsedEngines.engines !== undefined ? { engines: parsedEngines.engines } : {}),
+    },
+  }
+}
+
+export function parseRemoteGitInspectInput(raw: unknown):
+  | { readonly action: 'clear' }
+  | { readonly action: 'inspect'; readonly sessionId: string; readonly path?: string | undefined; readonly staged?: boolean | undefined }
+  | undefined {
+  if (raw === null || typeof raw !== 'object') return undefined
+  const rec = raw as Record<string, unknown>
+  if (rec.clear === true) return { action: 'clear' }
+  if (typeof rec.sessionId !== 'string') return undefined
+  const sessionId = rec.sessionId.trim()
+  if (sessionId.length === 0 || sessionId.length > 160 || /[\s\u0000-\u001f]/u.test(sessionId)) {
+    return undefined
+  }
+  let filePath: string | undefined
+  if (typeof rec.path === 'string' && rec.path.trim() !== '') {
+    const trimmed = rec.path.trim()
+    if (trimmed.length > 512 || /[\u0000-\u001f]/u.test(trimmed)) return undefined
+    filePath = trimmed
+  }
+  const staged = typeof rec.staged === 'boolean' ? rec.staged : undefined
+  return {
+    action: 'inspect',
+    sessionId,
+    ...(filePath !== undefined ? { path: filePath } : {}),
+    ...(staged !== undefined ? { staged } : {}),
   }
 }
 
@@ -375,6 +572,8 @@ export class DesktopRemoteController {
   private cachedPending: DesktopPendingCandidateView[] = []
   private cachedDevices: DesktopRemoteDeviceView[] = []
   private cachedSessions: DesktopLiveSessionView[] = []
+  private cachedEngines: DesktopRemoteEngineView[] = []
+  private cachedGitPreview: DesktopGitPreviewView | undefined
   private logs = ''
   private notice: string | undefined
   private lastError: string | undefined
@@ -459,7 +658,22 @@ export class DesktopRemoteController {
       this.phase = 'stopped'
       this.cachedPending = []
       this.cachedSessions = []
+      this.cachedEngines = []
+      this.cachedGitPreview = undefined
     }
+  }
+
+  private mapEngineViews(raw: unknown): DesktopRemoteEngineView[] {
+    if (!Array.isArray(raw)) return []
+    return raw
+      .filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null && typeof (item as Record<string, unknown>).id === 'string')
+      .map((item) => ({
+        id: item.id as string,
+        ...(typeof item.displayName === 'string' && item.displayName !== '' ? { displayName: item.displayName } : {}),
+        available: item.available === true,
+        ...(typeof item.version === 'string' && item.version !== '' ? { version: item.version } : {}),
+        ...(typeof item.error === 'string' && item.error !== '' ? { error: item.error } : {}),
+      }))
   }
 
   private async refreshLiveInternal(): Promise<void> {
@@ -469,20 +683,31 @@ export class DesktopRemoteController {
     const control = this.activeControl()
     if (control === undefined) {
       this.cachedSessions = []
+      this.cachedEngines = []
       await this.refreshOfflineDevices(configDir, ctx.dshHome)
       return
     }
 
     try {
-      const [statusRes, pendingRes, devicesRes, sessionsRes] = await Promise.all([
+      const [statusRes, pendingRes, devicesRes, sessionsRes, enginesRes] = await Promise.all([
         this.controlFetch(control, '/status'),
         this.controlFetch(control, '/pairing/pending'),
         this.controlFetch(control, '/devices'),
         this.controlFetch(control, '/sessions').catch(() => undefined),
+        this.controlFetch(control, '/engines').catch(() => undefined),
       ])
       if (statusRes.ok) {
         const statusBody = (await statusRes.json()) as Record<string, unknown>
         this.cachedReady = { ...this.cachedReady, ...statusBody }
+        if (Array.isArray(statusBody.engines)) {
+          this.cachedEngines = this.mapEngineViews(statusBody.engines)
+        }
+      }
+      if (enginesRes?.ok) {
+        const engBody = (await enginesRes.json()) as { engines?: unknown }
+        if (Array.isArray(engBody.engines)) {
+          this.cachedEngines = this.mapEngineViews(engBody.engines)
+        }
       }
       if (pendingRes.ok) {
         const body = (await pendingRes.json()) as { pending?: DesktopPendingCandidateView[] }
@@ -509,6 +734,7 @@ export class DesktopRemoteController {
                   : undefined
               return {
                 id: s.id as string,
+                ...(typeof s.engine === 'string' && s.engine !== '' ? { engine: s.engine } : {}),
                 ...(typeof s.title === 'string' && s.title !== '' ? { title: s.title } : {}),
                 ...(typeof s.status === 'string' && s.status !== '' ? { status: s.status } : {}),
                 ...(typeof s.preview === 'string' && s.preview !== '' ? { preview: s.preview } : {}),
@@ -617,7 +843,11 @@ export class DesktopRemoteController {
       activeConnections,
       pendingApprovals,
       pendingQuestions,
+      engines: this.isRunning()
+        ? (this.cachedEngines.length > 0 ? this.cachedEngines : this.mapEngineViews(ready.engines))
+        : [],
       liveSessions: this.isRunning() ? this.cachedSessions : [],
+      ...(this.isRunning() && this.cachedGitPreview !== undefined ? { gitPreview: this.cachedGitPreview } : {}),
       pairing: this.isRunning()
         ? buildPairingView({ ...ready, ...(lanUrl !== '' ? { lanUrl } : {}) }, lanCandidates)
         : undefined,
@@ -659,9 +889,27 @@ export class DesktopRemoteController {
       return
     }
 
-    if (!officialApiKeyPresent(ctx.env)) {
+    const parsedEngineReq = parseDesktopEngineList(validated.settings.engines ?? ctx.env.DSH_REMOTE_ENGINES)
+    const requestedEngines = parsedEngineReq.ok ? parsedEngineReq.list : (['dsh', 'claude', 'codex', 'opencode'] as const)
+    const enginesExplicit = parsedEngineReq.ok ? parsedEngineReq.explicit : false
+    const hasOfficialKey = officialApiKeyPresent(ctx.env)
+    const useCordisDshHost = hasOfficialKey && requestedEngines.includes('dsh')
+    const externalRequested = requestedEngines.filter(
+      (e): e is 'claude' | 'codex' | 'opencode' => e !== 'dsh',
+    )
+    const detectedExternal = detectInstalledExternalEngines(ctx.env).filter((e) =>
+      externalRequested.includes(e),
+    )
+
+    if (!useCordisDshHost && externalRequested.length === 0) {
       this.phase = 'error'
-      this.lastError = '未检测到 DEEPSEEK_API_KEY。请先设置环境变量再启动远程宿主机。'
+      this.lastError = '未检测到 DEEPSEEK_API_KEY。请先设置环境变量，或在配置中填写本地编程 Agent（claude/codex/opencode）。'
+      this.emitChange()
+      return
+    }
+    if (!useCordisDshHost && !enginesExplicit && detectedExternal.length === 0) {
+      this.phase = 'error'
+      this.lastError = '未检测到 DEEPSEEK_API_KEY，且 PATH 中未找到 claude / codex / opencode；请先设置 DEEPSEEK_API_KEY 或安装任一编程 Agent CLI。'
       this.emitChange()
       return
     }
@@ -669,36 +917,55 @@ export class DesktopRemoteController {
     let tmpDir = ''
     try {
       const paths = ctx.launchPaths()
-      assertHostLaunchPaths(paths)
-      const pluginPath = resolveDesktopRemotePluginPath(ctx)
-      const pluginUrl = pathToFileURL(pluginPath).href
+      if (useCordisDshHost) {
+        assertHostLaunchPaths(paths)
+      } else if (paths.nodeExecutable.includes('/') && !existsSync(paths.nodeExecutable)) {
+        throw new Error(`desktop Node runtime is missing: ${paths.nodeExecutable}`)
+      }
 
       tmpDir = mkdtempSync(join(tmpdir(), 'dsh-desktop-remote-'))
-      const patchFile = join(tmpDir, 'remote-host.patch.yml')
       const readyFile = join(tmpDir, 'ready.json')
       const controlToken = randomBytes(24).toString('hex')
       const lanCandidates = detectLanIpv4Candidates()
       const listenHost = resolveEffectiveListenHost(validated.settings.listenHost, lanCandidates)
 
-      writeFileSync(
-        patchFile,
-        composeRemoteHostPatchYaml({ pluginUrl, workspaceRoot: paths.cwd }),
-        'utf8',
-      )
-
-      const baseEnv = paths.electronRunAsNode
-        ? { ...paths.env, ELECTRON_RUN_AS_NODE: '1' }
-        : paths.env
+      const baseEnv: NodeJS.ProcessEnv = paths.electronRunAsNode
+        ? { ...ctx.env, ...paths.env, ELECTRON_RUN_AS_NODE: '1' }
+        : { ...ctx.env, ...paths.env }
       const nodePrefix = paths.electronRunAsNode ? ['--expose-internals'] : []
+
+      let spawnArgs: string[]
+      if (useCordisDshHost) {
+        const pluginPath = resolveDesktopRemotePluginPath(ctx)
+        const pluginUrl = pathToFileURL(pluginPath).href
+        const patchFile = join(tmpDir, 'remote-host.patch.yml')
+        writeFileSync(
+          patchFile,
+          composeRemoteHostPatchYaml({ pluginUrl, workspaceRoot: paths.cwd }),
+          'utf8',
+        )
+        spawnArgs = [...nodePrefix, paths.cliEntry, '--profile', 'headless', '--patch', patchFile]
+      } else {
+        const standalonePath = resolveDesktopStandaloneHostPath(ctx)
+        spawnArgs = [...nodePrefix, standalonePath]
+      }
+
+      const enginesForEnv = useCordisDshHost
+        ? (enginesExplicit
+            ? requestedEngines
+            : (detectedExternal.length > 0 ? ['dsh', ...detectedExternal] : []))
+        : (enginesExplicit ? externalRequested : detectedExternal)
 
       this.phase = 'starting'
       this.logs = ''
       this.cachedPending = []
+      this.cachedEngines = []
+      this.cachedGitPreview = undefined
       this.emitChange()
 
       const child = this.spawnFn(
         paths.nodeExecutable,
-        [...nodePrefix, paths.cliEntry, '--profile', 'headless', '--patch', patchFile],
+        spawnArgs,
         {
           cwd: paths.cwd,
           env: {
@@ -710,6 +977,7 @@ export class DesktopRemoteController {
             DSH_REMOTE_LAN_HOST: listenHost,
             DSH_REMOTE_LAN_PORT: String(validated.settings.port),
             DSH_REMOTE_ENABLE_MDNS: validated.settings.enableMdns ? '1' : '0',
+            ...(enginesForEnv.length > 0 ? { DSH_REMOTE_ENGINES: enginesForEnv.join(',') } : {}),
             ...(validated.settings.relayUrl ? { DSH_REMOTE_RELAY_URL: validated.settings.relayUrl } : {}),
             ...(validated.settings.signalingUrl
               ? { DSH_REMOTE_SIGNALING_URL: validated.settings.signalingUrl }
@@ -772,6 +1040,8 @@ export class DesktopRemoteController {
             this.lastError = `Remote Host 进程意外退出 (code=${String(code)}, signal=${String(signal)})`
           }
           this.cachedPending = []
+          this.cachedEngines = []
+          this.cachedGitPreview = undefined
           this.emitChange()
         }
       })
@@ -822,9 +1092,91 @@ export class DesktopRemoteController {
     }
   }
 
+  async inspectSessionGit(raw: unknown): Promise<void> {
+    const parsed = parseRemoteGitInspectInput(raw)
+    if (parsed === undefined) return
+    if (parsed.action === 'clear') {
+      this.cachedGitPreview = undefined
+      this.emitChange()
+      return
+    }
+    const control = this.activeControl()
+    if (control === undefined) {
+      this.lastError = 'Remote Host 未运行，无法查看 Git Diff。'
+      this.emitChange()
+      return
+    }
+    try {
+      const statusQs = `sessionId=${encodeURIComponent(parsed.sessionId)}`
+      const diffParts = [statusQs]
+      if (parsed.path !== undefined) diffParts.push(`path=${encodeURIComponent(parsed.path)}`)
+      if (parsed.staged) diffParts.push('staged=1')
+      const [statusRes, diffRes] = await Promise.all([
+        this.controlFetch(control, `/git/status?${statusQs}`),
+        this.controlFetch(control, `/git/diff?${diffParts.join('&')}`),
+      ])
+      if (!statusRes.ok) {
+        const errBody = (await statusRes.json().catch(() => ({}))) as { error?: string }
+        throw new Error(errBody.error ?? `Git status HTTP ${String(statusRes.status)}`)
+      }
+      const status = (await statusRes.json()) as {
+        repoRoot?: string
+        branch?: string
+        ahead?: number
+        behind?: number
+        clean?: boolean
+        files?: Array<{ path?: string; indexStatus?: string; workTreeStatus?: string; untracked?: boolean }>
+      }
+      const diffBody = diffRes.ok
+        ? ((await diffRes.json()) as { diff?: string; truncated?: boolean; path?: string })
+        : { diff: '', truncated: false }
+      const files: DesktopGitFileView[] = Array.isArray(status.files)
+        ? status.files
+            .filter((f): f is { path: string; indexStatus?: string; workTreeStatus?: string; untracked?: boolean } =>
+              typeof f?.path === 'string' && f.path !== '')
+            .slice(0, 60)
+            .map((f) => ({
+              path: f.path,
+              indexStatus: typeof f.indexStatus === 'string' ? f.indexStatus : ' ',
+              workTreeStatus: typeof f.workTreeStatus === 'string' ? f.workTreeStatus : ' ',
+              untracked: f.untracked === true,
+            }))
+        : []
+      this.cachedGitPreview = {
+        sessionId: parsed.sessionId,
+        repoRoot: typeof status.repoRoot === 'string' ? status.repoRoot : '',
+        branch: typeof status.branch === 'string' ? status.branch : 'HEAD',
+        ahead: typeof status.ahead === 'number' ? status.ahead : 0,
+        behind: typeof status.behind === 'number' ? status.behind : 0,
+        clean: status.clean === true,
+        files,
+        ...(parsed.path !== undefined ? { diffPath: parsed.path } : {}),
+        ...(parsed.staged ? { staged: true } : { staged: false }),
+        diffText: typeof diffBody.diff === 'string' ? diffBody.diff : '',
+        truncated: diffBody.truncated === true,
+      }
+      this.lastError = undefined
+      this.emitChange()
+    } catch (error) {
+      this.cachedGitPreview = {
+        sessionId: parsed.sessionId,
+        repoRoot: '',
+        branch: '',
+        ahead: 0,
+        behind: 0,
+        clean: true,
+        files: [],
+        error: error instanceof Error ? error.message : String(error),
+      }
+      this.emitChange()
+    }
+  }
+
   async stop(): Promise<void> {
     this.notice = undefined
     this.lastError = undefined
+    this.cachedEngines = []
+    this.cachedGitPreview = undefined
     const ctx = this.getContext()
     const configDir = resolveDesktopRemoteConfigDir(ctx)
 

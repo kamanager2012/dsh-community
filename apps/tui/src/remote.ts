@@ -5,6 +5,7 @@ import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { StringDecoder } from 'node:string_decoder'
+import { fileURLToPath } from 'node:url'
 import {
   buildLoopbackPairingWarning,
   composeRemoteHostPatchYaml,
@@ -18,30 +19,35 @@ import {
   writeLiveControlEndpoint,
 } from '@dsh-community/dsh-bridge'
 import {
+  type AgentEngineId,
   BlindRelayServer,
   defaultRemoteConfigDir,
   defaultRemoteDshHome,
+  findBinaryOnPath,
   openPersistentRemoteStores,
+  parseRequestedEngines,
   SelfHostedSignalingServer,
   SelfHostedStunServer,
 } from '@dsh-community/remote-adapter'
 
 export { buildLoopbackPairingWarning, composeRemoteHostPatchYaml, detectLanIpv4Candidates }
 
-export const COMMUNITY_REMOTE_HELP = `dsh-community remote — E2EE 远程宿主机与自托管信令/中继（官方 @deepseek-ai/dsh headless）
+export const COMMUNITY_REMOTE_HELP = `dsh-community remote — 多引擎 E2EE 远程控制平面与自托管信令/中继（DSH / Claude Code / Codex / OpenCode）
 
-  dsh-community remote start [选项]     启动官方 DSH 远程宿主并签发配对码
+  dsh-community remote start [选项]     启动统一 E2EE 远程控制宿主并签发配对码
+    --engines <list>                    启用引擎（auto | all | dsh,claude,codex,opencode；默认 auto）
+    --default-engine <id>               新建会话默认引擎（dsh | claude | codex | opencode）
     --host <ip>                         监听地址（默认 127.0.0.1；支持私有网段或 loopback）
     --port <n>                          监听端口（默认 0 自动分配）
     --mdns                              发布局域网 mDNS (_dsh-remote._tcp) 提示
     --qr                                启动后在终端输出可扫码 UTF-8 二维码
-    --relay-url <ws(s)://...>           可选社区盲中继地址
+    --relay-url <ws(s)://...>           可选社区盲中继地址（或设 DSH_REMOTE_DEFAULT_RELAY_URL）
     --relay-room <id>                   可选中继房间 ID
     --signaling-url <ws(s)://...>       可选 WebRTC 信令地址
     --signaling-room <id>               可选 WebRTC 信令房间 ID
     --stun <stun:host:port[,...]>       可选自建 STUN URL（支持逗号分隔多条）
-    --session <id>                      恢复或新建指定官方会话 ID
-    --new                               启动时新建一条官方会话
+    --session <id>                      恢复或新建指定会话 ID
+    --new                               启动时新建一条会话
     --cwd <dir>                         工作目录（默认当前目录）
     --json                              输出单行 JSON 就绪信息
 
@@ -80,6 +86,8 @@ export function formatPairingQrBlock(deepLink: string, isTty: boolean): string {
 }
 
 interface StartFlags {
+  readonly engines?: string | undefined
+  readonly defaultEngine?: AgentEngineId | undefined
   readonly host: string
   readonly port: string
   readonly mdns: boolean
@@ -119,6 +127,8 @@ function parsePositiveIntValue(raw: string, flag: string): number {
 }
 
 function parseStartFlags(args: readonly string[], defaultCwd: string): StartFlags {
+  let engines: string | undefined
+  let defaultEngine: AgentEngineId | undefined
   let host = '127.0.0.1'
   let port = '0'
   let mdns = false
@@ -139,7 +149,9 @@ function parseStartFlags(args: readonly string[], defaultCwd: string): StartFlag
       i = res.nextIndex
       return res.value
     }
-    if (arg === '--host') host = readVal()
+    if (arg === '--engines' || arg === '--engine') engines = readVal()
+    else if (arg === '--default-engine') defaultEngine = readVal() as AgentEngineId
+    else if (arg === '--host') host = readVal()
     else if (arg === '--port') port = String(parsePortValue(readVal(), '--port'))
     else if (arg === '--mdns') mdns = true
     else if (arg === '--qr') qr = true
@@ -156,6 +168,8 @@ function parseStartFlags(args: readonly string[], defaultCwd: string): StartFlag
   }
 
   return {
+    engines,
+    defaultEngine,
     host,
     port,
     mdns,
@@ -294,12 +308,15 @@ async function fetchControl(url: string, init?: RequestInit): Promise<Response> 
 }
 
 export const REMOTE_REPL_COMMAND_SUMMARY =
-  'status | sessions | devices | confirm <id> | revoke <deviceId> | qr | help | quit'
+  'status | engines | sessions | git <sessionId> | diff <sessionId> [path] [--staged] | devices | confirm <id> | revoke <deviceId> | qr | help | quit'
 
 export type RemoteReplAction =
   | { readonly kind: 'empty' }
   | { readonly kind: 'status' }
+  | { readonly kind: 'engines' }
   | { readonly kind: 'sessions' }
+  | { readonly kind: 'git'; readonly sessionId: string }
+  | { readonly kind: 'diff'; readonly sessionId: string; readonly path?: string | undefined; readonly staged?: boolean | undefined }
   | { readonly kind: 'devices' }
   | { readonly kind: 'qr' }
   | { readonly kind: 'help' }
@@ -309,16 +326,123 @@ export type RemoteReplAction =
   | { readonly kind: 'usage'; readonly usage: string }
   | { readonly kind: 'unknown'; readonly command: string }
 
+/** Formats a unified diff with ANSI color highlights when attached to a TTY. */
+export function formatColoredDiff(diffText: string, useColor: boolean): string {
+  const normalized = diffText.replaceAll('\r\n', '\n')
+  let additions = 0
+  let deletions = 0
+  const lines = normalized.split('\n')
+  for (const line of lines) {
+    if (line.startsWith('+') && !line.startsWith('+++ ')) additions += 1
+    else if (line.startsWith('-') && !line.startsWith('--- ')) deletions += 1
+  }
+  const summaryPlain = `(+${String(additions)} / -${String(deletions)} lines)`
+  const summary = useColor
+    ? `(\x1b[32m+${String(additions)}\x1b[0m / \x1b[31m-${String(deletions)}\x1b[0m lines)`
+    : summaryPlain
+  if (!useColor) {
+    return `${summary}\n${normalized}`
+  }
+  const colored = lines
+    .map((line) => {
+      if (line.startsWith('diff --git ') || line.startsWith('index ') || line.startsWith('--- ') || line.startsWith('+++ ')) {
+        return `\x1b[1;36m${line}\x1b[0m`
+      }
+      if (line.startsWith('@@ ')) {
+        return `\x1b[35m${line}\x1b[0m`
+      }
+      if (line.startsWith('+')) {
+        return `\x1b[32m${line}\x1b[0m`
+      }
+      if (line.startsWith('-')) {
+        return `\x1b[31m${line}\x1b[0m`
+      }
+      return line
+    })
+    .join('\n')
+  return `${summary}\n${colored}`
+}
+
+/** Formats `/git/status` JSON into a human-readable branch & changed-files overview. */
+export function formatGitStatusSummary(rawText: string, useColor: boolean): string {
+  let parsed: {
+    branch?: unknown
+    repoRoot?: unknown
+    ahead?: unknown
+    behind?: unknown
+    clean?: unknown
+    files?: unknown
+    error?: unknown
+  }
+  try {
+    parsed = JSON.parse(rawText) as typeof parsed
+  } catch {
+    return rawText
+  }
+  if (typeof parsed.error === 'string' && parsed.error.length > 0) {
+    return useColor ? `\x1b[31m${parsed.error}\x1b[0m` : parsed.error
+  }
+  const branch = typeof parsed.branch === 'string' ? parsed.branch : 'HEAD'
+  const repoRoot = typeof parsed.repoRoot === 'string' ? parsed.repoRoot : ''
+  const ahead = typeof parsed.ahead === 'number' ? parsed.ahead : 0
+  const behind = typeof parsed.behind === 'number' ? parsed.behind : 0
+  const files = Array.isArray(parsed.files) ? parsed.files : []
+  const header = `Branch: ${branch} (↑${String(ahead)} ↓${String(behind)})${repoRoot ? ` · ${repoRoot}` : ''}`
+  if (files.length === 0) {
+    return `${header}\n  工作区干净，暂无未提交改动`
+  }
+  const rows = files.slice(0, 40).map((f) => {
+    const rec = (typeof f === 'object' && f !== null ? f : {}) as {
+      path?: unknown
+      indexStatus?: unknown
+      workTreeStatus?: unknown
+      untracked?: unknown
+    }
+    const rawPath = typeof rec.path === 'string' ? rec.path : '?'
+    const badge = rec.untracked === true
+      ? '?'
+      : `${typeof rec.indexStatus === 'string' ? rec.indexStatus : ''}${typeof rec.workTreeStatus === 'string' ? rec.workTreeStatus : ''}`.trim() || 'M'
+    if (!useColor) return `  [${badge}] ${rawPath}`
+    const color = badge === '?' ? '\x1b[33m' : badge.includes('D') ? '\x1b[31m' : '\x1b[32m'
+    return `  ${color}[${badge}]\x1b[0m ${rawPath}`
+  })
+  if (files.length > 40) {
+    rows.push(`  ... 及其他 ${String(files.length - 40)} 个文件`)
+  }
+  return `${header} · 变更 ${String(files.length)} 个文件:\n${rows.join('\n')}`
+}
+
 /** Parses a single line entered into the interactive `remote start` TTY control REPL. */
 export function parseRemoteReplLine(line: string): RemoteReplAction {
   const trimmed = line.trim()
   if (!trimmed) return { kind: 'empty' }
-  const [cmd = '', arg] = trimmed.split(/\s+/, 2)
+  const parts = trimmed.split(/\s+/)
+  const cmd = parts[0] ?? ''
+  const arg = parts[1]
   switch (cmd) {
     case 'confirm':
       return arg ? { kind: 'confirm', candidateId: arg } : { kind: 'usage', usage: '用法: confirm <candidateId>' }
     case 'revoke':
       return arg ? { kind: 'revoke', deviceId: arg } : { kind: 'usage', usage: '用法: revoke <deviceId>' }
+    case 'git':
+      return arg ? { kind: 'git', sessionId: arg } : { kind: 'usage', usage: '用法: git <sessionId>' }
+    case 'diff': {
+      if (!arg) return { kind: 'usage', usage: '用法: diff <sessionId> [path] [--staged]' }
+      let path: string | undefined
+      let staged = false
+      for (const token of parts.slice(2)) {
+        if (token === '--staged') staged = true
+        else if (path === undefined) path = token
+      }
+      return {
+        kind: 'diff',
+        sessionId: arg,
+        ...(path !== undefined ? { path } : {}),
+        ...(staged ? { staged: true } : {}),
+      }
+    }
+    case 'engines':
+      return { kind: 'engines' }
     case 'devices':
       return { kind: 'devices' }
     case 'sessions':
@@ -340,6 +464,10 @@ export function parseRemoteReplLine(line: string): RemoteReplAction {
 
 export function resolveRemoteCordisPluginUrl(): string {
   return import.meta.resolve('@dsh-community/remote-adapter/cordis-plugin')
+}
+
+export function resolveStandaloneHostCliPath(): string {
+  return fileURLToPath(import.meta.resolve('@dsh-community/remote-adapter/standalone-cli'))
 }
 
 export async function runRemoteCommand(
@@ -497,6 +625,7 @@ export async function runRemoteCommand(
             pendingApprovals: liveStatus.pendingApprovals,
             pendingQuestions: liveStatus.pendingQuestions,
             pendingPairingCandidates: liveStatus.pendingPairingCandidates,
+            ...(Array.isArray(liveStatus.engines) ? { engines: liveStatus.engines } : {}),
           }
         : {}),
       ...(liveSessions !== undefined ? { sessions: liveSessions } : {}),
@@ -511,13 +640,20 @@ export async function runRemoteCommand(
         `信任设备：${summary.activeDevices} 个生效，${summary.revokedDevices} 个已吊销`,
         `宿主运行态：${summary.running ? `在线 (连接 ${String(liveStatus?.activeConnections ?? 0)}, 待审批 ${String(liveStatus?.pendingApprovals ?? 0)}, 待回答 ${String(liveStatus?.pendingQuestions ?? 0)})` : '未运行'}`,
       ]
+      if (Array.isArray(liveStatus?.engines) && liveStatus.engines.length > 0) {
+        const engText = liveStatus.engines
+          .map((e: any) => `${String(e.id)}(${e.available ? (e.version || 'ready') : 'unavailable'})`)
+          .join(', ')
+        out.push(`Agent 引擎：${engText}`)
+      }
       if (liveSessions && liveSessions.length > 0) {
         out.push(`活跃/可读会话 (${String(liveSessions.length)}):`)
         for (const s of liveSessions.slice(0, 8)) {
           const id = String(s.id ?? '')
+          const eng = typeof s.engine === 'string' ? `[${s.engine}] ` : ''
           const title = typeof s.title === 'string' && s.title !== '' ? ` [${s.title}]` : ''
           const status = typeof s.status === 'string' ? ` (${s.status})` : ''
-          out.push(`  - ${id}${title}${status}`)
+          out.push(`  - ${eng}${id}${title}${status}`)
         }
       }
       process.stdout.write(out.join('\n') + '\n')
@@ -533,27 +669,62 @@ export async function runRemoteCommand(
       return handleRemoteFlagParseError(err)
     }
 
-    if (!officialApiKeyPresent(env)) {
-      process.stderr.write('请先设置 DEEPSEEK_API_KEY 再启动 dsh-community remote start\n')
+    let requestedEngines: AgentEngineId[]
+    try {
+      requestedEngines = parseRequestedEngines(flags.engines ?? env.DSH_REMOTE_ENGINES, {
+        defaultWhenUnset: ['dsh', 'claude', 'codex', 'opencode'],
+        autoEngines: ['dsh', 'claude', 'codex', 'opencode'],
+      })
+    } catch (err) {
+      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`)
       return 2
     }
 
-    const pluginUrl = resolveRemoteCordisPluginUrl()
-    const install = resolveOfficialDsh({ from: import.meta.url })
+    const hasOfficialKey = officialApiKeyPresent(env)
+    const externalEngines = requestedEngines.filter((e) => e !== 'dsh')
+    const detectedExternal = externalEngines.filter((e) => {
+      const bin = e === 'claude' ? 'claude' : e === 'codex' ? 'codex' : e === 'opencode' ? 'opencode' : ''
+      return bin ? Boolean(findBinaryOnPath(bin, env)) : false
+    })
+    const useCordisDshHost = requestedEngines.includes('dsh') && hasOfficialKey
+
+    if (!useCordisDshHost && externalEngines.length === 0) {
+      process.stderr.write('请先设置 DEEPSEEK_API_KEY，或通过 --engines claude,codex,opencode 启用本地编程 Agent\n')
+      return 2
+    }
+    if (!useCordisDshHost && !flags.engines && !env.DSH_REMOTE_ENGINES && detectedExternal.length === 0) {
+      process.stderr.write('未检测到 DEEPSEEK_API_KEY，且 PATH 中未找到 claude / codex / opencode；请配置 DEEPSEEK_API_KEY 或安装任一编程 Agent CLI\n')
+      return 2
+    }
+
+    const relayUrl = flags.relayUrl ?? (env.DSH_REMOTE_DEFAULT_RELAY_URL?.trim() || undefined)
     const tmpDir = mkdtempSync(join(tmpdir(), 'dsh-community-remote-'))
-    const patchFile = join(tmpDir, 'remote-host.patch.yml')
     const readyFile = join(tmpDir, 'ready.json')
     const controlToken = randomBytes(24).toString('hex')
 
-    writeFileSync(
-      patchFile,
-      composeRemoteHostPatchYaml({ pluginUrl, workspaceRoot: flags.cwd }),
-      'utf8',
-    )
+    let spawnEntryPath: string
+    let spawnArgs: string[]
+    if (useCordisDshHost) {
+      const pluginUrl = resolveRemoteCordisPluginUrl()
+      const install = resolveOfficialDsh({ from: import.meta.url })
+      const patchFile = join(tmpDir, 'remote-host.patch.yml')
+      writeFileSync(
+        patchFile,
+        composeRemoteHostPatchYaml({ pluginUrl, workspaceRoot: flags.cwd }),
+        'utf8',
+      )
+      spawnEntryPath = install.binPath
+      spawnArgs = [install.binPath, '--profile', 'headless', '--patch', patchFile]
+    } else {
+      const standalonePath = resolveStandaloneHostCliPath()
+      spawnEntryPath = standalonePath
+      spawnArgs = [standalonePath]
+    }
 
+    const effectiveEnginesForEnv = useCordisDshHost ? requestedEngines : externalEngines
     const child = spawn(
       process.execPath,
-      [install.binPath, '--profile', 'headless', '--patch', patchFile],
+      spawnArgs,
       {
         cwd: flags.cwd,
         env: {
@@ -564,8 +735,14 @@ export async function runRemoteCommand(
           DSH_REMOTE_CWD: flags.cwd,
           DSH_REMOTE_LAN_HOST: flags.host,
           DSH_REMOTE_LAN_PORT: flags.port,
+          ...(effectiveEnginesForEnv.length > 0
+            ? { DSH_REMOTE_ENGINES: effectiveEnginesForEnv.join(',') }
+            : {}),
+          ...(flags.defaultEngine !== undefined
+            ? { DSH_REMOTE_DEFAULT_ENGINE: String(flags.defaultEngine) }
+            : {}),
           ...(flags.mdns ? { DSH_REMOTE_ENABLE_MDNS: '1' } : {}),
-          ...(flags.relayUrl ? { DSH_REMOTE_RELAY_URL: flags.relayUrl } : {}),
+          ...(relayUrl ? { DSH_REMOTE_RELAY_URL: relayUrl } : {}),
           ...(flags.relayRoom ? { DSH_REMOTE_RELAY_ROOM_ID: flags.relayRoom } : {}),
           ...(flags.signalingUrl ? { DSH_REMOTE_SIGNALING_URL: flags.signalingUrl } : {}),
           ...(flags.signalingRoom ? { DSH_REMOTE_SIGNALING_ROOM_ID: flags.signalingRoom } : {}),
@@ -579,6 +756,7 @@ export async function runRemoteCommand(
         stdio: ['ignore', 'pipe', 'pipe'],
       },
     )
+    void spawnEntryPath
 
     child.stdout.resume()
 
@@ -641,6 +819,12 @@ export async function runRemoteCommand(
           `  主机指纹: ${String(ready.hostFingerprint ?? '')}`,
           `  LAN 地址: ${String(ready.lanUrl ?? '')}`,
         ]
+        if (Array.isArray(ready.engines) && ready.engines.length > 0) {
+          const engList = (ready.engines as Array<{ id?: string; available?: boolean; version?: string }>)
+            .map((e) => `${String(e.id ?? '')}${e.available ? (e.version ? ` (${e.version})` : ' ✓') : ' (unavailable)'}`)
+            .join(', ')
+          lines.splice(1, 0, `  Agent 引擎: ${engList}`)
+        }
         if (ready.signalingUrl) lines.push(`  WebRTC 信令: ${String(ready.signalingUrl)}`)
         if (Array.isArray(ready.stunUrls) && ready.stunUrls.length > 0) {
           lines.push(`  STUN 地址: ${ready.stunUrls.join(', ')}`)
@@ -718,6 +902,49 @@ export async function runRemoteCommand(
                 headers: { authorization: `Bearer ${controlToken}` },
               })
               process.stdout.write(`${await res.text()}\n`)
+              return
+            }
+            case 'engines': {
+              const res = await fetchControl(`${controlUrl}/engines`, {
+                headers: { authorization: `Bearer ${controlToken}` },
+              })
+              process.stdout.write(`${await res.text()}\n`)
+              return
+            }
+            case 'git': {
+              const res = await fetchControl(
+                `${controlUrl}/git/status?sessionId=${encodeURIComponent(action.sessionId)}`,
+                { headers: { authorization: `Bearer ${controlToken}` } },
+              )
+              const body = await res.text()
+              process.stdout.write(`${formatGitStatusSummary(body, Boolean(process.stdout.isTTY))}\n`)
+              return
+            }
+            case 'diff': {
+              const qs = new URLSearchParams({ sessionId: action.sessionId })
+              if (action.path) qs.set('path', action.path)
+              if (action.staged) qs.set('staged', '1')
+              const res = await fetchControl(
+                `${controlUrl}/git/diff?${qs.toString()}`,
+                { headers: { authorization: `Bearer ${controlToken}` } },
+              )
+              const text = await res.text()
+              const useColor = Boolean(process.stdout.isTTY)
+              try {
+                const parsed = JSON.parse(text) as { branch?: string; diff?: string; staged?: boolean; truncated?: boolean; error?: string }
+                if (typeof parsed.diff === 'string') {
+                  const scopeLabel = parsed.staged ? 'staged diff' : 'diff'
+                  const truncLabel = parsed.truncated ? ' [truncated]' : ''
+                  const body = parsed.diff.trim()
+                    ? formatColoredDiff(parsed.diff, useColor)
+                    : '（当前筛选范围无文本 Diff）'
+                  process.stdout.write(`=== ${parsed.branch ?? 'git'} ${scopeLabel}${truncLabel} ===\n${body}\n`)
+                } else {
+                  process.stdout.write(`${text}\n`)
+                }
+              } catch {
+                process.stdout.write(`${text}\n`)
+              }
               return
             }
             case 'status': {
