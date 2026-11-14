@@ -7,6 +7,7 @@ import {
   readFileSync,
   rmSync,
   symlinkSync,
+  utimesSync,
   writeFileSync,
 } from 'node:fs'
 import { createServer as createNetServer } from 'node:net'
@@ -437,6 +438,25 @@ describe('P10 hardening, Unicode safety, workspace uploads, and failover resilie
     expect(mgr.revokeDevice('dev-c')).toBe(1)
     expect(mgr.activeCount()).toBe(0)
     expect(readdirSync(join(work, WORKSPACE_UPLOAD_SUBDIR)).some((n) => n.startsWith('.tmp-'))).toBe(false)
+
+    // Crash-leftover expired orphan `.tmp-upl-*` files are pruned on open(), while fresh ones remain.
+    const staleOrphan = join(work, WORKSPACE_UPLOAD_SUBDIR, '.tmp-upl-crashed-old')
+    const freshOrphan = join(work, WORKSPACE_UPLOAD_SUBDIR, '.tmp-upl-fresh')
+    writeFileSync(staleOrphan, 'stale-orphan')
+    writeFileSync(freshOrphan, 'fresh-orphan')
+    const pastSec = (Date.now() - 10 * 60_000) / 1000
+    utimesSync(staleOrphan, pastSec, pastSec)
+    const u4 = mgr.open({
+      deviceId: 'dev-d',
+      sessionId: 'sess-1',
+      workspaceRoot: work,
+      filename: 'after-orphan-sweep.txt',
+      sizeBytes: 4,
+    })
+    expect(existsSync(staleOrphan)).toBe(false)
+    expect(existsSync(freshOrphan)).toBe(true)
+    mgr.abort({ deviceId: 'dev-d', uploadId: u4.uploadId })
+    rmSync(freshOrphan, { force: true })
     mgr.disposeAll()
   })
 

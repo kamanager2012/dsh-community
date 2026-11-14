@@ -7,11 +7,13 @@ import {
   lstatSync,
   mkdirSync,
   openSync,
+  readdirSync,
   realpathSync,
   renameSync,
   statSync,
   unlinkSync,
   writeSync,
+  type Dirent,
 } from 'node:fs'
 import { extname, basename, join, sep } from 'node:path'
 import { RemoteProtocolError } from './errors.js'
@@ -260,6 +262,7 @@ export class WorkspaceUploadManager {
     }
 
     const uploadDir = resolveConfinedUploadDir(options.workspaceRoot)
+    this.pruneOrphanStagingFiles(uploadDir)
     if (conflictPolicy === 'fail' && existsSync(join(uploadDir, filename))) {
       throw new RemoteProtocolError('INVALID_REQUEST', `target file already exists: ${WORKSPACE_UPLOAD_SUBDIR}/${filename}`)
     }
@@ -471,6 +474,34 @@ export class WorkspaceUploadManager {
       if (now - active.lastActivityMs > this.idleTtlMs) {
         this.cleanupUpload(uploadId)
       }
+    }
+  }
+
+  private pruneOrphanStagingFiles(uploadDir: string): void {
+    const now = this.clock()
+    const activeTempPaths = new Set<string>()
+    for (const active of this.uploads.values()) {
+      if (active.uploadDir === uploadDir) {
+        activeTempPaths.add(active.tempPath)
+      }
+    }
+    let entries: Dirent[]
+    try {
+      entries = readdirSync(uploadDir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const entry of entries) {
+      if (!entry.name.startsWith('.tmp-upl-')) continue
+      const candidatePath = join(uploadDir, entry.name)
+      if (activeTempPaths.has(candidatePath)) continue
+      try {
+        const st = lstatSync(candidatePath)
+        if (st.isSymbolicLink() || !st.isFile()) continue
+        if (now - st.mtimeMs >= this.idleTtlMs) {
+          unlinkSync(candidatePath)
+        }
+      } catch {}
     }
   }
 
