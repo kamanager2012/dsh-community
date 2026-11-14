@@ -32,10 +32,38 @@ function cloneIdentity(identity: ClientDeviceIdentity): ClientDeviceIdentity {
   }
 }
 
+function isValidStoredIdentity(row: unknown): row is StoredIdentityRow {
+  if (typeof row !== 'object' || row === null) return false
+  const rec = row as Partial<StoredIdentityRow>
+  return (
+    rec.publicKey instanceof Uint8Array &&
+    rec.secretKey instanceof Uint8Array &&
+    rec.publicKey.byteLength === 32 &&
+    rec.secretKey.byteLength === 32 &&
+    typeof rec.fingerprint === 'string' &&
+    rec.fingerprint.length > 0 &&
+    typeof rec.createdAt === 'number' &&
+    Number.isFinite(rec.createdAt)
+  )
+}
+
+function toIdentity(
+  row: Pick<StoredIdentityRow, 'publicKey' | 'secretKey' | 'fingerprint' | 'createdAt'>,
+): ClientDeviceIdentity {
+  return {
+    publicKey: new Uint8Array(row.publicKey),
+    secretKey: new Uint8Array(row.secretKey),
+    fingerprint: row.fingerprint,
+    createdAt: row.createdAt,
+  }
+}
+
 export class RemoteWebKeyStore {
   private memoryIdentity: ClientDeviceIdentity | undefined = undefined
   private readonly memoryHosts = new Map<string, TrustedHostProfile>()
   private dbPromise: Promise<IDBDatabase | undefined> | undefined = undefined
+  private pendingIdentityPromise: Promise<ClientDeviceIdentity> | undefined = undefined
+  private identityGeneration = 0
 
   constructor(private readonly useIndexedDb: boolean = typeof globalThis.indexedDB !== 'undefined') {}
 
@@ -127,41 +155,109 @@ export class RemoteWebKeyStore {
     })
   }
 
-  async getOrCreateClientKeyPair(): Promise<ClientDeviceIdentity> {
-    if (this.memoryIdentity) {
-      return cloneIdentity(this.memoryIdentity)
-    }
-
-    const existing = await this.readFromDb<StoredIdentityRow>(STORE_IDENTITY, IDENTITY_RECORD_KEY)
-    if (
-      existing &&
-      existing.publicKey instanceof Uint8Array &&
-      existing.secretKey instanceof Uint8Array &&
-      existing.publicKey.byteLength === 32 &&
-      existing.secretKey.byteLength === 32
-    ) {
-      this.memoryIdentity = {
-        publicKey: new Uint8Array(existing.publicKey),
-        secretKey: new Uint8Array(existing.secretKey),
-        fingerprint: existing.fingerprint,
-        createdAt: existing.createdAt,
-      }
-      return cloneIdentity(this.memoryIdentity)
-    }
-
-    return this.rotateClientKeyPair()
-  }
-
-  async rotateClientKeyPair(): Promise<ClientDeviceIdentity> {
+  private async generateIdentity(): Promise<ClientDeviceIdentity> {
     const generated = generateX25519KeyPair()
     const fingerprint = await sha256Hex(generated.publicKey)
-    const created: ClientDeviceIdentity = {
+    return {
       publicKey: generated.publicKey,
       secretKey: generated.secretKey,
       fingerprint,
       createdAt: Date.now(),
     }
-    this.memoryIdentity = cloneIdentity(created)
+  }
+
+  private async getOrInsertIdentityInDb(candidate: ClientDeviceIdentity): Promise<ClientDeviceIdentity> {
+    const db = await this.openDb()
+    if (!db) return candidate
+    const candidateRow: StoredIdentityRow = {
+      id: IDENTITY_RECORD_KEY,
+      publicKey: new Uint8Array(candidate.publicKey),
+      secretKey: new Uint8Array(candidate.secretKey),
+      fingerprint: candidate.fingerprint,
+      createdAt: candidate.createdAt,
+    }
+    return new Promise<ClientDeviceIdentity>((resolve) => {
+      let settled = false
+      const finish = (identity: ClientDeviceIdentity): void => {
+        if (settled) return
+        settled = true
+        resolve(identity)
+      }
+      try {
+        // Perform the existence check and conditional insert synchronously inside a single
+        // readwrite IndexedDB transaction so concurrent tabs serialize and never overwrite a
+        // peer tab's newly created client identity.
+        const tx = db.transaction(STORE_IDENTITY, 'readwrite')
+        const store = tx.objectStore(STORE_IDENTITY)
+        const req = store.get(IDENTITY_RECORD_KEY)
+        let chosen: ClientDeviceIdentity = candidate
+        req.onsuccess = () => {
+          const existing = req.result
+          if (isValidStoredIdentity(existing)) {
+            chosen = toIdentity(existing)
+            return
+          }
+          chosen = candidate
+          try {
+            store.put(candidateRow)
+          } catch {
+            // Let tx error/abort handler resolve safely.
+          }
+        }
+        req.onerror = () => {
+          // Wait for tx completion or abort.
+        }
+        tx.oncomplete = () => finish(chosen)
+        tx.onerror = () => finish(chosen)
+        tx.onabort = () => finish(chosen)
+      } catch {
+        finish(candidate)
+      }
+    })
+  }
+
+  async getOrCreateClientKeyPair(): Promise<ClientDeviceIdentity> {
+    if (this.memoryIdentity) {
+      return cloneIdentity(this.memoryIdentity)
+    }
+    if (this.pendingIdentityPromise) {
+      return this.pendingIdentityPromise.then((identity) => cloneIdentity(identity))
+    }
+
+    const startGeneration = this.identityGeneration
+    const pending = (async (): Promise<ClientDeviceIdentity> => {
+      const existing = await this.readFromDb<StoredIdentityRow>(STORE_IDENTITY, IDENTITY_RECORD_KEY)
+      let resolved: ClientDeviceIdentity
+      if (isValidStoredIdentity(existing)) {
+        resolved = toIdentity(existing)
+      } else {
+        const candidate = await this.generateIdentity()
+        resolved = await this.getOrInsertIdentityInDb(candidate)
+      }
+      if (this.identityGeneration === startGeneration) {
+        this.memoryIdentity = cloneIdentity(resolved)
+        return cloneIdentity(this.memoryIdentity)
+      }
+      return this.memoryIdentity ? cloneIdentity(this.memoryIdentity) : cloneIdentity(resolved)
+    })()
+
+    this.pendingIdentityPromise = pending
+    try {
+      return await pending
+    } finally {
+      if (this.pendingIdentityPromise === pending) {
+        this.pendingIdentityPromise = undefined
+      }
+    }
+  }
+
+  async rotateClientKeyPair(): Promise<ClientDeviceIdentity> {
+    const rotationGeneration = ++this.identityGeneration
+    this.pendingIdentityPromise = undefined
+    const created = await this.generateIdentity()
+    if (this.identityGeneration === rotationGeneration) {
+      this.memoryIdentity = cloneIdentity(created)
+    }
     await this.putInDb(STORE_IDENTITY, {
       id: IDENTITY_RECORD_KEY,
       publicKey: new Uint8Array(created.publicKey),
@@ -169,7 +265,7 @@ export class RemoteWebKeyStore {
       fingerprint: created.fingerprint,
       createdAt: created.createdAt,
     } satisfies StoredIdentityRow)
-    return created
+    return cloneIdentity(created)
   }
 
   async listTrustedHosts(): Promise<TrustedHostProfile[]> {
