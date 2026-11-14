@@ -1,4 +1,5 @@
 import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises'
+import { createConnection, type Socket } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -260,6 +261,15 @@ describe('BlindGatewayServer', () => {
     const parsed = parsePairingInput(Buffer.from(encodedPair, 'base64url').toString('utf8'))
     expect(parsed.hostFingerprint).toBe(descriptor.hostFingerprint)
     expect(parsed.relayUrl).toBe('wss://gateway.example.com/relay')
+
+    // Loopback http:// and https:// succeed; non-loopback http:// and embedded credentials are rejected
+    expect(encodePairingWebUrl('http://127.0.0.1:4555/app/', descriptor)).toContain('#pair=')
+    expect(encodePairingWebUrl('http://localhost:4555/app/', descriptor)).toContain('#pair=')
+    expect(encodePairingWebUrl('http://[::1]:4555/app/', descriptor)).toContain('#pair=')
+    expect(() => encodePairingWebUrl('http://192.168.1.25:4555/app/', descriptor)).toThrow(/non-loopback/)
+    expect(() => encodePairingWebUrl('http://gateway.example.com/app/', descriptor)).toThrow(/non-loopback/)
+    expect(() => encodePairingWebUrl('http://0.0.0.0:4555/app/', descriptor)).toThrow(/non-loopback/)
+    expect(() => encodePairingWebUrl('https://user:pass@gateway.example.com/app/', descriptor)).toThrow(/credentials/)
   })
 
   it('enforces maxConnectionsPerIp across SelfHostedSignalingServer and BlindGatewayServer /relay + /signal', async () => {
@@ -353,5 +363,78 @@ describe('BlindGatewayServer', () => {
       closeWsAndSettle(g2!),
       closeWsAndSettle(g5!),
     ])
+  })
+
+  it('enforces maxConnectionsPerIp pre-upgrade on idle/incomplete TCP connections and times out stalled handshakes', async () => {
+    const gateway = new BlindGatewayServer({
+      enabled: true,
+      host: '127.0.0.1',
+      port: 0,
+      maxConnections: 4,
+      maxConnectionsPerIp: 1,
+      registerTimeoutMs: 120,
+      hostAuthSecret: 'cap-secret-2',
+    })
+    await gateway.start()
+    cleanups.push(() => gateway.stop())
+
+    const addr = gateway.getBoundAddress()!
+    const connectRaw = () =>
+      new Promise<Socket>((resolve, reject) => {
+        const sock = createConnection({ host: addr.host, port: addr.port }, () => resolve(sock))
+        sock.once('error', reject)
+        cleanups.push(async () => {
+          sock.destroy()
+        })
+      })
+
+    // Open one incomplete HTTP / idle TCP socket consuming the single per-IP slot
+    const s1 = await connectRaw()
+    s1.write('GET /healthz HTTP/1.1\r\n')
+    await new Promise((r) => setTimeout(r, 20))
+
+    // Second concurrent socket from the same IP is rejected immediately pre-upgrade with 429
+    const secondOutcome = await new Promise<string>((resolve) => {
+      const chunks: Buffer[] = []
+      let settled = false
+      const done = () => {
+        if (settled) return
+        settled = true
+        resolve(Buffer.concat(chunks).toString('utf8'))
+      }
+      const s2 = createConnection({ host: addr.host, port: addr.port })
+      s2.on('data', (chunk) => chunks.push(chunk))
+      s2.once('close', done)
+      s2.once('error', done)
+      cleanups.push(async () => {
+        s2.destroy()
+      })
+    })
+    expect(secondOutcome).toContain('429 Too Many Requests')
+    expect(gateway.getStats().rejectedPerIpCap).toBeGreaterThanOrEqual(1)
+
+    // First stalled socket times out via pre-upgrade registerTimeoutMs and frees the IP slot
+    await new Promise<void>((resolve, reject) => {
+      if (s1.destroyed || s1.closed) {
+        resolve()
+        return
+      }
+      const timer = setTimeout(() => reject(new Error('stalled gateway socket did not time out')), 2_000)
+      s1.once('close', () => {
+        clearTimeout(timer)
+        setTimeout(resolve, 20)
+      })
+    })
+
+    // Now a valid /relay WebSocket connection from the same IP succeeds
+    const wsOk = await new Promise<boolean>((resolve) => {
+      const ws = new WebSocket(gateway.getRelayEndpointUrl()!)
+      ws.onopen = () => {
+        ws.close()
+        resolve(true)
+      }
+      ws.onerror = () => resolve(false)
+    })
+    expect(wsOk).toBe(true)
   })
 })

@@ -49,6 +49,11 @@ function applyDraftWithAtCompletion(deps: KeyHandlerDeps, nextDraft: string): vo
     return
   }
 
+  // Clear candidates for any prior query so Tab cannot accept stale results while async lookup is pending.
+  if (store.state.atCompletion !== undefined) {
+    store.setAtCompletion(undefined)
+  }
+
   const gen = nextAtQueryGen(store)
   const publish = (matches: readonly string[]): void => {
     const cur = store.state
@@ -226,7 +231,12 @@ function applyChar(deps: KeyHandlerDeps, ch: string, key: KeyEvent): void {
     const match = extractTrailingAtQuery(state.draft)
     const comp = state.atCompletion
     if (match) {
-      if (comp && comp.atIndex === match.atIndex && comp.matches.length > 0) {
+      if (
+        comp
+        && comp.atIndex === match.atIndex
+        && comp.query === match.query
+        && comp.matches.length > 0
+      ) {
         const chosen = comp.matches[comp.selectedIndex] ?? comp.matches[0]!
         nextAtQueryGen(store)
         store.setAtCompletion(undefined)

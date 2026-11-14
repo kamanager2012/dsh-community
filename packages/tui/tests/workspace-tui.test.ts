@@ -163,6 +163,34 @@ describe('TUI local /diff, @file completion, and safe workspace helpers', () => 
     resolveSlow(['stale/file.ts'])
     await Promise.resolve()
     expect(store.state.atCompletion).toBeUndefined()
+
+    // Stale query guard: typing another character before async lookup finishes clears prior query matches
+    // so Tab cannot accept the older query's completion result
+    const pendingResolvers = new Map<string, (v: string[]) => void>()
+    const seqDeps: KeyHandlerDeps = {
+      ...deps,
+      completeAtFiles: (query) =>
+        new Promise<string[]>((resolve) => {
+          pendingResolvers.set(query, resolve)
+        }),
+    }
+    store.setDraft('')
+    handleKey(seqDeps, '@a', {})
+    pendingResolvers.get('a')?.(['apple.ts'])
+    await Promise.resolve()
+    expect(store.state.atCompletion?.query).toBe('a')
+    expect(store.state.atCompletion?.matches).toEqual(['apple.ts'])
+
+    handleKey(seqDeps, 'b', {})
+    expect(store.state.draft).toBe('@ab')
+    expect(store.state.atCompletion).toBeUndefined()
+    // Pressing Tab while @ab is still resolving triggers/awaits @ab rather than inserting @apple.ts
+    handleKey(seqDeps, '\t', {})
+    expect(store.state.draft).toBe('@ab')
+    pendingResolvers.get('ab')?.(['abstract.ts'])
+    await Promise.resolve()
+    expect(store.state.draft).toBe('@abstract.ts ')
+    expect(store.state.atCompletion).toBeUndefined()
   })
 
   it('translates Ink key.tab events into tab behavior for thinking toggle and @file completion', () => {

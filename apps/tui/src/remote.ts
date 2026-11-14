@@ -32,6 +32,7 @@ import {
   resolveRemoteDefaultTransportEnv,
   SelfHostedSignalingServer,
   SelfHostedStunServer,
+  validatePairingWebUrl,
 } from '@dsh-community/remote-adapter'
 
 export { buildLoopbackPairingWarning, composeRemoteHostPatchYaml, detectLanIpv4Candidates }
@@ -45,7 +46,7 @@ export const COMMUNITY_REMOTE_HELP = `dsh-community remote — 多引擎 E2EE �
     --port <n>                          监听端口（默认 0 自动分配）
     --mdns                              发布局域网 mDNS (_dsh-remote._tcp) 提示
     --qr                                启动后在终端输出可扫码 UTF-8 二维码
-    --web-url <http(s)://...>           可选 Remote Web PWA 入口地址（生成 #pair= 配对链接；或设 DSH_REMOTE_WEB_URL）
+    --web-url <https://...|loopback>    可选 Remote Web PWA 入口地址（仅允许 https:// 或本机 loopback http://；或设 DSH_REMOTE_WEB_URL）
     --relay-url <ws(s)://...>           可选社区盲中继地址（或设 DSH_REMOTE_DEFAULT_RELAY_URL）
     --relay-room <id>                   可选中继房间 ID
     --signaling-url <ws(s)://...>       可选 WebRTC 信令地址（或设 DSH_REMOTE_DEFAULT_SIGNALING_URL）
@@ -386,16 +387,12 @@ function resolveDefaultRemoteWebDistDir(env: NodeJS.ProcessEnv): string {
 }
 
 function validateHttpWebUrl(raw: string): string {
-  let parsed: URL
   try {
-    parsed = new URL(raw.trim())
-  } catch {
-    throw new Error(`选项 --web-url 格式无效: ${raw}`)
+    return validatePairingWebUrl(raw).toString()
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err)
+    throw new Error(`选项 --web-url 无效（仅允许 https:// 或本机 loopback http://）: ${detail}`)
   }
-  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-    throw new Error(`选项 --web-url 必须使用 http:// 或 https:// 协议: ${raw}`)
-  }
-  return parsed.toString()
 }
 
 function buildWebPairingUrlIfConfigured(

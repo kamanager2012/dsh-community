@@ -828,16 +828,37 @@ async function spawnCliUntilReadyJson<T>(
     }
   })
 
-  it('rejects invalid --web-url on remote start', async () => {
+  it('rejects invalid and non-loopback HTTP --web-url on remote start', async () => {
     const root = makeTempDir('dsh-remote-bad-weburl-')
-    const io = captureOutputs()
+    for (const badUrl of [
+      'javascript:alert(1)',
+      'http://192.168.1.25:8080/app/',
+      'http://example.com/app/',
+      'https://user:pass@example.com/app/',
+    ]) {
+      const io = captureOutputs()
+      expect(
+        await runRemoteCommand(
+          ['start', '--web-url', badUrl, '--cwd', root],
+          { DSH_HOME: join(root, 'dsh'), DSH_REMOTE_CONFIG_DIR: join(root, 'cfg') },
+          join(root, 'dsh'),
+        ),
+      ).toBe(2)
+      expect(io.stderr()).toContain('--web-url')
+    }
+
+    const envIo = captureOutputs()
     expect(
       await runRemoteCommand(
-        ['start', '--web-url', 'javascript:alert(1)', '--cwd', root],
-        { DSH_HOME: join(root, 'dsh'), DSH_REMOTE_CONFIG_DIR: join(root, 'cfg') },
+        ['start', '--cwd', root],
+        {
+          DSH_HOME: join(root, 'dsh'),
+          DSH_REMOTE_CONFIG_DIR: join(root, 'cfg'),
+          DSH_REMOTE_WEB_URL: 'http://10.0.0.8:8080/app/',
+        },
         join(root, 'dsh'),
       ),
     ).toBe(2)
-    expect(io.stderr()).toContain('--web-url')
+    expect(envIo.stderr()).toContain('--web-url')
   })
 })
