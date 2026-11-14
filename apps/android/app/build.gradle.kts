@@ -74,8 +74,8 @@ android {
         applicationId = "org.dsh.community.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.2.2-rc.2"
+        versionCode = 3
+        versionName = "0.2.2-rc.2-community.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         if (requestedAbiFilters.isNotEmpty()) {
             ndk {
