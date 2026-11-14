@@ -23,6 +23,133 @@ const VALID_ENGINES: ReadonlySet<AgentEngineId> = new Set<AgentEngineId>([
   'acp',
 ])
 
+export interface RemoteTransportDefaults {
+  readonly relayUrl?: string | undefined
+  readonly signalingUrl?: string | undefined
+  readonly stunUrlsRaw?: string | undefined
+  readonly stunUrls?: readonly string[] | undefined
+  readonly error?: string | undefined
+}
+
+const MAX_TRANSPORT_URL_CHARS = 512
+const STUN_URL_RE = /^stun:[^\s,]+(?::\d+)?$/iu
+
+export function validateWsEndpointUrl(
+  raw: string | undefined,
+  fieldLabel = 'URL',
+): string | undefined {
+  const trimmed = raw?.trim() ?? ''
+  if (trimmed === '') return undefined
+  if (trimmed.length > MAX_TRANSPORT_URL_CHARS || /[\s\u0000-\u001f]/u.test(trimmed)) {
+    return `${fieldLabel} 格式无效或包含空白字符`
+  }
+  try {
+    const parsed = new URL(trimmed)
+    if (parsed.protocol !== 'ws:' && parsed.protocol !== 'wss:') {
+      return `${fieldLabel} 必须使用 ws:// 或 wss:// 协议`
+    }
+    return undefined
+  } catch {
+    return `${fieldLabel} 不是有效的 URL`
+  }
+}
+
+export function normalizeStunUrlList(
+  raw: string | undefined,
+  fieldLabel = 'STUN URL',
+):
+  | { readonly ok: true; readonly urls: readonly string[]; readonly formatted: string }
+  | { readonly ok: false; readonly error: string } {
+  const trimmed = raw?.trim() ?? ''
+  if (trimmed === '') {
+    return { ok: true, urls: [], formatted: '' }
+  }
+  if (trimmed.length > MAX_TRANSPORT_URL_CHARS || /[\u0000-\u001f]/u.test(trimmed)) {
+    return { ok: false, error: `${fieldLabel} 列表过长或包含非法字符` }
+  }
+  const items = trimmed
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
+  for (const item of items) {
+    if (!STUN_URL_RE.test(item)) {
+      return {
+        ok: false,
+        error: `${fieldLabel} 格式无效: ${item}（应形如 stun:host:port，禁止 turn:/turns:）`,
+      }
+    }
+  }
+  return { ok: true, urls: items, formatted: items.join(', ') }
+}
+
+/**
+ * Resolves unified public-network carrier defaults across CLI/TUI/Desktop (`DSH_REMOTE_DEFAULT_*`)
+ * with strict `ws:`/`wss:` and `stun:`-only validation (no third-party TURN).
+ */
+export function resolveRemoteDefaultTransportEnv(
+  env: NodeJS.ProcessEnv = process.env,
+  explicit?: {
+    readonly relayUrl?: string | undefined
+    readonly signalingUrl?: string | undefined
+    readonly stunUrls?: string | undefined
+  },
+): RemoteTransportDefaults {
+  const explicitRelay = explicit?.relayUrl?.trim() || undefined
+  const envRelay = env.DSH_REMOTE_RELAY_URL?.trim() || undefined
+  const defaultRelay = env.DSH_REMOTE_DEFAULT_RELAY_URL?.trim() || undefined
+  const relayUrl = explicitRelay ?? envRelay ?? defaultRelay
+  if (relayUrl !== undefined) {
+    const relayLabel = explicitRelay
+      ? '盲中继地址 (Relay URL)'
+      : envRelay
+        ? 'DSH_REMOTE_RELAY_URL'
+        : 'DSH_REMOTE_DEFAULT_RELAY_URL'
+    const relayErr = validateWsEndpointUrl(relayUrl, relayLabel)
+    if (relayErr !== undefined) return { error: relayErr }
+  }
+
+  const explicitSignaling = explicit?.signalingUrl?.trim() || undefined
+  const envSignaling = env.DSH_REMOTE_SIGNALING_URL?.trim() || undefined
+  const defaultSignaling = env.DSH_REMOTE_DEFAULT_SIGNALING_URL?.trim() || undefined
+  const signalingUrl = explicitSignaling ?? envSignaling ?? defaultSignaling
+  if (signalingUrl !== undefined) {
+    const sigLabel = explicitSignaling
+      ? 'WebRTC 信令地址 (Signaling URL)'
+      : envSignaling
+        ? 'DSH_REMOTE_SIGNALING_URL'
+        : 'DSH_REMOTE_DEFAULT_SIGNALING_URL'
+    const sigErr = validateWsEndpointUrl(signalingUrl, sigLabel)
+    if (sigErr !== undefined) return { error: sigErr }
+  }
+
+  const explicitStun = explicit?.stunUrls?.trim() || undefined
+  const envStun = env.DSH_REMOTE_STUN_URLS?.trim() || undefined
+  const defaultStun = env.DSH_REMOTE_DEFAULT_STUN_URLS?.trim() || undefined
+  const stunSource = explicitStun ?? envStun ?? defaultStun
+  let stunUrlsRaw: string | undefined
+  let stunUrls: readonly string[] | undefined
+  if (stunSource !== undefined) {
+    const stunLabel = explicitStun
+      ? 'STUN 地址'
+      : envStun
+        ? 'DSH_REMOTE_STUN_URLS'
+        : 'DSH_REMOTE_DEFAULT_STUN_URLS'
+    const parsedStun = normalizeStunUrlList(stunSource, stunLabel)
+    if (!parsedStun.ok) return { error: parsedStun.error }
+    if (parsedStun.urls.length > 0) {
+      stunUrlsRaw = parsedStun.formatted
+      stunUrls = parsedStun.urls
+    }
+  }
+
+  return {
+    ...(relayUrl !== undefined ? { relayUrl } : {}),
+    ...(signalingUrl !== undefined ? { signalingUrl } : {}),
+    ...(stunUrlsRaw !== undefined ? { stunUrlsRaw } : {}),
+    ...(stunUrls !== undefined ? { stunUrls } : {}),
+  }
+}
+
 export function parseOptionalPort(raw: string | undefined): number | undefined {
   if (raw === undefined || raw.trim() === '') return undefined
   const parsed = Number(raw)
@@ -139,14 +266,15 @@ export function parseAndScrubRemoteHostEnv(env: NodeJS.ProcessEnv = process.env)
   const enableMdns = parseBooleanEnv(env.DSH_REMOTE_ENABLE_MDNS)
   const hostDisplayLabel = env.DSH_REMOTE_MDNS_LABEL?.trim() || undefined
 
-  const relayUrl = env.DSH_REMOTE_RELAY_URL?.trim() || undefined
+  const transport = resolveRemoteDefaultTransportEnv(env)
+  if (transport.error !== undefined) {
+    throw new Error(transport.error)
+  }
+  const relayUrl = transport.relayUrl
   const relayRoomId = env.DSH_REMOTE_RELAY_ROOM_ID?.trim() || undefined
-  const signalingUrl = env.DSH_REMOTE_SIGNALING_URL?.trim() || undefined
+  const signalingUrl = transport.signalingUrl
   const signalingRoomId = env.DSH_REMOTE_SIGNALING_ROOM_ID?.trim() || undefined
-  const stunUrlsRaw = env.DSH_REMOTE_STUN_URLS?.trim()
-  const stunUrls = stunUrlsRaw
-    ? stunUrlsRaw.split(',').map((s) => s.trim()).filter((s) => s.length > 0)
-    : undefined
+  const stunUrls = transport.stunUrls
 
   const controlPort = parseOptionalPort(env.DSH_REMOTE_CONTROL_PORT)
   const readyFile = env.DSH_REMOTE_READY_FILE?.trim() || undefined
