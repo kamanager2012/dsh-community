@@ -15,6 +15,7 @@ const DEFAULT_TUI_DIFF_MAX_BYTES = 16 * 1024
 const FALLBACK_SKIP_DIRS = new Set(['.git', 'node_modules', '.next', '.turbo', 'dist'])
 
 const fileIndexCache = new Map<string, { readonly expiresAt: number; readonly files: readonly string[] }>()
+const fileIndexInFlight = new Map<string, Promise<readonly string[]>>()
 
 export interface AtFileQueryMatch {
   readonly query: string
@@ -53,10 +54,9 @@ function rankMatch(relPath: string, queryLower: string): number {
   return 5
 }
 
-export function rankAndFilterFiles(
+function rankMatchingFiles(
   files: readonly string[],
   query: string,
-  limit = 8,
 ): string[] {
   const q = query.trim().toLowerCase()
   const matched =
@@ -77,7 +77,15 @@ export function rankAndFilterFiles(
   } else {
     matched.sort((a, b) => a.localeCompare(b, 'en'))
   }
-  return matched.slice(0, Math.max(1, limit))
+  return matched
+}
+
+export function rankAndFilterFiles(
+  files: readonly string[],
+  query: string,
+  limit = 8,
+): string[] {
+  return rankMatchingFiles(files, query).slice(0, Math.max(1, limit))
 }
 
 function resolveSafeRootDir(cwd: string): string | undefined {
@@ -275,19 +283,22 @@ function walkFilesNonGit(rootReal: string): string[] {
   return out
 }
 
-export async function listLocalWorkspaceFiles(
-  cwd: string,
-  options?: { readonly query?: string; readonly limit?: number; readonly bypassCache?: boolean },
-): Promise<string[]> {
-  const realRoot = resolveSafeRootDir(cwd)
-  if (!realRoot) return []
+async function loadWorkspaceFileIndex(
+  realRoot: string,
+  bypassCache: boolean,
+): Promise<readonly string[]> {
+  if (!bypassCache) {
+    const cached = fileIndexCache.get(realRoot)
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.files
+    }
+    const existing = fileIndexInFlight.get(realRoot)
+    if (existing) {
+      return existing
+    }
+  }
 
-  const now = Date.now()
-  const cached = !options?.bypassCache ? fileIndexCache.get(realRoot) : undefined
-  let allFiles: readonly string[]
-  if (cached && cached.expiresAt > now) {
-    allFiles = cached.files
-  } else {
+  const loadPromise = (async (): Promise<readonly string[]> => {
     let files: string[] = []
     let usedGit = false
     try {
@@ -316,15 +327,36 @@ export async function listLocalWorkspaceFiles(
     if (!usedGit) {
       files = walkFilesNonGit(realRoot)
     }
-    allFiles = files
     if (fileIndexCache.size >= MAX_CACHED_ROOTS) {
       const oldest = fileIndexCache.keys().next().value
       if (oldest !== undefined) fileIndexCache.delete(oldest)
     }
-    fileIndexCache.set(realRoot, { expiresAt: now + FILE_LIST_CACHE_TTL_MS, files: allFiles })
-  }
+    fileIndexCache.set(realRoot, { expiresAt: Date.now() + FILE_LIST_CACHE_TTL_MS, files })
+    return files
+  })()
 
-  const ranked = rankAndFilterFiles(allFiles, options?.query ?? '', options?.limit ?? 8)
+  if (!bypassCache) {
+    fileIndexInFlight.set(realRoot, loadPromise)
+  }
+  try {
+    return await loadPromise
+  } finally {
+    if (!bypassCache && fileIndexInFlight.get(realRoot) === loadPromise) {
+      fileIndexInFlight.delete(realRoot)
+    }
+  }
+}
+
+export async function listLocalWorkspaceFiles(
+  cwd: string,
+  options?: { readonly query?: string; readonly limit?: number; readonly bypassCache?: boolean },
+): Promise<string[]> {
+  const realRoot = resolveSafeRootDir(cwd)
+  if (!realRoot) return []
+
+  const allFiles = await loadWorkspaceFileIndex(realRoot, options?.bypassCache === true)
+  const limit = Math.max(1, options?.limit ?? 8)
+  const ranked = rankMatchingFiles(allFiles, options?.query ?? '')
   const verified: string[] = []
   const prefix = realRoot.endsWith(sep) ? realRoot : `${realRoot}${sep}`
   for (const rel of ranked) {
@@ -339,6 +371,7 @@ export async function listLocalWorkspaceFiles(
       continue
     }
     verified.push(rel)
+    if (verified.length >= limit) break
   }
   return verified
 }

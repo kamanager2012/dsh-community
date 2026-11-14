@@ -248,4 +248,57 @@ describe('TUI local /diff, @file completion, and safe workspace helpers', () => 
       expect(Buffer.byteLength(bounded.output, 'utf8')).toBeLessThan(8192)
     }
   })
+
+  it('coalesces @file completion lookups per input chunk and skips lookups cancelled by submit/space', async () => {
+    const store = createStore()
+    const queries: string[] = []
+    const sent: string[] = []
+    const deps: KeyHandlerDeps = {
+      store,
+      onSend: (text) => sent.push(text),
+      onCancel: () => {},
+      onExit: () => {},
+      showHelp: () => {},
+      toggleThinking: () => {},
+      completeAtFiles: (q) => {
+        queries.push(q)
+        return [`${q}-match.ts`]
+      },
+    }
+
+    // Pasting a 64-char @mention followed immediately by Enter must trigger 0 lookups.
+    handleKey(deps, `@${'a'.repeat(64)}\r`)
+    expect(sent).toEqual([`@${'a'.repeat(64)}`])
+    expect(queries).toEqual([])
+
+    // Pasting a multi-character @token triggers at most one coalesced lookup for the final query.
+    handleKey(deps, 'inspect @src/ind')
+    expect(queries).toEqual(['src/ind'])
+    expect(store.state.atCompletion?.matches).toEqual(['src/ind-match.ts'])
+  })
+
+  it('applies @file completion limit after filtering deleted tracked files and deduplicates concurrent index loads', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'dsh-tui-deleted-rank-'))
+    tempDirs.push(dir)
+    initRepo(dir)
+
+    for (let i = 0; i < 8; i++) {
+      writeFileSync(join(dir, `a${i}.ts`), `export const a${i} = ${i}\n`, 'utf8')
+    }
+    writeFileSync(join(dir, 'z-valid.ts'), 'export const z = 1\n', 'utf8')
+    execFileSync('git', ['add', '.'], { cwd: dir, stdio: 'pipe' })
+    execFileSync('git', ['commit', '-m', 'seed'], { cwd: dir, stdio: 'pipe' })
+
+    // Simulate deleted tracked files remaining in `git ls-files --cached` ahead of z-valid.ts.
+    for (let i = 0; i < 8; i++) {
+      rmSync(join(dir, `a${i}.ts`))
+    }
+
+    const [first, second] = await Promise.all([
+      listLocalWorkspaceFiles(dir, { query: '' }),
+      listLocalWorkspaceFiles(dir, { query: '' }),
+    ])
+    expect(first).toEqual(['z-valid.ts'])
+    expect(second).toEqual(['z-valid.ts'])
+  })
 })

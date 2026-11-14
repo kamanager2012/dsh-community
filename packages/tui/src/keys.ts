@@ -39,19 +39,23 @@ function nextAtQueryGen(store: UiStore): number {
   return next
 }
 
-function applyDraftWithAtCompletion(deps: KeyHandlerDeps, nextDraft: string): void {
-  const { store } = deps
+function stageDraftUpdate(store: KeyHandlerDeps['store'], nextDraft: string): void {
   store.setDraft(nextDraft)
-  const match = extractTrailingAtQuery(nextDraft)
+  nextAtQueryGen(store)
+  // Clear candidates for any prior query so Tab cannot accept stale results while coalescing/lookup runs.
+  if (store.state.atCompletion !== undefined) {
+    store.setAtCompletion(undefined)
+  }
+}
+
+function refreshAtFileCompletion(deps: KeyHandlerDeps): void {
+  const { store } = deps
+  const targetDraft = store.state.draft
+  const match = extractTrailingAtQuery(targetDraft)
   if (!match || !deps.completeAtFiles) {
     nextAtQueryGen(store)
     if (store.state.atCompletion !== undefined) store.setAtCompletion(undefined)
     return
-  }
-
-  // Clear candidates for any prior query so Tab cannot accept stale results while async lookup is pending.
-  if (store.state.atCompletion !== undefined) {
-    store.setAtCompletion(undefined)
   }
 
   const gen = nextAtQueryGen(store)
@@ -59,7 +63,7 @@ function applyDraftWithAtCompletion(deps: KeyHandlerDeps, nextDraft: string): vo
     const cur = store.state
     if (
       atQueryGenByStore.get(store) !== gen
-      || cur.draft !== nextDraft
+      || cur.draft !== targetDraft
       || cur.fatal !== undefined
       || cur.approval !== undefined
       || cur.questions !== undefined
@@ -109,47 +113,52 @@ export function handleKey(deps: KeyHandlerDeps, raw: string, key: KeyEvent = {})
           : (raw === '' && key.escape)
             ? ['\x1b']
             : [...raw].map((ch) => ch === '\n' ? '\r' : ch)
+  let needsCompletionRefresh = false
   for (const ch of list) {
-    applyChar(deps, ch, key)
+    // Coalesce @file lookups across whole input/paste chunks and skip lookups cancelled before chunk end.
+    needsCompletionRefresh = applyChar(deps, ch, key)
+  }
+  if (needsCompletionRefresh) {
+    refreshAtFileCompletion(deps)
   }
 }
 
-function applyChar(deps: KeyHandlerDeps, ch: string, key: KeyEvent): void {
+function applyChar(deps: KeyHandlerDeps, ch: string, key: KeyEvent): boolean {
   const { store } = deps
   const state = store.state
 
   if (ch === '\x03' || (key.ctrl && (ch === 'c' || ch === 'C' || ch === 'q' || ch === 'Q'))) {
     deps.onExit()
-    return
+    return false
   }
 
   if (state.fatal !== undefined) {
     if (ch === '\r' || ch === '\x1b' || key.escape || ch === 'q' || ch === 'Q') {
       deps.onExit()
     }
-    return
+    return false
   }
 
   if (state.approval !== undefined) {
     if (ch === 'y' || ch === 'Y') store.resolveApproval('allowed-once')
     else if (ch === 'n' || ch === 'N' || ch === '\x1b' || key.escape) store.resolveApproval('rejected')
-    return
+    return false
   }
 
   if (state.questions !== undefined) {
     if (ch === '\x1b' || key.escape) {
       store.cancelQuestions()
-      return
+      return false
     }
     const question = state.questions.request.questions[state.questions.currentIndex]
-    if (question === undefined) return
+    if (question === undefined) return false
     const options = question.options ?? []
     if (options.length > 0) {
       const index = Number(ch) - 1
       if (Number.isInteger(index) && index >= 0 && index < options.length) {
         store.submitCurrentQuestionAnswer({ id: question.id, selected: [options[index]!.label] })
       }
-      return
+      return false
     }
     if (ch === '\r') {
       const answer = state.draft.trim()
@@ -159,14 +168,14 @@ function applyChar(deps: KeyHandlerDeps, ch: string, key: KeyEvent): void {
         selected: [],
         ...(answer === '' ? {} : { custom: answer }),
       })
-      return
+      return false
     }
     if (ch === '\x7f' || ch === '\b') {
       store.setDraft(dropLastCodePoint(state.draft))
-      return
+      return false
     }
     if (ch >= ' ' && ch !== '\x7f') store.setDraft(state.draft + ch)
-    return
+    return false
   }
 
   if (ch === '\r') {
@@ -205,27 +214,27 @@ function applyChar(deps: KeyHandlerDeps, ch: string, key: KeyEvent): void {
       store.recordPrompt(trimmed)
       deps.onSend(trimmed)
     }
-    return
+    return false
   }
   if (key.upArrow && ch === '') {
     if (state.atCompletion && state.atCompletion.matches.length > 0) {
       store.moveAtCompletionSelection(-1)
-      return
+      return false
     }
     store.recallPreviousPrompt()
-    return
+    return false
   }
   if (key.downArrow && ch === '') {
     if (state.atCompletion && state.atCompletion.matches.length > 0) {
       store.moveAtCompletionSelection(1)
-      return
+      return false
     }
     store.recallNextPrompt()
-    return
+    return false
   }
   if (ch === '\x7f' || ch === '\b') {
-    applyDraftWithAtCompletion(deps, dropLastCodePoint(state.draft))
-    return
+    stageDraftUpdate(store, dropLastCodePoint(state.draft))
+    return true
   }
   if (ch === '\t') {
     const match = extractTrailingAtQuery(state.draft)
@@ -241,7 +250,7 @@ function applyChar(deps: KeyHandlerDeps, ch: string, key: KeyEvent): void {
         nextAtQueryGen(store)
         store.setAtCompletion(undefined)
         store.setDraft(`${state.draft.slice(0, match.atIndex)}@${chosen} `)
-        return
+        return false
       }
       if (deps.completeAtFiles) {
         const draftSnapshot = state.draft
@@ -261,22 +270,24 @@ function applyChar(deps: KeyHandlerDeps, ch: string, key: KeyEvent): void {
         const res = deps.completeAtFiles(match.query)
         if (Array.isArray(res)) applyFirst(res)
         else void Promise.resolve(res).then(applyFirst, () => {})
-        return
+        return false
       }
     }
     deps.toggleThinking()
-    return
+    return false
   }
   if (ch === '\x1b' || key.escape) {
     if (state.atCompletion !== undefined) {
       nextAtQueryGen(store)
       store.setAtCompletion(undefined)
-      return
+      return false
     }
     deps.onCancel()
-    return
+    return false
   }
   if (ch >= ' ' && ch !== '\x7f') {
-    applyDraftWithAtCompletion(deps, state.draft + ch)
+    stageDraftUpdate(store, state.draft + ch)
+    return true
   }
+  return false
 }
