@@ -71,6 +71,8 @@ object SessionDashboardPlanner {
         sessions: List<SessionRef>,
         statusOverrides: Map<String, String> = emptyMap(),
         unreadCounts: Map<String, Int> = emptyMap(),
+        pendingApprovalCounts: Map<String, Int> = emptyMap(),
+        pendingQuestionCounts: Map<String, Int> = emptyMap(),
         filter: SessionFilter = SessionFilter.ALL,
         query: String = "",
     ): SessionDashboardModel {
@@ -79,7 +81,14 @@ object SessionDashboardPlanner {
         var attentionTotal = 0
         var dirtyTotal = 0
 
-        val allEntries = sessions.map { s ->
+        val allEntries = sessions.map { rawSession ->
+            val effApprovals = maxOf(rawSession.pendingApprovals, pendingApprovalCounts[rawSession.id] ?: 0)
+            val effQuestions = maxOf(rawSession.pendingQuestions, pendingQuestionCounts[rawSession.id] ?: 0)
+            val s = if (effApprovals == rawSession.pendingApprovals && effQuestions == rawSession.pendingQuestions) {
+                rawSession
+            } else {
+                rawSession.copy(pendingApprovals = effApprovals, pendingQuestions = effQuestions)
+            }
             val effectiveStatus = statusOverrides[s.id] ?: s.status
             val unread = (unreadCounts[s.id] ?: 0).coerceAtLeast(0)
             val pending = (s.pendingApprovals + s.pendingQuestions).coerceAtLeast(0)

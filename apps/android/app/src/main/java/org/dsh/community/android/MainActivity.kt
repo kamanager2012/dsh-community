@@ -1668,10 +1668,14 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
             val query = searchInput.text?.toString()?.trim().orEmpty()
             val selectedId = attachedSessionId ?: sessionIdInput.text?.toString()?.trim()
             val unreadMap = lastSessions.associate { it.id to timelineStore.unreadCount(it.id) }
+            val liveApprovalCounts = liveApprovalCountsBySession()
+            val liveQuestionCounts = liveQuestionCountsBySession()
             val model = SessionDashboardPlanner.build(
                 sessions = lastSessions,
                 statusOverrides = sessionStatusById,
                 unreadCounts = unreadMap,
+                pendingApprovalCounts = liveApprovalCounts,
+                pendingQuestionCounts = liveQuestionCounts,
                 filter = activeFilter,
                 query = query,
             )
@@ -2163,8 +2167,33 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
         }
     }
 
+    private fun liveApprovalCountsBySession(): Map<String, Int> =
+        latestApprovals
+            .mapNotNull { it.sessionId?.takeIf { sid -> sid.isNotBlank() } }
+            .groupingBy { it }
+            .eachCount()
+
+    private fun liveQuestionCountsBySession(): Map<String, Int> =
+        latestQuestions
+            .mapNotNull { it.sessionId?.takeIf { sid -> sid.isNotBlank() } }
+            .groupingBy { it }
+            .eachCount()
+
+    private fun syncPendingInteractionSessionUi() {
+        val snapshot = service?.currentSessionsSnapshot()
+        if (snapshot != null && snapshot.isNotEmpty()) {
+            lastSessions = snapshot
+        }
+        if (lastSessions.isNotEmpty()) {
+            renderSessionChips(lastSessions)
+            onSessionsRefreshedInDialog?.invoke()
+        }
+    }
+
     private fun renderSessionChips(sessions: List<SessionRef>) {
         val selectedId = attachedSessionId ?: sessionIdInput.text?.toString()?.trim()
+        val liveApprovals = liveApprovalCountsBySession()
+        val liveQuestions = liveQuestionCountsBySession()
         renderChipRow(
             container = sessionChipsContainer,
             emptyHintResId = R.string.session_picker_hint,
@@ -2179,7 +2208,9 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
                     val dirtyStar = if (ws.dirty == true) "*" else ""
                     " · ${b.take(12)}$dirtyStar"
                 }.orEmpty()
-                val pendingTotal = (session.pendingApprovals + session.pendingQuestions).coerceAtLeast(0)
+                val effApprovals = maxOf(session.pendingApprovals, liveApprovals[session.id] ?: 0)
+                val effQuestions = maxOf(session.pendingQuestions, liveQuestions[session.id] ?: 0)
+                val pendingTotal = (effApprovals + effQuestions).coerceAtLeast(0)
                 val unread = if (session.id == selectedId) 0 else timelineStore.unreadCount(session.id)
                 val attentionSuffix = buildString {
                     if (pendingTotal > 0) append(" !$pendingTotal")
@@ -2333,6 +2364,7 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
         runOnUiThread {
             latestApprovals = approvals
             renderApprovalBanner()
+            syncPendingInteractionSessionUi()
         }
     }
 
@@ -2340,6 +2372,7 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
         runOnUiThread {
             latestQuestions = questions
             renderApprovalBanner()
+            syncPendingInteractionSessionUi()
         }
     }
 

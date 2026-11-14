@@ -904,4 +904,54 @@ class ChatAndQrUnitTest {
         assertEquals("idle", renamedAfterCompletion.status)
         assertEquals("running", completedList.first { it.id == "s-2" }.status)
     }
+
+    @Test
+    fun feedsLiveAndResolvedPendingInteractionsIntoDashboardAttentionFilter() {
+        val baseSessions = listOf(
+            SessionRef(id = "s-1", title = "One", pendingApprovals = 0, pendingQuestions = 0),
+            SessionRef(id = "s-2", title = "Two", pendingApprovals = 1, pendingQuestions = 0),
+        )
+
+        val attentionBefore = SessionDashboardPlanner.build(
+            sessions = baseSessions,
+            filter = SessionFilter.ATTENTION,
+        )
+        assertEquals(1, attentionBefore.attentionCount)
+        assertEquals(listOf("s-2"), attentionBefore.groups.flatMap { it.entries }.map { it.session.id })
+
+        // Live approval + question arrive for s-1 after initial session.list
+        val syncedAfterLive = RemoteSessionService.syncPendingCountsInSessionList(
+            sessions = baseSessions,
+            sessionId = "s-1",
+            pendingApprovals = 1,
+            pendingQuestions = 2,
+        )
+        val attentionAfterLive = SessionDashboardPlanner.build(
+            sessions = syncedAfterLive,
+            pendingApprovalCounts = mapOf("s-1" to 1),
+            pendingQuestionCounts = mapOf("s-1" to 2),
+            filter = SessionFilter.ATTENTION,
+        )
+        assertEquals(2, attentionAfterLive.attentionCount)
+        val s1Entry = attentionAfterLive.groups.flatMap { it.entries }.first { it.session.id == "s-1" }
+        assertTrue(s1Entry.needsAttention)
+        assertEquals(1, s1Entry.session.pendingApprovals)
+        assertEquals(2, s1Entry.session.pendingQuestions)
+
+        // Resolving s-2's prior approval clears its stale badge and removes it from Attention
+        val resolvedS2 = RemoteSessionService.syncPendingCountsInSessionList(
+            sessions = syncedAfterLive,
+            sessionId = "s-2",
+            pendingApprovals = 0,
+            pendingQuestions = 0,
+        )
+        val attentionAfterResolve = SessionDashboardPlanner.build(
+            sessions = resolvedS2,
+            pendingApprovalCounts = mapOf("s-1" to 1),
+            pendingQuestionCounts = mapOf("s-1" to 2),
+            filter = SessionFilter.ATTENTION,
+        )
+        assertEquals(1, attentionAfterResolve.attentionCount)
+        assertEquals(listOf("s-1"), attentionAfterResolve.groups.flatMap { it.entries }.map { it.session.id })
+    }
 }

@@ -173,6 +173,22 @@ class RemoteSessionService : Service() {
             }
         }
 
+        internal fun syncPendingCountsInSessionList(
+            sessions: List<SessionRef>,
+            sessionId: String,
+            pendingApprovals: Int,
+            pendingQuestions: Int,
+        ): List<SessionRef> {
+            val cleanA = pendingApprovals.coerceAtLeast(0)
+            val cleanQ = pendingQuestions.coerceAtLeast(0)
+            if (sessions.none { it.id == sessionId && (it.pendingApprovals != cleanA || it.pendingQuestions != cleanQ) }) {
+                return sessions
+            }
+            return sessions.map { ref ->
+                if (ref.id == sessionId) ref.copy(pendingApprovals = cleanA, pendingQuestions = cleanQ) else ref
+            }
+        }
+
         internal fun upsertSessionTitleInList(
             sessions: List<SessionRef>,
             sessionId: String,
@@ -256,6 +272,8 @@ class RemoteSessionService : Service() {
     @Volatile
     private var lastModelCatalog: ModelCatalogResult? = null
     private val agentStatusBySession = ConcurrentHashMap<String, String>()
+    private val unreplayedApprovalsBySession = ConcurrentHashMap<String, Int>()
+    private val unreplayedQuestionsBySession = ConcurrentHashMap<String, Int>()
 
     @Volatile
     private var lastProfile: RemoteEndpointProfile? = null
@@ -382,6 +400,8 @@ class RemoteSessionService : Service() {
 
     fun currentAgentStatus(sessionId: String): String = agentStatusBySession[sessionId] ?: "idle"
 
+    fun currentSessionsSnapshot(): List<SessionRef> = synchronized(sessionsLock) { lastSessions }
+
     fun currentModelCatalog(): ModelCatalogResult? = lastModelCatalog
 
     fun replayEventsForSession(sessionId: String): List<OfficialSessionEvent> =
@@ -422,7 +442,11 @@ class RemoteSessionService : Service() {
                 clearReplayEvents()
                 pendingAckSeqs.clear()
                 pendingInteractions.clearAll()
-                lastSessions = emptyList()
+                synchronized(sessionsLock) {
+                    lastSessions = emptyList()
+                    unreplayedApprovalsBySession.clear()
+                    unreplayedQuestionsBySession.clear()
+                }
                 attachedSessionId = null
                 lastModelCatalog = null
                 agentStatusBySession.clear()
@@ -521,7 +545,11 @@ class RemoteSessionService : Service() {
                 activeSession = null
                 activeHostFingerprint = null
                 lastProfile = null
-                lastSessions = emptyList()
+                synchronized(sessionsLock) {
+                    lastSessions = emptyList()
+                    unreplayedApprovalsBySession.clear()
+                    unreplayedQuestionsBySession.clear()
+                }
                 attachedSessionId = null
                 lastModelCatalog = null
                 agentStatusBySession.clear()
@@ -652,7 +680,7 @@ class RemoteSessionService : Service() {
                 is AttachResumeResult.Events -> {
                     for (evt in result.events) {
                         enqueueReplayEvent(sessionId, evt)
-                        dispatchEventToObservers(sessionId, evt)
+                        dispatchEventToObservers(sessionId, evt, fromReplay = true)
                     }
                     result.events.lastOrNull()?.let { lastEvt ->
                         enqueueStreamAck(session, sessionId, lastEvt.seq)
@@ -747,6 +775,7 @@ class RemoteSessionService : Service() {
             try {
                 session.abortTurn(sessionId, keepInbox, opKey)
                 agentStatusBySession[sessionId] = "idle"
+                syncCachedSessionStatus(sessionId, "idle")
                 uiObservers.forEach { it.onAgentStatusChanged(sessionId, "idle") }
                 var removedApproval = false
                 for (item in pendingInteractions.listApprovals()) {
@@ -760,8 +789,13 @@ class RemoteSessionService : Service() {
                         removedQuestion = true
                     }
                 }
-                if (removedApproval || removedQuestion) {
-                    refreshPendingUi(approvalsChanged = removedApproval, questionsChanged = removedQuestion)
+                val hadBaseline = clearSessionPendingBaseline(sessionId)
+                if (removedApproval || removedQuestion || hadBaseline) {
+                    syncCachedSessionPendingCounts(sessionId)
+                    refreshPendingUi(
+                        approvalsChanged = removedApproval || hadBaseline,
+                        questionsChanged = removedQuestion || hadBaseline,
+                    )
                     if (pendingInteractions.peekApproval() == null) {
                         cancelApprovalNotification()
                     }
@@ -784,7 +818,8 @@ class RemoteSessionService : Service() {
             val opKey = explicitKey ?: session.newOperationKey("approval-$callId")
             try {
                 session.respondApproval(callId, approved, opKey)
-                pendingInteractions.removeApproval(callId)
+                val removed = pendingInteractions.removeApproval(callId)
+                removed?.sessionId?.let { syncCachedSessionPendingCounts(it) }
                 refreshPendingUi(approvalsChanged = true)
                 val nextApproval = pendingInteractions.peekApproval()
                 if (nextApproval == null) {
@@ -829,7 +864,8 @@ class RemoteSessionService : Service() {
             val opKey = session.newOperationKey("question-$questionId")
             try {
                 sendFn(session, opKey)
-                pendingInteractions.removeQuestion(questionId)
+                val removed = pendingInteractions.removeQuestion(questionId)
+                removed?.sessionId?.let { syncCachedSessionPendingCounts(it) }
                 refreshPendingUi(questionsChanged = true)
                 uiObservers.forEach { it.onActionSucceeded("question", questionId) }
             } catch (t: Throwable) {
@@ -1110,7 +1146,11 @@ class RemoteSessionService : Service() {
         }
         val toClose = activeSession
         activeSession = null
-        lastSessions = emptyList()
+        synchronized(sessionsLock) {
+            lastSessions = emptyList()
+            unreplayedApprovalsBySession.clear()
+            unreplayedQuestionsBySession.clear()
+        }
         attachedSessionId = null
         lastModelCatalog = null
         agentStatusBySession.clear()
@@ -1140,7 +1180,11 @@ class RemoteSessionService : Service() {
         closeSessionOffMainThread(previousSession, "reconnecting")
 
         if (hostChanged) {
-            lastSessions = emptyList()
+            synchronized(sessionsLock) {
+                lastSessions = emptyList()
+                unreplayedApprovalsBySession.clear()
+                unreplayedQuestionsBySession.clear()
+            }
             attachedSessionId = null
             lastModelCatalog = null
             agentStatusBySession.clear()
@@ -1197,6 +1241,8 @@ class RemoteSessionService : Service() {
                             pendingInteractions.removeQuestion(item.questionId)
                         }
                     }
+                    clearSessionPendingBaseline(sessionId)
+                    syncCachedSessionPendingCounts(sessionId)
                     refreshPendingUi(approvalsChanged = true, questionsChanged = true)
                     if (pendingInteractions.peekApproval() == null) {
                         cancelApprovalNotification()
@@ -1362,12 +1408,54 @@ class RemoteSessionService : Service() {
 
     private fun storeHostSessionsSnapshot(sessions: List<SessionRef>) {
         synchronized(sessionsLock) {
+            val approvals = pendingInteractions.listApprovals()
+            val questions = pendingInteractions.listQuestions()
+            unreplayedApprovalsBySession.clear()
+            unreplayedQuestionsBySession.clear()
             lastSessions = sessions
             for (ref in sessions) {
                 val st = ref.status?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }
                 if (st != null) {
                     agentStatusBySession[ref.id] = st
                 }
+                val liveA = approvals.count { it.sessionId == ref.id }
+                val liveQ = questions.count { it.sessionId == ref.id }
+                unreplayedApprovalsBySession[ref.id] = (ref.pendingApprovals - liveA).coerceAtLeast(0)
+                unreplayedQuestionsBySession[ref.id] = (ref.pendingQuestions - liveQ).coerceAtLeast(0)
+            }
+        }
+    }
+
+    private fun clearSessionPendingBaseline(sessionId: String): Boolean = synchronized(sessionsLock) {
+        val removedA = unreplayedApprovalsBySession.remove(sessionId) ?: 0
+        val removedQ = unreplayedQuestionsBySession.remove(sessionId) ?: 0
+        removedA > 0 || removedQ > 0
+    }
+
+    private fun syncCachedSessionPendingCounts(sessionId: String) {
+        synchronized(sessionsLock) {
+            val liveA = pendingInteractions.listApprovals().count { it.sessionId == sessionId }
+            val liveQ = pendingInteractions.listQuestions().count { it.sessionId == sessionId }
+            val effA = (unreplayedApprovalsBySession[sessionId] ?: 0) + liveA
+            val effQ = (unreplayedQuestionsBySession[sessionId] ?: 0) + liveQ
+            lastSessions = syncPendingCountsInSessionList(lastSessions, sessionId, effA, effQ)
+        }
+    }
+
+    private fun consumeUnreplayedApproval(sessionId: String, amount: Int = 1) {
+        synchronized(sessionsLock) {
+            val cur = unreplayedApprovalsBySession[sessionId] ?: 0
+            if (cur > 0) {
+                unreplayedApprovalsBySession[sessionId] = (cur - amount).coerceAtLeast(0)
+            }
+        }
+    }
+
+    private fun consumeUnreplayedQuestion(sessionId: String, amount: Int = 1) {
+        synchronized(sessionsLock) {
+            val cur = unreplayedQuestionsBySession[sessionId] ?: 0
+            if (cur > 0) {
+                unreplayedQuestionsBySession[sessionId] = (cur - amount).coerceAtLeast(0)
             }
         }
     }
@@ -1394,7 +1482,11 @@ class RemoteSessionService : Service() {
         updatedRef
     }
 
-    private fun dispatchEventToObservers(sessionId: String, event: OfficialSessionEvent) {
+    private fun dispatchEventToObservers(
+        sessionId: String,
+        event: OfficialSessionEvent,
+        fromReplay: Boolean = false,
+    ) {
         uiObservers.forEach { it.onEventReceived(sessionId, event) }
         val dataObj = event.data as? JsonObject ?: return
         if (event.type == "agent/status") {
@@ -1433,15 +1525,23 @@ class RemoteSessionService : Service() {
         }
         if (event.type == "approval.resolved") {
             val resolvedCallId = dataObj.str("callId")
+            var removedSessionId: String? = null
             if (resolvedCallId != null) {
-                pendingInteractions.removeApproval(resolvedCallId)
+                val removed = pendingInteractions.removeApproval(resolvedCallId)
+                if (removed != null) {
+                    removedSessionId = removed.sessionId
+                } else {
+                    consumeUnreplayedApproval(sessionId, 1)
+                }
             } else {
                 for (item in pendingInteractions.listApprovals()) {
                     if (item.sessionId == null || item.sessionId == sessionId) {
                         pendingInteractions.removeApproval(item.callId)
                     }
                 }
+                unreplayedApprovalsBySession.remove(sessionId)
             }
+            syncCachedSessionPendingCounts(removedSessionId ?: sessionId)
             refreshPendingUi(approvalsChanged = true)
             val nextApproval = pendingInteractions.peekApproval()
             if (nextApproval == null) {
@@ -1453,15 +1553,23 @@ class RemoteSessionService : Service() {
         }
         if (event.type == "question.resolved") {
             val resolvedQuestionId = dataObj.str("questionId")
+            var removedSessionId: String? = null
             if (resolvedQuestionId != null) {
-                pendingInteractions.removeQuestion(resolvedQuestionId)
+                val removed = pendingInteractions.removeQuestion(resolvedQuestionId)
+                if (removed != null) {
+                    removedSessionId = removed.sessionId
+                } else {
+                    consumeUnreplayedQuestion(sessionId, 1)
+                }
             } else {
                 for (item in pendingInteractions.listQuestions()) {
                     if (item.sessionId == null || item.sessionId == sessionId) {
                         pendingInteractions.removeQuestion(item.questionId)
                     }
                 }
+                unreplayedQuestionsBySession.remove(sessionId)
             }
+            syncCachedSessionPendingCounts(removedSessionId ?: sessionId)
             refreshPendingUi(questionsChanged = true)
             return
         }
@@ -1472,6 +1580,10 @@ class RemoteSessionService : Service() {
             val rawSummary = if (!reason.isNullOrBlank()) "$toolLabel — $reason" else toolLabel
             val summary = DisplayTextSanitizer.sanitizeSingleLine(rawSummary)
             val added = pendingInteractions.enqueueApproval(callId, summary, sessionId)
+            if (added && fromReplay) {
+                consumeUnreplayedApproval(sessionId, 1)
+            }
+            syncCachedSessionPendingCounts(sessionId)
             val approvals = pendingInteractions.listApprovals()
             uiObservers.forEach { it.onPendingApprovalsChanged(approvals) }
             approvals.firstOrNull()?.let { head ->
@@ -1491,7 +1603,11 @@ class RemoteSessionService : Service() {
                 ?: firstQuestion?.str("header")
                 ?: event.type
             val prompt = DisplayTextSanitizer.sanitizeSingleLine(rawPrompt)
-            pendingInteractions.enqueueQuestion(questionId, prompt, sessionId, specs)
+            val added = pendingInteractions.enqueueQuestion(questionId, prompt, sessionId, specs)
+            if (added && fromReplay) {
+                consumeUnreplayedQuestion(sessionId, 1)
+            }
+            syncCachedSessionPendingCounts(sessionId)
             val questions = pendingInteractions.listQuestions()
             uiObservers.forEach { it.onPendingQuestionsChanged(questions) }
             questions.firstOrNull()?.let { head ->
