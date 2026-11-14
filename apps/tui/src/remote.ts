@@ -627,6 +627,13 @@ export async function runRemoteCommand(
               headers: { authorization: `Bearer ${controlToken}` },
             })
             process.stdout.write(`${await res.text()}\n`)
+          } else if (cmd === 'status') {
+            const res = await fetchControl(`${controlUrl}/status`, {
+              headers: { authorization: `Bearer ${controlToken}` },
+            })
+            process.stdout.write(`${await res.text()}\n`)
+          } else if (cmd === 'help') {
+            process.stdout.write('可用控制命令: status | sessions | devices | confirm <id> | revoke <deviceId> | qr | quit\n')
           } else if (cmd === 'revoke' && arg) {
             const res = await fetchControl(`${controlUrl}/devices/revoke`, {
               method: 'POST',
