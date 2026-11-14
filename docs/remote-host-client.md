@@ -382,6 +382,7 @@ It is a secure, E2EE multi-agent control plane unifying official DSH with local 
   - `dsh-community remote devices [--json]`
   - `dsh-community remote revoke <deviceId>`
   - `dsh-community remote status [--json]`
+  - Unified public-network carrier defaults (honored consistently across `@dsh-community/remote-adapter`, `dsh-community remote start`, and Desktop `DesktopRemoteController`): `DSH_REMOTE_DEFAULT_RELAY_URL` (`ws:`/`wss:`), `DSH_REMOTE_DEFAULT_SIGNALING_URL` (`ws:`/`wss:`), and `DSH_REMOTE_DEFAULT_STUN_URLS` (`stun:`-only comma-separated URIs; third-party `turn:`/`turns:` fails closed per R3).
 - **Android Saved Hosts, Pairing & Instrumentation**:
   - `MainActivity` handles `dsh-remote://pair?data=<base64url>` (`ACTION_VIEW`), system `ACTION_SEND` (`text/plain`), and one-tap clipboard **Paste** extraction through `PairingInputHelper` + `PairingQrParser` (never embedding session IDs or credentials inside the URI), and requests runtime `POST_NOTIFICATIONS` on Android 13+.
   - `EncryptedTrustedHostStore` (`AndroidKeyStore` AES-256-GCM in `noBackupFilesDir`) persists paired Hosts without `bootstrapToken` for tokenless reconnect, matches mDNS `_dsh-remote._tcp.` discoveries by `hostFingerprint` while preserving `discovery !== trust` for unpaired Hosts, supports Forget Host, clears stale buffers on `stream.reset`, and halts reconnects fail-closed on `peer.revoked`.

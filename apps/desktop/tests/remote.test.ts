@@ -17,8 +17,10 @@ import {
   parseRemoteGitInspectInput,
   parseRevokeDeviceInput,
   resolveDesktopRemoteConfigDir,
+  resolveDesktopRemoteEnvDefaults,
   resolveDesktopRemotePluginPath,
   resolveDesktopStandaloneHostPath,
+  resolveEffectiveDesktopRemoteSettings,
   resolveEffectiveListenHost,
   validateRemoteStartInput,
   type DesktopRemoteContext,
@@ -248,6 +250,7 @@ describe('desktop remote controller & validators', () => {
     expect(validateRemoteStartInput({ port: 70000 }).ok).toBe(false)
     expect(validateRemoteStartInput({ relayUrl: 'https://not-ws.example.com' }).ok).toBe(false)
     expect(validateRemoteStartInput({ stunUrls: 'https://bad-stun' }).ok).toBe(false)
+    expect(validateRemoteStartInput({ stunUrls: 'turn:relay.example.com:3478' }).ok).toBe(false)
     expect(validateRemoteStartInput({ listenHost: '127.0.0.1\nrm -rf' }).ok).toBe(false)
 
     expect(parseDesktopRemoteSettings({ port: 'bad', enableMdns: 'nope' })).toEqual({
@@ -563,6 +566,115 @@ describe('desktop remote controller & validators', () => {
       expect(cleared.gitPreview).toBeUndefined()
 
       await controller.shutdown()
+    } finally {
+      await mock.close()
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('exposes DSH_REMOTE_DEFAULT_* in snapshot, inherits on start without persisting env defaults, and fails closed on invalid env defaults', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'dsh-desktop-env-defaults-'))
+    const mock = await startMockControlServer()
+    try {
+      const binDir = join(dir, 'fake-bin')
+      mkdirSync(binDir, { recursive: true })
+      const fakeCodex = join(binDir, 'codex')
+      writeFileSync(fakeCodex, '#!/bin/sh\necho codex 0.169.0\n', 'utf8')
+      chmodSync(fakeCodex, 0o755)
+      mkdirSync(join(dir, 'remote-bundle'), { recursive: true })
+      writeFileSync(
+        join(dir, 'remote-bundle', 'standalone-cli.mjs'),
+        'export async function runStandaloneMultiAgentHost() {}\n',
+        'utf8',
+      )
+
+      const envWithDefaults: NodeJS.ProcessEnv = {
+        PATH: binDir,
+        DSH_REMOTE_DEFAULT_RELAY_URL: 'wss://relay.example.com/ws',
+        DSH_REMOTE_DEFAULT_SIGNALING_URL: 'wss://signal.example.com/ws',
+        DSH_REMOTE_DEFAULT_STUN_URLS: 'stun:stun1.example.com:3478, stun:stun2.example.com:3478',
+      }
+      expect(resolveDesktopRemoteEnvDefaults(envWithDefaults)).toEqual({
+        relayUrl: 'wss://relay.example.com/ws',
+        signalingUrl: 'wss://signal.example.com/ws',
+        stunUrls: 'stun:stun1.example.com:3478, stun:stun2.example.com:3478',
+      })
+      expect(
+        resolveEffectiveDesktopRemoteSettings(
+          { listenHost: '', port: 0, enableMdns: true, relayUrl: '', signalingUrl: '', stunUrls: '' },
+          { DSH_REMOTE_DEFAULT_STUN_URLS: 'turns:bad.example.com:5349' },
+        ),
+      ).toMatchObject({ ok: false })
+
+      let spawnedEnv: Record<string, string | undefined> = {}
+      const fakeChild = Object.assign(new EventEmitter(), {
+        pid: 65433,
+        exitCode: null as number | null,
+        killed: false,
+        stdout: new PassThrough(),
+        stderr: new PassThrough(),
+        kill: () => {
+          ;(fakeChild as unknown as { exitCode: number | null }).exitCode = 0
+          fakeChild.emit('exit', 0, null)
+          return true
+        },
+      })
+
+      const controller = new DesktopRemoteController({
+        getContext: () => makeTestContext(dir, { env: envWithDefaults }),
+        spawnFn: ((_exe: string, _args: readonly string[], opts: { env?: NodeJS.ProcessEnv }) => {
+          spawnedEnv = { ...(opts.env ?? {}) }
+          const readyPath = spawnedEnv.DSH_REMOTE_READY_FILE!
+          setTimeout(() => {
+            writeFileSync(
+              readyPath,
+              JSON.stringify({
+                mode: 'multi-agent-standalone',
+                controlUrl: mock.baseUrl,
+                deepLink: 'dshremote://pair?defaults=1',
+                pairingJson: '{"v":1}',
+                lanUrl: 'ws://192.168.1.99:9556',
+                hostFingerprint: 'fp-defaults',
+              }),
+            )
+          }, 15)
+          return fakeChild
+        }) as unknown as typeof import('node:child_process').spawn,
+      })
+
+      const beforeSnap = await controller.snapshot({ refreshLive: false })
+      expect(beforeSnap.envDefaults).toEqual({
+        relayUrl: 'wss://relay.example.com/ws',
+        signalingUrl: 'wss://signal.example.com/ws',
+        stunUrls: 'stun:stun1.example.com:3478, stun:stun2.example.com:3478',
+      })
+
+      await controller.start({ engines: 'codex' })
+      expect(spawnedEnv.DSH_REMOTE_RELAY_URL).toBe('wss://relay.example.com/ws')
+      expect(spawnedEnv.DSH_REMOTE_SIGNALING_URL).toBe('wss://signal.example.com/ws')
+      expect(spawnedEnv.DSH_REMOTE_STUN_URLS).toBe('stun:stun1.example.com:3478, stun:stun2.example.com:3478')
+      const runningSnap = await controller.snapshot({ refreshLive: false })
+      expect(runningSnap.settings.relayUrl).toBe('')
+      expect(runningSnap.settings.signalingUrl).toBe('')
+      expect(runningSnap.settings.stunUrls).toBe('')
+      await controller.shutdown()
+
+      let invalidSpawnCalled = false
+      const badEnvController = new DesktopRemoteController({
+        getContext: () =>
+          makeTestContext(dir, {
+            env: { PATH: binDir, DSH_REMOTE_DEFAULT_STUN_URLS: 'turn:relay.example.com:3478' },
+          }),
+        spawnFn: (() => {
+          invalidSpawnCalled = true
+          return fakeChild
+        }) as unknown as typeof import('node:child_process').spawn,
+      })
+      await badEnvController.start({ engines: 'codex' })
+      expect(invalidSpawnCalled).toBe(false)
+      const errSnap = await badEnvController.snapshot({ refreshLive: false })
+      expect(errSnap.phase).toBe('error')
+      expect(errSnap.error).toContain('turn:')
     } finally {
       await mock.close()
       rmSync(dir, { recursive: true, force: true })

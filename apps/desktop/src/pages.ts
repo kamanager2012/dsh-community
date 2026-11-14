@@ -1190,6 +1190,29 @@ export function renderRemotePage(model: RemotePageModel): string {
         </table>`}
   </section>`
 
+  const envDefaults = model.envDefaults
+  const hasEnvDefaults = Boolean(
+    envDefaults?.relayUrl || envDefaults?.signalingUrl || envDefaults?.stunUrls,
+  )
+  const relayPlaceholder = envDefaults?.relayUrl
+    ? `默认环境变量: ${envDefaults.relayUrl}`
+    : '可选，如 wss://relay.example.com（或设 DSH_REMOTE_DEFAULT_RELAY_URL）'
+  const signalingPlaceholder = envDefaults?.signalingUrl
+    ? `默认环境变量: ${envDefaults.signalingUrl}`
+    : '可选，如 wss://signal.example.com（或设 DSH_REMOTE_DEFAULT_SIGNALING_URL）'
+  const stunPlaceholder = envDefaults?.stunUrls
+    ? `默认环境变量: ${envDefaults.stunUrls}`
+    : '可选，如 stun:stun.l.google.com:19302（仅 stun:，或设 DSH_REMOTE_DEFAULT_STUN_URLS）'
+  const transportGuidance = hasEnvDefaults
+    ? '<p class="meta">已检测到公网传输环境变量默认值（留空将在启动时自动继承）；跨网 / 4G / 5G 建议配置盲中继或 WebRTC 信令 + STUN（仅允许 <code>stun:</code>，禁止 <code>turn:</code>）。</p>'
+    : '<p class="meta">跨网 / 4G / 5G 直连建议配置盲中继（Relay）或 WebRTC 信令 + STUN（仅允许 <code>stun:</code>，禁止 <code>turn:</code>）；也可通过 <code>DSH_REMOTE_DEFAULT_RELAY_URL</code> / <code>DSH_REMOTE_DEFAULT_SIGNALING_URL</code> / <code>DSH_REMOTE_DEFAULT_STUN_URLS</code> 预置。</p>'
+  const envDefaultsBar = hasEnvDefaults
+    ? `<div class="row">
+        <button type="button" class="secondary small" id="fill-remote-env-defaults">填入环境变量默认值</button>
+        <template id="remote-env-defaults-tpl" data-relay="${escapeHtml(envDefaults?.relayUrl ?? '')}" data-signaling="${escapeHtml(envDefaults?.signalingUrl ?? '')}" data-stun="${escapeHtml(envDefaults?.stunUrls ?? '')}"></template>
+      </div>`
+    : ''
+
   const configBlock = `<section class="panel">
     <h2>宿主机与网络配置</h2>
     ${model.phase === 'external'
@@ -1212,15 +1235,15 @@ export function renderRemotePage(model: RemotePageModel): string {
       </div>
       <div class="field">
         <label for="remote-relay">盲中继 WebSocket (relayUrl)</label>
-        <input type="text" id="remote-relay" value="${escapeHtml(model.settings.relayUrl)}" placeholder="可选，如 wss://relay.example.com" />
+        <input type="text" id="remote-relay" value="${escapeHtml(model.settings.relayUrl)}" placeholder="${escapeHtml(relayPlaceholder)}" />
       </div>
       <div class="field">
         <label for="remote-signaling">WebRTC 信令 (signalingUrl)</label>
-        <input type="text" id="remote-signaling" value="${escapeHtml(model.settings.signalingUrl)}" placeholder="可选，如 wss://signal.example.com" />
+        <input type="text" id="remote-signaling" value="${escapeHtml(model.settings.signalingUrl)}" placeholder="${escapeHtml(signalingPlaceholder)}" />
       </div>
       <div class="field">
         <label for="remote-stun">STUN 地址（逗号分隔）</label>
-        <input type="text" id="remote-stun" value="${escapeHtml(model.settings.stunUrls)}" placeholder="可选，如 stun:stun.l.google.com:19302" />
+        <input type="text" id="remote-stun" value="${escapeHtml(model.settings.stunUrls)}" placeholder="${escapeHtml(stunPlaceholder)}" />
       </div>
       <div class="field">
         <label for="remote-engines">Agent 引擎（auto/dsh/claude/codex/opencode）</label>
@@ -1231,6 +1254,8 @@ export function renderRemotePage(model: RemotePageModel): string {
       <input type="checkbox" id="remote-mdns"${model.settings.enableMdns ? ' checked' : ''} />
       <span>开启 mDNS 局域网广播发现</span>
     </label>
+    ${transportGuidance}
+    ${envDefaultsBar}
   </section>`
 
   const logsBlock = `<section class="panel">
@@ -1317,6 +1342,21 @@ export function renderRemotePage(model: RemotePageModel): string {
        const copyRemoteLogsBtn = document.getElementById('copy-remote-logs-btn')
        copyRemoteLogsBtn?.addEventListener('click', () => {
          copyWithFeedback(copyRemoteLogsBtn, readTpl('copy-remote-logs'))
+       })
+       const fillEnvDefaultsBtn = document.getElementById('fill-remote-env-defaults')
+       fillEnvDefaultsBtn?.addEventListener('click', () => {
+         const tpl = document.getElementById('remote-env-defaults-tpl')
+         if (!tpl) return
+         const relayInput = document.getElementById('remote-relay')
+         const signalingInput = document.getElementById('remote-signaling')
+         const stunInput = document.getElementById('remote-stun')
+         const relayVal = tpl.getAttribute('data-relay') ?? ''
+         const signalingVal = tpl.getAttribute('data-signaling') ?? ''
+         const stunVal = tpl.getAttribute('data-stun') ?? ''
+         if (relayInput && relayVal !== '') relayInput.value = relayVal
+         if (signalingInput && signalingVal !== '') signalingInput.value = signalingVal
+         if (stunInput && stunVal !== '') stunInput.value = stunVal
+         fillEnvDefaultsBtn.textContent = '已填入 ✓'
        })
        document.querySelectorAll('[data-confirm-candidate]').forEach((btn) => {
          btn.addEventListener('click', () => {

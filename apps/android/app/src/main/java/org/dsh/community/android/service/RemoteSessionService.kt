@@ -93,6 +93,92 @@ object BackoffPolicy {
         val raw = baseMs shl clamped
         return minOf(raw, maxMs)
     }
+
+    /**
+     * Multi-tier battery-safe reconnect schedule:
+     * 1..5 -> 1s..16s, 6..12 -> 30s, 13..30 -> 60s, >30 -> 120s (never dead-stops).
+     */
+    fun nextReconnectDelayMs(failureAttempt: Int): Long {
+        val attempt = failureAttempt.coerceAtLeast(1)
+        return when {
+            attempt <= 5 -> 1_000L shl (attempt - 1)
+            attempt <= 12 -> 30_000L
+            attempt <= 30 -> 60_000L
+            else -> 120_000L
+        }
+    }
+}
+
+/**
+ * Allows at most one automatic Noise session rebuild + epoch fence reset per outage when an
+ * already-trusted Host restarts (dropping `connectionEpoch` back to 1) while blocking replay loops.
+ */
+internal class EpochResetRecoveryGuard {
+    @Volatile
+    private var resetAttemptedInOutage: Boolean = false
+
+    @Synchronized
+    fun tryAcquireRecovery(isRevoked: Boolean, isEligible: Boolean): Boolean {
+        if (isRevoked || !isEligible || resetAttemptedInOutage) {
+            return false
+        }
+        resetAttemptedInOutage = true
+        return true
+    }
+
+    @Synchronized
+    fun onConnectionActive() {
+        resetAttemptedInOutage = false
+    }
+
+    @Synchronized
+    fun reset() {
+        resetAttemptedInOutage = false
+    }
+
+    @Synchronized
+    fun hasAttemptedInCurrentOutage(): Boolean = resetAttemptedInOutage
+}
+
+/**
+ * Monotonic per-host epoch fence with session-generation gating so late callbacks from a
+ * retired `FailoverRemoteSession` can never re-poison `highestEpochByHost` across resets.
+ */
+internal class HostEpochFence {
+    private val highestEpochByHost = HashMap<String, Int>()
+    private var currentGeneration: Long = 0L
+
+    @Synchronized
+    fun advanceGeneration(): Long {
+        currentGeneration += 1L
+        return currentGeneration
+    }
+
+    @Synchronized
+    fun activeGeneration(): Long = currentGeneration
+
+    @Synchronized
+    fun isGenerationCurrent(generation: Long): Boolean = generation == currentGeneration
+
+    @Synchronized
+    fun currentEpoch(hostFingerprint: String): Int = highestEpochByHost[hostFingerprint] ?: 0
+
+    @Synchronized
+    fun recordIfCurrent(generation: Long, hostFingerprint: String, epoch: Int): Boolean {
+        if (generation != currentGeneration || hostFingerprint.isBlank() || epoch <= 0) {
+            return false
+        }
+        val prev = highestEpochByHost[hostFingerprint] ?: 0
+        if (epoch > prev) {
+            highestEpochByHost[hostFingerprint] = epoch
+        }
+        return true
+    }
+
+    @Synchronized
+    fun resetHost(hostFingerprint: String) {
+        highestEpochByHost.remove(hostFingerprint)
+    }
 }
 
 class ReplayBatchContext {
@@ -353,12 +439,43 @@ class RemoteSessionService : Service() {
         private const val STATS_FILE = "remote-lifecycle-stats.json"
         private const val HEARTBEAT_INTERVAL_MS = 25_000L
         private const val MAX_REPLAY_EVENTS = 200
+        private const val MAX_EPOCH_CAUSE_DEPTH = 16
 
         const val ACTION_APPROVE_CALL = "org.dsh.community.android.ACTION_APPROVE_CALL"
         const val ACTION_REJECT_CALL = "org.dsh.community.android.ACTION_REJECT_CALL"
         const val ACTION_DISCONNECT = "org.dsh.community.android.ACTION_DISCONNECT"
         const val EXTRA_CALL_ID = "extra_call_id"
         const val EXTRA_IDEMPOTENCY_KEY = "extra_idempotency_key"
+
+        internal fun isEpochRegressionError(t: Throwable?): Boolean {
+            var cur = t
+            var depth = 0
+            while (cur != null && depth < MAX_EPOCH_CAUSE_DEPTH) {
+                val msg = cur.message?.lowercase().orEmpty()
+                if (msg.contains("connectionepoch regression") ||
+                    (msg.contains("connectionepoch") && msg.contains("replay")) ||
+                    (cur is SecurityException && msg.contains("epoch regression"))
+                ) {
+                    return true
+                }
+                val next = cur.cause
+                if (next === cur) break
+                cur = next
+                depth++
+            }
+            return false
+        }
+
+        internal fun computeTransportMask(caps: NetworkCapabilities?): Int {
+            if (caps == null) return 0
+            var mask = 0
+            if (caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) mask = mask or (1 shl 0)
+            if (caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) mask = mask or (1 shl 1)
+            if (caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)) mask = mask or (1 shl 2)
+            if (caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) mask = mask or (1 shl 3)
+            if (caps.hasTransport(NetworkCapabilities.TRANSPORT_BLUETOOTH)) mask = mask or (1 shl 4)
+            return mask
+        }
 
         internal fun syncStatusInSessionList(
             sessions: List<SessionRef>,
@@ -431,11 +548,13 @@ class RemoteSessionService : Service() {
     private val activeNetworks = ConcurrentHashMap.newKeySet<Network>()
     private val networkObserverRegistered = AtomicBoolean(false)
     private val autoReconnectEligible = AtomicBoolean(false)
+    private val networkProbePending = AtomicBoolean(false)
+    private val epochRecoveryGuard = EpochResetRecoveryGuard()
     private val pendingInteractions = PendingInteractionQueue()
     private val pendingTracker = PendingInteractionCountTracker(pendingInteractions)
     private val pendingAckSeqs = ConcurrentHashMap<String, Long>()
     private val ackScheduled = ConcurrentHashMap<String, AtomicBoolean>()
-    private val highestEpochByHost = ConcurrentHashMap<String, Int>()
+    private val hostEpochFence = HostEpochFence()
     private val reconnectLock = Any()
     private val sessionsLock = Any()
     private val replayLock = Any()
@@ -486,6 +605,15 @@ class RemoteSessionService : Service() {
 
     private var connectivityManager: ConnectivityManager? = null
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
+
+    @Volatile
+    private var lastObservedNetwork: Network? = null
+
+    @Volatile
+    private var lastObservedTransportMask: Int = 0
+
+    @Volatile
+    private var lastObservedValidated: Boolean = false
 
     override fun onCreate() {
         super.onCreate()
@@ -538,6 +666,7 @@ class RemoteSessionService : Service() {
             reconnectFuture?.cancel(false)
             reconnectFuture = null
         }
+        hostEpochFence.advanceGeneration()
         val toClose = activeSession
         activeSession = null
         ioExecutor.shutdownNow()
@@ -632,10 +761,9 @@ class RemoteSessionService : Service() {
             try {
                 val descriptor = PairingQrParser.parse(rawDescriptorJson)
                 val profile = RemoteEndpointProfile.fromDescriptor(descriptor)
-                if (!profile.bootstrapToken.isNullOrBlank()) {
-                    // Fresh QR pairing may target a restarted Host process whose epoch resets to 1.
-                    highestEpochByHost.remove(profile.hostFingerprint)
-                }
+                // Fresh QR pairing may target a restarted Host process whose epoch resets to 1.
+                val resetEpoch = !profile.bootstrapToken.isNullOrBlank()
+                epochRecoveryGuard.reset()
                 clearReplayEvents()
                 pendingAckSeqs.clear()
                 pendingInteractions.clearAll()
@@ -648,7 +776,7 @@ class RemoteSessionService : Service() {
                 agentStatusBySession.clear()
                 cancelApprovalNotification()
                 refreshPendingUi(approvalsChanged = true, questionsChanged = true)
-                connectProfileInternal(profile, sanitizedName)
+                connectProfileInternal(profile, sanitizedName, resetEpochFence = resetEpoch)
             } catch (t: Throwable) {
                 updateStatus(RemoteConnectionPhase.FAILED, null, 0, "Pairing parse/connect failed: ${sanitizeErr(t)}")
             }
@@ -689,13 +817,12 @@ class RemoteSessionService : Service() {
             }
 
             activeHostFingerprint = target.hostFingerprint
-            if (resetEpochFence) {
-                // Explicit user reconnect may follow a Host daemon restart whose epoch restarts at 1.
-                highestEpochByHost.remove(target.hostFingerprint)
-            }
             notifyTrustedHosts()
 
             if (target.isRevoked) {
+                if (resetEpochFence) {
+                    hostEpochFence.resetHost(target.hostFingerprint)
+                }
                 val reason = DisplayTextSanitizer.sanitizeSingleLine(target.revokedReason ?: "device revoked by host")
                 uiObservers.forEach { it.onPeerRevoked(target.hostFingerprint, reason) }
                 updateStatus(
@@ -708,7 +835,8 @@ class RemoteSessionService : Service() {
             }
 
             val tokenlessProfile = RemoteEndpointProfile.fromTrustedRecord(target, lanUrlOverride)
-            connectProfileInternal(tokenlessProfile, sanitizedName)
+            // Explicit user reconnect may follow a Host daemon restart whose epoch restarts at 1.
+            connectProfileInternal(tokenlessProfile, sanitizedName, resetEpochFence = resetEpochFence)
         }
     }
 
@@ -728,7 +856,6 @@ class RemoteSessionService : Service() {
                 ?: activeHostFingerprint
                 ?: trustedHostStore.list().firstOrNull()?.hostFingerprint
                 ?: return@execute
-            highestEpochByHost.remove(targetFp)
             if (activeHostFingerprint.equals(targetFp, ignoreCase = true)) {
                 autoReconnectEligible.set(false)
                 consecutiveReconnectFailures.set(0)
@@ -737,10 +864,12 @@ class RemoteSessionService : Service() {
                     reconnectFuture?.cancel(false)
                     reconnectFuture = null
                 }
+                hostEpochFence.advanceGeneration()
                 val toClose = activeSession
                 activeSession = null
                 activeHostFingerprint = null
                 lastProfile = null
+                hostEpochFence.resetHost(targetFp)
                 synchronized(sessionsLock) {
                     lastSessions = emptyList()
                     pendingTracker.clearBaselines()
@@ -1286,7 +1415,12 @@ class RemoteSessionService : Service() {
 
     fun failoverAsync() {
         ioExecutor.execute {
+            synchronized(reconnectLock) {
+                reconnectFuture?.cancel(false)
+                reconnectFuture = null
+            }
             val session = activeSession ?: return@execute
+            val expectedGeneration = hostEpochFence.activeGeneration()
             val attempt = reconnectAttempts.incrementAndGet()
             try {
                 updateStatus(
@@ -1295,17 +1429,26 @@ class RemoteSessionService : Service() {
                     session.currentEpoch,
                     "Failing over carrier (attempt #$attempt)...",
                 )
-                session.failoverAndResume()
+                val resumed = session.failoverAndResume()
                 consecutiveReconnectFailures.set(0)
                 autoReconnectEligible.set(true)
+                epochRecoveryGuard.onConnectionActive()
                 activeHostFingerprint?.let { fp ->
-                    highestEpochByHost.merge(fp, session.currentEpoch, ::maxOf)
+                    hostEpochFence.recordIfCurrent(expectedGeneration, fp, session.currentEpoch)
                 }
                 startHeartbeat(session)
                 try {
                     val sessions = session.listSessions()
                     storeHostSessionsSnapshot(sessions)
                     uiObservers.forEach { it.onSessionsUpdated(sessions) }
+                    val currentAttached = attachedSessionId
+                    if (currentAttached != null && !resumed.containsKey(currentAttached)) {
+                        if (sessions.any { it.id == currentAttached }) {
+                            attachSessionInternal(session, currentAttached)
+                        } else {
+                            attachedSessionId = null
+                        }
+                    }
                 } catch (_: Throwable) {
                     // Best-effort refresh; stream replay already resumed.
                 }
@@ -1316,15 +1459,34 @@ class RemoteSessionService : Service() {
                     "Connected via ${session.activeCarrier?.wireName} (epoch ${session.currentEpoch})",
                 )
             } catch (t: Throwable) {
-                if (t is PeerRevokedException || session.revokedByHost) {
+                val fp = activeHostFingerprint
+                val storedRevoked = fp?.let { trustedHostStore.get(it)?.isRevoked } == true
+                if (t is PeerRevokedException || session.revokedByHost || storedRevoked) {
                     stopHeartbeat()
                     autoReconnectEligible.set(false)
                     handlePeerRevocation(
-                        activeHostFingerprint ?: "",
+                        fp ?: "",
                         session,
                         sanitizeErr(t),
                     )
                 } else {
+                    val tokenless = resolveTokenlessProfile(fp)
+                    if (tokenless != null &&
+                        isEpochRegressionError(t) &&
+                        epochRecoveryGuard.tryAcquireRecovery(
+                            isRevoked = false,
+                            isEligible = autoReconnectEligible.get(),
+                        )
+                    ) {
+                        updateStatus(
+                            RemoteConnectionPhase.CONNECTING,
+                            null,
+                            0,
+                            "Host restarted (epoch reset); rebuilding Noise session...",
+                        )
+                        connectProfileInternal(tokenless, lastDisplayName, resetEpochFence = true)
+                        return@execute
+                    }
                     val reason = sanitizeErr(t)
                     updateStatus(RemoteConnectionPhase.FAILED, null, session.currentEpoch, "Failover failed: $reason")
                     scheduleBatterySafeReconnect(session, session.activeCarrier ?: TransportKind.RELAY, reason)
@@ -1338,12 +1500,15 @@ class RemoteSessionService : Service() {
     fun disconnect() {
         autoReconnectEligible.set(false)
         consecutiveReconnectFailures.set(0)
+        networkProbePending.set(false)
+        epochRecoveryGuard.reset()
         stopHeartbeat()
         cancelApprovalNotification()
         synchronized(reconnectLock) {
             reconnectFuture?.cancel(false)
             reconnectFuture = null
         }
+        hostEpochFence.advanceGeneration()
         val toClose = activeSession
         activeSession = null
         synchronized(sessionsLock) {
@@ -1364,9 +1529,24 @@ class RemoteSessionService : Service() {
         closeSessionOffMainThread(toClose, "user disconnect")
     }
 
-    private fun connectProfileInternal(profile: RemoteEndpointProfile, displayName: String) {
+    private fun resolveTokenlessProfile(hostFingerprint: String?): RemoteEndpointProfile? {
+        val fp = hostFingerprint ?: activeHostFingerprint
+        val saved = fp?.let { trustedHostStore.get(it) }
+        if (saved != null) {
+            if (saved.isRevoked) return null
+            return RemoteEndpointProfile.fromTrustedRecord(saved, lastProfile?.lanUrl)
+        }
+        return lastProfile?.takeIf { it.bootstrapToken == null }
+    }
+
+    private fun connectProfileInternal(
+        profile: RemoteEndpointProfile,
+        displayName: String,
+        resetEpochFence: Boolean = false,
+    ) {
         val prevFp = activeHostFingerprint
         val hostChanged = prevFp != null && !prevFp.equals(profile.hostFingerprint, ignoreCase = true)
+        val prevAttachedId = if (!hostChanged) attachedSessionId else null
         synchronized(reconnectLock) {
             reconnectFuture?.cancel(false)
             reconnectFuture = null
@@ -1374,11 +1554,18 @@ class RemoteSessionService : Service() {
         stopHeartbeat()
         autoReconnectEligible.set(false)
         consecutiveReconnectFailures.set(0)
+        // Advance generation and clear any stale fence BEFORE retiring/closing the previous session so
+        // async close callbacks (onPhaseChanged/onTransportClosed) cannot re-poison highestEpochByHost.
+        val sessionGeneration = hostEpochFence.advanceGeneration()
         val previousSession = activeSession
         activeSession = null
+        if (resetEpochFence) {
+            hostEpochFence.resetHost(profile.hostFingerprint)
+        }
         closeSessionOffMainThread(previousSession, "reconnecting")
 
         if (hostChanged) {
+            epochRecoveryGuard.reset()
             synchronized(sessionsLock) {
                 lastSessions = emptyList()
                 pendingTracker.clearBaselines()
@@ -1400,7 +1587,7 @@ class RemoteSessionService : Service() {
         notifyTrustedHosts()
 
         val identity = ensureDeviceIdentity()
-        val initialHighestEpoch = highestEpochByHost[profile.hostFingerprint] ?: 0
+        val initialHighestEpoch = hostEpochFence.currentEpoch(profile.hostFingerprint)
         val session = FailoverRemoteSession(
             identity,
             profile,
@@ -1410,21 +1597,28 @@ class RemoteSessionService : Service() {
         )
         session.addListener(
             object : FailoverRemoteSession.Listener {
+                private fun isCurrentSession(): Boolean =
+                    hostEpochFence.isGenerationCurrent(sessionGeneration) && activeSession === session
+
                 override fun onPhaseChanged(phase: RemoteConnectionPhase, carrier: TransportKind?, epoch: Int) {
+                    if (!hostEpochFence.isGenerationCurrent(sessionGeneration)) return
                     if (epoch > 0) {
-                        highestEpochByHost.merge(profile.hostFingerprint, epoch, ::maxOf)
+                        hostEpochFence.recordIfCurrent(sessionGeneration, profile.hostFingerprint, epoch)
                     }
+                    if (!isCurrentSession()) return
                     val label = "${phase.name} via ${carrier?.wireName ?: "-"} (epoch=$epoch)"
                     updateStatus(phase, carrier, epoch, label)
                 }
 
                 override fun onStreamEvent(sessionId: String, event: OfficialSessionEvent) {
+                    if (!isCurrentSession()) return
                     enqueueReplayEvent(sessionId, event)
                     dispatchEventToObservers(sessionId, event)
                     enqueueStreamAck(session, sessionId, event.seq)
                 }
 
                 override fun onStreamReset(sessionId: String, reason: String) {
+                    if (!isCurrentSession()) return
                     clearReplayEvents(sessionId)
                     agentStatusBySession.remove(sessionId)
                     syncCachedSessionStatus(sessionId, "idle")
@@ -1450,12 +1644,14 @@ class RemoteSessionService : Service() {
                 }
 
                 override fun onPeerRevoked(reason: String) {
+                    if (!isCurrentSession()) return
                     stopHeartbeat()
                     autoReconnectEligible.set(false)
                     handlePeerRevocation(profile.hostFingerprint, session, reason)
                 }
 
                 override fun onTransportClosed(carrier: TransportKind, reason: String) {
+                    if (!isCurrentSession()) return
                     stopHeartbeat()
                     scheduleBatterySafeReconnect(session, carrier, reason)
                 }
@@ -1487,7 +1683,8 @@ class RemoteSessionService : Service() {
             } else if (phase == RemoteConnectionPhase.ACTIVE) {
                 consecutiveReconnectFailures.set(0)
                 autoReconnectEligible.set(true)
-                highestEpochByHost.merge(profile.hostFingerprint, session.currentEpoch, ::maxOf)
+                epochRecoveryGuard.onConnectionActive()
+                hostEpochFence.recordIfCurrent(sessionGeneration, profile.hostFingerprint, session.currentEpoch)
                 trustedHostStore.upsertTrustedHost(
                     hostPublicKey = profile.hostPublicKey,
                     lanUrl = profile.lanUrl,
@@ -1512,9 +1709,17 @@ class RemoteSessionService : Service() {
                     "Connected (${sessions.size} official session${if (sessions.size == 1) "" else "s"})",
                 )
                 uiObservers.forEach { it.onSessionsUpdated(sessions) }
+                if (prevAttachedId != null) {
+                    if (sessions.any { it.id == prevAttachedId }) {
+                        attachSessionInternal(session, prevAttachedId)
+                    } else {
+                        attachedSessionId = null
+                    }
+                }
             }
         } catch (t: Throwable) {
-            if (t is PeerRevokedException || session.revokedByHost) {
+            val storedRevoked = trustedHostStore.get(profile.hostFingerprint)?.isRevoked == true
+            if (t is PeerRevokedException || session.revokedByHost || storedRevoked) {
                 stopHeartbeat()
                 autoReconnectEligible.set(false)
                 handlePeerRevocation(
@@ -1522,10 +1727,26 @@ class RemoteSessionService : Service() {
                     session,
                     sanitizeErr(t),
                 )
-            } else {
-                if (profile.bootstrapToken == null) {
-                    autoReconnectEligible.set(true)
+            } else if (profile.bootstrapToken == null &&
+                isEpochRegressionError(t) &&
+                epochRecoveryGuard.tryAcquireRecovery(isRevoked = false, isEligible = true)
+            ) {
+                updateStatus(
+                    RemoteConnectionPhase.CONNECTING,
+                    null,
+                    0,
+                    "Host restarted (epoch reset); reconnecting cleanly...",
+                )
+                connectProfileInternal(profile, displayName, resetEpochFence = true)
+                return
+            } else if (profile.bootstrapToken == null) {
+                autoReconnectEligible.set(true)
+                val reason = sanitizeErr(t)
+                updateStatus(RemoteConnectionPhase.FAILED, null, session.currentEpoch, "Connect failed: $reason")
+                if (hasUsableNetwork()) {
+                    scheduleBatterySafeReconnect(session, TransportKind.RELAY, reason)
                 }
+            } else {
                 updateStatus(RemoteConnectionPhase.FAILED, null, session.currentEpoch, "Connect failed: ${sanitizeErr(t)}")
             }
         } finally {
@@ -1545,8 +1766,11 @@ class RemoteSessionService : Service() {
             reconnectFuture = null
         }
         val cleanReason = DisplayTextSanitizer.sanitizeSingleLine(reason)
+        if (activeSession === session) {
+            hostEpochFence.advanceGeneration()
+        }
         if (hostFingerprint.isNotBlank()) {
-            highestEpochByHost.remove(hostFingerprint)
+            hostEpochFence.resetHost(hostFingerprint)
             trustedHostStore.markRevoked(hostFingerprint, cleanReason)
             notifyTrustedHosts()
             uiObservers.forEach { it.onPeerRevoked(hostFingerprint, cleanReason) }
@@ -1574,21 +1798,12 @@ class RemoteSessionService : Service() {
             return
         }
         val failureAttempt = consecutiveReconnectFailures.incrementAndGet()
-        if (failureAttempt > 5) {
-            updateStatus(
-                RemoteConnectionPhase.FAILED,
-                null,
-                session.currentEpoch,
-                "Stopped reconnect after 5 attempts (battery guard)",
-            )
-            return
-        }
-        val delayMs = BackoffPolicy.nextDelayMs(failureAttempt - 1)
+        val delayMs = BackoffPolicy.nextReconnectDelayMs(failureAttempt)
         updateStatus(
             RemoteConnectionPhase.CONNECTING,
             null,
             session.currentEpoch,
-            "$droppedCarrier closed ($cleanReason); failover in ${delayMs}ms",
+            "$droppedCarrier closed ($cleanReason); failover #$failureAttempt in ${delayMs}ms",
         )
         synchronized(reconnectLock) {
             reconnectFuture?.cancel(false)
@@ -1943,17 +2158,61 @@ class RemoteSessionService : Service() {
                     failoverAsync()
                     return@execute
                 }
-                val savedFp = activeHostFingerprint
-                val tokenlessProfile = savedFp?.let { trustedHostStore.get(it) }
-                    ?.takeIf { !it.isRevoked }
-                    ?.let { RemoteEndpointProfile.fromTrustedRecord(it, lastProfile?.lanUrl) }
-                    ?: lastProfile?.takeIf { it.bootstrapToken == null }
+                val tokenlessProfile = resolveTokenlessProfile(activeHostFingerprint ?: lastProfile?.hostFingerprint)
                     ?: return@execute
                 consecutiveReconnectFailures.set(0)
                 connectProfileInternal(tokenlessProfile, lastDisplayName)
             }
         } catch (_: Throwable) {
             // Service shutting down.
+        }
+    }
+
+    private fun probeActiveSessionOnNetworkTransition(session: FailoverRemoteSession, reason: String) {
+        if (!networkProbePending.compareAndSet(false, true)) return
+        try {
+            heartbeatExecutor.execute {
+                try {
+                    if (activeSession !== session || session.phase != RemoteConnectionPhase.ACTIVE) {
+                        return@execute
+                    }
+                    val carrier = session.activeCarrier ?: TransportKind.LAN
+                    if (!session.isTransportOpen()) {
+                        ioExecutor.execute {
+                            if (activeSession === session &&
+                                !session.revokedByHost &&
+                                session.phase != RemoteConnectionPhase.REVOKED
+                            ) {
+                                scheduleBatterySafeReconnect(session, carrier, "$reason: transport closed")
+                            }
+                        }
+                        return@execute
+                    }
+                    if (!session.ping()) {
+                        throw IOException("ping returned false")
+                    }
+                } catch (t: Throwable) {
+                    ioExecutor.execute {
+                        if (activeSession !== session || session.phase != RemoteConnectionPhase.ACTIVE) {
+                            return@execute
+                        }
+                        val carrier = session.activeCarrier ?: TransportKind.LAN
+                        if (t is PeerRevokedException || session.revokedByHost) {
+                            handlePeerRevocation(
+                                activeHostFingerprint ?: "",
+                                session,
+                                sanitizeErr(t),
+                            )
+                        } else {
+                            scheduleBatterySafeReconnect(session, carrier, "$reason: ${sanitizeErr(t)}")
+                        }
+                    }
+                } finally {
+                    networkProbePending.set(false)
+                }
+            }
+        } catch (_: Throwable) {
+            networkProbePending.set(false)
         }
     }
 
@@ -1975,22 +2234,61 @@ class RemoteSessionService : Service() {
             override fun onAvailable(network: Network) {
                 val prevCount = activeNetworks.size
                 activeNetworks.add(network)
+                val caps = try {
+                    cm.getNetworkCapabilities(network)
+                } catch (_: Throwable) {
+                    null
+                }
+                val newMask = computeTransportMask(caps)
+                val validated = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
+                val prevNetwork = lastObservedNetwork
+                val prevMask = lastObservedTransportMask
+                val networkSwitched = (prevNetwork != null && prevNetwork != network) ||
+                    (prevMask != 0 && newMask != 0 && prevMask != newMask)
+                lastObservedNetwork = network
+                if (newMask != 0) lastObservedTransportMask = newMask
+                lastObservedValidated = validated
+
                 val s = activeSession
-                if (s != null && s.phase == RemoteConnectionPhase.ACTIVE && s.activeCarrier == TransportKind.LAN) {
-                    // Default network may have switched (e.g. Wi-Fi -> Cellular); probe LAN socket liveness off main thread.
-                    try {
-                        ioExecutor.execute {
-                            if (activeSession === s && s.phase == RemoteConnectionPhase.ACTIVE) {
-                                try {
-                                    if (!s.ping()) throw IOException("ping returned false")
-                                } catch (t: Throwable) {
-                                    scheduleBatterySafeReconnect(s, TransportKind.LAN, "network switch: ${sanitizeErr(t)}")
-                                }
-                            }
-                        }
-                    } catch (_: Throwable) {
-                    }
-                } else if (prevCount == 0 || (s != null && s.phase == RemoteConnectionPhase.FAILED)) {
+                if (s != null && s.phase == RemoteConnectionPhase.ACTIVE) {
+                    probeActiveSessionOnNetworkTransition(
+                        s,
+                        if (networkSwitched) "network switch" else "network available",
+                    )
+                } else if (prevCount == 0 || networkSwitched || (s != null && s.phase == RemoteConnectionPhase.FAILED)) {
+                    resumeAfterNetworkRestore()
+                }
+            }
+
+            override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
+                val hasInternet = networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                if (hasInternet) {
+                    activeNetworks.add(network)
+                } else {
+                    activeNetworks.remove(network)
+                }
+                val newMask = computeTransportMask(networkCapabilities)
+                val validated = networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+                val prevNetwork = lastObservedNetwork
+                val prevMask = lastObservedTransportMask
+                val prevValidated = lastObservedValidated
+
+                val networkSwitched = (prevNetwork != null && prevNetwork != network) ||
+                    (prevMask != 0 && newMask != 0 && prevMask != newMask)
+                val becameValidated = !prevValidated && validated
+                lastObservedNetwork = network
+                if (newMask != 0) lastObservedTransportMask = newMask
+                lastObservedValidated = validated
+
+                if (!hasInternet || (!networkSwitched && !becameValidated)) {
+                    return
+                }
+                val s = activeSession
+                if (s != null && s.phase == RemoteConnectionPhase.ACTIVE && networkSwitched) {
+                    probeActiveSessionOnNetworkTransition(s, "network switch")
+                } else if (s == null || s.phase == RemoteConnectionPhase.FAILED ||
+                    (s.phase == RemoteConnectionPhase.ACTIVE && !s.isTransportOpen())
+                ) {
                     resumeAfterNetworkRestore()
                 }
             }
@@ -1998,22 +2296,15 @@ class RemoteSessionService : Service() {
             override fun onLost(network: Network) {
                 activeNetworks.remove(network)
                 networkLosses.incrementAndGet()
+                if (lastObservedNetwork == network) {
+                    lastObservedNetwork = null
+                    lastObservedTransportMask = 0
+                    lastObservedValidated = false
+                }
                 persistStats()
                 val s = activeSession
                 if (hasUsableNetwork() && s != null && s.phase == RemoteConnectionPhase.ACTIVE) {
-                    try {
-                        ioExecutor.execute {
-                            if (activeSession === s && s.phase == RemoteConnectionPhase.ACTIVE) {
-                                try {
-                                    if (!s.ping()) throw IOException("ping returned false")
-                                } catch (t: Throwable) {
-                                    val carrier = s.activeCarrier ?: TransportKind.LAN
-                                    scheduleBatterySafeReconnect(s, carrier, "network lost: ${sanitizeErr(t)}")
-                                }
-                            }
-                        }
-                    } catch (_: Throwable) {
-                    }
+                    probeActiveSessionOnNetworkTransition(s, "network lost")
                 }
             }
         }
@@ -2037,6 +2328,10 @@ class RemoteSessionService : Service() {
         }
         networkCallback = null
         networkObserverRegistered.set(false)
+        networkProbePending.set(false)
+        lastObservedNetwork = null
+        lastObservedTransportMask = 0
+        lastObservedValidated = false
         activeNetworks.clear()
     }
 

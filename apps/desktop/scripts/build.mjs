@@ -10,6 +10,7 @@ const workspace = resolve(appRoot, '../..')
 
 const alias = {
   '@dsh-community/dsh-bridge': resolve(workspace, 'packages/dsh-bridge/src/index.ts'),
+  '@dsh-community/remote-adapter/remote-env': resolve(workspace, 'packages/remote-adapter/src/remote-env.ts'),
   '@dsh-community/remote-adapter/stores': resolve(workspace, 'packages/remote-adapter/src/stores.ts'),
   '@dsh-community/shared-types': resolve(workspace, 'packages/shared-types/src/index.ts'),
 }

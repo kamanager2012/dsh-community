@@ -688,4 +688,41 @@ async function spawnCliUntilReadyJson<T>(
       expect(await stopAndWait()).toBe(0)
     }
   })
+
+  it('validates unified DSH_REMOTE_DEFAULT_* transport defaults and rejects turn:/non-ws schemes', async () => {
+    expect(COMMUNITY_REMOTE_HELP).toContain('DSH_REMOTE_DEFAULT_SIGNALING_URL')
+    expect(COMMUNITY_REMOTE_HELP).toContain('DSH_REMOTE_DEFAULT_STUN_URLS')
+
+    const root = makeTempDir('dsh-remote-defaults-cli-')
+    const dshHome = join(root, 'official-dsh-home')
+    const configDir = join(root, 'community-remote-config')
+    const baseEnv: NodeJS.ProcessEnv = {
+      DSH_HOME: dshHome,
+      DSH_REMOTE_CONFIG_DIR: configDir,
+      DEEPSEEK_API_KEY: 'sk-test-default-check',
+    }
+
+    const ioBadStun = captureOutputs()
+    expect(
+      await runRemoteCommand(
+        ['start', '--cwd', root],
+        { ...baseEnv, DSH_REMOTE_DEFAULT_STUN_URLS: 'turn:relay.example.com:3478' },
+        dshHome,
+      ),
+    ).toBe(2)
+    expect(ioBadStun.stderr()).toContain('DSH_REMOTE_DEFAULT_STUN_URLS')
+    expect(ioBadStun.stderr()).toContain('turn:')
+
+    vi.restoreAllMocks()
+    const ioBadSig = captureOutputs()
+    expect(
+      await runRemoteCommand(
+        ['start', '--cwd', root],
+        { ...baseEnv, DSH_REMOTE_DEFAULT_SIGNALING_URL: 'https://not-ws.example.com' },
+        dshHome,
+      ),
+    ).toBe(2)
+    expect(ioBadSig.stderr()).toContain('DSH_REMOTE_DEFAULT_SIGNALING_URL')
+    expect(ioBadSig.stderr()).toContain('ws:// 或 wss://')
+  })
 })

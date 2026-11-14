@@ -10,7 +10,10 @@ import org.dsh.community.android.protocol.DisplayTextSanitizer
 import org.dsh.community.android.protocol.JsonCodec
 import org.dsh.community.android.protocol.JsonObject
 import org.dsh.community.android.protocol.JsonString
+import org.dsh.community.android.service.EpochResetRecoveryGuard
+import org.dsh.community.android.service.HostEpochFence
 import org.dsh.community.android.service.PendingInteractionQueue
+import org.dsh.community.android.service.RemoteSessionService
 import org.dsh.community.android.transport.FailoverRemoteSession
 import org.dsh.community.android.transport.RemoteClientTransport
 import org.dsh.community.android.transport.RemoteConnectionPhase
@@ -528,5 +531,86 @@ class HardeningAndQueueTest {
         assertEquals(RemoteConnectionPhase.ACTIVE, stormSession.connect(listOf(TransportKind.LAN)))
         assertEquals(71, stormLanCalls.get())
         stormSession.close("done")
+    }
+
+    @Test
+    fun epochResetRecoveryGuardEnforcesSingleShotPerOutageAndRevocationFence() {
+        val guard = EpochResetRecoveryGuard()
+        assertFalse(guard.hasAttemptedInCurrentOutage())
+        assertFalse("revoked peer must fail closed", guard.tryAcquireRecovery(isRevoked = true, isEligible = true))
+        assertFalse("ineligible peer must fail closed", guard.tryAcquireRecovery(isRevoked = false, isEligible = false))
+        assertFalse(guard.hasAttemptedInCurrentOutage())
+
+        val hostKeys = Curve25519.generateKeyPair()
+        val staleSession = FailoverRemoteSession(
+            identity = testIdentity(),
+            profile = testProfile(hostKeys.publicKey),
+            lanFactory = { MockHostTransport(TransportKind.LAN, hostKeys, epochToAdvertise = 1) },
+            initialHighestEpoch = 4,
+            requestTimeoutMs = 2_000L,
+            handshakeTimeoutMs = 2_000L,
+        )
+        var thrown: Throwable? = null
+        try {
+            staleSession.connect(listOf(TransportKind.LAN))
+        } catch (t: Throwable) {
+            thrown = t
+        } finally {
+            staleSession.close("done")
+        }
+        assertTrue(RemoteSessionService.isEpochRegressionError(thrown))
+
+        assertTrue(guard.tryAcquireRecovery(isRevoked = false, isEligible = true))
+        assertTrue(guard.hasAttemptedInCurrentOutage())
+        assertFalse(
+            "second epoch regression in the same outage must be blocked to prevent replay loops",
+            guard.tryAcquireRecovery(isRevoked = false, isEligible = true),
+        )
+
+        val rebuiltSession = FailoverRemoteSession(
+            identity = testIdentity(),
+            profile = testProfile(hostKeys.publicKey),
+            lanFactory = { MockHostTransport(TransportKind.LAN, hostKeys, epochToAdvertise = 1) },
+            initialHighestEpoch = 0,
+            requestTimeoutMs = 2_000L,
+            handshakeTimeoutMs = 2_000L,
+        )
+        try {
+            assertEquals(RemoteConnectionPhase.ACTIVE, rebuiltSession.connect(listOf(TransportKind.LAN)))
+            assertEquals(1, rebuiltSession.currentEpoch)
+            guard.onConnectionActive()
+            assertFalse(guard.hasAttemptedInCurrentOutage())
+        } finally {
+            rebuiltSession.close("done")
+        }
+
+        assertTrue(
+            "subsequent outage after ACTIVE recovery is allowed one epoch-reset recovery",
+            guard.tryAcquireRecovery(isRevoked = false, isEligible = true),
+        )
+    }
+
+    @Test
+    fun hostEpochFenceIgnoresRetiredSessionCallbacksAcrossReset() {
+        val fence = HostEpochFence()
+        val fp = "host-fp-race"
+
+        val oldGen = fence.advanceGeneration()
+        assertTrue(fence.recordIfCurrent(oldGen, fp, 4))
+        assertEquals(4, fence.currentEpoch(fp))
+
+        // Retire old session generation and reset the host epoch fence before closing old transport.
+        val newGen = fence.advanceGeneration()
+        fence.resetHost(fp)
+        assertFalse(fence.isGenerationCurrent(oldGen))
+        assertTrue(fence.isGenerationCurrent(newGen))
+
+        // Async close callback from retired session reports old epoch 4 -> must be ignored.
+        assertFalse(fence.recordIfCurrent(oldGen, fp, 4))
+        assertEquals(0, fence.currentEpoch(fp))
+
+        // New session connects cleanly with restarted Host epoch 1.
+        assertTrue(fence.recordIfCurrent(newGen, fp, 1))
+        assertEquals(1, fence.currentEpoch(fp))
     }
 }
