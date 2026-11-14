@@ -36,6 +36,11 @@ import type {
   WorkspaceGitStatusResult,
 } from '../protocol.js'
 import {
+  boundApprovalArgs,
+  boundLiveStateSnapshot,
+  boundPendingApprovalSnapshot,
+} from '../session-state-fold.js'
+import {
   isSafeSessionId,
   paginateNormalizedTranscriptEvents,
   searchSessionCollections,
@@ -788,13 +793,15 @@ export class ClaudeAgentBackend implements ManagedAgentBackend {
     const pendingApprovals: PendingApprovalSnapshot[] = []
     for (const a of this.pendingApprovals.values()) {
       if (a.sessionId === meta.sessionId) {
-        pendingApprovals.push({
-          callId: a.callId,
-          toolName: a.toolName,
-          ...(a.reason !== undefined ? { reason: a.reason } : {}),
-          ...(a.input !== undefined ? { args: a.input } : {}),
-          sessionId: meta.sessionId,
-        })
+        pendingApprovals.push(
+          boundPendingApprovalSnapshot({
+            callId: a.callId,
+            toolName: a.toolName,
+            ...(a.reason !== undefined ? { reason: a.reason } : {}),
+            ...(a.input !== undefined ? { args: a.input } : {}),
+            sessionId: meta.sessionId,
+          }),
+        )
       }
     }
     const pendingQuestions: PendingQuestionSnapshot[] = []
@@ -807,7 +814,7 @@ export class ClaudeAgentBackend implements ManagedAgentBackend {
         })
       }
     }
-    return {
+    return boundLiveStateSnapshot({
       status: worker?.running ? 'running' : 'idle',
       ...(meta.model !== undefined ? { model: meta.model } : {}),
       ...(meta.title !== undefined ? { title: meta.title } : {}),
@@ -816,7 +823,7 @@ export class ClaudeAgentBackend implements ManagedAgentBackend {
       todos: [],
       oldestSeq: 1,
       latestSeq: this.emitter.currentSeq(meta.sessionId) || null,
-    }
+    })
   }
 
   async getSessionHistory(params: SessionHistoryParams): Promise<SessionHistoryResult> {
@@ -1041,7 +1048,7 @@ export class ClaudeAgentBackend implements ManagedAgentBackend {
           callId,
           toolName,
           ...(reason !== undefined ? { reason } : {}),
-          args: input,
+          args: boundApprovalArgs(input),
         })
       }
     }

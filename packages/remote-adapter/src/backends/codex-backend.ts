@@ -27,6 +27,11 @@ import type {
   WorkspaceGitStatusResult,
 } from '../protocol.js'
 import {
+  boundApprovalArgs,
+  boundLiveStateSnapshot,
+  boundPendingApprovalSnapshot,
+} from '../session-state-fold.js'
+import {
   paginateNormalizedTranscriptEvents,
   searchSessionCollections,
   type NormalizedTranscriptEvent,
@@ -790,14 +795,16 @@ export class CodexAgentBackend implements ManagedAgentBackend {
     const pendingApprovals: PendingApprovalSnapshot[] = []
     for (const a of this.pendingApprovals.values()) {
       if (a.sessionId === publicId) {
-        pendingApprovals.push({
-          callId: a.callId,
-          toolName: a.toolName,
-          ...(a.reason !== undefined ? { reason: a.reason } : {}),
-          ...(a.summary !== undefined ? { summary: a.summary } : {}),
-          ...(a.args !== undefined ? { args: a.args } : {}),
-          sessionId: publicId,
-        })
+        pendingApprovals.push(
+          boundPendingApprovalSnapshot({
+            callId: a.callId,
+            toolName: a.toolName,
+            ...(a.reason !== undefined ? { reason: a.reason } : {}),
+            ...(a.summary !== undefined ? { summary: a.summary } : {}),
+            ...(a.args !== undefined ? { args: a.args } : {}),
+            sessionId: publicId,
+          }),
+        )
       }
     }
     const pendingQuestions: PendingQuestionSnapshot[] = []
@@ -810,7 +817,7 @@ export class CodexAgentBackend implements ManagedAgentBackend {
         })
       }
     }
-    return {
+    return boundLiveStateSnapshot({
       status: this.activeTurnByThread.has(nativeId) ? 'running' : meta.status,
       ...(meta.model !== undefined ? { model: meta.model } : {}),
       ...(meta.title !== undefined ? { title: meta.title } : {}),
@@ -820,7 +827,7 @@ export class CodexAgentBackend implements ManagedAgentBackend {
       ...(meta.usage !== undefined ? { usage: meta.usage } : {}),
       oldestSeq: 1,
       latestSeq: this.emitter.currentSeq(publicId) || null,
-    }
+    })
   }
 
   async getSessionHistory(params: SessionHistoryParams): Promise<SessionHistoryResult> {
@@ -1074,7 +1081,7 @@ export class CodexAgentBackend implements ManagedAgentBackend {
           toolName,
           ...(reason !== undefined ? { reason } : {}),
           summary,
-          args,
+          args: boundApprovalArgs(args),
         })
       })
     }

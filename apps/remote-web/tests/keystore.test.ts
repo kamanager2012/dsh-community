@@ -263,4 +263,55 @@ describe('RemoteWebKeyStore atomic client identity', () => {
     const reloaded = await new RemoteWebKeyStore(true).getOrCreateClientKeyPair()
     expect(reloaded.fingerprint).toBe(rotated.fingerprint)
   })
+
+  it('prevents a tab with stale cached host epoch from overwriting a peer tab higher epoch', async () => {
+    const mock = createSerializedIndexedDbMock()
+    Object.defineProperty(globalThis, 'indexedDB', {
+      value: mock.indexedDBMock,
+      configurable: true,
+      writable: true,
+    })
+
+    const fp = 'aa'.repeat(32)
+    const baseProfile = {
+      hostFingerprint: fp,
+      hostPublicKeyHex: 'bb'.repeat(32),
+      label: 'Dev Host',
+      endpointUrl: 'ws://127.0.0.1:4555',
+      lastEpoch: 100,
+      pairedAt: 1000,
+      lastConnectedAt: 1000,
+      preferredTransport: 'lan' as const,
+    }
+
+    const tab1 = new RemoteWebKeyStore(true)
+    const tab2 = new RemoteWebKeyStore(true)
+    await tab1.saveTrustedHost(baseProfile)
+
+    // Both tabs warm their local memoryHosts at epoch 100
+    expect((await tab1.getTrustedHost(fp))?.lastEpoch).toBe(100)
+    expect((await tab2.getTrustedHost(fp))?.lastEpoch).toBe(100)
+
+    // Tab 2 connects to live host at epoch 102 and atomically patches transport
+    const updatedByTab2 = await tab2.updateHostEpoch(fp, 102, {
+      profilePatch: { preferredTransport: 'relay' },
+    })
+    expect(updatedByTab2?.lastEpoch).toBe(102)
+    expect(updatedByTab2?.preferredTransport).toBe('relay')
+
+    // Tab 1 (whose local memory previously held 100) tries to accept a stale clone at 101:
+    // both updateHostEpoch and saveTrustedHost must fail closed and leave 102 intact in IDB.
+    await expect(tab1.updateHostEpoch(fp, 101)).rejects.toThrow(/Epoch rollback blocked \(101 < 102\)/)
+    await expect(
+      tab1.saveTrustedHost({ ...baseProfile, lastEpoch: 101 }),
+    ).rejects.toThrow(/Epoch rollback blocked \(101 < 102\)/)
+
+    expect((await tab1.getTrustedHost(fp))?.lastEpoch).toBe(102)
+    expect((await tab2.getTrustedHost(fp))?.lastEpoch).toBe(102)
+
+    // Explicit allowReset overrides cleanly when user confirms epoch reset.
+    const resetRes = await tab1.updateHostEpoch(fp, 5, { allowReset: true })
+    expect(resetRes?.lastEpoch).toBe(5)
+    expect((await tab2.getTrustedHost(fp))?.lastEpoch).toBe(5)
+  })
 })

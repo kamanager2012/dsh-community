@@ -536,10 +536,13 @@ async function handleSubmitPrompt(): Promise<void> {
   const attachments = [...getSessionAttachments(sid)]
   if (!draft && attachments.length === 0) return
 
+  const captureResetGen = hostResetGeneration
+
   if (draft === '/diff') {
     state.draftBySession.set(sid, '')
     state.activeTab = 'diff'
     await loadGitReview(sid)
+    if (captureResetGen !== hostResetGeneration) return
     renderApp()
     return
   }
@@ -561,6 +564,7 @@ async function handleSubmitPrompt(): Promise<void> {
       renderComposer()
       try {
         const res = await client.executeCommand(sid, draft)
+        if (captureResetGen !== hostResetGeneration) return
         const msg = res.ok
           ? (res.output?.trim() || `Executed /${headToken}`)
           : (res.error?.trim() || `Command /${headToken} failed`)
@@ -568,13 +572,16 @@ async function handleSubmitPrompt(): Promise<void> {
         renderTimelineArea()
         scrollChatToBottom()
       } catch (err) {
+        if (captureResetGen !== hostResetGeneration) return
         if ((state.draftBySession.get(sid) ?? '') === '') {
           state.draftBySession.set(sid, draft)
         }
         showToast(`Command failed: ${err instanceof Error ? err.message : String(err)}`)
       } finally {
-        state.submittingPrompt = false
-        renderComposer()
+        if (captureResetGen === hostResetGeneration) {
+          state.submittingPrompt = false
+          renderComposer()
+        }
       }
       return
     }
@@ -632,10 +639,12 @@ async function handleSubmitPrompt(): Promise<void> {
       attachments,
       idempotencyKey,
     })
+    if (captureResetGen !== hostResetGeneration) return
     if (pendingSubmitIdempotencyBySession.get(sid)?.key === idempotencyKey) {
       pendingSubmitIdempotencyBySession.delete(sid)
     }
   } catch (err) {
+    if (captureResetGen !== hostResetGeneration) return
     tl.removeOptimisticItem(optId)
     if ((state.draftBySession.get(sid) ?? '') === '' && draft) {
       state.draftBySession.set(sid, draft)
@@ -646,8 +655,10 @@ async function handleSubmitPrompt(): Promise<void> {
     renderTimelineArea()
     showToast(`Send failed: ${err instanceof Error ? err.message : String(err)}`)
   } finally {
-    state.submittingPrompt = false
-    renderComposer()
+    if (captureResetGen === hostResetGeneration) {
+      state.submittingPrompt = false
+      renderComposer()
+    }
   }
 }
 

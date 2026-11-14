@@ -215,24 +215,56 @@ export class RemoteWebClient {
     allowReset: boolean,
     gen: number,
   ): Promise<TrustedHostProfile> {
-    const storedEpochUpdated = await this.keyStore.updateHostEpoch(effectiveProfile.hostFingerprint, epoch, {
-      allowReset,
-    })
-    if (!this.isConnectGenerationActive(gen)) {
-      throw new RemoteRpcError('CANCELLED', 'Connection attempt superseded')
+    let saved: TrustedHostProfile
+    try {
+      const storedEpochUpdated = await this.keyStore.updateHostEpoch(
+        effectiveProfile.hostFingerprint,
+        epoch,
+        {
+          allowReset,
+          profilePatch: {
+            ...effectiveProfile,
+            preferredTransport: kind,
+          },
+        },
+      )
+      if (!this.isConnectGenerationActive(gen)) {
+        throw new RemoteRpcError('CANCELLED', 'Connection attempt superseded')
+      }
+      if (storedEpochUpdated) {
+        saved = storedEpochUpdated
+      } else {
+        const fresh: TrustedHostProfile = {
+          ...effectiveProfile,
+          lastEpoch: epoch,
+          preferredTransport: kind,
+          lastConnectedAt: Date.now(),
+        }
+        await this.keyStore.saveTrustedHost(fresh, { allowEpochReset: allowReset })
+        if (!this.isConnectGenerationActive(gen)) {
+          throw new RemoteRpcError('CANCELLED', 'Connection attempt superseded')
+        }
+        saved = fresh
+      }
+    } catch (err) {
+      if (err instanceof RemoteRpcError && err.code === 'CANCELLED') {
+        throw err
+      }
+      const msg = sanitizeDiagnosticMessage(err instanceof Error ? err.message : String(err))
+      if (msg.includes('Epoch rollback blocked')) {
+        this.cleanupTransportOnly()
+        const latestHost =
+          (await this.keyStore.getTrustedHost(effectiveProfile.hostFingerprint)) ?? effectiveProfile
+        this.emitStatus({
+          status: 'epoch_mismatch',
+          host: latestHost,
+          detail: msg,
+        })
+        throw new RemoteRpcError('EPOCH_DOWNGRADE', msg)
+      }
+      throw err
     }
-    // Preserve refreshed connection details from effectiveProfile while keeping monotonic epoch
-    const saved: TrustedHostProfile = {
-      ...(storedEpochUpdated ?? effectiveProfile),
-      ...effectiveProfile,
-      lastEpoch: storedEpochUpdated?.lastEpoch ?? epoch,
-      preferredTransport: kind,
-      lastConnectedAt: Date.now(),
-    }
-    await this.keyStore.saveTrustedHost(saved)
-    if (!this.isConnectGenerationActive(gen)) {
-      throw new RemoteRpcError('CANCELLED', 'Connection attempt superseded')
-    }
+
     this.activeHost = saved
     this.activeTransportKind = kind
     this.emitStatus({

@@ -58,6 +58,24 @@ function toIdentity(
   }
 }
 
+function sanitizeHostProfile(profile: TrustedHostProfile): TrustedHostProfile {
+  return {
+    hostFingerprint: profile.hostFingerprint.toLowerCase(),
+    hostPublicKeyHex: profile.hostPublicKeyHex.toLowerCase(),
+    label: profile.label,
+    endpointUrl: profile.endpointUrl,
+    ...(profile.relayUrl !== undefined ? { relayUrl: profile.relayUrl } : {}),
+    ...(profile.relayRoomId !== undefined ? { relayRoomId: profile.relayRoomId } : {}),
+    ...(profile.signalingUrl !== undefined ? { signalingUrl: profile.signalingUrl } : {}),
+    ...(profile.signalingRoomId !== undefined ? { signalingRoomId: profile.signalingRoomId } : {}),
+    ...(profile.stunUrls !== undefined ? { stunUrls: [...profile.stunUrls] } : {}),
+    lastEpoch: profile.lastEpoch,
+    pairedAt: profile.pairedAt,
+    lastConnectedAt: profile.lastConnectedAt,
+    ...(profile.preferredTransport !== undefined ? { preferredTransport: profile.preferredTransport } : {}),
+  }
+}
+
 export class RemoteWebKeyStore {
   private memoryIdentity: ClientDeviceIdentity | undefined = undefined
   private readonly memoryHosts = new Map<string, TrustedHostProfile>()
@@ -271,6 +289,7 @@ export class RemoteWebKeyStore {
   async listTrustedHosts(): Promise<TrustedHostProfile[]> {
     const rows = await this.readAllHostsFromDb()
     if (rows) {
+      this.memoryHosts.clear()
       for (const host of rows) {
         this.memoryHosts.set(host.hostFingerprint, host)
       }
@@ -280,55 +299,231 @@ export class RemoteWebKeyStore {
 
   async getTrustedHost(fingerprint: string): Promise<TrustedHostProfile | undefined> {
     const key = fingerprint.toLowerCase()
-    const mem = this.memoryHosts.get(key)
-    if (mem) return mem
+    const db = await this.openDb()
+    if (!db) {
+      return this.memoryHosts.get(key)
+    }
     const row = await this.readFromDb<TrustedHostProfile>(STORE_HOSTS, key)
     if (row) {
       this.memoryHosts.set(key, row)
+    } else {
+      this.memoryHosts.delete(key)
     }
     return row
   }
 
-  async saveTrustedHost(profile: TrustedHostProfile): Promise<void> {
+  async saveTrustedHost(
+    profile: TrustedHostProfile,
+    options?: { readonly allowEpochReset?: boolean | undefined },
+  ): Promise<void> {
     // Strip any accidental token-like extras and normalize key
-    const sanitized: TrustedHostProfile = {
-      hostFingerprint: profile.hostFingerprint.toLowerCase(),
-      hostPublicKeyHex: profile.hostPublicKeyHex.toLowerCase(),
-      label: profile.label,
-      endpointUrl: profile.endpointUrl,
-      ...(profile.relayUrl !== undefined ? { relayUrl: profile.relayUrl } : {}),
-      ...(profile.relayRoomId !== undefined ? { relayRoomId: profile.relayRoomId } : {}),
-      ...(profile.signalingUrl !== undefined ? { signalingUrl: profile.signalingUrl } : {}),
-      ...(profile.signalingRoomId !== undefined ? { signalingRoomId: profile.signalingRoomId } : {}),
-      ...(profile.stunUrls !== undefined ? { stunUrls: [...profile.stunUrls] } : {}),
-      lastEpoch: profile.lastEpoch,
-      pairedAt: profile.pairedAt,
-      lastConnectedAt: profile.lastConnectedAt,
-      ...(profile.preferredTransport !== undefined ? { preferredTransport: profile.preferredTransport } : {}),
+    const sanitized = sanitizeHostProfile(profile)
+    const db = await this.openDb()
+    if (!db) {
+      const mem = this.memoryHosts.get(sanitized.hostFingerprint)
+      if (mem && sanitized.lastEpoch < mem.lastEpoch && options?.allowEpochReset !== true) {
+        throw new Error(
+          `Epoch rollback blocked (${sanitized.lastEpoch} < ${mem.lastEpoch}); fresh pairing confirmation required`,
+        )
+      }
+      this.memoryHosts.set(sanitized.hostFingerprint, sanitized)
+      return
     }
-    this.memoryHosts.set(sanitized.hostFingerprint, sanitized)
-    await this.putInDb(STORE_HOSTS, sanitized)
+
+    await new Promise<void>((resolve, reject) => {
+      let settled = false
+      const settleOk = (): void => {
+        if (settled) return
+        settled = true
+        resolve()
+      }
+      const settleErr = (err: Error): void => {
+        if (settled) return
+        settled = true
+        reject(err)
+      }
+      try {
+        const tx = db.transaction(STORE_HOSTS, 'readwrite')
+        const store = tx.objectStore(STORE_HOSTS)
+        const req = store.get(sanitized.hostFingerprint)
+        let rollbackError: Error | undefined
+        req.onsuccess = () => {
+          const existing = req.result as TrustedHostProfile | undefined
+          if (
+            existing &&
+            sanitized.lastEpoch < existing.lastEpoch &&
+            options?.allowEpochReset !== true
+          ) {
+            this.memoryHosts.set(sanitized.hostFingerprint, existing)
+            rollbackError = new Error(
+              `Epoch rollback blocked (${sanitized.lastEpoch} < ${existing.lastEpoch}); fresh pairing confirmation required`,
+            )
+            return
+          }
+          try {
+            store.put(sanitized)
+          } catch {
+            // Fall through to tx completion/error.
+          }
+        }
+        req.onerror = () => {
+          // Wait for tx completion/error.
+        }
+        tx.oncomplete = () => {
+          if (rollbackError) {
+            settleErr(rollbackError)
+            return
+          }
+          this.memoryHosts.set(sanitized.hostFingerprint, sanitized)
+          settleOk()
+        }
+        tx.onerror = () => {
+          if (rollbackError) {
+            settleErr(rollbackError)
+            return
+          }
+          this.memoryHosts.set(sanitized.hostFingerprint, sanitized)
+          settleOk()
+        }
+        tx.onabort = () => {
+          if (rollbackError) {
+            settleErr(rollbackError)
+            return
+          }
+          this.memoryHosts.set(sanitized.hostFingerprint, sanitized)
+          settleOk()
+        }
+      } catch {
+        this.memoryHosts.set(sanitized.hostFingerprint, sanitized)
+        settleOk()
+      }
+    })
   }
 
   async updateHostEpoch(
     hostFingerprint: string,
     epoch: number,
-    options?: { readonly allowReset?: boolean | undefined },
+    options?: {
+      readonly allowReset?: boolean | undefined
+      readonly profilePatch?: Partial<TrustedHostProfile> | undefined
+    },
   ): Promise<TrustedHostProfile | undefined> {
-    const existing = await this.getTrustedHost(hostFingerprint)
-    if (!existing) return undefined
-    if (epoch < existing.lastEpoch && options?.allowReset !== true) {
-      throw new Error(
-        `Epoch rollback blocked (${epoch} < ${existing.lastEpoch}); fresh pairing confirmation required`,
-      )
+    const key = hostFingerprint.toLowerCase()
+    const buildUpdated = (existing: TrustedHostProfile): TrustedHostProfile =>
+      sanitizeHostProfile({
+        ...existing,
+        ...(options?.profilePatch ?? {}),
+        hostFingerprint: key,
+        lastEpoch: epoch,
+        lastConnectedAt: Date.now(),
+      })
+
+    const db = await this.openDb()
+    if (!db) {
+      const existing = this.memoryHosts.get(key)
+      if (!existing) return undefined
+      if (epoch < existing.lastEpoch && options?.allowReset !== true) {
+        throw new Error(
+          `Epoch rollback blocked (${epoch} < ${existing.lastEpoch}); fresh pairing confirmation required`,
+        )
+      }
+      const updated = buildUpdated(existing)
+      this.memoryHosts.set(key, updated)
+      return updated
     }
-    const updated: TrustedHostProfile = {
-      ...existing,
-      lastEpoch: epoch,
-      lastConnectedAt: Date.now(),
-    }
-    await this.saveTrustedHost(updated)
-    return updated
+
+    return new Promise<TrustedHostProfile | undefined>((resolve, reject) => {
+      let settled = false
+      const settleOk = (val: TrustedHostProfile | undefined): void => {
+        if (settled) return
+        settled = true
+        resolve(val)
+      }
+      const settleErr = (err: Error): void => {
+        if (settled) return
+        settled = true
+        reject(err)
+      }
+      try {
+        // Atomic cross-tab compare-and-write inside a single readwrite IDB transaction so
+        // another tab's higher epoch cannot be overwritten by a stale tab-local cache.
+        const tx = db.transaction(STORE_HOSTS, 'readwrite')
+        const store = tx.objectStore(STORE_HOSTS)
+        const req = store.get(key)
+        let rollbackError: Error | undefined
+        let updated: TrustedHostProfile | undefined
+        req.onsuccess = () => {
+          const existing = req.result as TrustedHostProfile | undefined
+          if (!existing) {
+            updated = undefined
+            return
+          }
+          if (epoch < existing.lastEpoch && options?.allowReset !== true) {
+            this.memoryHosts.set(key, existing)
+            rollbackError = new Error(
+              `Epoch rollback blocked (${epoch} < ${existing.lastEpoch}); fresh pairing confirmation required`,
+            )
+            return
+          }
+          updated = buildUpdated(existing)
+          try {
+            store.put(updated)
+          } catch {
+            // Handled cleanly on tx completion/error.
+          }
+        }
+        req.onerror = () => {
+          // Wait for tx completion/error.
+        }
+        tx.oncomplete = () => {
+          if (rollbackError) {
+            settleErr(rollbackError)
+            return
+          }
+          if (updated) {
+            this.memoryHosts.set(key, updated)
+          }
+          settleOk(updated)
+        }
+        tx.onerror = () => {
+          if (rollbackError) {
+            settleErr(rollbackError)
+            return
+          }
+          if (updated) {
+            this.memoryHosts.set(key, updated)
+          }
+          settleOk(updated)
+        }
+        tx.onabort = () => {
+          if (rollbackError) {
+            settleErr(rollbackError)
+            return
+          }
+          if (updated) {
+            this.memoryHosts.set(key, updated)
+          }
+          settleOk(updated)
+        }
+      } catch {
+        const mem = this.memoryHosts.get(key)
+        if (!mem) {
+          settleOk(undefined)
+          return
+        }
+        if (epoch < mem.lastEpoch && options?.allowReset !== true) {
+          settleErr(
+            new Error(
+              `Epoch rollback blocked (${epoch} < ${mem.lastEpoch}); fresh pairing confirmation required`,
+            ),
+          )
+          return
+        }
+        const fallbackUpdated = buildUpdated(mem)
+        this.memoryHosts.set(key, fallbackUpdated)
+        settleOk(fallbackUpdated)
+      }
+    })
   }
 
   async forgetHost(hostFingerprint: string): Promise<void> {

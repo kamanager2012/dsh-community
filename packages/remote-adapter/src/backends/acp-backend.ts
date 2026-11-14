@@ -21,6 +21,11 @@ import type {
   WorkspaceGitStatusParams,
   WorkspaceGitStatusResult,
 } from '../protocol.js'
+import {
+  boundApprovalArgs,
+  boundLiveStateSnapshot,
+  boundPendingApprovalSnapshot,
+} from '../session-state-fold.js'
 import { inspectWorkspaceGitDiff, inspectWorkspaceGitStatus } from './git-review.js'
 import { NdjsonRpcProcess } from './ndjson-rpc.js'
 import {
@@ -479,16 +484,18 @@ export class AcpAgentBackend implements ManagedAgentBackend {
     const pendingApprovals: PendingApprovalSnapshot[] = []
     for (const a of this.pendingPermissions.values()) {
       if (a.sessionId === meta.sessionId) {
-        pendingApprovals.push({
-          callId: a.callId,
-          toolName: a.toolName,
-          ...(a.summary !== undefined ? { summary: a.summary } : {}),
-          ...(a.args !== undefined ? { args: a.args } : {}),
-          sessionId: meta.sessionId,
-        })
+        pendingApprovals.push(
+          boundPendingApprovalSnapshot({
+            callId: a.callId,
+            toolName: a.toolName,
+            ...(a.summary !== undefined ? { summary: a.summary } : {}),
+            ...(a.args !== undefined ? { args: a.args } : {}),
+            sessionId: meta.sessionId,
+          }),
+        )
       }
     }
-    return {
+    return boundLiveStateSnapshot({
       status: meta.status,
       ...(meta.model !== undefined ? { model: meta.model } : {}),
       ...(meta.title !== undefined ? { title: meta.title } : {}),
@@ -497,7 +504,7 @@ export class AcpAgentBackend implements ManagedAgentBackend {
       todos: [],
       oldestSeq: 1,
       latestSeq: this.emitter.currentSeq(meta.sessionId) || null,
-    }
+    })
   }
 
   async getSessionCwd(sessionId: string): Promise<string | undefined> {
@@ -589,7 +596,7 @@ export class AcpAgentBackend implements ManagedAgentBackend {
         this.emitter.emit(publicId, 'approval.request', {
           callId,
           toolName,
-          args,
+          args: boundApprovalArgs(args),
         })
       })
     }

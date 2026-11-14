@@ -81,6 +81,8 @@ import {
   type WorkspaceUploadOpenResult,
 } from './protocol.js'
 import {
+  boundApprovalArgs,
+  boundPendingApprovalSnapshot,
   buildAttachLiveStateSnapshot,
   foldNormalizedSessionEvents,
   type FoldedSessionEventsSummary,
@@ -736,12 +738,13 @@ export class OfficialHostCordisBridge {
             },
           })
 
+          const boundedArgs = args !== undefined ? boundApprovalArgs(args) : undefined
           this.emitNormalizedEvent(agentId, 'approval.request', {
             callId,
             toolName,
             ...(reason !== undefined ? { reason } : {}),
             ...(summary !== undefined ? { summary } : {}),
-            ...(args !== undefined ? { args } : {}),
+            ...(boundedArgs !== undefined ? { args: boundedArgs } : {}),
           })
         })
       })
@@ -1276,14 +1279,16 @@ export class OfficialHostCordisBridge {
     const approvals: PendingApprovalSnapshot[] = []
     for (const pending of this.pendingApprovals.values()) {
       if (pending.sessionId !== sessionId) continue
-      approvals.push({
-        callId: pending.callId,
-        toolName: pending.toolName,
-        ...(pending.reason !== undefined ? { reason: pending.reason } : {}),
-        ...(pending.summary !== undefined ? { summary: pending.summary } : {}),
-        ...(pending.args !== undefined ? { args: pending.args } : {}),
-        sessionId: pending.sessionId,
-      })
+      approvals.push(
+        boundPendingApprovalSnapshot({
+          callId: pending.callId,
+          toolName: pending.toolName,
+          ...(pending.reason !== undefined ? { reason: pending.reason } : {}),
+          ...(pending.summary !== undefined ? { summary: pending.summary } : {}),
+          ...(pending.args !== undefined ? { args: pending.args } : {}),
+          sessionId: pending.sessionId,
+        }),
+      )
     }
     const questions: PendingQuestionSnapshot[] = []
     for (const pending of this.pendingQuestions.values()) {

@@ -1,4 +1,5 @@
-const CACHE_NAME = 'dsh-remote-web-shell-v1'
+const CACHE_PREFIX = 'dsh-remote-web-shell-'
+const CACHE_NAME = `${CACHE_PREFIX}v1`
 const SHELL_ASSETS = [
   './',
   './index.html',
@@ -19,7 +20,11 @@ self.addEventListener('activate', (event) => {
     caches
       .keys()
       .then((keys) =>
-        Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))),
+        Promise.all(
+          keys
+            .filter((key) => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME)
+            .map((key) => caches.delete(key)),
+        ),
       )
       .then(() => self.clients.claim()),
   )

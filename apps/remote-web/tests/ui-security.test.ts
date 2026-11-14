@@ -695,4 +695,44 @@ describe('remote-web pairing security, safe Markdown/Diff DOM, and CSP hygiene',
     expect(noticeItem.isError).toBe(true)
     expect(noticeItem.text).toBe('Error: Model rate limit exceeded')
   })
+
+  it('guards failed prompt/command restoration against host switches and restricts sw.js cache cleanup by prefix', async () => {
+    const mainSrc = readFileSync(join(APP_ROOT, 'src/main.ts'), 'utf8')
+    const fnStart = mainSrc.indexOf('async function handleSubmitPrompt()')
+    const fnEnd = mainSrc.indexOf('async function handleImagePick(')
+    expect(fnStart).toBeGreaterThan(-1)
+    expect(fnEnd).toBeGreaterThan(fnStart)
+    const submitFn = mainSrc.slice(fnStart, fnEnd)
+    expect(submitFn).toContain('const captureResetGen = hostResetGeneration')
+    expect((submitFn.match(/captureResetGen !== hostResetGeneration/g) ?? []).length).toBeGreaterThanOrEqual(4)
+    expect((submitFn.match(/captureResetGen === hostResetGeneration/g) ?? []).length).toBeGreaterThanOrEqual(2)
+
+    // Execute sw.js activate handler with a mocked CacheStorage containing both foreign and obsolete caches.
+    const swSrc = readFileSync(join(APP_ROOT, 'public/sw.js'), 'utf8')
+    const listeners = new Map<string, (ev: unknown) => void>()
+    const storedCaches = new Set(['dsh-remote-web-shell-v0', 'dsh-remote-web-shell-v1', 'other-app-offline-v2'])
+    const mockSelf = {
+      location: { origin: 'https://example.test' },
+      addEventListener: (type: string, cb: (ev: unknown) => void) => listeners.set(type, cb),
+      skipWaiting: async () => {},
+      clients: { claim: async () => {} },
+    }
+    const mockCaches = {
+      keys: async () => [...storedCaches],
+      delete: async (k: string) => storedCaches.delete(k),
+      open: async () => ({ addAll: async () => {}, put: async () => {} }),
+      match: async () => undefined,
+    }
+    const runSw = new Function('self', 'caches', swSrc)
+    runSw(mockSelf, mockCaches)
+    let activatedPromise: Promise<unknown> | undefined
+    listeners.get('activate')?.({
+      waitUntil: (p: Promise<unknown>) => {
+        activatedPromise = p
+      },
+    })
+    expect(activatedPromise).toBeDefined()
+    await activatedPromise
+    expect([...storedCaches].sort()).toEqual(['dsh-remote-web-shell-v1', 'other-app-offline-v2'])
+  })
 })
