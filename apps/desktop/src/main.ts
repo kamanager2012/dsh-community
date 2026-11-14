@@ -125,6 +125,7 @@ let origin = ''
 let officialBootstrapUrl: string | undefined
 let showingOfficial = false
 let currentShellPage: ShellPage = 'loading'
+let marketplaceFetchSeq = 0
 let quitting = false
 let settings = DEFAULT_DESKTOP_SETTINGS
 let catalog: RuntimeCatalog | undefined
@@ -517,12 +518,15 @@ async function fetchLiveMarketplace(): Promise<
   }
 }
 
+function isFreshMarketplaceCache(cached: MarketplaceSnapshot | undefined): cached is MarketplaceSnapshot {
+  if (cached === undefined) return false
+  const fetchedMs = Date.parse(cached.fetchedAt)
+  return !Number.isNaN(fetchedMs) && Date.now() - fetchedMs < MARKETPLACE_CACHE_TTL_MS
+}
+
 async function refreshMarketplaceCatalog(force: boolean): Promise<void> {
   const cached = parseMarketplaceSnapshot(readJsonFile(marketplaceCachePath()))
-  const cacheFresh = cached !== undefined
-    && !Number.isNaN(Date.parse(cached.fetchedAt))
-    && Date.now() - Date.parse(cached.fetchedAt) < MARKETPLACE_CACHE_TTL_MS
-  if (!force && cacheFresh) {
+  if (!force && isFreshMarketplaceCache(cached)) {
     marketplace = cached
     return
   }
@@ -553,7 +557,26 @@ async function refreshMarketplaceCatalog(force: boolean): Promise<void> {
 }
 
 async function showMarketplace(force = false): Promise<void> {
+  const mySeq = ++marketplaceFetchSeq
+  const cached = parseMarketplaceSnapshot(readJsonFile(marketplaceCachePath()))
+  if (!force && isFreshMarketplaceCache(cached)) {
+    marketplace = cached
+    await showHtml(renderMarketplacePage(marketplaceModel()), 'marketplace')
+    return
+  }
+  await showHtml(
+    renderLoadingPage('正在获取社区市场目录…', { heading: '社区市场', activeNav: 'marketplace' }),
+    'marketplace',
+  )
   await refreshMarketplaceCatalog(force)
+  if (
+    quitting
+    || mySeq !== marketplaceFetchSeq
+    || currentShellPage !== 'marketplace'
+    || showingOfficial
+  ) {
+    return
+  }
   await showHtml(renderMarketplacePage(marketplaceModel()), 'marketplace')
 }
 

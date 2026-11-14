@@ -98,6 +98,23 @@ export async function runMarketplaceCli(options: MarketplaceCliOptions): Promise
     console.error(`未知命令 ${commandName};可用: list / search <词> / info <name> / audit <name> / mcp-wrap <name> <cmd> / install [--yes] <name>[@version]`)
     return 1
   }
+  if (commandName === 'mcp-wrap') {
+    const name = rest[0]
+    const cmd = rest[1]
+    if (!name || !cmd) {
+      console.error('用法: marketplace mcp-wrap <name> <command> [args...]')
+      return 1
+    }
+    const mcpConfig: McpServerConfig = {
+      name,
+      command: cmd,
+      args: rest.slice(2),
+    }
+    const def = generateMcpDshPlugin(mcpConfig)
+    console.log(`✓ 已生成 DSH MCP 插件适配定义: ${def.name}`)
+    console.log(JSON.stringify(def, null, 2))
+    return 0
+  }
   const fetchImpl = options.fetchImpl ?? fetch
   const homeDir = options.homeDir ?? homedir()
   const { catalog, source } = await fetchCatalog({
@@ -156,23 +173,6 @@ export async function runMarketplaceCli(options: MarketplaceCliOptions): Promise
       for (const f of report.findings) {
         console.log(`   - ${f}`)
       }
-      return 0
-    }
-    case 'mcp-wrap': {
-      const name = rest[0]
-      const cmd = rest[1]
-      if (!name || !cmd) {
-        console.error('用法: marketplace mcp-wrap <name> <command> [args...]')
-        return 1
-      }
-      const mcpConfig: McpServerConfig = {
-        name,
-        command: cmd,
-        args: rest.slice(2),
-      }
-      const def = generateMcpDshPlugin(mcpConfig)
-      console.log(`✓ 已生成 DSH MCP 插件适配定义: ${def.name}`)
-      console.log(JSON.stringify(def, null, 2))
       return 0
     }
     case 'info': {

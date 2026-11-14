@@ -1654,7 +1654,11 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
             putExtra(Intent.EXTRA_SUBJECT, "DSH Session ${title ?: sid}")
             putExtra(Intent.EXTRA_TEXT, md)
         }
-        startActivity(Intent.createChooser(sendIntent, "Export DSH Conversation"))
+        try {
+            startActivity(Intent.createChooser(sendIntent, "Export DSH Conversation"))
+        } catch (_: Throwable) {
+            copyTextToClipboard("DSH Session", md, "No share target available — copied exported Markdown")
+        }
     }
 
     private fun openBatteryOptimizationSettings() {

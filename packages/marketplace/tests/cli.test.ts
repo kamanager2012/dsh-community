@@ -208,6 +208,35 @@ describe('marketplace cli', () => {
     assert.match(audit.out, /注册表安全披露/)
     assert.doesNotMatch(audit.out, /本地启发式/)
   })
+
+  it('generates mcp-wrap output offline without fetching the remote catalog', async () => {
+    let fetchCalls = 0
+    const trackedFetch = (async () => {
+      fetchCalls += 1
+      return new Response('offline', { status: 503 })
+    }) as unknown as typeof fetch
+
+    const result = await captureStdout(() => runMarketplaceCli({
+      args: ['mcp-wrap', 'demo', 'npx', '-y', 'demo-server'],
+      fetchImpl: trackedFetch,
+    }))
+    assert.equal(result.code, 0)
+    assert.equal(fetchCalls, 0)
+    assert.match(result.out, /dsh-mcp-demo/)
+    const jsonText = result.out.slice(result.out.indexOf('{'))
+    const parsed = JSON.parse(jsonText) as { name: string; type: string; mcpConfig: { command: string; args: string[] } }
+    assert.equal(parsed.name, 'dsh-mcp-demo')
+    assert.equal(parsed.type, 'mcp-adapter')
+    assert.equal(parsed.mcpConfig.command, 'npx')
+    assert.deepEqual(parsed.mcpConfig.args, ['-y', 'demo-server'])
+
+    const badCode = await runMarketplaceCli({
+      args: ['mcp-wrap', 'demo'],
+      fetchImpl: trackedFetch,
+    })
+    assert.equal(badCode, 1)
+    assert.equal(fetchCalls, 0)
+  })
 })
 
 describe('client fallback branches', () => {

@@ -587,4 +587,107 @@ describe('shell pages', () => {
     expect(diagHtml).toContain('<button class="secondary" data-go="about">关于与版本</button>')
     expect(diagHtml).not.toMatch(/style="/i)
   })
+
+  it('keeps isolated session empty state accurate, styles marketplace errors, and guards empty log copies', () => {
+    const isolatedEmpty = renderOfficialSessionsPage({
+      product: 'DSH Community',
+      officialHome: '/tmp/desk-userData/isolated-dsh',
+      isolated: true,
+      sessions: [],
+    })
+    expect(isolatedEmpty).toContain('/tmp/desk-userData/isolated-dsh/sessions')
+    expect(isolatedEmpty).toContain('当前隔离目录')
+    expect(isolatedEmpty).not.toContain('官方 <code>~/.dsh/sessions</code>')
+    expect(isolatedEmpty).not.toMatch(/style="/i)
+
+    const customHomeEmpty = renderOfficialSessionsPage({
+      product: 'DSH Community',
+      officialHome: '/tmp/custom-dsh-home',
+      isolated: false,
+      sessions: [],
+    })
+    expect(customHomeEmpty).toContain('/tmp/custom-dsh-home/sessions')
+    expect(customHomeEmpty).not.toContain('~/.dsh/sessions')
+
+    const mktLoading = renderLoadingPage('正在获取社区市场目录…', {
+      heading: '社区市场',
+      activeNav: 'marketplace',
+    })
+    expect(mktLoading).toContain('data-go="marketplace" data-active="true"')
+    expect(mktLoading).toContain('<h1>社区市场</h1>')
+    expect(mktLoading).toContain('正在获取社区市场目录…')
+    expect(mktLoading).not.toContain('dsh web')
+    expect(mktLoading).not.toMatch(/style="/i)
+
+    const mktFailed = renderMarketplacePage({
+      product: 'DSH Community',
+      catalog: undefined,
+      source: 'none',
+      fetchedAt: '',
+      registryUrl: 'https://example.com/catalog.json',
+      installed: [],
+      profile: 'web',
+      result: {
+        plugin: 'bad-plugin',
+        action: 'install',
+        ok: false,
+        log: 'npm E404',
+      },
+    })
+    expect(mktFailed).toContain('<pre class="error">安装失败：bad-plugin')
+    expect(mktFailed).not.toMatch(/style="/i)
+
+    const diagEmpty = renderDiagnosticsPage({
+      product: 'DSH Community',
+      officialHome: '/tmp/.dsh',
+      isolated: false,
+      origin: 'http://127.0.0.1:4310',
+      phase: 'ready',
+      pid: '1234',
+      logs: '',
+    })
+    expect(diagEmpty).toContain('id="copy" disabled title="暂无可复制日志"')
+
+    const diagFilled = renderDiagnosticsPage({
+      product: 'DSH Community',
+      officialHome: '/tmp/.dsh',
+      isolated: false,
+      origin: 'http://127.0.0.1:4310',
+      phase: 'ready',
+      pid: '1234',
+      logs: 'host booted',
+    })
+    expect(diagFilled).toContain('<button class="secondary" id="copy">复制日志</button>')
+    expect(diagFilled).not.toContain('id="copy" disabled')
+
+    const remoteEmpty = renderRemotePage({
+      product: 'DSH Community',
+      phase: 'stopped',
+      apiKeyPresent: true,
+      dshHome: '/tmp/.dsh',
+      configDir: '/tmp/remote',
+      isolated: false,
+      pid: '—',
+      hostFingerprint: 'fp-1',
+      lanCandidates: [],
+      effectiveListenHost: '127.0.0.1',
+      settings: { listenHost: '', port: 0, enableMdns: true, relayUrl: '', signalingUrl: '', stunUrls: '' },
+      relayUrl: '',
+      relayRoomId: '',
+      signalingUrl: '',
+      signalingRoomId: '',
+      stunUrls: [],
+      activeConnections: 0,
+      pairing: {
+        deepLink: 'dsh-remote://pair?fp=1',
+        pairingJson: '{}',
+        qrSvg: '<svg viewBox="0 0 10 10"></svg>',
+        expiresAt: Date.now() + 600_000,
+      },
+      pendingCandidates: [],
+      devices: [],
+      logs: '   ',
+    })
+    expect(remoteEmpty).toContain('id="copy-remote-logs-btn" disabled title="暂无可复制日志"')
+  })
 })

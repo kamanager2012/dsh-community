@@ -115,8 +115,18 @@ function createCspNonce(): string {
 export type ShellNavId = 'official' | 'remote' | 'sessions' | 'marketplace' | 'runtime' | 'settings' | 'diagnostics'
 
 const COPY_FEEDBACK_JS = `function copyWithFeedback(btn, text) {
-  if (!btn || !text) return;
+  if (!btn) return;
   if (!btn.dataset.copyLabel) btn.dataset.copyLabel = btn.textContent || '复制';
+  if (!text) {
+    var emptyPrev = Number(btn.dataset.copyTimer || 0);
+    if (emptyPrev) window.clearTimeout(emptyPrev);
+    btn.textContent = '暂无内容';
+    btn.dataset.copyTimer = String(window.setTimeout(function () {
+      btn.textContent = btn.dataset.copyLabel || '复制';
+      delete btn.dataset.copyTimer;
+    }, 1800));
+    return;
+  }
   var runner = window.dshCommunity && window.dshCommunity.copyText
     ? Promise.resolve(window.dshCommunity.copyText(text)).then(function (ok) {
         if (ok === false) throw new Error('copy rejected');
@@ -282,14 +292,28 @@ function shellDocument(
 </html>`
 }
 
-export function renderLoadingPage(detail?: string): string {
+function copyDisabledAttrs(text: string): string {
+  return text.trim().length > 0 ? '' : ' disabled title="暂无可复制日志"'
+}
+
+export interface LoadingPageOptions {
+  readonly heading?: string
+  readonly activeNav?: ShellNavId
+}
+
+export function renderLoadingPage(detail?: string, options?: LoadingPageOptions): string {
+  const heading = options?.heading ?? COMMUNITY_PRODUCT_NAME
+  const lead = options?.heading
+    ? ''
+    : '<p>正在启动官方 <code>dsh web</code>。本窗口只做壳，不跑第二套 agent loop。</p>'
   const extra = detail === undefined || detail.length === 0
     ? ''
     : `<p>${escapeHtml(detail)}</p>`
   return shellDocument(
-    COMMUNITY_PRODUCT_NAME,
-    `<h1>${escapeHtml(COMMUNITY_PRODUCT_NAME)}</h1>
-     <p>正在启动官方 <code>dsh web</code>。本窗口只做壳，不跑第二套 agent loop。</p>${extra}`,
+    heading,
+    `<h1>${escapeHtml(heading)}</h1>
+     ${lead}${extra}`,
+    options?.activeNav,
   )
 }
 
@@ -344,8 +368,13 @@ export function renderOfficialSessionsPage(model: OfficialSessionsPageModel): st
     ? ''
     : '<div class="field"><input id="session-filter" type="search" placeholder="搜索会话 ID / 标题 / 摘要 / 目录…" /></div>'
   const hasMoreSessions = model.sessions.length > SESSIONS_PAGE_SIZE
+  const usesDefaultHome = !model.isolated && /[/\\]\.dsh$/u.test(model.officialHome)
+  const sessionsDirLabel = usesDefaultHome ? '~/.dsh/sessions' : `${model.officialHome}/sessions`
+  const emptySessionsCopy = model.isolated
+    ? `当前隔离目录 <code>${escapeHtml(sessionsDirLabel)}</code> 里还没有 session。隔离模式不会读取或写入默认 <code>~/.dsh</code>，在本窗口创建的会话会保存在该目录下。`
+    : `官方 <code>${escapeHtml(sessionsDirLabel)}</code> 里还没有 session。TUI / Web / 本窗口共用这一份，不会另建目录。`
   const tableHtml = model.sessions.length === 0
-    ? '<p>官方 <code>~/.dsh/sessions</code> 里还没有 session。TUI / Web / 本窗口共用这一份，不会另建目录。</p>'
+    ? `<p>${emptySessionsCopy}</p>`
     : `<table id="sessions-table">
          <thead><tr><th>会话与摘要</th><th>项目 / 目录</th><th class="nowrap">更新时间</th><th class="nowrap">操作</th></tr></thead>
          <tbody>${model.sessions.map((session, idx) => {
@@ -526,7 +555,7 @@ export function renderMarketplacePage(model: MarketplacePageModel): string {
          <div class="row">
            <button id="restart">重启官方运行时</button>
          </div>`
-      : `<pre>${result.action === 'install' ? '安装' : '卸载'}失败：${escapeHtml(result.plugin)}\n\n${escapeHtml(result.log)}</pre>`
+      : `<pre class="error">${result.action === 'install' ? '安装' : '卸载'}失败：${escapeHtml(result.plugin)}\n\n${escapeHtml(result.log)}</pre>`
   const plugins = model.catalog?.plugins ?? []
   const installedSet = new Set(model.installed)
   const disabled = busy === undefined ? '' : ' disabled'
@@ -632,7 +661,7 @@ export function renderDiagnosticsPage(model: DiagnosticsPageModel): string {
      <template id="copy-logs-data">${escapeHtml(model.logs || '')}</template>
      <div class="row">
        <button id="retry">重新启动官方运行时</button>
-       <button class="secondary" id="copy">复制日志</button>
+       <button class="secondary" id="copy"${copyDisabledAttrs(model.logs || '')}>复制日志</button>
        <button class="secondary" data-go="official">返回会话</button>
        <button class="secondary" data-go="about">关于与版本</button>
      </div>
@@ -933,7 +962,7 @@ export function renderRemotePage(model: RemotePageModel): string {
     <pre>${escapeHtml(model.logs || '(no remote host log yet)')}</pre>
     <template id="copy-remote-logs">${escapeHtml(model.logs || '')}</template>
     <div class="row">
-      <button class="secondary small" id="copy-remote-logs-btn">复制日志</button>
+      <button class="secondary small" id="copy-remote-logs-btn"${copyDisabledAttrs(model.logs || '')}>复制日志</button>
     </div>
   </section>`
 
