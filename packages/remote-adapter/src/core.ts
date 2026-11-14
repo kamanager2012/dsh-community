@@ -25,6 +25,7 @@ import {
   type SessionSearchParams,
   type StreamAckParams,
   type TurnAbortParams,
+  type WorkspaceFilesParams,
   type WorkspaceGitDiffParams,
   type WorkspaceGitStatusParams,
   type WorkspaceUploadAbortParams,
@@ -529,6 +530,55 @@ function parseWorkspaceGitDiff(value: unknown): WorkspaceGitDiffParams {
   }
 }
 
+function parseWorkspaceFiles(value: unknown): WorkspaceFilesParams {
+  const object = asObject(value)
+  const sessionId = requiredSafeSessionId(object, 'sessionId')
+  let query: string | undefined
+  if (object.query !== undefined) {
+    if (typeof object.query !== 'string') {
+      throw new RemoteProtocolError('INVALID_REQUEST', 'query must be a string')
+    }
+    if (object.query.length > 256 || /[\u0000-\u001f\u007f]/u.test(object.query)) {
+      throw new RemoteProtocolError('INVALID_REQUEST', 'query must be a valid short string')
+    }
+    const trimmed = object.query.trim()
+    if (trimmed.length > 0) query = trimmed
+  }
+  let prefix: string | undefined
+  if (object.prefix !== undefined) {
+    if (typeof object.prefix !== 'string') {
+      throw new RemoteProtocolError('INVALID_REQUEST', 'prefix must be a string')
+    }
+    const normalized = object.prefix.replace(/\\/gu, '/').trim()
+    const base = normalized.endsWith('/') ? normalized.slice(0, -1) : normalized
+    if (
+      base.length === 0
+      || normalized.length > 256
+      || normalized.startsWith('-')
+      || normalized.startsWith('/')
+      || normalized.startsWith('~')
+      || /[\u0000-\u001f\u007f]/u.test(normalized)
+      || base.split('/').some((seg) => seg === '..' || seg === '.' || seg === '')
+    ) {
+      throw new RemoteProtocolError('INVALID_REQUEST', 'workspace files prefix must be a safe relative path')
+    }
+    prefix = normalized
+  }
+  let limit: number | undefined
+  if (object.limit !== undefined) {
+    if (!Number.isSafeInteger(object.limit) || (object.limit as number) < 1 || (object.limit as number) > 2_000) {
+      throw new RemoteProtocolError('INVALID_REQUEST', 'limit must be an integer between 1 and 2000')
+    }
+    limit = object.limit as number
+  }
+  return {
+    sessionId,
+    ...(query !== undefined ? { query } : {}),
+    ...(prefix !== undefined ? { prefix } : {}),
+    ...(limit !== undefined ? { limit } : {}),
+  }
+}
+
 export class RemoteAdapterCore {
   readonly devices: DeviceRegistry
   readonly trustStore: DeviceTrustStore
@@ -641,6 +691,17 @@ export class RemoteAdapterCore {
           )
         }
         return this.seams.getWorkspaceGitDiff(params)
+      }
+      case 'workspace.files': {
+        const params = parseWorkspaceFiles(request.params)
+        await this.seams.assertSession(params.sessionId)
+        if (!this.seams.listWorkspaceFiles) {
+          throw new RemoteProtocolError(
+            'INVALID_REQUEST',
+            'workspace.files is not supported by this host',
+          )
+        }
+        return this.seams.listWorkspaceFiles(params)
       }
       case 'session.create':
         return this.mutate(

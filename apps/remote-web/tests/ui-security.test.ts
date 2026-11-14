@@ -674,6 +674,9 @@ describe('remote-web pairing security, safe Markdown/Diff DOM, and CSP hygiene',
     const mainSrc = readFileSync(join(APP_ROOT, 'src/main.ts'), 'utf8')
     expect(mainSrc).toContain('pendingSubmitIdempotencyBySession')
     expect(mainSrc).toContain('idempotencyKey,')
+    expect(mainSrc).toContain('extractAtFileTokenAtCursor')
+    expect(mainSrc).toContain('listWorkspaceFiles')
+    expect(mainSrc).toContain('at-file-picker-slot')
   })
 
   it('folds agent/error notifications and structured MCP tool errors accurately', () => {

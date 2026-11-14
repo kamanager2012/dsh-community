@@ -27,6 +27,7 @@ import {
   type SessionSearchResult,
   type TransportKind,
   type TrustedHostProfile,
+  type WorkspaceFilesResult,
   type WorkspaceGitDiffResult,
   type WorkspaceGitStatusResult,
 } from './types.ts'
@@ -1144,6 +1145,18 @@ export class RemoteWebClient {
       ...(options?.staged !== undefined ? { staged: options.staged } : {}),
       ...(options?.maxBytes !== undefined ? { maxBytes: options.maxBytes } : {}),
     })) as WorkspaceGitDiffResult
+  }
+
+  async listWorkspaceFiles(
+    sessionId: string,
+    options?: { readonly query?: string; readonly prefix?: string; readonly limit?: number },
+  ): Promise<WorkspaceFilesResult> {
+    return (await this.request('workspace.files', {
+      sessionId,
+      ...(options?.query !== undefined ? { query: options.query } : {}),
+      ...(options?.prefix !== undefined ? { prefix: options.prefix } : {}),
+      ...(options?.limit !== undefined ? { limit: options.limit } : {}),
+    })) as WorkspaceFilesResult
   }
 }
 

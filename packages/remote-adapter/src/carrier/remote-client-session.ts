@@ -8,6 +8,8 @@ import {
   type CreateSessionParams,
   type EngineDescriptor,
   type SessionRef,
+  type WorkspaceFilesParams,
+  type WorkspaceFilesResult,
   type WorkspaceGitDiffParams,
   type WorkspaceGitDiffResult,
   type WorkspaceGitStatusResult,
@@ -393,6 +395,10 @@ export class RemoteClientSession {
 
   async getWorkspaceGitDiff(params: WorkspaceGitDiffParams): Promise<WorkspaceGitDiffResult> {
     return (await this.request('workspace.git.diff', { ...params })) as WorkspaceGitDiffResult
+  }
+
+  async listWorkspaceFiles(params: WorkspaceFilesParams): Promise<WorkspaceFilesResult> {
+    return (await this.request('workspace.files', { ...params })) as WorkspaceFilesResult
   }
 
   async uploadWorkspaceFile(options: {

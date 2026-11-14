@@ -21,6 +21,7 @@ export type RemoteMethod =
   | 'engine.list'
   | 'workspace.git.status'
   | 'workspace.git.diff'
+  | 'workspace.files'
   | 'prompt.submit'
   | 'turn.abort'
   | 'approval.respond'
@@ -48,6 +49,7 @@ const REMOTE_METHODS = new Set<RemoteMethod>([
   'engine.list',
   'workspace.git.status',
   'workspace.git.diff',
+  'workspace.files',
   'prompt.submit',
   'turn.abort',
   'approval.respond',
@@ -433,6 +435,21 @@ export interface WorkspaceGitDiffResult {
   readonly truncated: boolean
 }
 
+export interface WorkspaceFilesParams {
+  readonly sessionId: string
+  readonly query?: string | undefined
+  readonly prefix?: string | undefined
+  readonly limit?: number | undefined
+}
+
+export interface WorkspaceFilesResult {
+  readonly sessionId: string
+  readonly root: string
+  readonly files: readonly string[]
+  readonly totalMatched: number
+  readonly truncated: boolean
+}
+
 export interface AgentHostBackend {
   listSessions(): Promise<readonly SessionRef[]>
   assertSession(sessionId: string): Promise<void>
@@ -442,6 +459,7 @@ export interface AgentHostBackend {
   listEngines?(): Promise<readonly EngineDescriptor[]>
   getWorkspaceGitStatus?(params: WorkspaceGitStatusParams): Promise<WorkspaceGitStatusResult>
   getWorkspaceGitDiff?(params: WorkspaceGitDiffParams): Promise<WorkspaceGitDiffResult>
+  listWorkspaceFiles?(params: WorkspaceFilesParams): Promise<WorkspaceFilesResult>
   createSession?(options?: CreateSessionParams): Promise<SessionRef>
   renameSession?(sessionId: string, title: string): Promise<SessionRef>
   abortTurn?(sessionId: string, options?: { readonly keepInbox?: boolean | undefined }): Promise<unknown>

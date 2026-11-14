@@ -20,6 +20,8 @@ import {
   type CreateSessionParams,
   type EngineDescriptor,
   type SessionRef,
+  type WorkspaceFilesParams,
+  type WorkspaceFilesResult,
   type WorkspaceGitDiffParams,
   type WorkspaceGitDiffResult,
   type WorkspaceGitStatusParams,
@@ -235,6 +237,10 @@ export class MultiAgentRemoteHost {
 
   async getWorkspaceGitDiff(params: WorkspaceGitDiffParams): Promise<WorkspaceGitDiffResult> {
     return this.router.getWorkspaceGitDiff(params)
+  }
+
+  async listWorkspaceFiles(params: WorkspaceFilesParams): Promise<WorkspaceFilesResult> {
+    return this.router.listWorkspaceFiles(params)
   }
 
   resetSessionStream(sessionId: string, reason = 'window-unavailable'): void {

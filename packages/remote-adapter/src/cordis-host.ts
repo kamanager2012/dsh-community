@@ -67,6 +67,8 @@ import {
   type SessionRef,
   type SessionSearchParams,
   type SessionSearchResult,
+  type WorkspaceFilesParams,
+  type WorkspaceFilesResult,
   type WorkspaceGitDiffParams,
   type WorkspaceGitDiffResult,
   type WorkspaceGitStatusParams,
@@ -227,6 +229,7 @@ export interface RemoteControlBridgeLike {
   listEngines?(): Promise<readonly EngineDescriptor[]>
   getWorkspaceGitStatus?(params: WorkspaceGitStatusParams): Promise<WorkspaceGitStatusResult>
   getWorkspaceGitDiff?(params: WorkspaceGitDiffParams): Promise<WorkspaceGitDiffResult>
+  listWorkspaceFiles?(params: WorkspaceFilesParams): Promise<WorkspaceFilesResult>
   resetSessionStream(sessionId: string, reason?: string): void
   issuePairingDescriptor(options?: {
     readonly ttlMs?: number | undefined
@@ -1368,6 +1371,10 @@ export class OfficialHostCordisBridge {
 
   async getWorkspaceGitDiff(params: WorkspaceGitDiffParams): Promise<WorkspaceGitDiffResult> {
     return this.router.getWorkspaceGitDiff(params)
+  }
+
+  async listWorkspaceFiles(params: WorkspaceFilesParams): Promise<WorkspaceFilesResult> {
+    return this.router.listWorkspaceFiles(params)
   }
 
   private async listDshSessions(): Promise<readonly SessionRef[]> {

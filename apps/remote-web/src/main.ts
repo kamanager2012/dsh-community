@@ -143,6 +143,216 @@ const pendingSubmitIdempotencyBySession = new Map<
   { readonly key: string; readonly signature: string }
 >()
 
+interface AtFilePickerState {
+  open: boolean
+  sessionId: string | undefined
+  query: string
+  triggerStart: number | undefined
+  triggerEnd: number | undefined
+  files: string[]
+  selectedIndex: number
+  loading: boolean
+  totalMatched: number
+  truncated: boolean
+  error: string | undefined
+}
+
+const atFilePicker: AtFilePickerState = {
+  open: false,
+  sessionId: undefined,
+  query: '',
+  triggerStart: undefined,
+  triggerEnd: undefined,
+  files: [],
+  selectedIndex: 0,
+  loading: false,
+  totalMatched: 0,
+  truncated: false,
+  error: undefined,
+}
+
+let atFileGeneration = 0
+let atFileDebounceTimer: ReturnType<typeof setTimeout> | undefined = undefined
+
+function extractAtFileTokenAtCursor(
+  value: string,
+  cursor: number,
+): { readonly query: string; readonly start: number; readonly end: number } | undefined {
+  const end = Math.max(0, Math.min(cursor, value.length))
+  let i = end
+  while (i > 0) {
+    const ch = value[i - 1]!
+    if (/\s/u.test(ch)) return undefined
+    if (ch === '@') {
+      const start = i - 1
+      if (start === 0 || /\s/u.test(value[start - 1]!)) {
+        return { query: value.slice(i, end), start, end }
+      }
+      return undefined
+    }
+    i -= 1
+  }
+  return undefined
+}
+
+function closeAtFilePicker(rerender = true): void {
+  atFileGeneration += 1
+  if (atFileDebounceTimer) {
+    clearTimeout(atFileDebounceTimer)
+    atFileDebounceTimer = undefined
+  }
+  atFilePicker.open = false
+  atFilePicker.sessionId = undefined
+  atFilePicker.query = ''
+  atFilePicker.triggerStart = undefined
+  atFilePicker.triggerEnd = undefined
+  atFilePicker.files = []
+  atFilePicker.selectedIndex = 0
+  atFilePicker.loading = false
+  atFilePicker.totalMatched = 0
+  atFilePicker.truncated = false
+  atFilePicker.error = undefined
+  if (rerender) renderAtFilePickerSlot()
+}
+
+function scheduleAtFileFetch(sid: string, query: string, immediate = false): void {
+  atFileGeneration += 1
+  const gen = atFileGeneration
+  const hostGen = hostResetGeneration
+  if (atFileDebounceTimer) clearTimeout(atFileDebounceTimer)
+  atFilePicker.loading = true
+  atFilePicker.error = undefined
+  renderAtFilePickerSlot()
+
+  const runFetch = async (): Promise<void> => {
+    try {
+      const res = await client.listWorkspaceFiles(sid, {
+        ...(query ? { query } : {}),
+        limit: 25,
+      })
+      if (
+        gen !== atFileGeneration
+        || hostGen !== hostResetGeneration
+        || state.activeSessionId !== sid
+        || !atFilePicker.open
+      ) {
+        return
+      }
+      atFilePicker.files = [...res.files]
+      atFilePicker.totalMatched = res.totalMatched
+      atFilePicker.truncated = res.truncated
+      atFilePicker.loading = false
+      atFilePicker.error = undefined
+      if (atFilePicker.selectedIndex >= atFilePicker.files.length) {
+        atFilePicker.selectedIndex = 0
+      }
+      renderAtFilePickerSlot()
+    } catch (err) {
+      if (gen !== atFileGeneration || hostGen !== hostResetGeneration || !atFilePicker.open) return
+      atFilePicker.loading = false
+      atFilePicker.files = []
+      atFilePicker.error = sanitizeDiagnosticMessage(err instanceof Error ? err.message : String(err))
+      renderAtFilePickerSlot()
+    }
+  }
+
+  if (immediate) {
+    void runFetch()
+  } else {
+    atFileDebounceTimer = setTimeout(() => {
+      atFileDebounceTimer = undefined
+      void runFetch()
+    }, 120)
+  }
+}
+
+function applyAtFileSelection(filePath: string): void {
+  const sid = state.activeSessionId
+  if (!sid) return
+  const textarea = document.querySelector('#composer-slot textarea.composer-textarea')
+  const ta = typeof HTMLTextAreaElement !== 'undefined' && textarea instanceof HTMLTextAreaElement ? textarea : undefined
+  const currentDraft = state.draftBySession.get(sid) ?? ta?.value ?? ''
+  const insertion = `@${filePath} `
+  let nextDraft: string
+  let nextCursor: number
+
+  if (
+    atFilePicker.triggerStart !== undefined
+    && atFilePicker.triggerEnd !== undefined
+    && atFilePicker.triggerStart >= 0
+    && atFilePicker.triggerEnd <= currentDraft.length
+    && currentDraft.slice(atFilePicker.triggerStart, atFilePicker.triggerEnd).startsWith('@')
+  ) {
+    nextDraft =
+      currentDraft.slice(0, atFilePicker.triggerStart)
+      + insertion
+      + currentDraft.slice(atFilePicker.triggerEnd)
+    nextCursor = atFilePicker.triggerStart + insertion.length
+  } else {
+    const pos = ta?.selectionStart ?? currentDraft.length
+    const before = currentDraft.slice(0, pos)
+    const after = currentDraft.slice(pos)
+    const needsLeadingSpace = before.length > 0 && !/\s$/u.test(before)
+    const padded = `${needsLeadingSpace ? ' ' : ''}${insertion}`
+    nextDraft = `${before}${padded}${after}`
+    nextCursor = before.length + padded.length
+  }
+
+  state.draftBySession.set(sid, nextDraft)
+  closeAtFilePicker(true)
+  if (ta) {
+    ta.value = nextDraft
+    ta.focus({ preventScroll: true })
+    ta.setSelectionRange(nextCursor, nextCursor)
+  }
+}
+
+function renderAtFilePickerSlot(): void {
+  const slot = document.getElementById('at-file-picker-slot')
+  if (!slot) return
+  slot.replaceChildren()
+  if (!atFilePicker.open || !state.activeSessionId || atFilePicker.sessionId !== state.activeSessionId) {
+    return
+  }
+
+  const box = el('div', 'at-file-picker')
+  const header = el('div', 'at-file-header')
+  const titleText = atFilePicker.query
+    ? `Workspace files matching "@${atFilePicker.query}"`
+    : 'Workspace files (tap or Enter to insert @path)'
+  header.appendChild(el('span', undefined, titleText))
+  const closeBtn = el('button', 'btn-ghost btn-xs', 'Esc')
+  closeBtn.type = 'button'
+  closeBtn.addEventListener('click', () => closeAtFilePicker(true))
+  header.appendChild(closeBtn)
+  box.appendChild(header)
+
+  if (atFilePicker.loading && atFilePicker.files.length === 0) {
+    box.appendChild(el('div', 'at-file-empty', 'Searching workspace files...'))
+  } else if (atFilePicker.error) {
+    box.appendChild(el('div', 'at-file-empty', atFilePicker.error))
+  } else if (atFilePicker.files.length === 0) {
+    box.appendChild(el('div', 'at-file-empty', 'No matching workspace files found.'))
+  } else {
+    atFilePicker.files.forEach((relPath, idx) => {
+      const btn = el(
+        'button',
+        `at-file-item${idx === atFilePicker.selectedIndex ? ' active' : ''}`,
+        relPath,
+      )
+      btn.type = 'button'
+      btn.title = relPath
+      btn.addEventListener('mousedown', (evt) => {
+        // Keep focus inside textarea cleanly on desktop click
+        evt.preventDefault()
+      })
+      btn.addEventListener('click', () => applyAtFileSelection(relPath))
+      box.appendChild(btn)
+    })
+  }
+  slot.appendChild(box)
+}
+
 function stopActiveCameraScanner(): void {
   qrScanGeneration += 1
   if (activeCameraScanner) {
@@ -210,6 +420,7 @@ function resetHostScopedState(nextHostFingerprint?: string): void {
   hostResetGeneration += 1
   attachGeneration += 1
   pendingSubmitIdempotencyBySession.clear()
+  closeAtFilePicker(false)
 }
 
 function getOrCreateTimeline(sessionId: string): SessionTimelineState {
@@ -324,6 +535,9 @@ async function refreshWorkspaceData(): Promise<void> {
 }
 
 async function attachActiveSession(sessionId: string): Promise<void> {
+  if (atFilePicker.sessionId && atFilePicker.sessionId !== sessionId) {
+    closeAtFilePicker(false)
+  }
   state.activeSessionId = sessionId
   const tl = getOrCreateTimeline(sessionId)
   tl.markRead()
@@ -601,6 +815,7 @@ async function compressImageToBudget(
 }
 
 async function handleSubmitPrompt(): Promise<void> {
+  closeAtFilePicker(true)
   const sid = state.activeSessionId
   if (!sid || state.submittingPrompt) return
   const draft = (state.draftBySession.get(sid) ?? '').trim()
@@ -1617,6 +1832,10 @@ function renderComposer(): void {
   if (!sid || !tl || state.activeTab !== 'chat') return
   const cmds = state.commandsBySession.get(sid) ?? []
 
+  const atFileSlot = el('div')
+  atFileSlot.id = 'at-file-picker-slot'
+  host.appendChild(atFileSlot)
+
   const sessionAttachments = getSessionAttachments(sid)
   if (sessionAttachments.length > 0) {
     const attBar = el('div', 'composer-attachments')
@@ -1655,6 +1874,22 @@ function renderComposer(): void {
   imgBtn.type = 'button'
   imgBtn.addEventListener('click', () => fileInput.click())
 
+  const atFileBtn = el('button', 'btn-ghost btn-xs', '+ @File')
+  atFileBtn.type = 'button'
+  atFileBtn.addEventListener('click', () => {
+    if (atFilePicker.open && atFilePicker.sessionId === sid && atFilePicker.query === '') {
+      closeAtFilePicker(true)
+      return
+    }
+    atFilePicker.open = true
+    atFilePicker.sessionId = sid
+    atFilePicker.query = ''
+    atFilePicker.triggerStart = undefined
+    atFilePicker.triggerEnd = undefined
+    atFilePicker.selectedIndex = 0
+    scheduleAtFileFetch(sid, '', true)
+  })
+
   if (tl.status === 'running') {
     const modeBtn = el(
       'button',
@@ -1690,17 +1925,63 @@ function renderComposer(): void {
     controls.appendChild(cmdSel)
   }
 
-  controls.append(fileInput, imgBtn)
+  controls.append(fileInput, imgBtn, atFileBtn)
 
   const row = el('div', 'composer-input-row')
   const textarea = el('textarea', 'composer-textarea')
   textarea.rows = 2
-  textarea.placeholder = 'Message agent over E2EE Noise channel... (/diff to inspect changes)'
+  textarea.placeholder = 'Message agent over E2EE Noise channel... (@file, /diff)'
   textarea.value = state.draftBySession.get(sid) ?? ''
   textarea.addEventListener('input', () => {
     state.draftBySession.set(sid, textarea.value)
+    const token = extractAtFileTokenAtCursor(textarea.value, textarea.selectionStart ?? textarea.value.length)
+    if (token) {
+      const queryChanged = !atFilePicker.open || atFilePicker.sessionId !== sid || atFilePicker.query !== token.query
+      atFilePicker.open = true
+      atFilePicker.sessionId = sid
+      atFilePicker.query = token.query
+      atFilePicker.triggerStart = token.start
+      atFilePicker.triggerEnd = token.end
+      if (queryChanged) {
+        atFilePicker.selectedIndex = 0
+        scheduleAtFileFetch(sid, token.query)
+      }
+    } else if (atFilePicker.open) {
+      closeAtFilePicker(true)
+    }
   })
   textarea.addEventListener('keydown', (evt) => {
+    if (atFilePicker.open && atFilePicker.sessionId === sid) {
+      if (evt.key === 'ArrowDown' && atFilePicker.files.length > 0) {
+        evt.preventDefault()
+        atFilePicker.selectedIndex = (atFilePicker.selectedIndex + 1) % atFilePicker.files.length
+        renderAtFilePickerSlot()
+        return
+      }
+      if (evt.key === 'ArrowUp' && atFilePicker.files.length > 0) {
+        evt.preventDefault()
+        atFilePicker.selectedIndex =
+          (atFilePicker.selectedIndex - 1 + atFilePicker.files.length) % atFilePicker.files.length
+        renderAtFilePickerSlot()
+        return
+      }
+      if (evt.key === 'Escape') {
+        evt.preventDefault()
+        closeAtFilePicker(true)
+        return
+      }
+      if (
+        (evt.key === 'Tab' || (evt.key === 'Enter' && !evt.shiftKey && !evt.isComposing))
+        && atFilePicker.files.length > 0
+      ) {
+        const picked = atFilePicker.files[atFilePicker.selectedIndex]
+        if (picked) {
+          evt.preventDefault()
+          applyAtFileSelection(picked)
+          return
+        }
+      }
+    }
     if (evt.key === 'Enter' && !evt.shiftKey && !evt.isComposing) {
       evt.preventDefault()
       void handleSubmitPrompt()
@@ -1728,6 +2009,7 @@ function renderComposer(): void {
 
   form.append(controls, row)
   host.appendChild(form)
+  renderAtFilePickerSlot()
 
   if (isComposerTextarea) {
     textarea.focus({ preventScroll: true })

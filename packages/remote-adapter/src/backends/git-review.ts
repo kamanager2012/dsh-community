@@ -1,12 +1,14 @@
 import { execFile, spawn } from 'node:child_process'
-import { existsSync, realpathSync, statSync } from 'node:fs'
-import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path'
+import { existsSync, lstatSync, readdirSync, realpathSync, statSync } from 'node:fs'
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { promisify } from 'node:util'
 import { RemoteProtocolError } from '../errors.js'
 import type {
   GitChangedFileSummary,
   SessionRef,
   SessionWorkspaceSummary,
+  WorkspaceFilesParams,
+  WorkspaceFilesResult,
   WorkspaceGitDiffParams,
   WorkspaceGitDiffResult,
   WorkspaceGitStatusResult,
@@ -18,6 +20,12 @@ const execFileAsync = promisify(execFile)
 const DEFAULT_MAX_DIFF_BYTES = 64 * 1024
 const HARD_MAX_DIFF_BYTES = 256 * 1024
 const MAX_STATUS_FILES = 500
+const DEFAULT_WORKSPACE_FILES_LIMIT = 200
+const HARD_MAX_WORKSPACE_FILES_LIMIT = 2_000
+const MAX_WORKSPACE_FILES_PAYLOAD_BYTES = 44 * 1024
+const MAX_FALLBACK_WALK_DEPTH = 10
+const MAX_FALLBACK_WALK_ENTRIES = 20_000
+const FALLBACK_SKIP_DIRS = new Set(['.git', 'node_modules', '.next', '.turbo', 'dist'])
 const GIT_TIMEOUT_MS = 8000
 const WORKSPACE_SUMMARY_TIMEOUT_MS = 1500
 const WORKSPACE_SUMMARY_TTL_MS = 4000
@@ -656,5 +664,244 @@ export async function inspectWorkspaceGitDiff(
     diff: bounded.text,
     bytes: bounded.bytes,
     truncated: bounded.truncated,
+  }
+}
+
+function resolveExistingDirectoryRealpath(cwd: string): string {
+  const trimmed = cwd.trim()
+  if (!trimmed || !isAbsolute(trimmed)) {
+    throw new RemoteProtocolError('INVALID_REQUEST', 'session workspace path is unavailable')
+  }
+  const resolved = resolve(trimmed)
+  if (!existsSync(resolved) || !statSync(resolved).isDirectory()) {
+    throw new RemoteProtocolError('INVALID_REQUEST', 'session workspace directory does not exist')
+  }
+  try {
+    return realpathSync(resolved)
+  } catch {
+    throw new RemoteProtocolError('INVALID_REQUEST', 'failed to resolve session workspace directory')
+  }
+}
+
+function rankWorkspaceFileMatch(relPath: string, queryLower: string): number {
+  const pathLower = relPath.toLowerCase()
+  const baseLower = basename(pathLower)
+  if (baseLower === queryLower) return 0
+  if (baseLower.startsWith(queryLower)) return 1
+  if (baseLower.includes(queryLower)) return 2
+  if (pathLower.startsWith(queryLower)) return 3
+  if (pathLower.includes(queryLower)) return 4
+  return 5
+}
+
+function collectFilesFallbackWalk(
+  realRoot: string,
+  prefixRel?: string,
+): { paths: string[]; walkTruncated: boolean } {
+  const paths: string[] = []
+  let walkTruncated = false
+  let visited = 0
+
+  const startSub = prefixRel ? prefixRel.replace(/\/+$/u, '') : ''
+  const startDir = startSub ? resolve(realRoot, startSub) : realRoot
+  let walkStart = realRoot
+  if (startSub) {
+    // Walk closest existing ancestor inside realRoot when prefix is a partial path
+    let probe = startDir
+    while (!existsSync(probe) || !statSync(probe).isDirectory()) {
+      const parent = dirname(probe)
+      if (parent === probe || parent.length < realRoot.length) break
+      probe = parent
+    }
+    try {
+      const realProbe = realpathSync(probe)
+      const rootPrefix = realRoot.endsWith(sep) ? realRoot : `${realRoot}${sep}`
+      if (realProbe === realRoot || realProbe.startsWith(rootPrefix)) {
+        walkStart = realProbe
+      }
+    } catch {}
+  }
+
+  const stack: Array<{ dir: string; depth: number }> = [{ dir: walkStart, depth: 0 }]
+  while (stack.length > 0) {
+    const current = stack.pop()!
+    if (current.depth > MAX_FALLBACK_WALK_DEPTH) {
+      walkTruncated = true
+      continue
+    }
+    let entries
+    try {
+      entries = readdirSync(current.dir, { withFileTypes: true })
+    } catch {
+      continue
+    }
+    for (const entry of entries) {
+      visited += 1
+      if (visited > MAX_FALLBACK_WALK_ENTRIES) {
+        walkTruncated = true
+        return { paths, walkTruncated }
+      }
+      if (entry.isSymbolicLink()) continue
+      if (FALLBACK_SKIP_DIRS.has(entry.name)) continue
+      const abs = join(current.dir, entry.name)
+      if (entry.isDirectory()) {
+        if (current.depth + 1 <= MAX_FALLBACK_WALK_DEPTH) {
+          stack.push({ dir: abs, depth: current.depth + 1 })
+        } else {
+          walkTruncated = true
+        }
+        continue
+      }
+      if (!entry.isFile()) continue
+      const rel = relative(realRoot, abs).replace(/\\/gu, '/')
+      if (!rel || rel.startsWith('..') || rel.split('/').includes('.git')) continue
+      paths.push(rel)
+      if (paths.length >= MAX_FALLBACK_WALK_ENTRIES) {
+        walkTruncated = true
+        return { paths, walkTruncated }
+      }
+    }
+  }
+  return { paths, walkTruncated }
+}
+
+/**
+ * Lists read-only workspace-relative file paths for `@file` mentions and search.
+ * Uses `git ls-files` (respecting `.gitignore`) when in a git checkout, otherwise a
+ * bounded non-symlink filesystem walk, always enforcing canonical containment and
+ * Noise transport frame payload bounds.
+ */
+export async function inspectWorkspaceFiles(
+  params: WorkspaceFilesParams,
+  cwd: string,
+): Promise<WorkspaceFilesResult> {
+  const realRoot = resolveExistingDirectoryRealpath(cwd)
+  const limit = Math.min(
+    HARD_MAX_WORKSPACE_FILES_LIMIT,
+    Math.max(1, params.limit ?? DEFAULT_WORKSPACE_FILES_LIMIT),
+  )
+
+  let normalizedPrefix: string | undefined
+  let prefixDirOnly = false
+  if (params.prefix !== undefined) {
+    const rawPrefix = params.prefix.replace(/\\/gu, '/').trim()
+    prefixDirOnly = rawPrefix.endsWith('/')
+    const cleanBase = rawPrefix.replace(/\/+$/u, '')
+    normalizedPrefix = assertSafeRepoRelativePath(realRoot, cleanBase)
+  }
+
+  let candidates: string[] = []
+  let walkTruncated = false
+
+  let usedGit = false
+  try {
+    await runGit(realRoot, ['rev-parse', '--show-toplevel'], 256 * 1024, GIT_TIMEOUT_MS)
+    const gitArgs = ['ls-files', '--cached', '--others', '--exclude-standard', '-z']
+    if (normalizedPrefix && prefixDirOnly) {
+      gitArgs.push('--', normalizedPrefix)
+    }
+    const { stdout } = await runGit(realRoot, gitArgs, 8 * 1024 * 1024, GIT_TIMEOUT_MS)
+    usedGit = true
+    const rawList = stdout.split('\0')
+    for (const rawEntry of rawList) {
+      if (!rawEntry) continue
+      const normalized = rawEntry.replace(/\\/gu, '/')
+      if (
+        normalized.startsWith('/')
+        || normalized.startsWith('..')
+        || normalized.split('/').some((seg) => seg === '..' || seg === '.' || seg === '.git' || seg === '')
+      ) {
+        continue
+      }
+      candidates.push(normalized)
+    }
+  } catch {
+    usedGit = false
+  }
+
+  if (!usedGit) {
+    const walked = collectFilesFallbackWalk(realRoot, normalizedPrefix)
+    candidates = walked.paths
+    walkTruncated = walked.walkTruncated
+  }
+
+  // Deduplicate cleanly (a file cannot duplicate normally, except git flags or walk edge cases)
+  const seen = new Set<string>()
+  const uniquePaths: string[] = []
+  for (const p of candidates) {
+    if (seen.has(p)) continue
+    seen.add(p)
+    if (normalizedPrefix) {
+      if (prefixDirOnly) {
+        if (p !== normalizedPrefix && !p.startsWith(`${normalizedPrefix}/`)) continue
+      } else if (!p.startsWith(normalizedPrefix)) {
+        continue
+      }
+    }
+    uniquePaths.push(p)
+  }
+
+  const queryTrimmed = params.query?.trim().toLowerCase() ?? ''
+  const queryTokens = queryTrimmed.length > 0 ? queryTrimmed.split(/\s+/u).filter(Boolean) : []
+  const matched =
+    queryTokens.length === 0
+      ? uniquePaths
+      : uniquePaths.filter((p) => {
+          const lower = p.toLowerCase()
+          return queryTokens.every((tok) => lower.includes(tok))
+        })
+
+  const totalMatched = matched.length
+  if (queryTokens.length > 0) {
+    matched.sort((a, b) => {
+      const rankDiff = rankWorkspaceFileMatch(a, queryTrimmed) - rankWorkspaceFileMatch(b, queryTrimmed)
+      if (rankDiff !== 0) return rankDiff
+      if (a.length !== b.length) return a.length - b.length
+      return a.localeCompare(b, 'en')
+    })
+  } else {
+    matched.sort((a, b) => a.localeCompare(b, 'en'))
+  }
+
+  const files: string[] = []
+  let byteBudgetUsed = 256 + Buffer.byteLength(params.sessionId, 'utf8') + Buffer.byteLength(realRoot, 'utf8')
+  let budgetTruncated = false
+
+  for (const candidate of matched) {
+    if (files.length >= limit) {
+      budgetTruncated = true
+      break
+    }
+    // Verify canonical containment and reject symlinks pointing outside workspace root
+    let safeRel: string
+    try {
+      safeRel = assertSafeRepoRelativePath(realRoot, candidate)
+      const absTarget = join(realRoot, safeRel)
+      if (lstatSync(absTarget).isSymbolicLink()) {
+        const canonicalTarget = realpathSync(absTarget)
+        const rootPrefix = realRoot.endsWith(sep) ? realRoot : `${realRoot}${sep}`
+        if (canonicalTarget !== realRoot && !canonicalTarget.startsWith(rootPrefix)) {
+          continue
+        }
+      }
+    } catch {
+      continue
+    }
+
+    const entryBytes = Buffer.byteLength(JSON.stringify(safeRel), 'utf8') + 1
+    if (byteBudgetUsed + entryBytes > MAX_WORKSPACE_FILES_PAYLOAD_BYTES) {
+      budgetTruncated = true
+      break
+    }
+    byteBudgetUsed += entryBytes
+    files.push(safeRel)
+  }
+
+  return {
+    sessionId: params.sessionId,
+    root: realRoot,
+    files,
+    totalMatched,
+    truncated: walkTruncated || budgetTruncated,
   }
 }
