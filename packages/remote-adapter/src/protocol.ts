@@ -213,6 +213,8 @@ export interface PendingApprovalSnapshot {
   readonly toolName: string
   readonly reason?: string | undefined
   readonly summary?: string | undefined
+  readonly args?: unknown
+  readonly argsTruncated?: boolean | undefined
   readonly sessionId?: string | undefined
 }
 

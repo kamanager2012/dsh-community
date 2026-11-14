@@ -21,6 +21,11 @@ import type {
   WorkspaceGitStatusParams,
   WorkspaceGitStatusResult,
 } from '../protocol.js'
+import {
+  boundApprovalRequestEvent,
+  boundLiveStateSnapshot,
+  boundPendingApprovalSnapshot,
+} from '../session-state-fold.js'
 import { inspectWorkspaceGitDiff, inspectWorkspaceGitStatus } from './git-review.js'
 import { NdjsonRpcProcess } from './ndjson-rpc.js'
 import {
@@ -60,6 +65,7 @@ interface PendingAcpPermission {
   readonly sessionId: string
   readonly toolName: string
   readonly summary?: string | undefined
+  readonly args?: unknown
   readonly allowOptionId?: string | undefined
   readonly rejectOptionId?: string | undefined
   readonly resolve: (value: unknown) => void
@@ -478,15 +484,18 @@ export class AcpAgentBackend implements ManagedAgentBackend {
     const pendingApprovals: PendingApprovalSnapshot[] = []
     for (const a of this.pendingPermissions.values()) {
       if (a.sessionId === meta.sessionId) {
-        pendingApprovals.push({
-          callId: a.callId,
-          toolName: a.toolName,
-          ...(a.summary !== undefined ? { summary: a.summary } : {}),
-          sessionId: meta.sessionId,
-        })
+        pendingApprovals.push(
+          boundPendingApprovalSnapshot({
+            callId: a.callId,
+            toolName: a.toolName,
+            ...(a.summary !== undefined ? { summary: a.summary } : {}),
+            ...(a.args !== undefined ? { args: a.args } : {}),
+            sessionId: meta.sessionId,
+          }),
+        )
       }
     }
-    return {
+    return boundLiveStateSnapshot({
       status: meta.status,
       ...(meta.model !== undefined ? { model: meta.model } : {}),
       ...(meta.title !== undefined ? { title: meta.title } : {}),
@@ -495,7 +504,7 @@ export class AcpAgentBackend implements ManagedAgentBackend {
       todos: [],
       oldestSeq: 1,
       latestSeq: this.emitter.currentSeq(meta.sessionId) || null,
-    }
+    })
   }
 
   async getSessionCwd(sessionId: string): Promise<string | undefined> {
@@ -570,22 +579,29 @@ export class AcpAgentBackend implements ManagedAgentBackend {
       const allowOption = opts.find((o) => o.kind === 'allow_once' || o.kind === 'allow_always')
       const rejectOption = opts.find((o) => o.kind === 'reject_once' || o.kind === 'reject_always')
 
+      const args = toolCall.rawInput ?? toolCall.locations
+
       return await new Promise((resolve, reject) => {
         this.pendingPermissions.set(callId, {
           callId,
           sessionId: publicId,
           toolName,
           summary: typeof toolCall.title === 'string' ? toolCall.title : undefined,
+          args,
           allowOptionId: typeof allowOption?.optionId === 'string' ? allowOption.optionId : undefined,
           rejectOptionId: typeof rejectOption?.optionId === 'string' ? rejectOption.optionId : undefined,
           resolve,
           reject,
         })
-        this.emitter.emit(publicId, 'approval.request', {
-          callId,
-          toolName,
-          args: toolCall.rawInput ?? toolCall.locations,
-        })
+        this.emitter.emit(
+          publicId,
+          'approval.request',
+          boundApprovalRequestEvent({
+            callId,
+            toolName,
+            args,
+          }),
+        )
       })
     }
 

@@ -1,0 +1,17 @@
+{
+  "name": "@dsh-community/remote-web",
+  "version": "0.2.2-rc.2-community.1",
+  "private": true,
+  "type": "module",
+  "description": "Zero-install E2EE browser and iOS Safari PWA client for DSH Community multi-agent remote sessions.",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit"
+  },
+  "devDependencies": {
+    "@dsh-community/remote-adapter": "workspace:*",
+    "@types/node": "^22.18.0",
+    "esbuild": "^0.25.9",
+    "typescript": "^5.9.2"
+  }
+}

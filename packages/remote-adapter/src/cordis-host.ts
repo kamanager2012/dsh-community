@@ -81,6 +81,8 @@ import {
   type WorkspaceUploadOpenResult,
 } from './protocol.js'
 import {
+  boundApprovalRequestEvent,
+  boundPendingApprovalSnapshot,
   buildAttachLiveStateSnapshot,
   foldNormalizedSessionEvents,
   type FoldedSessionEventsSummary,
@@ -490,6 +492,8 @@ interface PendingApproval {
   readonly sessionId: string
   readonly toolName: string
   readonly reason?: string | undefined
+  readonly summary?: string | undefined
+  readonly args?: unknown
   resolve(outcome: 'allowed-once' | 'rejected' | 'cancelled' | 'unavailable'): void
   cleanup(): void
 }
@@ -700,6 +704,13 @@ export class OfficialHostCordisBridge {
         const toolName =
           typeof req?.toolName === 'string' && req.toolName.length > 0 ? req.toolName : 'tool'
         const reason = typeof req?.reason === 'string' ? req.reason : undefined
+        const summary = typeof req?.summary === 'string' ? req.summary : undefined
+        const args =
+          req?.args !== undefined
+            ? req.args
+            : req?.input !== undefined
+              ? req.input
+              : req?.params
 
         return new Promise<'allowed-once' | 'rejected' | 'cancelled' | 'unavailable'>((resolve) => {
           const onAbort = (): void => {
@@ -717,6 +728,8 @@ export class OfficialHostCordisBridge {
             sessionId: agentId,
             toolName,
             ...(reason !== undefined ? { reason } : {}),
+            ...(summary !== undefined ? { summary } : {}),
+            ...(args !== undefined ? { args } : {}),
             resolve,
             cleanup: () => {
               if (signal && typeof signal.removeEventListener === 'function') {
@@ -725,11 +738,17 @@ export class OfficialHostCordisBridge {
             },
           })
 
-          this.emitNormalizedEvent(agentId, 'approval.request', {
-            callId,
-            toolName,
-            ...(reason !== undefined ? { reason } : {}),
-          })
+          this.emitNormalizedEvent(
+            agentId,
+            'approval.request',
+            boundApprovalRequestEvent({
+              callId,
+              toolName,
+              ...(reason !== undefined ? { reason } : {}),
+              ...(summary !== undefined ? { summary } : {}),
+              ...(args !== undefined ? { args } : {}),
+            }),
+          )
         })
       })
       this.rootUnsubscribes.push(unsubApproval)
@@ -1263,12 +1282,16 @@ export class OfficialHostCordisBridge {
     const approvals: PendingApprovalSnapshot[] = []
     for (const pending of this.pendingApprovals.values()) {
       if (pending.sessionId !== sessionId) continue
-      approvals.push({
-        callId: pending.callId,
-        toolName: pending.toolName,
-        ...(pending.reason !== undefined ? { reason: pending.reason } : {}),
-        sessionId: pending.sessionId,
-      })
+      approvals.push(
+        boundPendingApprovalSnapshot({
+          callId: pending.callId,
+          toolName: pending.toolName,
+          ...(pending.reason !== undefined ? { reason: pending.reason } : {}),
+          ...(pending.summary !== undefined ? { summary: pending.summary } : {}),
+          ...(pending.args !== undefined ? { args: pending.args } : {}),
+          sessionId: pending.sessionId,
+        }),
+      )
     }
     const questions: PendingQuestionSnapshot[] = []
     for (const pending of this.pendingQuestions.values()) {

@@ -33,6 +33,11 @@ import {
   type WorkspaceUploadOpenParams,
 } from './protocol.js'
 import { BoundedReplayBuffer } from './replay.js'
+import {
+  boundLiveStateSnapshot,
+  MAX_ATTACH_LIVESTATE_BYTES,
+  MAX_ATTACH_RESPONSE_BYTES,
+} from './session-state-fold.js'
 import { isSafeSessionId } from './session-transcript.js'
 
 export interface RemoteAdapterOptions {
@@ -914,7 +919,11 @@ export class RemoteAdapterCore {
 
   private async attach(params: SessionAttachParams): Promise<unknown> {
     await this.seams.assertSession(params.sessionId)
-    const liveState = await this.seams.getSessionLiveState?.(params.sessionId)
+    const rawLiveState = await this.seams.getSessionLiveState?.(params.sessionId)
+    const liveState =
+      rawLiveState !== undefined
+        ? boundLiveStateSnapshot(rawLiveState, MAX_ATTACH_LIVESTATE_BYTES)
+        : undefined
     const buffer = this.replayBySession.get(params.sessionId)
     if (!buffer) {
       if (params.afterSeq !== undefined) {
@@ -935,7 +944,9 @@ export class RemoteAdapterCore {
     this.replayBySession.delete(params.sessionId)
     this.replayBySession.set(params.sessionId, buffer)
     const resumed = buffer.resume(params.afterSeq)
-    const maxAttachEventBytes = 40 * 1024
+    const liveStateOverheadBytes =
+      liveState !== undefined ? Buffer.byteLength(JSON.stringify({ liveState }), 'utf8') : 0
+    const maxAttachEventBytes = Math.max(0, MAX_ATTACH_RESPONSE_BYTES - liveStateOverheadBytes)
     if (resumed.kind === 'events' && params.afterSeq !== undefined && resumed.events.length > 0) {
       if (Buffer.byteLength(JSON.stringify(resumed.events), 'utf8') > maxAttachEventBytes) {
         return {
