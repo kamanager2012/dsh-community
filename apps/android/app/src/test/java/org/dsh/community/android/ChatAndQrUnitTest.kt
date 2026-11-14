@@ -536,4 +536,22 @@ class ChatAndQrUnitTest {
         assertEquals(ParsedSlashCommand.ListSkills, SlashCommandHelper.parse("/skills"))
         assertNull(SlashCommandHelper.parse("/custom-host-skill arg1"))
     }
+
+    @Test
+    fun markOptimisticUserFailedClearsSendingAndRecordsError() {
+        val store = ChatTimelineStore()
+        val optimisticId = store.addOptimisticUserPrompt("s-fail", "hello host", listOf("shot.jpg"))
+        assertTrue(optimisticId.isNotEmpty())
+        val pendingItem = store.itemsForSession("s-fail").single() as UserMessageItem
+        assertTrue(pendingItem.isOptimistic)
+        assertNull(pendingItem.sendError)
+
+        val updated = store.markOptimisticUserFailed("s-fail", optimisticId, "socket timeout\nretry")
+        assertTrue(updated)
+        val failedItem = store.itemsForSession("s-fail").single() as UserMessageItem
+        assertFalse(failedItem.isOptimistic)
+        assertEquals("socket timeout retry", failedItem.sendError)
+        assertEquals(listOf("shot.jpg"), failedItem.attachmentLabels)
+        assertFalse(store.markOptimisticUserFailed("s-fail", optimisticId, "twice"))
+    }
 }

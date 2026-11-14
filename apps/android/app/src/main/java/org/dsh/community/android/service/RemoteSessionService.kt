@@ -133,6 +133,8 @@ class RemoteSessionService : Service() {
         fun onPendingQuestionsChanged(questions: List<PendingQuestionItem>) {}
         fun onActionSucceeded(action: String, refId: String) {}
         fun onActionFailed(action: String, reason: String) {}
+        fun onPromptSubmitSucceeded(sessionId: String, optimisticId: String?) {}
+        fun onPromptSubmitFailed(sessionId: String, optimisticId: String?, reason: String) {}
         fun onMetricsUpdated(identity: DeviceIdentity, stats: BackgroundLifecycleStats) {}
     }
 
@@ -644,20 +646,30 @@ class RemoteSessionService : Service() {
         prompt: String,
         mode: String? = null,
         attachments: List<PromptImageAttachment> = emptyList(),
+        optimisticId: String? = null,
     ) {
         ioExecutor.execute {
             val session = activeSession ?: run {
-                uiObservers.forEach { it.onActionFailed("prompt", "Not connected to Host") }
+                uiObservers.forEach {
+                    it.onActionFailed("prompt", "Not connected to Host")
+                    it.onPromptSubmitFailed(sessionId, optimisticId, "Not connected to Host")
+                }
                 return@execute
             }
             val opKey = session.newOperationKey("prompt")
             try {
                 session.submitPrompt(sessionId, prompt, opKey, mode, attachments)
-                uiObservers.forEach { it.onActionSucceeded("prompt", sessionId) }
+                uiObservers.forEach {
+                    it.onActionSucceeded("prompt", sessionId)
+                    it.onPromptSubmitSucceeded(sessionId, optimisticId)
+                }
             } catch (t: Throwable) {
                 val reason = sanitizeErr(t)
                 updateStatus(session.phase, session.activeCarrier, session.currentEpoch, "prompt.submit failed: $reason")
-                uiObservers.forEach { it.onActionFailed("prompt", reason) }
+                uiObservers.forEach {
+                    it.onActionFailed("prompt", reason)
+                    it.onPromptSubmitFailed(sessionId, optimisticId, reason)
+                }
             }
         }
     }

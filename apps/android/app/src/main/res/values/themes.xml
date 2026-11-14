@@ -1,7 +1,7 @@
 <resources>
-    <style name="Theme.Dsh" parent="Theme.AppCompat.DayNight.NoActionBar">
+    <style name="Theme.Dsh" parent="Theme.AppCompat.NoActionBar">
         <item name="android:windowBackground">@color/dsh_bg_canvas</item>
-        <item name="android:colorBackground">@color/dsh_bg_canvas</item>
+        <item name="android:colorBackground">@color/dsh_bg_surface</item>
         <item name="android:textColorPrimary">@color/dsh_text_primary</item>
         <item name="android:textColorSecondary">@color/dsh_text_secondary</item>
         <item name="android:statusBarColor">@color/dsh_bg_surface</item>

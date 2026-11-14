@@ -336,7 +336,11 @@ function buildPairingView(
     qrSvg = ''
   }
   const expiresAt = typeof ready.expiresAt === 'number' ? ready.expiresAt : undefined
-  const loopbackWarning = buildLoopbackPairingWarning(ready, lanCandidates)
+  const rawWarning = buildLoopbackPairingWarning(ready, lanCandidates)
+  const lanHint = lanCandidates.length > 0 ? `（检测到可用局域网 IP: ${lanCandidates.join(', ')}）` : ''
+  const loopbackWarning = rawWarning
+    ? `提示: 当前仅监听本机 loopback（127.0.0.1）${lanHint}；真机局域网配对请在下方「监听地址」中选择局域网 IP 并勾选「mDNS 广播」，或填写「Relay 中继地址」/「WebRTC 信令地址」后重新启动。`
+    : undefined
   return {
     deepLink,
     pairingJson,

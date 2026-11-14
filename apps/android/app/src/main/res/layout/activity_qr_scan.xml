@@ -79,7 +79,7 @@
         android:gravity="center"
         android:paddingHorizontal="16dp"
         android:paddingVertical="18dp"
-        android:text="Point camera at the QR code shown by DSH Desktop or `dsh-remote pair`"
+        android:text="Point camera at the QR code shown by DSH Desktop or `dsh-community remote start --qr`"
         android:textColor="@color/dsh_text_primary"
         android:textSize="13sp" />
 </FrameLayout>

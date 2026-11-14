@@ -119,9 +119,16 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
     private lateinit var attachmentBar: LinearLayout
     private lateinit var attachmentSummaryView: TextView
 
+    private data class InFlightPromptSnapshot(
+        val sessionId: String,
+        val promptText: String,
+        val attachments: List<Pair<PromptImageAttachment, Int>>,
+    )
+
     private val timelineStore = ChatTimelineStore()
     private lateinit var timelineAdapter: ChatTimelineAdapter
     private val pendingAttachments = ArrayList<Pair<PromptImageAttachment, Int>>()
+    private val inFlightPromptSnapshots = LinkedHashMap<String, InFlightPromptSnapshot>()
 
     private var pendingCallId: String? = null
     private var pendingQuestionId: String? = null
@@ -1142,7 +1149,8 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
         if (attachedSessionId != sid) {
             selectAndAttachSession(sid)
         }
-        val attachmentsToSend = pendingAttachments.map { it.first }
+        val attachmentSnapshot = pendingAttachments.toList()
+        val attachmentsToSend = attachmentSnapshot.map { it.first }
         val attachmentLabels = attachmentsToSend.map { it.name ?: it.mediaType }
         if (pendingAttachments.isNotEmpty()) {
             pendingAttachments.clear()
@@ -1152,10 +1160,19 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
             promptInput.text.clear()
         }
         lastEventSessionId = sid
-        timelineStore.addOptimisticUserPrompt(sid, prompt, attachmentLabels)
+        val optimisticId = timelineStore.addOptimisticUserPrompt(sid, prompt, attachmentLabels)
+        inFlightPromptSnapshots[optimisticId] = InFlightPromptSnapshot(
+            sessionId = sid,
+            promptText = prompt,
+            attachments = attachmentSnapshot,
+        )
+        while (inFlightPromptSnapshots.size > 16) {
+            val oldest = inFlightPromptSnapshots.keys.firstOrNull() ?: break
+            inFlightPromptSnapshots.remove(oldest)
+        }
         refreshTimelineUi(scrollToBottom = true)
         val mode = modeOverride ?: if (steerEnabled) "steer" else null
-        service?.submitPromptAsync(sid, prompt, mode, attachmentsToSend)
+        service?.submitPromptAsync(sid, prompt, mode, attachmentsToSend, optimisticId = optimisticId)
     }
 
     private fun attachPickedImage(uri: Uri) {
@@ -1567,13 +1584,17 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
     private fun exportCurrentSessionMarkdown() {
         val sid = activeTimelineSessionId()
         if (sid.isNullOrBlank()) {
-            appendLog("Select or attach a session first before exporting chat")
+            val msg = "Select or attach a session first before exporting chat"
+            appendLog(msg)
+            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
             return
         }
         val title = lastSessions.firstOrNull { it.id == sid }?.title
         val md = timelineStore.exportAsMarkdown(sid, title)
         if (md.isBlank()) {
-            appendLog("No messages to export yet for session $sid")
+            val msg = "No messages to export yet for session $sid"
+            appendLog(msg)
+            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
             return
         }
         val sendIntent = Intent(Intent.ACTION_SEND).apply {
@@ -1595,7 +1616,9 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
             try {
                 startActivity(fallback)
             } catch (_: Throwable) {
-                appendLog("Unable to open battery optimization settings on this device")
+                val msg = "Unable to open battery optimization settings on this device"
+                appendLog(msg)
+                Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -1718,20 +1741,17 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
             }
             DiscoverySelectOutcome.UNKNOWN_UNPAIRED_HOST -> {
                 val msg = "[UNPAIRED] mDNS host ${host.hostDisplayLabel} is untrusted — scan QR or paste dsh-remote:// URI (discovery !== trust)"
-                stickyStatusError = msg
-                statusView.text = msg
-                statusView.setTextColor(ContextCompat.getColor(this, R.color.dsh_status_warn))
-                appendLog(msg)
+                showUiFailure(msg, isWarning = true)
             }
             DiscoverySelectOutcome.REVOKED_HOST -> {
                 val msg = "[REVOKED] Discovered host ${host.hostFingerprint?.take(12)}... is revoked — Forget & re-pair after Host re-trusts"
-                stickyStatusError = msg
-                statusView.text = msg
-                statusView.setTextColor(ContextCompat.getColor(this, R.color.dsh_status_danger))
-                appendLog(msg)
+                showUiFailure(msg, isWarning = false)
             }
             DiscoverySelectOutcome.MISSING_FINGERPRINT, null -> {
-                appendLog("Discovered mDNS host ${host.hostDisplayLabel} missing hostFingerprint")
+                showUiFailure(
+                    "Discovered mDNS host ${host.hostDisplayLabel} missing hostFingerprint — scan QR or paste dsh-remote:// URI instead",
+                    isWarning = true,
+                )
             }
         }
     }
@@ -1777,11 +1797,54 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
         }
     }
 
+    private fun showUiFailure(message: String, isWarning: Boolean = false) {
+        val clean = DisplayTextSanitizer.sanitizeSingleLine(message)
+        stickyStatusError = clean
+        statusView.text = clean
+        statusView.setTextColor(
+            ContextCompat.getColor(
+                this,
+                if (isWarning) R.color.dsh_status_warn else R.color.dsh_status_danger,
+            ),
+        )
+        appendLog(clean)
+        Toast.makeText(this, clean, Toast.LENGTH_LONG).show()
+    }
+
     override fun onActionFailed(action: String, reason: String) {
+        val cleanAction = DisplayTextSanitizer.sanitizeSingleLine(action)
         val cleanReason = DisplayTextSanitizer.sanitizeSingleLine(reason)
         runOnUiThread {
-            appendLog("[${DisplayTextSanitizer.sanitizeSingleLine(action)} failed] $cleanReason")
             renderApprovalBanner()
+            showUiFailure("$cleanAction failed: $cleanReason")
+        }
+    }
+
+    override fun onPromptSubmitSucceeded(sessionId: String, optimisticId: String?) {
+        runOnUiThread {
+            if (optimisticId != null) {
+                inFlightPromptSnapshots.remove(optimisticId)
+            }
+        }
+    }
+
+    override fun onPromptSubmitFailed(sessionId: String, optimisticId: String?, reason: String) {
+        val cleanReason = DisplayTextSanitizer.sanitizeSingleLine(reason)
+        runOnUiThread {
+            if (timelineStore.markOptimisticUserFailed(sessionId, optimisticId, cleanReason)) {
+                refreshTimelineUi(scrollToBottom = false)
+            }
+            val snapshot = if (optimisticId != null) inFlightPromptSnapshots.remove(optimisticId) else null
+            if (snapshot != null && snapshot.sessionId == attachedSessionId) {
+                if (snapshot.attachments.isNotEmpty() && pendingAttachments.isEmpty()) {
+                    pendingAttachments.addAll(snapshot.attachments)
+                    renderAttachmentBar()
+                }
+                if (snapshot.promptText.isNotEmpty() && promptInput.text.isNullOrBlank()) {
+                    promptInput.setText(snapshot.promptText)
+                    promptInput.setSelection(promptInput.text.length)
+                }
+            }
         }
     }
 
@@ -1833,13 +1896,21 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
                 pendingCard.visibility = View.VISIBLE
                 btnApprove.visibility = View.VISIBLE
                 btnReject.visibility = View.VISIBLE
-                etAnswerVisibility(visible = headQuestion != null)
+                etAnswerVisibility(visible = false)
                 questionOptionsScroll.visibility = View.GONE
             }
             headQuestion != null -> {
                 val extra = latestQuestions.size - 1
                 val suffix = if (extra > 0) " (+$extra more)" else ""
-                val cleanPrompt = DisplayTextSanitizer.sanitizeSingleLine(headQuestion.prompt)
+                val cleanPrompt = if (headQuestion.questions.size > 1) {
+                    headQuestion.questions.joinToString(" | ") { spec ->
+                        val label = DisplayTextSanitizer.sanitizeSingleLine(spec.header ?: spec.id)
+                        val qText = DisplayTextSanitizer.sanitizeSingleLine(spec.question)
+                        if (qText.isNotEmpty()) "$label: $qText" else label
+                    }
+                } else {
+                    DisplayTextSanitizer.sanitizeSingleLine(headQuestion.prompt)
+                }
                 approvalBanner.text = "QUESTION (${headQuestion.questionId}): $cleanPrompt$suffix"
                 pendingCard.visibility = View.VISIBLE
                 btnApprove.visibility = View.GONE

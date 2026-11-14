@@ -70,6 +70,7 @@ import {
   renderRemotePage,
   renderRuntimePage,
   renderSettingsPage,
+  type RemotePageModel,
 } from './pages.ts'
 import {
   DesktopRemoteController,
@@ -358,7 +359,7 @@ function officialSessionsModel() {
   }
 }
 
-function settingsModel() {
+function settingsModel(saved = false) {
   return {
     product: COMMUNITY_PRODUCT_NAME,
     hideToTray: settings.hideToTray,
@@ -366,6 +367,7 @@ function settingsModel() {
     envIsolated: isolatedDesktopRequested(),
     officialHome: officialHome(),
     isolatedHome: desktopLayout().isolatedOfficialHome,
+    saved,
   }
 }
 
@@ -632,6 +634,49 @@ function syncRemotePollTimer(): void {
   }
 }
 
+async function captureRemoteFormDraft(): Promise<RemotePageModel['settings'] | undefined> {
+  if (window === undefined || window.isDestroyed() || showingOfficial || currentShellPage !== 'remote') {
+    return undefined
+  }
+  try {
+    const raw = (await window.webContents.executeJavaScript(`(() => {
+      const hs = document.getElementById('listen-host-select');
+      const hc = document.getElementById('listen-host-custom');
+      const portEl = document.getElementById('remote-port');
+      const mdnsEl = document.getElementById('remote-mdns');
+      const relayEl = document.getElementById('remote-relay');
+      const sigEl = document.getElementById('remote-signaling');
+      const stunEl = document.getElementById('remote-stun');
+      if (!hs || !portEl) return null;
+      const listenHost = hs.value === '__custom__' ? (hc ? hc.value : '') : (hs.value || '');
+      const portNum = Number(portEl.value);
+      return {
+        listenHost,
+        port: Number.isFinite(portNum) ? portNum : 0,
+        enableMdns: mdnsEl ? mdnsEl.checked === true : true,
+        relayUrl: relayEl ? relayEl.value : '',
+        signalingUrl: sigEl ? sigEl.value : '',
+        stunUrls: stunEl ? stunEl.value : '',
+      };
+    })()`, true)) as RemotePageModel['settings'] | null
+    return raw ?? undefined
+  } catch {
+    return undefined
+  }
+}
+
+async function renderRemoteSnapshotHtml(
+  snap: Awaited<ReturnType<DesktopRemoteController['snapshot']>>,
+  preserveDraft: boolean,
+): Promise<void> {
+  const draft = preserveDraft ? await captureRemoteFormDraft() : undefined
+  if (currentShellPage !== 'remote' || showingOfficial) return
+  const model: RemotePageModel = draft === undefined
+    ? { product: COMMUNITY_PRODUCT_NAME, ...snap }
+    : { product: COMMUNITY_PRODUCT_NAME, ...snap, settings: draft }
+  await showHtml(renderRemotePage(model), 'remote')
+}
+
 async function applyRemoteSnapshotSideEffects(
   snap: Awaited<ReturnType<DesktopRemoteController['snapshot']>>,
   forceRender: boolean,
@@ -643,7 +688,7 @@ async function applyRemoteSnapshotSideEffects(
     const key = remoteUiKey(snap)
     if (forceRender || key !== lastRemoteUiKey) {
       lastRemoteUiKey = key
-      await showHtml(renderRemotePage({ product: COMMUNITY_PRODUCT_NAME, ...snap }), 'remote')
+      await renderRemoteSnapshotHtml(snap, true)
     }
   }
 }
@@ -664,7 +709,10 @@ async function pollRemoteRuntime(): Promise<void> {
   await applyRemoteSnapshotSideEffects(snap, false)
 }
 
-async function showRemote(options?: { readonly refreshLive?: boolean | undefined }): Promise<void> {
+async function showRemote(options?: {
+  readonly refreshLive?: boolean | undefined
+  readonly preserveDraft?: boolean | undefined
+}): Promise<void> {
   currentShellPage = 'remote'
   showingOfficial = false
   layoutOfficial()
@@ -674,7 +722,7 @@ async function showRemote(options?: { readonly refreshLive?: boolean | undefined
   notifyPendingPairingIfIncreased(snap.pendingCandidates.length)
   syncRemotePollTimer()
   updateTrayMenu()
-  await showHtml(renderRemotePage({ product: COMMUNITY_PRODUCT_NAME, ...snap }), 'remote')
+  await renderRemoteSnapshotHtml(snap, options?.preserveDraft === true)
 }
 
 async function showOfficialSessions(): Promise<void> {
@@ -685,8 +733,8 @@ async function showRuntime(): Promise<void> {
   await showHtml(renderRuntimePage(runtimeModel()), 'runtime')
 }
 
-async function showSettings(): Promise<void> {
-  await showHtml(renderSettingsPage(settingsModel()), 'settings')
+async function showSettings(saved = false): Promise<void> {
+  await showHtml(renderSettingsPage(settingsModel(saved)), 'settings')
 }
 
 async function showDiagnostics(): Promise<void> {
@@ -716,7 +764,7 @@ async function restartOfficial(then: 'official' | 'settings' = 'official'): Prom
   origin = next
   officialBootstrapUrl = host.takeBrowserBootstrapUrl()
   await waitForOfficialWeb(next, 8_000)
-  if (then === 'settings') await showSettings()
+  if (then === 'settings') await showSettings(true)
   else await showOfficial(next)
 }
 
@@ -733,7 +781,7 @@ async function applySettings(raw: unknown): Promise<void> {
     await restartOfficial('settings')
     return
   }
-  await showSettings()
+  await showSettings(true)
 }
 
 function copyDesktopText(text: unknown): boolean {
@@ -933,36 +981,38 @@ function bindIpc(): void {
   })
   ipcMain.handle(DESKTOP_IPC.remoteStart, async (event, config: unknown) => {
     assertAuthorizedSender(event)
-    await ensureRemoteController().start(config)
-    await showRemote()
+    const ctrl = ensureRemoteController()
+    await ctrl.start(config)
+    const snap = await ctrl.snapshot({ refreshLive: false })
+    await showRemote({ refreshLive: false, preserveDraft: snap.error !== undefined })
   })
   ipcMain.handle(DESKTOP_IPC.remoteStop, async (event) => {
     assertAuthorizedSender(event)
     await ensureRemoteController().stop()
-    await showRemote({ refreshLive: false })
+    await showRemote({ refreshLive: false, preserveDraft: true })
   })
   ipcMain.handle(DESKTOP_IPC.remoteRefresh, async (event) => {
     assertAuthorizedSender(event)
-    await showRemote({ refreshLive: true })
+    await showRemote({ refreshLive: true, preserveDraft: true })
   })
   ipcMain.handle(DESKTOP_IPC.remoteNewPairing, async (event) => {
     assertAuthorizedSender(event)
     await ensureRemoteController().refreshPairingQr()
-    await showRemote()
+    await showRemote({ preserveDraft: true })
   })
   ipcMain.handle(DESKTOP_IPC.remoteConfirmPairing, async (event, raw: unknown) => {
     assertAuthorizedSender(event)
     const req = parseConfirmPairingInput(raw)
     if (req === undefined) return
     await ensureRemoteController().confirmPairing(req.candidateId, req.allowApprove)
-    await showRemote()
+    await showRemote({ preserveDraft: true })
   })
   ipcMain.handle(DESKTOP_IPC.remoteRevokeDevice, async (event, raw: unknown) => {
     assertAuthorizedSender(event)
     const deviceId = parseRevokeDeviceInput(raw)
     if (deviceId === undefined) return
     await ensureRemoteController().revokeDevice(deviceId)
-    await showRemote()
+    await showRemote({ preserveDraft: true })
   })
 }
 

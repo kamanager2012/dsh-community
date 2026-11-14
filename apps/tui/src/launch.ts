@@ -14,6 +14,7 @@ export type CommunityLaunch =
   | { readonly kind: 'version' }
   | { readonly kind: 'doctor' }
   | { readonly kind: 'desktop' }
+  | { readonly kind: 'error'; readonly message: string }
   | { readonly kind: 'plugins'; readonly porcelain: boolean }
   | { readonly kind: 'list'; readonly porcelain: boolean }
   | { readonly kind: 'pick' }
@@ -77,6 +78,9 @@ export function parseCommunityLaunch(argv: readonly string[]): CommunityLaunch {
     const id = args[1]
     if (id === undefined || id.length === 0 || id.startsWith('-')) return { kind: 'pick' }
     return { kind: 'resume', id, rest: args.slice(2) }
+  }
+  if (head?.startsWith('-')) {
+    return { kind: 'error', message: `未知选项: ${head}。运行 --help 查看可用参数。` }
   }
   return { kind: 'run', rest: args }
 }

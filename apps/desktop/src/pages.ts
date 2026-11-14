@@ -64,6 +64,7 @@ export interface SettingsPageModel {
   readonly envIsolated: boolean
   readonly officialHome: string
   readonly isolatedHome: string
+  readonly saved?: boolean
 }
 
 export interface DiagnosticsPageModel {
@@ -111,7 +112,45 @@ function createCspNonce(): string {
   return randomBytes(16).toString('base64')
 }
 
-function shellDocument(title: string, bodyOrRender: string | ((nonce: string) => string)): string {
+export type ShellNavId = 'official' | 'remote' | 'sessions' | 'marketplace' | 'runtime' | 'settings' | 'diagnostics'
+
+const COPY_FEEDBACK_JS = `function copyWithFeedback(btn, text) {
+  if (!btn || !text) return;
+  if (!btn.dataset.copyLabel) btn.dataset.copyLabel = btn.textContent || '复制';
+  var runner = window.dshCommunity && window.dshCommunity.copyText
+    ? Promise.resolve(window.dshCommunity.copyText(text)).then(function (ok) {
+        if (ok === false) throw new Error('copy rejected');
+      })
+    : Promise.reject(new Error('copyText unavailable'));
+  runner.then(
+    function () {
+      var prev = Number(btn.dataset.copyTimer || 0);
+      if (prev) window.clearTimeout(prev);
+      btn.textContent = '已复制 ✓';
+      btn.dataset.copied = 'true';
+      btn.dataset.copyTimer = String(window.setTimeout(function () {
+        btn.textContent = btn.dataset.copyLabel || '复制';
+        delete btn.dataset.copied;
+        delete btn.dataset.copyTimer;
+      }, 1800));
+    },
+    function () {
+      var prev = Number(btn.dataset.copyTimer || 0);
+      if (prev) window.clearTimeout(prev);
+      btn.textContent = '复制失败';
+      btn.dataset.copyTimer = String(window.setTimeout(function () {
+        btn.textContent = btn.dataset.copyLabel || '复制';
+        delete btn.dataset.copyTimer;
+      }, 1800));
+    }
+  );
+}`
+
+function shellDocument(
+  title: string,
+  bodyOrRender: string | ((nonce: string) => string),
+  activeNav?: ShellNavId,
+): string {
   const nonce = createCspNonce()
   const body = typeof bodyOrRender === 'function' ? bodyOrRender(nonce) : bodyOrRender
   const csp = [
@@ -135,31 +174,42 @@ function shellDocument(title: string, bodyOrRender: string | ((nonce: string) =>
       :root { color-scheme: dark; }
       html, body { height: 100%; margin: 0; background: #101218; color: #d9dee8;
         font: 15px/1.5 ui-sans-serif, system-ui, sans-serif; }
-      main { min-height: 100%; display: grid; place-items: center; padding: 32px; }
-      .card { max-width: 42rem; }
+      main { min-height: 100%; display: flex; flex-direction: column; align-items: center;
+        justify-content: flex-start; padding: 28px 24px 40px; box-sizing: border-box; }
+      .card { width: 100%; max-width: 44rem; box-sizing: border-box; }
       h1 { font-size: 1.35rem; font-weight: 600; margin: 0 0 0.6rem; }
       p, li { color: #9aa3b2; }
       code, pre { font: 12px/1.45 ui-monospace, SFMono-Regular, monospace; }
-      pre { max-height: 12rem; overflow: auto; background: #0b0d12; padding: 12px; border-radius: 8px; }
+      pre { max-height: 14rem; overflow: auto; background: #0b0d12; padding: 12px; border-radius: 8px;
+        white-space: pre-wrap; overflow-wrap: anywhere; }
       button { appearance: none; border: 0; border-radius: 8px; padding: 8px 14px;
         background: #2f6fed; color: white; font: inherit; cursor: pointer; }
       button.secondary { background: #2a303b; }
       button.small { padding: 4px 10px; font-size: 13px; }
       button:disabled { opacity: 0.5; cursor: not-allowed; }
+      button[data-copied="true"] { background: #1f6f4a; color: #ffffff; }
       pre.ok { background: #0b1a12; border: 1px solid #1d4a2c; }
+      pre.error { background: #1c0c0e; border: 1px solid #7a2929; color: #ffb4b4; }
       .chip.ok { color: #7ee2a8; border-color: #2f6fed; }
       .chip.risk-med { color: #f5c26b; border-color: #7c5816; }
       .chip.risk-high { color: #ff8e8e; border-color: #7a2929; background: #1c0c0e; }
       .row { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
       nav.nav { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 18px; }
       nav.nav button { font-size: 13px; padding: 6px 10px; }
+      nav.nav button[data-active="true"] { background: #2f6fed; color: #ffffff; }
       label.opt { display: flex; gap: 8px; align-items: flex-start; margin: 10px 0; color: #d9dee8; }
       label.opt input { margin-top: 4px; }
       dt { color: #6d7686; font-size: 12px; }
-      dd { margin: 0 0 10px; word-break: break-all; }
+      dd { margin: 0 0 10px; overflow-wrap: anywhere; }
       table { width: 100%; border-collapse: collapse; margin: 12px 0 4px; font: 12px/1.45 ui-monospace, SFMono-Regular, monospace; }
-      th, td { text-align: left; padding: 6px 8px 6px 0; border-bottom: 1px solid #2a303b; word-break: break-all; }
-      th { color: #6d7686; font-weight: 500; }
+      th, td { text-align: left; padding: 8px 10px 8px 0; border-bottom: 1px solid #2a303b;
+        overflow-wrap: anywhere; vertical-align: middle; }
+      th { color: #6d7686; font-weight: 500; white-space: nowrap; }
+      td button { white-space: nowrap; }
+      .nowrap { white-space: nowrap; word-break: normal; }
+      .break-any { overflow-wrap: anywhere; word-break: normal; }
+      .empty-filter { margin-top: 12px; padding: 14px; border: 1px dashed #2a303b; border-radius: 8px;
+        color: #9aa3b2; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
       h2 { font-size: 1.05rem; font-weight: 600; color: #c6cdd9; margin: 20px 0 8px; }
       ul.plugins { list-style: none; margin: 0; padding: 0; }
       ul.plugins li { border: 1px solid #2a303b; border-radius: 8px; padding: 12px; margin: 0 0 10px; }
@@ -189,6 +239,7 @@ function shellDocument(title: string, bodyOrRender: string | ((nonce: string) =>
         border: 1px solid #2a303b; border-radius: 6px; padding: 7px 10px;
         font: 12px/1.4 ui-monospace, SFMono-Regular, monospace;
       }
+      input:disabled, select:disabled { opacity: 0.45; cursor: not-allowed; }
       .hidden-row { display: none; }
       .session-sub { color: #9ea6b3; font-size: 12px; margin-top: 2px; font-family: system-ui, sans-serif; }
       .custom-host-input { margin-top: 6px; }
@@ -199,13 +250,13 @@ function shellDocument(title: string, bodyOrRender: string | ((nonce: string) =>
   <body>
     <main><div class="card">
       <nav class="nav">
-        <button class="secondary" data-go="official">官方 Web</button>
-        <button class="secondary" data-go="sessions">Session</button>
-        <button class="secondary" data-go="remote">远程</button>
-        <button class="secondary" data-go="marketplace">市场</button>
-        <button class="secondary" data-go="runtime">运行时</button>
-        <button class="secondary" data-go="settings">设置</button>
-        <button class="secondary" data-go="diagnostics">诊断</button>
+        <button class="secondary" data-go="official"${activeNav === 'official' ? ' data-active="true"' : ''}>官方 Web</button>
+        <button class="secondary" data-go="sessions"${activeNav === 'sessions' ? ' data-active="true"' : ''}>Session</button>
+        <button class="secondary" data-go="remote"${activeNav === 'remote' ? ' data-active="true"' : ''}>远程</button>
+        <button class="secondary" data-go="marketplace"${activeNav === 'marketplace' ? ' data-active="true"' : ''}>市场</button>
+        <button class="secondary" data-go="runtime"${activeNav === 'runtime' ? ' data-active="true"' : ''}>运行时</button>
+        <button class="secondary" data-go="settings"${activeNav === 'settings' ? ' data-active="true"' : ''}>设置</button>
+        <button class="secondary" data-go="diagnostics"${activeNav === 'diagnostics' ? ' data-active="true"' : ''}>诊断</button>
       </nav>
       ${body}
     </div></main>
@@ -247,7 +298,7 @@ export function renderErrorPage(message: string): string {
     `${COMMUNITY_PRODUCT_NAME} · 官方运行时`,
     (nonce) => `<h1>官方运行时没有就绪</h1>
      <p>这是社区壳。失败发生在已发布的 <code>@deepseek-ai/dsh</code> 子进程，而不是本仓的 harness 拷贝。</p>
-     <pre>${escapeHtml(message)}</pre>
+     <pre class="error">${escapeHtml(message)}</pre>
      <div class="row">
        <button id="retry">重新启动官方运行时</button>
      </div>
@@ -290,10 +341,10 @@ export function renderOfficialSessionsPage(model: OfficialSessionsPageModel): st
   const searchBar = model.sessions.length === 0
     ? ''
     : '<div class="field"><input id="session-filter" type="search" placeholder="搜索会话 ID / 标题 / 摘要 / 目录…" /></div>'
-  const rows = model.sessions.length === 0
+  const tableHtml = model.sessions.length === 0
     ? '<p>官方 <code>~/.dsh/sessions</code> 里还没有 session。TUI / Web / 本窗口共用这一份，不会另建目录。</p>'
-    : `<table>
-         <thead><tr><th>会话与摘要</th><th>项目 / 目录</th><th>更新时间</th><th></th></tr></thead>
+    : `<table id="sessions-table">
+         <thead><tr><th>会话与摘要</th><th>项目 / 目录</th><th class="nowrap">更新时间</th><th class="nowrap">操作</th></tr></thead>
          <tbody>${model.sessions.map((session) => {
            const searchBlob = [session.id, session.title ?? '', session.preview ?? '', session.cwd ?? '', session.projectKey, session.model ?? ''].join(' ').toLowerCase()
            const titleLine = session.title
@@ -304,50 +355,72 @@ export function renderOfficialSessionsPage(model: OfficialSessionsPageModel): st
              : ''
            const projectDisplay = session.cwd ? `${session.cwd} (${session.projectKey})` : session.projectKey
            return `<tr data-session-row="${escapeHtml(searchBlob)}">
-              <td>${titleLine}<code>${escapeHtml(session.id)}</code>${previewLine}</td>
-              <td><code>${escapeHtml(projectDisplay)}</code></td>
-              <td>${escapeHtml(session.updatedAt)}</td>
-              <td>
-                <div class="row">
+              <td class="break-any">${titleLine}<code>${escapeHtml(session.id)}</code>${previewLine}</td>
+              <td class="break-any"><code>${escapeHtml(projectDisplay)}</code></td>
+              <td class="nowrap">${escapeHtml(session.updatedAt)}</td>
+              <td class="nowrap">
+                <div class="table-actions">
                   <button class="secondary small" data-resume="${escapeHtml(session.id)}">复制 --resume</button>
                   <button class="secondary small" data-copy-id="${escapeHtml(session.id)}">复制 ID</button>
                 </div>
               </td>
             </tr>`
          }).join('')}</tbody>
-       </table>`
+       </table>
+       <div id="session-filter-empty" class="empty-filter hidden-row">
+         <span>没有匹配当前搜索条件的对话。</span>
+         <button type="button" class="secondary small" id="session-filter-clear">清空筛选</button>
+       </div>`
   return shellDocument(
     `${model.product} · 官方 Session`,
     (nonce) => `<h1>官方 Session（${String(model.sessions.length)}）</h1>
      <p>只读列出官方 <code>${escapeHtml(model.officialHome)}</code>${model.isolated ? '（隔离）' : ''} 下的 <code>sessions/</code>。恢复对话走官方 Web 或 <code>dsh-community-tui --resume &lt;id&gt;</code>。本页不另建 session 目录。</p>
      ${searchBar}
-     ${rows}
+     ${tableHtml}
      <div class="row">
        <button data-go="official">打开官方 Web</button>
        <button class="secondary" data-go="sessions">刷新列表</button>
      </div>
      <script nonce="${nonce}">
+       ${COPY_FEEDBACK_JS}
        document.querySelectorAll('[data-resume]').forEach((btn) => {
          btn.addEventListener('click', () => {
            const id = btn.getAttribute('data-resume')
-           if (id) window.dshCommunity?.copyText('dsh-community-tui --resume ' + id)
+           if (id) copyWithFeedback(btn, 'dsh-community-tui --resume ' + id)
          })
        })
        document.querySelectorAll('[data-copy-id]').forEach((btn) => {
          btn.addEventListener('click', () => {
            const id = btn.getAttribute('data-copy-id')
-           if (id) window.dshCommunity?.copyText(id)
+           if (id) copyWithFeedback(btn, id)
          })
        })
        const filterInput = document.getElementById('session-filter')
-       filterInput?.addEventListener('input', () => {
-         const q = (filterInput.value ?? '').trim().toLowerCase()
-         document.querySelectorAll('tr[data-session-row]').forEach((tr) => {
+       const sessionsTable = document.getElementById('sessions-table')
+       const emptyFilter = document.getElementById('session-filter-empty')
+       const applySessionFilter = () => {
+         const q = (filterInput?.value ?? '').trim().toLowerCase()
+         const allRows = document.querySelectorAll('tr[data-session-row]')
+         let visible = 0
+         allRows.forEach((tr) => {
            const blob = tr.getAttribute('data-session-row') ?? ''
-           tr.classList.toggle('hidden-row', q.length > 0 && !blob.includes(q))
+           const hidden = q.length > 0 && !blob.includes(q)
+           tr.classList.toggle('hidden-row', hidden)
+           if (!hidden) visible += 1
          })
+         const noMatch = allRows.length > 0 && visible === 0
+         sessionsTable?.classList.toggle('hidden-row', noMatch)
+         emptyFilter?.classList.toggle('hidden-row', !noMatch)
+       }
+       filterInput?.addEventListener('input', applySessionFilter)
+       document.getElementById('session-filter-clear')?.addEventListener('click', () => {
+         if (!filterInput) return
+         filterInput.value = ''
+         applySessionFilter()
+         filterInput.focus()
        })
      </script>`,
+    'sessions',
   )
 }
 
@@ -373,14 +446,19 @@ export function renderRuntimePage(model: RuntimePageModel): string {
      <div class="row">
        <button class="secondary" data-go="official">返回会话</button>
      </div>`,
+    'runtime',
   )
 }
 
 export function renderSettingsPage(model: SettingsPageModel): string {
+  const savedBanner = model.saved === true
+    ? '<pre class="ok" id="settings-saved-notice">已保存桌面设置。</pre>'
+    : ''
   return shellDocument(
     `${model.product} · 设置`,
     (nonce) => `<h1>Desktop 设置</h1>
      <p>只改壳自己的偏好。官方 session 仍在 <code>${escapeHtml(model.officialHome)}</code>${model.isolated ? '（独立数据目录）' : ''}。</p>
+     ${savedBanner}
      <label class="opt">
        <input type="checkbox" id="hideToTray" ${model.hideToTray ? 'checked' : ''} />
        <span>关窗藏到托盘，官方 <code>dsh web</code> 继续跑</span>
@@ -404,6 +482,7 @@ export function renderSettingsPage(model: SettingsPageModel): string {
          })
        })
      </script>`,
+    'settings',
   )
 }
 
@@ -415,7 +494,7 @@ export function renderMarketplacePage(model: MarketplacePageModel): string {
       : '目录不可用'
   const errorBlock = model.error === undefined
     ? ''
-    : `<pre>${escapeHtml(model.error)}</pre>`
+    : `<pre class="error">${escapeHtml(model.error)}</pre>`
   const busy = model.busy
   const busyBlock = busy === undefined
     ? ''
@@ -516,6 +595,7 @@ export function renderMarketplacePage(model: MarketplacePageModel): string {
          })
        })
      </script>`,
+    'marketplace',
   )
 }
 
@@ -537,21 +617,38 @@ export function renderDiagnosticsPage(model: DiagnosticsPageModel): string {
        <button class="secondary" data-go="official">返回会话</button>
      </div>
      <script nonce="${nonce}">
+       ${COPY_FEEDBACK_JS}
        document.getElementById('retry')?.addEventListener('click', () => {
          window.dshCommunity?.restartHost()
        })
-       document.getElementById('copy')?.addEventListener('click', () => {
+       const copyBtn = document.getElementById('copy')
+       copyBtn?.addEventListener('click', () => {
          const el = document.getElementById('copy-logs-data')
          const text = el && 'content' in el ? (el.content.textContent ?? '') : (el?.textContent ?? '')
-         window.dshCommunity?.copyText(text)
+         copyWithFeedback(copyBtn, text)
        })
      </script>`,
+    'diagnostics',
   )
 }
 
 function formatRemoteTime(ts: number | undefined): string {
   if (ts === undefined || !Number.isFinite(ts) || ts <= 0) return '—'
-  return `${new Date(ts).toISOString().replace('T', ' ').slice(0, 19)}Z`
+  const d = new Date(ts)
+  const pad = (n: number): string => String(n).padStart(2, '0')
+  const local = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+  const offsetMin = -d.getTimezoneOffset()
+  const sign = offsetMin >= 0 ? '+' : '-'
+  const absMin = Math.abs(offsetMin)
+  const hh = pad(Math.floor(absMin / 60))
+  const mm = pad(absMin % 60)
+  const tz = mm === '00' ? `UTC${sign}${Number(hh)}` : `UTC${sign}${hh}:${mm}`
+  const diffMs = ts - Date.now()
+  if (diffMs > 0 && diffMs < 86_400_000) {
+    const mins = Math.max(1, Math.ceil(diffMs / 60_000))
+    return `${local} (${tz}, ${mins} 分钟后)`
+  }
+  return `${local} (${tz})`
 }
 
 function remotePhaseBadge(phase: DesktopRemotePhase): string {
@@ -610,7 +707,7 @@ export function renderRemotePage(model: RemotePageModel): string {
 
   const errorBanner = model.error === undefined
     ? ''
-    : `<pre>${escapeHtml(model.error)}</pre>`
+    : `<pre class="error">${escapeHtml(model.error)}</pre>`
   const noticeBanner = model.notice === undefined
     ? ''
     : `<pre class="ok">${escapeHtml(model.notice)}</pre>`
@@ -764,7 +861,7 @@ export function renderRemotePage(model: RemotePageModel): string {
       <div class="field">
         <label for="listen-host-select">监听地址 (listenHost)</label>
         <select id="listen-host-select">${hostOptions}</select>
-        <input type="text" class="custom-host-input" id="listen-host-custom" value="${escapeHtml(customHostValue)}" placeholder="自定义 IP / 主机名（选自定义时生效）"${isCustomHost ? '' : ' disabled'} />
+        <input type="text" class="custom-host-input${isCustomHost ? '' : ' hidden-row'}" id="listen-host-custom" value="${escapeHtml(customHostValue)}" placeholder="自定义 IP / 主机名（选自定义时生效）"${isCustomHost ? '' : ' disabled'} />
       </div>
       <div class="field">
         <label for="remote-port">监听端口（0 = 自动分配）</label>
@@ -817,6 +914,7 @@ export function renderRemotePage(model: RemotePageModel): string {
      ${configBlock}
      ${logsBlock}
      <script nonce="${nonce}">
+       ${COPY_FEEDBACK_JS}
        const readTpl = (id) => {
          const el = document.getElementById(id)
          if (!el) return ''
@@ -824,9 +922,14 @@ export function renderRemotePage(model: RemotePageModel): string {
        }
        const hostSelect = document.getElementById('listen-host-select')
        const hostCustom = document.getElementById('listen-host-custom')
-       hostSelect?.addEventListener('change', () => {
-         if (hostCustom) hostCustom.disabled = hostSelect.value !== '__custom__'
-       })
+       const syncCustomHost = () => {
+         if (!hostCustom) return
+         const custom = hostSelect?.value === '__custom__'
+         hostCustom.disabled = !custom
+         hostCustom.classList.toggle('hidden-row', !custom)
+       }
+       syncCustomHost()
+       hostSelect?.addEventListener('change', syncCustomHost)
        document.getElementById('remote-start')?.addEventListener('click', () => {
          const listenHost = hostSelect?.value === '__custom__'
            ? (hostCustom?.value ?? '')
@@ -849,17 +952,21 @@ export function renderRemotePage(model: RemotePageModel): string {
        document.getElementById('remote-new-pairing')?.addEventListener('click', () => {
          window.dshCommunity?.remoteNewPairing()
        })
-       document.getElementById('copy-pairing-json-btn')?.addEventListener('click', () => {
-         window.dshCommunity?.copyText(readTpl('copy-pairing-json'))
+       const copyPairingBtn = document.getElementById('copy-pairing-json-btn')
+       copyPairingBtn?.addEventListener('click', () => {
+         copyWithFeedback(copyPairingBtn, readTpl('copy-pairing-json'))
        })
-       document.getElementById('copy-deeplink-btn')?.addEventListener('click', () => {
-         window.dshCommunity?.copyText(readTpl('copy-deeplink'))
+       const copyDeeplinkBtn = document.getElementById('copy-deeplink-btn')
+       copyDeeplinkBtn?.addEventListener('click', () => {
+         copyWithFeedback(copyDeeplinkBtn, readTpl('copy-deeplink'))
        })
-       document.getElementById('copy-host-fp-btn')?.addEventListener('click', () => {
-         window.dshCommunity?.copyText(readTpl('copy-host-fingerprint'))
+       const copyHostFpBtn = document.getElementById('copy-host-fp-btn')
+       copyHostFpBtn?.addEventListener('click', () => {
+         copyWithFeedback(copyHostFpBtn, readTpl('copy-host-fingerprint'))
        })
-       document.getElementById('copy-remote-logs-btn')?.addEventListener('click', () => {
-         window.dshCommunity?.copyText(readTpl('copy-remote-logs'))
+       const copyRemoteLogsBtn = document.getElementById('copy-remote-logs-btn')
+       copyRemoteLogsBtn?.addEventListener('click', () => {
+         copyWithFeedback(copyRemoteLogsBtn, readTpl('copy-remote-logs'))
        })
        document.querySelectorAll('[data-confirm-candidate]').forEach((btn) => {
          btn.addEventListener('click', () => {
@@ -880,5 +987,6 @@ export function renderRemotePage(model: RemotePageModel): string {
          })
        })
      </script>`,
+    'remote',
   )
 }

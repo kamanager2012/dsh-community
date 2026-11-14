@@ -337,4 +337,88 @@ describe('shell pages', () => {
     expect(remoteHtml).toContain('id="copy-host-fp-btn"')
     expect(remoteHtml).not.toMatch(/style="/i)
   })
+
+  it('highlights active nav tab, surfaces copy/save feedback, wraps errors, and shows local remote timestamps', () => {
+    const settingsHtml = renderSettingsPage({
+      product: 'DSH Community',
+      hideToTray: true,
+      isolated: false,
+      envIsolated: false,
+      officialHome: '/tmp/.dsh',
+      isolatedHome: '/tmp/iso',
+      saved: true,
+    })
+    expect(settingsHtml).toContain('data-go="settings" data-active="true"')
+    expect(settingsHtml).toContain('id="settings-saved-notice"')
+    expect(settingsHtml).not.toMatch(/style="/i)
+
+    const sessionsHtml = renderOfficialSessionsPage({
+      product: 'DSH Community',
+      officialHome: '/tmp/.dsh',
+      isolated: false,
+      sessions: [
+        {
+          id: 'sess-ux-1',
+          projectKey: 'proj',
+          updatedAt: '2026-11-14 01:00:00 UTC',
+          title: 'UX Check',
+        },
+      ],
+    })
+    expect(sessionsHtml).toContain('data-go="sessions" data-active="true"')
+    expect(sessionsHtml).toContain('copyWithFeedback')
+    expect(sessionsHtml).toContain('id="session-filter-empty"')
+    expect(sessionsHtml).toContain('id="session-filter-clear"')
+    expect(sessionsHtml).toContain('class="table-actions"')
+    expect(sessionsHtml).not.toMatch(/style="/i)
+
+    const diagHtml = renderDiagnosticsPage({
+      product: 'DSH Community',
+      officialHome: '/tmp/.dsh',
+      isolated: false,
+      origin: 'http://127.0.0.1:4310',
+      phase: 'ready',
+      pid: '1234',
+      logs: 'ok log',
+    })
+    expect(diagHtml).toContain('data-go="diagnostics" data-active="true"')
+    expect(diagHtml).toContain('copyWithFeedback')
+    expect(diagHtml).not.toMatch(/style="/i)
+
+    const remoteErrorHtml = renderRemotePage({
+      product: 'DSH Community',
+      phase: 'error',
+      apiKeyPresent: true,
+      dshHome: '/tmp/.dsh',
+      configDir: '/tmp/remote',
+      isolated: false,
+      pid: '—',
+      hostFingerprint: 'fp-1234',
+      lanCandidates: ['192.168.1.2'],
+      effectiveListenHost: '127.0.0.1',
+      settings: { listenHost: '', port: 0, enableMdns: true, relayUrl: '', signalingUrl: '', stunUrls: '' },
+      error: 'https://very-long-url.example.com/failed',
+      relayUrl: '',
+      relayRoomId: '',
+      signalingUrl: '',
+      signalingRoomId: '',
+      stunUrls: [],
+      activeConnections: 0,
+      pairing: {
+        deepLink: 'dsh-remote://pair?fp=1',
+        pairingJson: '{}',
+        qrSvg: '<svg viewBox="0 0 10 10"></svg>',
+        expiresAt: Date.now() + 600_000,
+      },
+      pendingCandidates: [],
+      devices: [],
+      logs: '',
+    })
+    expect(remoteErrorHtml).toContain('data-go="remote" data-active="true"')
+    expect(remoteErrorHtml).toContain('<pre class="error">https://very-long-url.example.com/failed</pre>')
+    expect(remoteErrorHtml).toContain('(UTC')
+    expect(remoteErrorHtml).toContain('class="custom-host-input hidden-row"')
+    expect(remoteErrorHtml).toContain('copyWithFeedback')
+    expect(remoteErrorHtml).not.toMatch(/style="/i)
+  })
 })

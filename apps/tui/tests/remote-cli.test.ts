@@ -474,4 +474,27 @@ async function spawnCliUntilReadyJson<T>(
       await new Promise<void>((r) => server.close(() => r()))
     }
   })
+
+  it('prints help and exits 0 for remote subcommand --help/-h without throwing 未知参数', async () => {
+    for (const argv of [
+      ['start', '--help'],
+      ['start', '-h'],
+      ['relay', '--help'],
+      ['signaling', '-h'],
+      ['devices', '--help'],
+      ['status', '--help'],
+      ['revoke', '--help'],
+    ]) {
+      const io = captureOutputs()
+      const code = await runRemoteCommand(argv, {})
+      expect(code, argv.join(' ')).toBe(0)
+      expect(io.stdout(), argv.join(' ')).toBe(COMMUNITY_REMOTE_HELP)
+      expect(io.stderr(), argv.join(' ')).toBe('')
+    }
+
+    const badIo = captureOutputs()
+    const badCode = await runRemoteCommand(['start', '--unknown-option'], {})
+    expect(badCode).toBe(2)
+    expect(badIo.stderr()).toContain('未知参数: --unknown-option')
+  })
 })

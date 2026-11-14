@@ -5,7 +5,7 @@
 
 import { spawnSync } from 'node:child_process'
 import { readSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { homedir } from 'node:os'
 import {
@@ -32,7 +32,7 @@ import {
   tuiLaunchEnv,
 } from './launch.js'
 import { communityClientVersion, formatClientIdentity } from './version.js'
-import { ensureCommunityTuiProfile } from './profile.js'
+import { COMMUNITY_TUI_PROFILE, ensureCommunityTuiProfile } from './profile.js'
 import { runRemoteCommand } from './remote.js'
 import { desktopSourceRequiredMessage, findPackagedDesktopExecutable } from './desktop-launch.js'
 import {
@@ -50,6 +50,8 @@ function fail(message: string, code = 2): never {
 
 function writeDoctor(): boolean {
   const install = resolveOfficialDsh({ from: import.meta.url })
+  const profileDir = join(dshHome, 'profiles', COMMUNITY_TUI_PROFILE)
+  const profileReady = !profileNeedsInstall(profileDir)
   process.stdout.write(formatPreflightReport({
     officialPackage: install.packageName,
     officialVersion: install.version,
@@ -59,7 +61,7 @@ function writeDoctor(): boolean {
     sessionCount: listOfficialSessions(officialSessionRoot(dshHome)).length,
     apiKeyPresent: officialApiKeyPresent(),
     tty: Boolean(process.stdout.isTTY),
-    profileReady: true,
+    profileReady,
   }))
   return officialApiKeyPresent()
 }
@@ -89,6 +91,10 @@ function pickResumeId(sessions: readonly OfficialSessionRef[], root: string): st
 
 const dshHome = resolveOfficialDshHome(process.env, homedir())
 const launch = parseCommunityLaunch(process.argv.slice(2))
+
+if (launch.kind === 'error') {
+  fail(launch.message)
+}
 
 if (launch.kind === 'help') {
   process.stdout.write(COMMUNITY_TUI_HELP)

@@ -38,4 +38,18 @@ describe('desktop chrome around official dsh web', () => {
     expect(html).toContain(`<style nonce="${nonce}">`)
     expect(html).toContain(`<script nonce="${nonce}">`)
   })
+
+  it('includes narrow viewport overflow safeguards for Chrome bar buttons', () => {
+    const html = renderChromePage({
+      product: 'DSH Community',
+      identity: 'DeepSeek Harness Community v0.2.2-rc.2 [Official Core: @deepseek-ai/dsh@0.2.2-rc.2]',
+      phase: 'ready',
+      isolated: false,
+      origin: 'http://127.0.0.1:4310',
+      active: 'official',
+    })
+    expect(html).toContain('@media (max-width: 880px)')
+    expect(html).toContain('min-width: 0')
+    expect(html).toContain('flex-shrink: 0')
+  })
 })

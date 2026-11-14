@@ -121,4 +121,15 @@ describe('our TUI profile', () => {
       rest: [],
     })
   })
+
+  it('rejects unknown CLI flags instead of forwarding them as an initial prompt', () => {
+    expect(parseCommunityLaunch(['--bogus-flag'])).toEqual({
+      kind: 'error',
+      message: '未知选项: --bogus-flag。运行 --help 查看可用参数。',
+    })
+    expect(parseCommunityLaunch(['-x'])).toEqual({
+      kind: 'error',
+      message: '未知选项: -x。运行 --help 查看可用参数。',
+    })
+  })
 })

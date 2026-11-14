@@ -23,6 +23,7 @@ data class UserMessageItem(
     val text: String,
     val isOptimistic: Boolean = false,
     val attachmentLabels: List<String> = emptyList(),
+    val sendError: String? = null,
 ) : ChatTimelineItem
 
 data class AssistantTurnItem(
@@ -102,18 +103,19 @@ class ChatTimelineStore {
         sessionId: String,
         prompt: String,
         attachmentNames: List<String> = emptyList(),
-    ) {
+    ): String {
         val clean = sanitizeMultiline(prompt, MAX_MESSAGE_CHARS).trim()
         val cleanAttachments = attachmentNames
             .mapNotNull { DisplayTextSanitizer.sanitizeSingleLine(it).takeIf { s -> s.isNotEmpty() } }
             .take(2)
-        if (clean.isEmpty() && cleanAttachments.isEmpty()) return
+        if (clean.isEmpty() && cleanAttachments.isEmpty()) return ""
         touchSessionLocked(sessionId)
         val list = itemsBySession.getOrPut(sessionId) { ArrayList() }
         val localSeq = (highestSeqBySession[sessionId] ?: 0L)
+        val stableId = "u-${++idSeq}"
         list.add(
             UserMessageItem(
-                stableId = "u-${++idSeq}",
+                stableId = stableId,
                 seq = localSeq,
                 text = clean,
                 isOptimistic = true,
@@ -121,6 +123,26 @@ class ChatTimelineStore {
             ),
         )
         clampSessionItemsLocked(list)
+        return stableId
+    }
+
+    @Synchronized
+    fun markOptimisticUserFailed(
+        sessionId: String,
+        optimisticId: String?,
+        reason: String,
+    ): Boolean {
+        val list = itemsBySession[sessionId] ?: return false
+        val idx = if (!optimisticId.isNullOrBlank()) {
+            list.indexOfLast { it is UserMessageItem && it.stableId == optimisticId && it.isOptimistic }
+        } else {
+            list.indexOfLast { it is UserMessageItem && it.isOptimistic }
+        }
+        if (idx < 0) return false
+        val current = list[idx] as UserMessageItem
+        val cleanReason = DisplayTextSanitizer.sanitizeSingleLine(reason).ifEmpty { "Send failed" }
+        list[idx] = current.copy(isOptimistic = false, sendError = cleanReason)
+        return true
     }
 
     @Synchronized

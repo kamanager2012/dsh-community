@@ -154,7 +154,7 @@ function parseStartFlags(args: readonly string[], defaultCwd: string): StartFlag
     else if (arg === '--new') sessionId = 'auto'
     else if (arg === '--cwd') cwd = readVal()
     else if (arg === '--json') json = true
-    else throw new Error(`未知参数: ${arg}`)
+    else handleUnknownRemoteFlag(arg)
   }
 
   return {
@@ -171,6 +171,22 @@ function parseStartFlags(args: readonly string[], defaultCwd: string): StartFlag
     cwd,
     json,
   }
+}
+
+class RemoteSubcommandHelpSignal extends Error {}
+
+function handleUnknownRemoteFlag(arg: string): never {
+  if (arg === '--help' || arg === '-h') throw new RemoteSubcommandHelpSignal()
+  throw new Error(`未知参数: ${arg}`)
+}
+
+function handleRemoteFlagParseError(err: unknown): number {
+  if (err instanceof RemoteSubcommandHelpSignal) {
+    process.stdout.write(COMMUNITY_REMOTE_HELP)
+    return 0
+  }
+  process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`)
+  return 2
 }
 
 interface RelayFlags {
@@ -209,7 +225,7 @@ function parseRelayFlags(args: readonly string[], env: NodeJS.ProcessEnv): Relay
     else if (arg === '--max-frame-bytes') maxFrameBytes = parsePositiveIntValue(readVal(), '--max-frame-bytes')
     else if (arg === '--max-fps') maxFps = parsePositiveIntValue(readVal(), '--max-fps')
     else if (arg === '--json') json = true
-    else throw new Error(`未知参数: ${arg}`)
+    else handleUnknownRemoteFlag(arg)
   }
 
   return { host, port, allowWildcard, hostSecret, maxRooms, maxFrameBytes, maxFps, json }
@@ -251,7 +267,7 @@ function parseSignalingFlags(args: readonly string[], env: NodeJS.ProcessEnv): S
     else if (arg === '--host-secret') hostSecret = readVal()
     else if (arg === '--max-rooms') maxRooms = parsePositiveIntValue(readVal(), '--max-rooms')
     else if (arg === '--json') json = true
-    else throw new Error(`未知参数: ${arg}`)
+    else handleUnknownRemoteFlag(arg)
   }
 
   return { host, port, stunHost, stunPort, allowWildcard, hostSecret, maxRooms, json }
@@ -285,7 +301,14 @@ export async function runRemoteCommand(
   explicitDshHome?: string,
 ): Promise<number> {
   const sub = args[0]
-  if (sub === undefined || sub === '-h' || sub === '--help' || sub === 'help') {
+  if (
+    sub === undefined ||
+    sub === '-h' ||
+    sub === '--help' ||
+    sub === 'help' ||
+    ((sub === 'devices' || sub === 'revoke' || sub === 'status') &&
+      args.slice(1).some((arg) => arg === '-h' || arg === '--help'))
+  ) {
     process.stdout.write(COMMUNITY_REMOTE_HELP)
     return 0
   }
@@ -441,8 +464,7 @@ export async function runRemoteCommand(
     try {
       flags = parseStartFlags(args.slice(1), process.cwd())
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`)
-      return 2
+      return handleRemoteFlagParseError(err)
     }
 
     if (!officialApiKeyPresent(env)) {
@@ -687,8 +709,7 @@ export async function runRemoteCommand(
     try {
       flags = parseRelayFlags(args.slice(1), env)
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`)
-      return 2
+      return handleRemoteFlagParseError(err)
     }
 
     const relay = new BlindRelayServer({
@@ -743,8 +764,7 @@ export async function runRemoteCommand(
     try {
       flags = parseSignalingFlags(args.slice(1), env)
     } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`)
-      return 2
+      return handleRemoteFlagParseError(err)
     }
 
     const signaling = new SelfHostedSignalingServer({
