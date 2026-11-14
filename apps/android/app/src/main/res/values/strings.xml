@@ -30,6 +30,7 @@
     <string name="action_attach">Attach</string>
     <string name="action_approve">Approve</string>
     <string name="action_reject">Reject</string>
+    <string name="action_inspect_diff">Diff</string>
     <string name="action_answer">Answer</string>
     <string name="action_send">Send</string>
     <string name="action_stop">Stop</string>

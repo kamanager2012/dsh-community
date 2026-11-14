@@ -754,7 +754,13 @@ describe('shell pages', () => {
         clean: false,
         files: [{ path: 'src/main.ts', indexStatus: ' ', workTreeStatus: 'M', untracked: false }],
         diffPath: 'src/main.ts',
-        diffText: '+const evil = "</script><img src=x onerror=alert(1)>"',
+        staged: false,
+        diffText: [
+          'diff --git a/src/main.ts b/src/main.ts',
+          '@@ -1,2 +1,2 @@',
+          '-const evil = "old"',
+          '+const evil = "</script><img src=x onerror=alert(1)>"',
+        ].join('\n'),
         truncated: false,
       },
       pendingCandidates: [],
@@ -763,7 +769,16 @@ describe('shell pages', () => {
     })
     expect(html).toContain('Codex CLI 0.169.0')
     expect(html).toContain('Claude Code 未就绪')
+    expect(html).toContain('Standalone 多引擎模式（无需 DEEPSEEK_API_KEY）')
     expect(html).toContain('data-git-inspect="codex:s-1"')
+    expect(html).toContain('data-git-scope="staged"')
+    expect(html).toContain('id="copy-remote-diff-btn"')
+    expect(html).toContain('class="diff-line diff-file-hdr"')
+    expect(html).toContain('class="diff-line diff-hunk"')
+    expect(html).toContain('class="diff-line diff-add"')
+    expect(html).toContain('class="diff-line diff-del"')
+    expect(html).toContain('diff-stat-add">+1</span>')
+    expect(html).toContain('diff-stat-del">-1</span>')
     expect(html).toContain('id="remote-engines"')
     expect(html).toContain('value="codex,claude"')
     expect(html).toContain('Git 只读变更审阅')

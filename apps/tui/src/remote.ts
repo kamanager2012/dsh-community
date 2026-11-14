@@ -308,7 +308,7 @@ async function fetchControl(url: string, init?: RequestInit): Promise<Response> 
 }
 
 export const REMOTE_REPL_COMMAND_SUMMARY =
-  'status | engines | sessions | git <sessionId> | diff <sessionId> [path] | devices | confirm <id> | revoke <deviceId> | qr | help | quit'
+  'status | engines | sessions | git <sessionId> | diff <sessionId> [path] [--staged] | devices | confirm <id> | revoke <deviceId> | qr | help | quit'
 
 export type RemoteReplAction =
   | { readonly kind: 'empty' }
@@ -316,7 +316,7 @@ export type RemoteReplAction =
   | { readonly kind: 'engines' }
   | { readonly kind: 'sessions' }
   | { readonly kind: 'git'; readonly sessionId: string }
-  | { readonly kind: 'diff'; readonly sessionId: string; readonly path?: string | undefined }
+  | { readonly kind: 'diff'; readonly sessionId: string; readonly path?: string | undefined; readonly staged?: boolean | undefined }
   | { readonly kind: 'devices' }
   | { readonly kind: 'qr' }
   | { readonly kind: 'help' }
@@ -326,6 +326,92 @@ export type RemoteReplAction =
   | { readonly kind: 'usage'; readonly usage: string }
   | { readonly kind: 'unknown'; readonly command: string }
 
+/** Formats a unified diff with ANSI color highlights when attached to a TTY. */
+export function formatColoredDiff(diffText: string, useColor: boolean): string {
+  const normalized = diffText.replaceAll('\r\n', '\n')
+  let additions = 0
+  let deletions = 0
+  const lines = normalized.split('\n')
+  for (const line of lines) {
+    if (line.startsWith('+') && !line.startsWith('+++ ')) additions += 1
+    else if (line.startsWith('-') && !line.startsWith('--- ')) deletions += 1
+  }
+  const summaryPlain = `(+${String(additions)} / -${String(deletions)} lines)`
+  const summary = useColor
+    ? `(\x1b[32m+${String(additions)}\x1b[0m / \x1b[31m-${String(deletions)}\x1b[0m lines)`
+    : summaryPlain
+  if (!useColor) {
+    return `${summary}\n${normalized}`
+  }
+  const colored = lines
+    .map((line) => {
+      if (line.startsWith('diff --git ') || line.startsWith('index ') || line.startsWith('--- ') || line.startsWith('+++ ')) {
+        return `\x1b[1;36m${line}\x1b[0m`
+      }
+      if (line.startsWith('@@ ')) {
+        return `\x1b[35m${line}\x1b[0m`
+      }
+      if (line.startsWith('+')) {
+        return `\x1b[32m${line}\x1b[0m`
+      }
+      if (line.startsWith('-')) {
+        return `\x1b[31m${line}\x1b[0m`
+      }
+      return line
+    })
+    .join('\n')
+  return `${summary}\n${colored}`
+}
+
+/** Formats `/git/status` JSON into a human-readable branch & changed-files overview. */
+export function formatGitStatusSummary(rawText: string, useColor: boolean): string {
+  let parsed: {
+    branch?: unknown
+    repoRoot?: unknown
+    ahead?: unknown
+    behind?: unknown
+    clean?: unknown
+    files?: unknown
+    error?: unknown
+  }
+  try {
+    parsed = JSON.parse(rawText) as typeof parsed
+  } catch {
+    return rawText
+  }
+  if (typeof parsed.error === 'string' && parsed.error.length > 0) {
+    return useColor ? `\x1b[31m${parsed.error}\x1b[0m` : parsed.error
+  }
+  const branch = typeof parsed.branch === 'string' ? parsed.branch : 'HEAD'
+  const repoRoot = typeof parsed.repoRoot === 'string' ? parsed.repoRoot : ''
+  const ahead = typeof parsed.ahead === 'number' ? parsed.ahead : 0
+  const behind = typeof parsed.behind === 'number' ? parsed.behind : 0
+  const files = Array.isArray(parsed.files) ? parsed.files : []
+  const header = `Branch: ${branch} (↑${String(ahead)} ↓${String(behind)})${repoRoot ? ` · ${repoRoot}` : ''}`
+  if (files.length === 0) {
+    return `${header}\n  工作区干净，暂无未提交改动`
+  }
+  const rows = files.slice(0, 40).map((f) => {
+    const rec = (typeof f === 'object' && f !== null ? f : {}) as {
+      path?: unknown
+      indexStatus?: unknown
+      workTreeStatus?: unknown
+      untracked?: unknown
+    }
+    const rawPath = typeof rec.path === 'string' ? rec.path : '?'
+    const badge = rec.untracked === true
+      ? '?'
+      : `${typeof rec.indexStatus === 'string' ? rec.indexStatus : ''}${typeof rec.workTreeStatus === 'string' ? rec.workTreeStatus : ''}`.trim() || 'M'
+    if (!useColor) return `  [${badge}] ${rawPath}`
+    const color = badge === '?' ? '\x1b[33m' : badge.includes('D') ? '\x1b[31m' : '\x1b[32m'
+    return `  ${color}[${badge}]\x1b[0m ${rawPath}`
+  })
+  if (files.length > 40) {
+    rows.push(`  ... 及其他 ${String(files.length - 40)} 个文件`)
+  }
+  return `${header} · 变更 ${String(files.length)} 个文件:\n${rows.join('\n')}`
+}
+
 /** Parses a single line entered into the interactive `remote start` TTY control REPL. */
 export function parseRemoteReplLine(line: string): RemoteReplAction {
   const trimmed = line.trim()
@@ -333,7 +419,6 @@ export function parseRemoteReplLine(line: string): RemoteReplAction {
   const parts = trimmed.split(/\s+/)
   const cmd = parts[0] ?? ''
   const arg = parts[1]
-  const arg2 = parts[2]
   switch (cmd) {
     case 'confirm':
       return arg ? { kind: 'confirm', candidateId: arg } : { kind: 'usage', usage: '用法: confirm <candidateId>' }
@@ -341,10 +426,21 @@ export function parseRemoteReplLine(line: string): RemoteReplAction {
       return arg ? { kind: 'revoke', deviceId: arg } : { kind: 'usage', usage: '用法: revoke <deviceId>' }
     case 'git':
       return arg ? { kind: 'git', sessionId: arg } : { kind: 'usage', usage: '用法: git <sessionId>' }
-    case 'diff':
-      return arg
-        ? { kind: 'diff', sessionId: arg, ...(arg2 ? { path: arg2 } : {}) }
-        : { kind: 'usage', usage: '用法: diff <sessionId> [path]' }
+    case 'diff': {
+      if (!arg) return { kind: 'usage', usage: '用法: diff <sessionId> [path] [--staged]' }
+      let path: string | undefined
+      let staged = false
+      for (const token of parts.slice(2)) {
+        if (token === '--staged') staged = true
+        else if (path === undefined) path = token
+      }
+      return {
+        kind: 'diff',
+        sessionId: arg,
+        ...(path !== undefined ? { path } : {}),
+        ...(staged ? { staged: true } : {}),
+      }
+    }
     case 'engines':
       return { kind: 'engines' }
     case 'devices':
@@ -820,21 +916,29 @@ export async function runRemoteCommand(
                 `${controlUrl}/git/status?sessionId=${encodeURIComponent(action.sessionId)}`,
                 { headers: { authorization: `Bearer ${controlToken}` } },
               )
-              process.stdout.write(`${await res.text()}\n`)
+              const body = await res.text()
+              process.stdout.write(`${formatGitStatusSummary(body, Boolean(process.stdout.isTTY))}\n`)
               return
             }
             case 'diff': {
               const qs = new URLSearchParams({ sessionId: action.sessionId })
               if (action.path) qs.set('path', action.path)
+              if (action.staged) qs.set('staged', '1')
               const res = await fetchControl(
                 `${controlUrl}/git/diff?${qs.toString()}`,
                 { headers: { authorization: `Bearer ${controlToken}` } },
               )
               const text = await res.text()
+              const useColor = Boolean(process.stdout.isTTY)
               try {
-                const parsed = JSON.parse(text) as { branch?: string; diff?: string; error?: string }
+                const parsed = JSON.parse(text) as { branch?: string; diff?: string; staged?: boolean; truncated?: boolean; error?: string }
                 if (typeof parsed.diff === 'string') {
-                  process.stdout.write(`=== ${parsed.branch ?? 'git'} diff ===\n${parsed.diff}\n`)
+                  const scopeLabel = parsed.staged ? 'staged diff' : 'diff'
+                  const truncLabel = parsed.truncated ? ' [truncated]' : ''
+                  const body = parsed.diff.trim()
+                    ? formatColoredDiff(parsed.diff, useColor)
+                    : '（当前筛选范围无文本 Diff）'
+                  process.stdout.write(`=== ${parsed.branch ?? 'git'} ${scopeLabel}${truncLabel} ===\n${body}\n`)
                 } else {
                   process.stdout.write(`${text}\n`)
                 }

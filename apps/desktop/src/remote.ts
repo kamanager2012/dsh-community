@@ -65,6 +65,7 @@ export interface DesktopGitPreviewView {
   readonly clean: boolean
   readonly files: readonly DesktopGitFileView[]
   readonly diffPath?: string | undefined
+  readonly staged?: boolean | undefined
   readonly diffText?: string | undefined
   readonly truncated?: boolean | undefined
   readonly error?: string | undefined
@@ -1150,6 +1151,7 @@ export class DesktopRemoteController {
         clean: status.clean === true,
         files,
         ...(parsed.path !== undefined ? { diffPath: parsed.path } : {}),
+        ...(parsed.staged ? { staged: true } : { staged: false }),
         diffText: typeof diffBody.diff === 'string' ? diffBody.diff : '',
         truncated: diffBody.truncated === true,
       }

@@ -549,8 +549,14 @@ describe('desktop remote controller & validators', () => {
       expect(snap.phase).toBe('running')
       expect(snap.engines?.find((e) => e.id === 'codex')?.available).toBe(true)
       expect(snap.gitPreview?.branch).toBe('feat/test')
+      expect(snap.gitPreview?.staged).toBe(false)
       expect(snap.gitPreview?.files[0]?.path).toBe('src/index.ts')
       expect(snap.gitPreview?.diffText).toContain('+export const ok = true')
+
+      await controller.inspectSessionGit({ sessionId: 'codex:mock-1', path: 'src/index.ts', staged: true })
+      const stagedSnap = await controller.snapshot({ refreshLive: false })
+      expect(stagedSnap.gitPreview?.staged).toBe(true)
+      expect(stagedSnap.gitPreview?.diffPath).toBe('src/index.ts')
 
       await controller.inspectSessionGit({ clear: true })
       const cleared = await controller.snapshot({ refreshLive: false })

@@ -11,6 +11,8 @@ import {
   COMMUNITY_REMOTE_HELP,
   composeRemoteHostPatchYaml,
   detectLanIpv4Candidates,
+  formatColoredDiff,
+  formatGitStatusSummary,
   formatPairingQrBlock,
   parseRemoteReplLine,
   REMOTE_REPL_COMMAND_SUMMARY,
@@ -582,12 +584,47 @@ async function spawnCliUntilReadyJson<T>(
     expect(parseRemoteReplLine('engines')).toEqual({ kind: 'engines' })
     expect(parseRemoteReplLine('git')).toEqual({ kind: 'usage', usage: '用法: git <sessionId>' })
     expect(parseRemoteReplLine('git codex:s1')).toEqual({ kind: 'git', sessionId: 'codex:s1' })
-    expect(parseRemoteReplLine('diff')).toEqual({ kind: 'usage', usage: '用法: diff <sessionId> [path]' })
+    expect(parseRemoteReplLine('diff')).toEqual({ kind: 'usage', usage: '用法: diff <sessionId> [path] [--staged]' })
     expect(parseRemoteReplLine('diff codex:s1 src/app.ts')).toEqual({
       kind: 'diff',
       sessionId: 'codex:s1',
       path: 'src/app.ts',
     })
+    expect(parseRemoteReplLine('diff codex:s1 --staged')).toEqual({
+      kind: 'diff',
+      sessionId: 'codex:s1',
+      staged: true,
+    })
+    expect(parseRemoteReplLine('diff codex:s1 src/app.ts --staged')).toEqual({
+      kind: 'diff',
+      sessionId: 'codex:s1',
+      path: 'src/app.ts',
+      staged: true,
+    })
+
+    const coloredDiff = formatColoredDiff(
+      'diff --git a/a.ts b/a.ts\n@@ -1 +1 @@\n-old\n+new\n',
+      true,
+    )
+    expect(coloredDiff).toContain('\x1b[1;36mdiff --git')
+    expect(coloredDiff).toContain('\x1b[32m+new\x1b[0m')
+    expect(coloredDiff).toContain('\x1b[31m-old\x1b[0m')
+    const plainDiff = formatColoredDiff('+a\n-b\n', false)
+    expect(plainDiff).toContain('(+1 / -1 lines)')
+    expect(plainDiff).not.toContain('\x1b[')
+
+    const statusSummary = formatGitStatusSummary(
+      JSON.stringify({
+        branch: 'feat/ux',
+        repoRoot: '/tmp/repo',
+        ahead: 1,
+        behind: 0,
+        files: [{ path: 'src/main.ts', indexStatus: ' ', workTreeStatus: 'M', untracked: false }],
+      }),
+      false,
+    )
+    expect(statusSummary).toContain('Branch: feat/ux (↑1 ↓0)')
+    expect(statusSummary).toContain('[M] src/main.ts')
     expect(parseRemoteReplLine('confirm')).toEqual({ kind: 'usage', usage: '用法: confirm <candidateId>' })
     expect(parseRemoteReplLine('confirm cand-42')).toEqual({ kind: 'confirm', candidateId: 'cand-42' })
     expect(parseRemoteReplLine('revoke')).toEqual({ kind: 'usage', usage: '用法: revoke <deviceId>' })
