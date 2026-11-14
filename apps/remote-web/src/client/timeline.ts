@@ -23,6 +23,7 @@ export interface SessionStoreState {
   highestSeq: number
   oldestSeq: number | null
   hasMoreHistory: boolean
+  historyHydrated?: boolean | undefined
   unreadCount: number
 }
 
@@ -172,6 +173,7 @@ export class SessionTimelineState implements SessionStoreState {
   highestSeq = 0
   oldestSeq: number | null = null
   hasMoreHistory = false
+  historyHydrated = false
   unreadCount = 0
   private seenKeys = new Set<string>()
   private rawEvents = new Map<string, OfficialSessionEvent>()
@@ -318,10 +320,8 @@ export class SessionTimelineState implements SessionStoreState {
       return matchedTool ? { ...approval, args: matchedTool.argumentsText } : approval
     })
     this.pendingQuestions = [...snap.pendingQuestions]
-    if (snap.oldestSeq !== undefined && snap.oldestSeq !== null) this.oldestSeq = snap.oldestSeq
-    if (snap.latestSeq !== undefined && snap.latestSeq !== null && snap.latestSeq > this.highestSeq) {
-      this.highestSeq = snap.latestSeq
-    }
+    // Preserve materialized event cursors (oldestSeq / highestSeq); live snapshots must never
+    // synthesize loaded boundaries ahead of events actually hydrated on the client.
     if (snap.hasMoreHistory !== undefined) this.hasMoreHistory = snap.hasMoreHistory
   }
 
@@ -443,6 +443,7 @@ export class SessionTimelineState implements SessionStoreState {
     }
     this.hasMoreHistory = hasMore
     if (oldestSeq !== null) this.oldestSeq = oldestSeq
+    this.historyHydrated = true
   }
 
   applyResetRecoveryHistory(
@@ -481,6 +482,7 @@ export class SessionTimelineState implements SessionStoreState {
     if (oldestSeq !== null) {
       this.oldestSeq = oldestSeq
     }
+    this.historyHydrated = true
   }
 
   resolveApprovalLocally(callId: string): void {

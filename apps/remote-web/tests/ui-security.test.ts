@@ -600,7 +600,7 @@ describe('remote-web pairing security, safe Markdown/Diff DOM, and CSP hygiene',
     expect(mainSrc).toContain('attachmentsBySession')
     expect(mainSrc).not.toContain('pendingAttachments')
     expect(mainSrc).toContain('qrScanGeneration')
-    expect(mainSrc).toContain('headTrimmedOnInitialAttach')
+    expect(mainSrc).toContain('needsInitialBackfill')
     expect(mainSrc).toContain('formatApprovalArgsText')
     expect(mainSrc).toContain('action-args')
     expect(mainSrc).toContain('action-context')
@@ -734,5 +734,61 @@ describe('remote-web pairing security, safe Markdown/Diff DOM, and CSP hygiene',
     expect(activatedPromise).toBeDefined()
     await activatedPromise
     expect([...storedCaches].sort()).toEqual(['dsh-remote-web-shell-v1', 'other-app-offline-v2'])
+  })
+
+  it('distinguishes live cursors from hydrated history and guards workspace refresh/attach against host switches', () => {
+    const tl = new SessionTimelineState('sess-live-cursor')
+    tl.applyEvent({
+      seq: 100,
+      type: 'assistant/chunk',
+      data: { text: 'Live tail chunk' },
+    })
+    expect(tl.historyHydrated).toBe(false)
+    expect(tl.highestSeq).toBe(100)
+    expect(tl.oldestSeq).toBe(100)
+
+    // Receiving a snapshot claiming oldestSeq=1 on initial attach must NOT clobber oldestSeq=100
+    // or mark historyHydrated true before history 1-99 is actually loaded.
+    tl.applyLiveStateSnapshot({
+      status: 'running',
+      todos: [],
+      pendingApprovals: [],
+      pendingQuestions: [],
+      oldestSeq: 1,
+      latestSeq: 100,
+      hasMoreHistory: true,
+    })
+    expect(tl.historyHydrated).toBe(false)
+    expect(tl.oldestSeq).toBe(100)
+
+    tl.applyResetRecoveryHistory(
+      [
+        {
+          seq: 21,
+          type: 'user/message',
+          data: { message: { role: 'user', content: 'Earlier prompt' } },
+        },
+      ],
+      true,
+      21,
+    )
+    expect(tl.historyHydrated).toBe(true)
+    expect(tl.oldestSeq).toBe(21)
+
+    const mainSrc = readFileSync(join(APP_ROOT, 'src/main.ts'), 'utf8')
+    const refreshBlock = mainSrc.slice(
+      mainSrc.indexOf('async function refreshWorkspaceData()'),
+      mainSrc.indexOf('async function attachActiveSession('),
+    )
+    expect(refreshBlock).toContain('const captureResetGen = hostResetGeneration')
+    expect((refreshBlock.match(/captureResetGen !== hostResetGeneration/g) ?? []).length).toBeGreaterThanOrEqual(2)
+
+    const attachBlock = mainSrc.slice(
+      mainSrc.indexOf('async function attachActiveSession('),
+      mainSrc.indexOf('async function loadOlderHistory('),
+    )
+    expect(attachBlock).toContain('const wasHydrated = tl.historyHydrated')
+    expect(attachBlock).toContain('const afterSeq = wasHydrated && tl.highestSeq > 0 ? tl.highestSeq : undefined')
+    expect(attachBlock).toContain('captureResetGen !== hostResetGeneration')
   })
 })

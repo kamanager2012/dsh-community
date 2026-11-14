@@ -127,6 +127,7 @@ let toastTimer: ReturnType<typeof setTimeout> | undefined = undefined
 let lastComposerRenderKey = ''
 let gitReviewGeneration = 0
 let hostResetGeneration = 0
+let attachGeneration = 0
 const pendingSubmitIdempotencyBySession = new Map<
   string,
   { readonly key: string; readonly signature: string }
@@ -198,6 +199,7 @@ function resetHostScopedState(nextHostFingerprint?: string): void {
   lastComposerRenderKey = ''
   gitReviewGeneration += 1
   hostResetGeneration += 1
+  attachGeneration += 1
   pendingSubmitIdempotencyBySession.clear()
 }
 
@@ -278,10 +280,12 @@ async function refreshWorkspaceData(): Promise<void> {
   if (connectedFp && connectedFp !== state.activeHostFingerprint) {
     resetHostScopedState(connectedFp)
   }
+  const captureResetGen = hostResetGeneration
   const [enginesRes, sessionsRes] = await Promise.allSettled([
     client.listEngines(),
     client.listSessions(),
   ])
+  if (captureResetGen !== hostResetGeneration || client.getStatus() !== 'active') return
   if (enginesRes.status === 'fulfilled') {
     state.engines = enginesRes.value
   }
@@ -300,7 +304,9 @@ async function refreshWorkspaceData(): Promise<void> {
       state.activeSessionId = state.sessions[0]?.id
     }
   }
-  state.savedHosts = await keyStore.listTrustedHosts()
+  const savedHosts = await keyStore.listTrustedHosts()
+  if (captureResetGen !== hostResetGeneration || client.getStatus() !== 'active') return
+  state.savedHosts = savedHosts
   if (state.activeSessionId) {
     await attachActiveSession(state.activeSessionId)
   } else {
@@ -315,9 +321,17 @@ async function attachActiveSession(sessionId: string): Promise<void> {
   renderApp()
 
   if (client.getStatus() !== 'active') return
+  const captureResetGen = hostResetGeneration
+  const captureAttachGen = ++attachGeneration
+  const isAttachCurrent = (): boolean =>
+    captureResetGen === hostResetGeneration &&
+    captureAttachGen === attachGeneration &&
+    state.activeSessionId === sessionId
   try {
-    const afterSeq = tl.highestSeq > 0 ? tl.highestSeq : undefined
+    const wasHydrated = tl.historyHydrated
+    const afterSeq = wasHydrated && tl.highestSeq > 0 ? tl.highestSeq : undefined
     const attached = await client.attachSession(sessionId, afterSeq)
+    if (captureResetGen !== hostResetGeneration) return
     tl.applyLiveStateSnapshot(attached.liveState)
     if (attached.kind === 'events') {
       let minAttachedSeq: number | undefined
@@ -328,25 +342,35 @@ async function attachActiveSession(sessionId: string): Promise<void> {
         tl.applyEvent(ev, { markUnread: false })
       }
       const snapOldest = attached.liveState?.oldestSeq ?? null
-      const headTrimmedOnInitialAttach =
-        afterSeq === undefined &&
-        attached.liveState?.hasMoreHistory === true &&
+      const needsResetHistory =
+        (!wasHydrated && attached.events.length === 0) ||
+        (tl.items.length === 0 && (attached.liveState?.hasMoreHistory || afterSeq === undefined))
+      const needsInitialBackfill =
+        !wasHydrated &&
         minAttachedSeq !== undefined &&
-        (snapOldest === null || minAttachedSeq > snapOldest)
-      if (tl.items.length === 0 && (attached.liveState?.hasMoreHistory || afterSeq === undefined)) {
+        (attached.liveState?.hasMoreHistory === true ||
+          (snapOldest !== null && minAttachedSeq > snapOldest))
+      if (needsResetHistory) {
         const hist = await client.getSessionHistory(sessionId, { limit: 80 })
+        if (captureResetGen !== hostResetGeneration) return
         tl.applyResetRecoveryHistory(hist.events, hist.hasMore, hist.oldestSeq)
-      } else if (headTrimmedOnInitialAttach && minAttachedSeq !== undefined) {
-        tl.oldestSeq = minAttachedSeq
+      } else if (needsInitialBackfill && minAttachedSeq !== undefined) {
+        if (tl.oldestSeq === null || minAttachedSeq < tl.oldestSeq) {
+          tl.oldestSeq = minAttachedSeq
+        }
         const hist = await client.getSessionHistory(sessionId, {
           beforeSeq: minAttachedSeq,
           limit: 80,
         })
+        if (captureResetGen !== hostResetGeneration) return
         tl.prependHistory(hist.events, hist.hasMore, hist.oldestSeq)
+      } else {
+        tl.historyHydrated = true
       }
     } else {
       // Window reset: fetch latest durable history and merge/reconcile chronologically
       const hist = await client.getSessionHistory(sessionId, { limit: 80 })
+      if (captureResetGen !== hostResetGeneration) return
       tl.applyResetRecoveryHistory(hist.events, hist.hasMore, hist.oldestSeq)
     }
 
@@ -354,6 +378,7 @@ async function attachActiveSession(sessionId: string): Promise<void> {
       client.listModels(sessionId),
       client.listCommands(sessionId),
     ])
+    if (captureResetGen !== hostResetGeneration) return
     if (modelsRes.status === 'fulfilled') {
       state.modelsBySession.set(sessionId, modelsRes.value)
     }
@@ -361,28 +386,37 @@ async function attachActiveSession(sessionId: string): Promise<void> {
       state.commandsBySession.set(sessionId, cmdsRes.value)
     }
 
-    if (state.activeTab === 'diff') {
+    if (state.activeTab === 'diff' && isAttachCurrent()) {
       await loadGitReview(sessionId)
+      if (!isAttachCurrent()) return
     }
   } catch (err) {
+    if (!isAttachCurrent()) return
     showToast(err instanceof Error ? err.message : String(err))
   }
+  if (!isAttachCurrent()) return
   renderApp()
   scrollChatToBottom()
 }
 
 async function loadOlderHistory(): Promise<void> {
-  if (!state.activeSessionId || client.getStatus() !== 'active') return
-  const tl = getOrCreateTimeline(state.activeSessionId)
+  const sid = state.activeSessionId
+  if (!sid || client.getStatus() !== 'active') return
+  const tl = getOrCreateTimeline(sid)
   if (!tl.oldestSeq) return
+  const captureResetGen = hostResetGeneration
   try {
-    const hist = await client.getSessionHistory(state.activeSessionId, {
+    const hist = await client.getSessionHistory(sid, {
       beforeSeq: tl.oldestSeq,
       limit: 60,
     })
+    if (captureResetGen !== hostResetGeneration) return
     tl.prependHistory(hist.events, hist.hasMore, hist.oldestSeq)
-    renderTimelineArea()
+    if (state.activeSessionId === sid) {
+      renderTimelineArea()
+    }
   } catch (err) {
+    if (captureResetGen !== hostResetGeneration) return
     showToast(err instanceof Error ? err.message : String(err))
   }
 }
@@ -1498,16 +1532,20 @@ function buildQuestionCard(q: PendingQuestionSnapshot): HTMLElement {
 }
 
 async function sendQuestionAnswer(q: PendingQuestionSnapshot, answer: unknown): Promise<void> {
+  const captureResetGen = hostResetGeneration
+  const sid = q.sessionId ?? state.activeSessionId
   try {
     await client.respondQuestion(q.questionId, answer)
+    if (captureResetGen !== hostResetGeneration) return
     state.questionDrafts.delete(q.questionId)
     state.questionCustomDrafts.delete(q.questionId)
-    if (state.activeSessionId) {
-      getOrCreateTimeline(state.activeSessionId).resolveQuestionLocally(q.questionId)
+    if (sid) {
+      getOrCreateTimeline(sid).resolveQuestionLocally(q.questionId)
     }
     renderPendingActionsTray()
     renderSidebarBodyOnly()
   } catch (err) {
+    if (captureResetGen !== hostResetGeneration) return
     showToast(`Question reply failed: ${err instanceof Error ? err.message : String(err)}`)
   }
 }
