@@ -469,6 +469,7 @@ export function createBrowserWebRtcTransport(options: {
   let activePc: RTCPeerConnection | undefined = undefined
   let activeDc: RTCDataChannel | undefined = undefined
   let activeSignaling: WebSocketLike | undefined = undefined
+  let activeCleanup: (() => void) | undefined = undefined
 
   return {
     kind: 'webrtc',
@@ -499,11 +500,24 @@ export function createBrowserWebRtcTransport(options: {
 
       const cleanupLocal = (): void => {
         closed = true
+        if (activeCleanup === cleanupLocal) activeCleanup = undefined
         reassembler.reset()
         if (activeDc === dc) activeDc = undefined
         if (activePc === pc) activePc = undefined
         const sig = activeSignaling
         activeSignaling = undefined
+        dc.onopen = null
+        dc.onmessage = null
+        dc.onerror = null
+        dc.onclose = null
+        pc.onicecandidate = null
+        pc.onconnectionstatechange = null
+        if (sig) {
+          sig.onopen = null
+          sig.onmessage = null
+          sig.onerror = null
+          sig.onclose = null
+        }
         try {
           sig?.close()
         } catch {}
@@ -514,6 +528,7 @@ export function createBrowserWebRtcTransport(options: {
           pc.close()
         } catch {}
       }
+      activeCleanup = cleanupLocal
 
       return new Promise<void>((resolve, reject) => {
         let settled = false
@@ -615,6 +630,7 @@ export function createBrowserWebRtcTransport(options: {
         }
 
         dc.onerror = () => {
+          if (closed) return
           const err = new Error('WebRTC DataChannel error')
           if (!opened) {
             failConnect(err)
@@ -624,14 +640,13 @@ export function createBrowserWebRtcTransport(options: {
         }
 
         dc.onclose = () => {
+          if (closed) return
           if (!opened) {
             failConnect(new Error('WebRTC DataChannel closed before open'))
             return
           }
-          if (!closed) {
-            cleanupLocal()
-            handlers.onClose('WebRTC DataChannel closed')
-          }
+          cleanupLocal()
+          handlers.onClose('WebRTC DataChannel closed')
         }
 
         const markOpen = (): void => {
@@ -766,6 +781,10 @@ export function createBrowserWebRtcTransport(options: {
       }
     },
     close: () => {
+      if (activeCleanup) {
+        activeCleanup()
+        return
+      }
       const dc = activeDc
       const pc = activePc
       const sig = activeSignaling

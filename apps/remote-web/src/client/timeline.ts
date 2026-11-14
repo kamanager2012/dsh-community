@@ -97,6 +97,69 @@ function finalizeOpenAssistants(items: TimelineItem[]): void {
   }
 }
 
+function isChunkEventType(type: string): boolean {
+  const evtType = type.trim().toLowerCase()
+  return (
+    evtType === 'assistant/chunk' ||
+    evtType === 'assistant.chunk' ||
+    evtType === 'text-delta' ||
+    evtType === 'reasoning-delta' ||
+    evtType === 'assistant/delta' ||
+    evtType === 'thinking/delta'
+  )
+}
+
+function unwrapAssistantChunk(
+  evtType: string,
+  data: Record<string, unknown>,
+): { delta: string; isThinking: boolean } | undefined {
+  const rawChunk = data.chunk
+  let chunkRec: Record<string, unknown> | undefined
+  let chunkString: string | undefined
+  if (typeof rawChunk === 'string') {
+    chunkString = rawChunk
+  } else if (isRecord(rawChunk)) {
+    chunkRec = rawChunk
+  }
+
+  const chunkType = String(chunkRec?.type ?? chunkRec?.kind ?? '').trim().toLowerCase()
+  const topKind = String(data.kind ?? data.channel ?? '').trim().toLowerCase()
+  const isThinking =
+    evtType === 'reasoning-delta' ||
+    evtType === 'thinking/delta' ||
+    chunkType === 'reasoning-delta' ||
+    chunkType === 'reasoning' ||
+    chunkType === 'thinking-delta' ||
+    chunkType === 'thinking' ||
+    chunkType === 'thought' ||
+    topKind === 'thinking' ||
+    topKind === 'reasoning'
+
+  const pickString = (...values: unknown[]): string => {
+    for (const v of values) {
+      if (typeof v === 'string' && v.length > 0) return v
+    }
+    return ''
+  }
+
+  const delta = chunkString
+    ?? pickString(
+      chunkRec?.delta,
+      chunkRec?.text,
+      chunkRec?.thinking,
+      chunkRec?.reasoning,
+      chunkRec?.content,
+      data.delta,
+      data.text,
+      data.thinking,
+    )
+
+  if (!delta) return undefined
+  return { delta, isThinking }
+}
+
+const MAX_RETAINED_RAW_EVENTS = 4_000
+
 export class SessionTimelineState implements SessionStoreState {
   status: 'running' | 'idle' = 'idle'
   title?: string | undefined
@@ -111,6 +174,7 @@ export class SessionTimelineState implements SessionStoreState {
   hasMoreHistory = false
   unreadCount = 0
   private seenKeys = new Set<string>()
+  private rawEvents = new Map<string, OfficialSessionEvent>()
   private itemCounter = 0
 
   constructor(readonly sessionId: string) {}
@@ -120,18 +184,49 @@ export class SessionTimelineState implements SessionStoreState {
     return `${prefix}-${this.itemCounter}`
   }
 
+  private rememberRawEvent(key: string, event: OfficialSessionEvent): void {
+    this.rawEvents.set(key, event)
+    if (this.rawEvents.size <= MAX_RETAINED_RAW_EVENTS) return
+    for (const [k, ev] of this.rawEvents.entries()) {
+      if (this.rawEvents.size <= MAX_RETAINED_RAW_EVENTS) break
+      if (isChunkEventType(ev.type)) {
+        this.rawEvents.delete(k)
+      }
+    }
+    for (const k of this.rawEvents.keys()) {
+      if (this.rawEvents.size <= MAX_RETAINED_RAW_EVENTS) break
+      this.rawEvents.delete(k)
+    }
+  }
+
   markRead(): void {
     this.unreadCount = 0
   }
 
-  addOptimisticUserPrompt(text: string, attachmentLabels: readonly string[] = []): void {
+  addOptimisticUserPrompt(text: string, attachmentLabels: readonly string[] = []): string {
+    const id = this.nextId('u')
     this.items.push({
       kind: 'user',
-      id: this.nextId('u'),
+      id,
       seq: this.highestSeq,
       text,
       attachments: [...attachmentLabels],
       optimistic: true,
+    })
+    return id
+  }
+
+  removeOptimisticItem(id: string): void {
+    this.items = this.items.filter((it) => it.id !== id)
+  }
+
+  addLocalNotice(text: string, isError = false): void {
+    this.items.push({
+      kind: 'notice',
+      id: this.nextId('n'),
+      seq: this.highestSeq,
+      text,
+      isError,
     })
   }
 
@@ -151,32 +246,113 @@ export class SessionTimelineState implements SessionStoreState {
     if (snap.hasMoreHistory !== undefined) this.hasMoreHistory = snap.hasMoreHistory
   }
 
-  prependHistory(events: readonly OfficialSessionEvent[], hasMore: boolean, oldestSeq: number | null): void {
-    // Reconstruct timeline in sorted seq order using a clean fold over existing + prepended events
-    const combined = new Map<string, OfficialSessionEvent>()
-    const existingRaw: OfficialSessionEvent[] = []
-    for (const ev of events) {
-      const k = `${ev.seq}:${ev.type}`
-      if (!this.seenKeys.has(k)) {
-        combined.set(k, ev)
+  private rebuildChronological(markOpenFinalizedBeforeSeq?: number): void {
+    const optimisticTrailing = this.items.filter(
+      (it): it is Extract<TimelineItem, { kind: 'user' }> => it.kind === 'user' && it.optimistic === true,
+    )
+    const sorted = [...this.rawEvents.values()].sort((a, b) => a.seq - b.seq)
+    const savedUnread = this.unreadCount
+    const savedStatus = this.status
+    const savedTitle = this.title
+    const savedModel = this.model
+    const savedTodos = this.todos
+    const savedUsage = this.usage
+    const savedApprovals = this.pendingApprovals
+    const savedQuestions = this.pendingQuestions
+    const savedHasMore = this.hasMoreHistory
+    const savedOldest = this.oldestSeq
+
+    this.items = []
+    this.seenKeys = new Set()
+    this.highestSeq = 0
+    this.oldestSeq = null
+
+    let crossedThreshold = false
+    for (const ev of sorted) {
+      if (
+        markOpenFinalizedBeforeSeq !== undefined &&
+        !crossedThreshold &&
+        ev.seq >= markOpenFinalizedBeforeSeq
+      ) {
+        crossedThreshold = true
+        finalizeOpenAssistants(this.items)
+      }
+      this.applyEvent(ev, { markUnread: false, skipRawStore: true })
+    }
+
+    for (const opt of optimisticTrailing) {
+      const matched = this.items.some(
+        (it) => it.kind === 'user' && !it.optimistic && it.text.trim() === opt.text.trim(),
+      )
+      if (!matched) {
+        this.items.push(opt)
       }
     }
-    if (combined.size === 0) {
-      this.hasMoreHistory = hasMore
-      if (oldestSeq !== null) this.oldestSeq = oldestSeq
-      return
+
+    this.unreadCount = savedUnread
+    this.hasMoreHistory = savedHasMore
+    if (savedOldest !== null && (this.oldestSeq === null || savedOldest < this.oldestSeq)) {
+      this.oldestSeq = savedOldest
     }
-    const previousItems = this.items
-    const previousSeen = new Set(this.seenKeys)
-    const fresh = new SessionTimelineState(this.sessionId)
-    for (const ev of [...combined.values()].sort((a, b) => a.seq - b.seq)) {
-      fresh.applyEvent(ev, { markUnread: false })
+    if (sorted.length === 0) {
+      this.status = savedStatus
+      this.title = savedTitle
+      this.model = savedModel
+      this.todos = savedTodos
+      this.usage = savedUsage
+      this.pendingApprovals = savedApprovals
+      this.pendingQuestions = savedQuestions
     }
-    this.items = [...fresh.items, ...previousItems]
-    this.seenKeys = new Set([...fresh.seenKeys, ...previousSeen])
+  }
+
+  prependHistory(events: readonly OfficialSessionEvent[], hasMore: boolean, oldestSeq: number | null): void {
+    let added = false
+    for (const ev of events) {
+      const k = `${ev.seq}:${ev.type}`
+      if (!this.rawEvents.has(k)) {
+        this.rememberRawEvent(k, ev)
+        added = true
+      }
+    }
+    if (added) {
+      this.rebuildChronological()
+    }
     this.hasMoreHistory = hasMore
     if (oldestSeq !== null) this.oldestSeq = oldestSeq
-    void existingRaw
+  }
+
+  applyResetRecoveryHistory(
+    events: readonly OfficialSessionEvent[],
+    hasMore: boolean,
+    oldestSeq: number | null,
+  ): void {
+    if (events.length > 0) {
+      let minRecSeq = Number.POSITIVE_INFINITY
+      for (const ev of events) {
+        if (ev.seq < minRecSeq) minRecSeq = ev.seq
+      }
+      for (const [k, ev] of this.rawEvents.entries()) {
+        if (!hasMore || ev.seq >= minRecSeq || (isChunkEventType(ev.type) && ev.seq >= minRecSeq)) {
+          this.rawEvents.delete(k)
+        }
+      }
+      for (const ev of events) {
+        this.rememberRawEvent(`${ev.seq}:${ev.type}`, ev)
+      }
+      this.rebuildChronological(Number.isFinite(minRecSeq) ? minRecSeq : undefined)
+    } else {
+      for (const [k, ev] of this.rawEvents.entries()) {
+        if (!hasMore && isChunkEventType(ev.type)) {
+          this.rawEvents.delete(k)
+        }
+      }
+      finalizeOpenAssistants(this.items)
+    }
+
+    this.hasMoreHistory = hasMore
+    if (oldestSeq !== null) {
+      this.oldestSeq = oldestSeq
+    }
   }
 
   resolveApprovalLocally(callId: string): void {
@@ -187,13 +363,19 @@ export class SessionTimelineState implements SessionStoreState {
     this.pendingQuestions = this.pendingQuestions.filter((q) => q.questionId !== questionId)
   }
 
-  applyEvent(event: OfficialSessionEvent, options?: { readonly markUnread?: boolean | undefined }): void {
+  applyEvent(
+    event: OfficialSessionEvent,
+    options?: { readonly markUnread?: boolean | undefined; readonly skipRawStore?: boolean | undefined },
+  ): void {
     if (typeof event.seq === 'number' && event.seq > 0) {
       const key = `${event.seq}:${event.type}`
       if (this.seenKeys.has(key)) {
         return
       }
       this.seenKeys.add(key)
+      if (!options?.skipRawStore) {
+        this.rememberRawEvent(key, event)
+      }
       if (event.seq > this.highestSeq) {
         this.highestSeq = event.seq
       }
@@ -243,21 +425,9 @@ export class SessionTimelineState implements SessionStoreState {
       case 'assistant/delta':
       case 'thinking/delta': {
         if (!data) return
-        const isThinking =
-          evtType === 'reasoning-delta' ||
-          evtType === 'thinking/delta' ||
-          data.kind === 'thinking' ||
-          data.kind === 'reasoning' ||
-          data.channel === 'thinking'
-        const delta =
-          typeof data.delta === 'string'
-            ? data.delta
-            : typeof data.text === 'string'
-              ? data.text
-              : typeof data.thinking === 'string'
-                ? data.thinking
-                : ''
-        if (!delta) return
+        const unwrapped = unwrapAssistantChunk(evtType, data)
+        if (!unwrapped) return
+        const { delta, isThinking } = unwrapped
 
         const tail = this.items[this.items.length - 1]
         if (tail && tail.kind === 'assistant' && !tail.finalized) {
@@ -467,6 +637,7 @@ export class SessionTimelineState implements SessionStoreState {
                 }))
             : undefined
           questions.push({
+            id: typeof q.id === 'string' && q.id.length > 0 ? q.id : `q${questions.length + 1}`,
             question: q.question,
             ...(typeof q.header === 'string' ? { header: q.header } : {}),
             ...(typeof q.multiSelect === 'boolean' ? { multiSelect: q.multiSelect } : {}),

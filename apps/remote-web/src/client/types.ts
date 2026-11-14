@@ -127,7 +127,12 @@ export interface PendingQuestionOption {
   readonly description?: string | undefined
 }
 
+export const MAX_NOISE_PLAINTEXT_BYTES = 65_519
+export const MAX_PROMPT_IMAGE_COUNT = 2
+export const MAX_PROMPT_IMAGE_DECODED_BYTES = 32_768
+
 export interface PendingQuestionPrompt {
+  readonly id?: string | undefined
   readonly header?: string | undefined
   readonly question: string
   readonly multiSelect?: boolean | undefined

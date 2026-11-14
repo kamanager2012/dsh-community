@@ -9,25 +9,26 @@ import {
   type FramedTransport,
   type WebSocketFactory,
 } from './transports.ts'
-import type {
-  ConnectionStatus,
-  CreateSessionParams,
-  EngineDescriptor,
-  ModelCatalogResult,
-  ModelSelectionParams,
-  OfficialSessionEvent,
-  PairingBootstrapDescriptor,
-  PromptImageAttachment,
-  RemoteCommandDescriptor,
-  RemoteSkillSummary,
-  SessionAttachResult,
-  SessionHistoryResult,
-  SessionRef,
-  SessionSearchResult,
-  TransportKind,
-  TrustedHostProfile,
-  WorkspaceGitDiffResult,
-  WorkspaceGitStatusResult,
+import {
+  MAX_NOISE_PLAINTEXT_BYTES,
+  type ConnectionStatus,
+  type CreateSessionParams,
+  type EngineDescriptor,
+  type ModelCatalogResult,
+  type ModelSelectionParams,
+  type OfficialSessionEvent,
+  type PairingBootstrapDescriptor,
+  type PromptImageAttachment,
+  type RemoteCommandDescriptor,
+  type RemoteSkillSummary,
+  type SessionAttachResult,
+  type SessionHistoryResult,
+  type SessionRef,
+  type SessionSearchResult,
+  type TransportKind,
+  type TrustedHostProfile,
+  type WorkspaceGitDiffResult,
+  type WorkspaceGitStatusResult,
 } from './types.ts'
 
 export interface RemoteClientConnectOptions {
@@ -261,26 +262,32 @@ export class RemoteWebClient {
     this.manualDisconnect = false
     this.revoked = false
     this.cleanupTransportOnly()
-    this.activeHost = profile
+    const storedHost = await this.keyStore.getTrustedHost(profile.hostFingerprint)
+    const effectiveProfile: TrustedHostProfile =
+      storedHost && storedHost.lastEpoch > profile.lastEpoch
+        ? { ...profile, lastEpoch: storedHost.lastEpoch }
+        : profile
+    this.activeHost = effectiveProfile
 
-    // Scrub bootstrap token from persisted options after single connect call finishes
+    // Scrub bootstrap token and one-shot epoch-reset exemption before persisting reconnect options
     let bootstrapToken = options.bootstrapToken
     this.lastConnectOptions = {
       ...options,
       bootstrapToken: undefined,
+      allowEpochReset: false,
     }
 
     const identity = await this.keyStore.getOrCreateClientKeyPair()
-    const hostPubBytes = hexToBytes(profile.hostPublicKeyHex)
+    const hostPubBytes = hexToBytes(effectiveProfile.hostPublicKeyHex)
     const pollIntervalMs = options.autoPairPollIntervalMs ?? 1_200
 
     while (!this.manualDisconnect && !this.revoked) {
       this.emitStatus({
         status: 'connecting',
-        host: profile,
+        host: effectiveProfile,
       })
 
-      const candidates = this.buildCandidateTransports(profile, options)
+      const candidates = this.buildCandidateTransports(effectiveProfile, options)
       const errors: string[] = []
       let handshakeOutcome:
         | { readonly state: 'ACTIVE' | 'PAIRING_PENDING'; readonly epoch: number; readonly kind: TransportKind }
@@ -295,7 +302,7 @@ export class RemoteWebClient {
             candidate,
             identity,
             hostPubBytes,
-            profile,
+            effectiveProfile,
             options,
           )
           break
@@ -305,7 +312,7 @@ export class RemoteWebClient {
             this.cleanupTransportOnly()
             this.emitStatus({
               status: err.code === 'PEER_REVOKED' ? 'revoked' : 'epoch_mismatch',
-              host: profile,
+              host: effectiveProfile,
               detail: msg,
             })
             throw err
@@ -319,7 +326,7 @@ export class RemoteWebClient {
         const summary = errors.join(' | ') || 'No reachable remote transport'
         this.emitStatus({
           status: 'error',
-          host: profile,
+          host: effectiveProfile,
           detail: summary,
         })
         throw new RemoteRpcError('TRANSPORT_UNAVAILABLE', summary)
@@ -328,10 +335,10 @@ export class RemoteWebClient {
       if (handshakeOutcome.state === 'ACTIVE') {
         bootstrapToken = undefined
         const storedEpochUpdated =
-          (await this.keyStore.updateHostEpoch(profile.hostFingerprint, handshakeOutcome.epoch, {
+          (await this.keyStore.updateHostEpoch(effectiveProfile.hostFingerprint, handshakeOutcome.epoch, {
             allowReset: options.allowEpochReset,
           })) ?? {
-            ...profile,
+            ...effectiveProfile,
             lastEpoch: handshakeOutcome.epoch,
             lastConnectedAt: Date.now(),
             preferredTransport: handshakeOutcome.kind,
@@ -359,7 +366,7 @@ export class RemoteWebClient {
         const msg = 'Device is not authorized on host (PAIRING_PENDING). Pair again using a fresh QR code or link.'
         this.emitStatus({
           status: 'error',
-          host: profile,
+          host: effectiveProfile,
           detail: msg,
         })
         throw new RemoteRpcError('PAIRING_REQUIRED', msg)
@@ -376,7 +383,7 @@ export class RemoteWebClient {
       this.emitStatus({
         status: 'pairing',
         transport: handshakeOutcome.kind,
-        host: profile,
+        host: effectiveProfile,
         detail: 'Approve pairing on host...',
         pairingCandidate: {
           candidateId: pairResult.candidateId,
@@ -398,15 +405,15 @@ export class RemoteWebClient {
           throw new RemoteRpcError('CANCELLED', 'Pairing cancelled')
         }
         try {
-          const recheck = await this.tryConnectFirstReachable(profile, identity, hostPubBytes, {
+          const recheck = await this.tryConnectFirstReachable(effectiveProfile, identity, hostPubBytes, {
             ...options,
             allowEpochReset: true,
           })
           if (recheck.state === 'ACTIVE') {
             const saved: TrustedHostProfile = {
-              ...(await this.keyStore.updateHostEpoch(profile.hostFingerprint, recheck.epoch, {
+              ...(await this.keyStore.updateHostEpoch(effectiveProfile.hostFingerprint, recheck.epoch, {
                 allowReset: true,
-              })) ?? profile,
+              })) ?? effectiveProfile,
               preferredTransport: recheck.kind,
               lastConnectedAt: Date.now(),
             }
@@ -587,6 +594,7 @@ export class RemoteWebClient {
             this.handleActiveMessage(msg)
           },
           onError: (err) => {
+            if (this.transport !== transport) return
             if (stage !== 'ESTABLISHED') {
               failHandshake(err)
             } else {
@@ -594,6 +602,7 @@ export class RemoteWebClient {
             }
           },
           onClose: (reason) => {
+            if (this.transport !== transport) return
             if (stage !== 'ESTABLISHED') {
               failHandshake(new Error(reason))
             } else {
@@ -868,18 +877,22 @@ export class RemoteWebClient {
       readonly idempotencyKey?: string | undefined
     },
   ): Promise<unknown> {
-    return this.request(
-      'prompt.submit',
-      {
-        sessionId,
-        prompt,
-        ...(options?.mode !== undefined ? { mode: options.mode } : {}),
-        ...(options?.attachments !== undefined && options.attachments.length > 0
-          ? { attachments: options.attachments }
-          : {}),
-      },
-      { mutating: true, idempotencyKey: options?.idempotencyKey },
-    )
+    const params = {
+      sessionId,
+      prompt,
+      ...(options?.mode !== undefined ? { mode: options.mode } : {}),
+      ...(options?.attachments !== undefined && options.attachments.length > 0
+        ? { attachments: options.attachments }
+        : {}),
+    }
+    const envelopeBytes = estimateRpcEnvelopeBytes('prompt.submit', params, true)
+    if (envelopeBytes > MAX_NOISE_PLAINTEXT_BYTES) {
+      throw new RemoteRpcError(
+        'FRAME_TOO_LARGE',
+        `Prompt payload (${envelopeBytes} bytes) exceeds ${MAX_NOISE_PLAINTEXT_BYTES}-byte Noise encrypted frame limit`,
+      )
+    }
+    return this.request('prompt.submit', params, { mutating: true, idempotencyKey: options?.idempotencyKey })
   }
 
   async abortTurn(sessionId: string, keepInbox?: boolean): Promise<unknown> {
@@ -903,7 +916,16 @@ export class RemoteWebClient {
   }
 
   async selectModel(sessionId: string, selection: ModelSelectionParams): Promise<unknown> {
-    return this.request('model.select', { sessionId, selection }, { mutating: true })
+    return this.request(
+      'model.select',
+      {
+        sessionId,
+        provider: selection.provider,
+        model: selection.model,
+        ...(selection.reasoningEffort !== undefined ? { reasoningEffort: selection.reasoningEffort } : {}),
+      },
+      { mutating: true },
+    )
   }
 
   async listCommands(sessionId?: string): Promise<RemoteCommandDescriptor[]> {
@@ -943,6 +965,20 @@ export class RemoteWebClient {
       ...(options?.maxBytes !== undefined ? { maxBytes: options.maxBytes } : {}),
     })) as WorkspaceGitDiffResult
   }
+}
+
+export function estimateRpcEnvelopeBytes(method: string, params: unknown, mutating = true): number {
+  const sampleEnvelope = {
+    jsonrpc: '2.0',
+    id: 'rpc-99999999',
+    method,
+    protocolVersion: 1,
+    connectionEpoch: 999_999_999,
+    requestSeq: 999_999_999,
+    ...(mutating ? { idempotencyKey: '00000000-0000-4000-8000-000000000000' } : {}),
+    params,
+  }
+  return utf8Encode(JSON.stringify(sampleEnvelope)).byteLength
 }
 
 function sleep(ms: number): Promise<void> {

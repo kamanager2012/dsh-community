@@ -170,6 +170,13 @@ function createMockMultiAgentBackend(workspaceRoot: string): {
       bytes: 79,
       truncated: false,
     }),
+    listModels: async () => ({
+      current: { provider: 'anthropic', model: 'sonnet' },
+      models: [{ provider: 'anthropic', model: 'opus', name: 'Claude Opus' }],
+    }),
+    selectModel: async (_sessionId, selection) => ({ ok: true, selection }),
+    listCommands: async () => [{ name: 'compact', description: 'Compact session context' }],
+    executeCommand: async (_sessionId, command) => ({ ok: true, output: `Ran ${command}` }),
   }
 
   return { backend, emit, approvalsSeen, questionsSeen }
@@ -356,5 +363,52 @@ describe('remote-web live E2EE host interoperability', () => {
     const joinedAscii = observedRelayBytes.map((b) => utf8Decode(b)).join('')
     expect(joinedAscii).not.toContain(secretMarker)
     expect(joinedAscii).not.toContain('prompt.submit')
+  })
+
+  it('clears allowEpochReset before automatic reconnects and supports flat model.select + command.execute over E2EE', async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), 'dsh-rweb-recon-'))
+    cleanupCallbacks.push(() => rmSync(tmpDir, { recursive: true, force: true }))
+
+    const mock = createMockMultiAgentBackend(tmpDir)
+    const host = new MultiAgentRemoteHost({
+      dshHome: join(tmpDir, 'dsh-home'),
+      configDir: join(tmpDir, 'remote-config'),
+      cwd: tmpDir,
+      backends: [mock.backend],
+      autoConfirmCapabilities: ['observe', 'prompt', 'approve', 'answer-question'],
+      carrier: { enabled: true, host: '127.0.0.1', port: 0 },
+    })
+    await host.start()
+    cleanupCallbacks.push(() => host.stop())
+
+    const issued = await host.issuePairingDescriptor()
+    const keyStore = new RemoteWebKeyStore(false)
+    const client = new RemoteWebClient(keyStore)
+    cleanupCallbacks.push(() => client.disconnect())
+
+    const saved = await client.connectWithPairing(issued.descriptor, {
+      displayName: 'Epoch Regression Peer',
+      autoPairPollIntervalMs: 30,
+    })
+
+    // Verify flat model.select & command.execute contracts against MultiAgentRemoteHost core parser
+    await expect(
+      client.selectModel('claude--s1', { provider: 'anthropic', model: 'opus' }),
+    ).resolves.toMatchObject({ ok: true, selection: { provider: 'anthropic', model: 'opus' } })
+    await expect(client.executeCommand('claude--s1', '/compact')).resolves.toMatchObject({
+      ok: true,
+      output: 'Ran /compact',
+    })
+
+    // Advance persisted epoch above host's epoch; then trigger an unexpected drop to verify automatic
+    // reconnect does NOT reuse allowEpochReset from initial pairing and instead emits epoch_mismatch.
+    await keyStore.updateHostEpoch(saved.hostFingerprint, saved.lastEpoch + 250)
+    const statusSeen: string[] = []
+    client.onStatus((s) => statusSeen.push(s.status))
+    ;(client as unknown as { handleUnexpectedDrop(r: string): void }).handleUnexpectedDrop('simulated socket drop')
+
+    await expect.poll(() => statusSeen.includes('epoch_mismatch'), { timeout: 5_000 }).toBe(true)
+    const persisted = await keyStore.getTrustedHost(saved.hostFingerprint)
+    expect(persisted?.lastEpoch).toBe(saved.lastEpoch + 250)
   })
 })

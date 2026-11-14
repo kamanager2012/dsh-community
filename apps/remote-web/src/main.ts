@@ -6,27 +6,31 @@ import {
   sanitizeDiagnosticMessage,
 } from './client/pairing.ts'
 import {
+  estimateRpcEnvelopeBytes,
   RemoteRpcError,
   RemoteWebClient,
   type RemoteClientStatusEvent,
 } from './client/remote-client.ts'
 import { SessionTimelineState } from './client/timeline.ts'
-import type {
-  AgentEngineId,
-  EngineDescriptor,
-  ModelCatalogResult,
-  ModelSelectionParams,
-  PairingBootstrapDescriptor,
-  PendingApprovalSnapshot,
-  PendingQuestionSnapshot,
-  PromptImageAttachment,
-  PromptImageMediaType,
-  RemoteCommandDescriptor,
-  SessionRef,
-  SessionSearchHit,
-  TrustedHostProfile,
-  WorkspaceGitDiffResult,
-  WorkspaceGitStatusResult,
+import {
+  MAX_NOISE_PLAINTEXT_BYTES,
+  MAX_PROMPT_IMAGE_COUNT,
+  MAX_PROMPT_IMAGE_DECODED_BYTES,
+  type AgentEngineId,
+  type EngineDescriptor,
+  type ModelCatalogResult,
+  type ModelSelectionParams,
+  type PairingBootstrapDescriptor,
+  type PendingApprovalSnapshot,
+  type PendingQuestionSnapshot,
+  type PromptImageAttachment,
+  type PromptImageMediaType,
+  type RemoteCommandDescriptor,
+  type SessionRef,
+  type SessionSearchHit,
+  type TrustedHostProfile,
+  type WorkspaceGitDiffResult,
+  type WorkspaceGitStatusResult,
 } from './client/types.ts'
 import { renderMarkdown, renderUnifiedDiff } from './ui/markdown.ts'
 import {
@@ -39,6 +43,7 @@ import {
 interface AppState {
   identity: ClientDeviceIdentity | undefined
   savedHosts: TrustedHostProfile[]
+  activeHostFingerprint: string | undefined
   statusEvt: RemoteClientStatusEvent
   pairingInput: string
   pairingError: string | undefined
@@ -78,6 +83,7 @@ const client = new RemoteWebClient(keyStore)
 const state: AppState = {
   identity: undefined,
   savedHosts: [],
+  activeHostFingerprint: undefined,
   statusEvt: { status: 'disconnected' },
   pairingInput: '',
   pairingError: undefined,
@@ -128,6 +134,30 @@ function showToast(msg: string): void {
     state.toastMessage = undefined
     renderBannerAndToast()
   }, 4_500)
+}
+
+function resetHostScopedState(nextHostFingerprint?: string): void {
+  state.activeHostFingerprint = nextHostFingerprint
+  state.engines = []
+  state.sessions = []
+  state.activeSessionId = undefined
+  state.timelines.clear()
+  state.modelsBySession.clear()
+  state.commandsBySession.clear()
+  state.gitStatus = undefined
+  state.gitDiff = undefined
+  state.gitStaged = false
+  state.gitSelectedPath = undefined
+  state.gitError = undefined
+  state.gitLoading = false
+  state.activeTab = 'chat'
+  state.searchQuery = ''
+  state.searchHits = undefined
+  state.draftBySession.clear()
+  state.pendingAttachments = []
+  state.expandedDetailIds.clear()
+  state.questionDrafts.clear()
+  state.submittingPrompt = false
 }
 
 function getOrCreateTimeline(sessionId: string): SessionTimelineState {
@@ -203,6 +233,10 @@ function transportBadgeLabel(): { text: string; cls: string } {
 
 async function refreshWorkspaceData(): Promise<void> {
   if (client.getStatus() !== 'active') return
+  const connectedFp = state.statusEvt.host?.hostFingerprint
+  if (connectedFp && connectedFp !== state.activeHostFingerprint) {
+    resetHostScopedState(connectedFp)
+  }
   const [enginesRes, sessionsRes] = await Promise.allSettled([
     client.listEngines(),
     client.listSessions(),
@@ -218,8 +252,11 @@ async function refreshWorkspaceData(): Promise<void> {
       if (s.status) tl.status = s.status
       if (s.model) tl.model = s.model
     }
-    if (!state.activeSessionId && state.sessions.length > 0) {
-      state.activeSessionId = state.sessions[0]!.id
+    const stillExists = Boolean(
+      state.activeSessionId && state.sessions.some((s) => s.id === state.activeSessionId),
+    )
+    if (!stillExists) {
+      state.activeSessionId = state.sessions[0]?.id
     }
   }
   state.savedHosts = await keyStore.listTrustedHosts()
@@ -254,9 +291,9 @@ async function attachActiveSession(sessionId: string): Promise<void> {
         tl.oldestSeq = hist.oldestSeq
       }
     } else {
-      // Window reset: pull durable history around latest seq
+      // Window reset: fetch latest durable history and merge/reconcile chronologically
       const hist = await client.getSessionHistory(sessionId, { limit: 80 })
-      tl.prependHistory(hist.events, hist.hasMore, hist.oldestSeq)
+      tl.applyResetRecoveryHistory(hist.events, hist.hasMore, hist.oldestSeq)
     }
 
     const [modelsRes, cmdsRes] = await Promise.allSettled([
@@ -326,6 +363,11 @@ async function handleConnectPairing(rawInput: string): Promise<void> {
   state.pairingError = undefined
   try {
     const descriptor = await parsePairingInput(rawInput)
+    if (state.activeHostFingerprint && state.activeHostFingerprint !== descriptor.hostFingerprint) {
+      resetHostScopedState(descriptor.hostFingerprint)
+    } else {
+      state.activeHostFingerprint = descriptor.hostFingerprint
+    }
     state.parsedPreview = descriptor
     renderApp()
     await client.connectWithPairing(descriptor, {
@@ -343,6 +385,11 @@ async function handleConnectPairing(rawInput: string): Promise<void> {
 async function handleConnectSavedHost(host: TrustedHostProfile, allowEpochReset = false): Promise<void> {
   state.pairingError = undefined
   try {
+    if (state.activeHostFingerprint && state.activeHostFingerprint !== host.hostFingerprint) {
+      resetHostScopedState(host.hostFingerprint)
+    } else {
+      state.activeHostFingerprint = host.hostFingerprint
+    }
     await client.connectToProfile(host, { allowEpochReset })
     await refreshWorkspaceData()
   } catch (err) {
@@ -361,6 +408,61 @@ function buildDeviceDisplayName(): string {
   return 'Web Browser'
 }
 
+function base64DecodedLength(b64: string): number {
+  const clean = b64.replace(/\s+/gu, '')
+  if (!clean.length) return 0
+  const padding = clean.endsWith('==') ? 2 : clean.endsWith('=') ? 1 : 0
+  return Math.max(0, Math.floor((clean.length * 3) / 4) - padding)
+}
+
+function totalAttachmentDecodedBytes(attachments: readonly PromptImageAttachment[]): number {
+  return attachments.reduce((sum, att) => sum + base64DecodedLength(att.dataBase64), 0)
+}
+
+async function compressImageToBudget(
+  file: File,
+  maxBytes: number,
+): Promise<PromptImageAttachment | undefined> {
+  if (typeof createImageBitmap !== 'function' || typeof document === 'undefined') {
+    return undefined
+  }
+  let bitmap: ImageBitmap | undefined
+  try {
+    bitmap = await createImageBitmap(file)
+    const canvas = document.createElement('canvas')
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return undefined
+    const maxDims = [1280, 960, 720, 512, 360, 256]
+    const qualities = [0.82, 0.65, 0.48, 0.32]
+    for (const dim of maxDims) {
+      const scale = Math.min(1, dim / Math.max(1, bitmap.width, bitmap.height))
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale))
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale))
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+      ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+      for (const quality of qualities) {
+        const blob = await new Promise<Blob | null>((resolve) =>
+          canvas.toBlob(resolve, 'image/jpeg', quality),
+        )
+        if (blob && blob.size > 0 && blob.size <= maxBytes) {
+          const bytes = new Uint8Array(await blob.arrayBuffer())
+          return {
+            type: 'image',
+            mediaType: 'image/jpeg',
+            dataBase64: base64Encode(bytes),
+            name: file.name.replace(/\.[^.]+$/u, '.jpg'),
+          }
+        }
+      }
+    }
+    return undefined
+  } catch {
+    return undefined
+  } finally {
+    bitmap?.close()
+  }
+}
+
 async function handleSubmitPrompt(): Promise<void> {
   const sid = state.activeSessionId
   if (!sid || state.submittingPrompt) return
@@ -376,9 +478,71 @@ async function handleSubmitPrompt(): Promise<void> {
     return
   }
 
-  state.submittingPrompt = true
   const tl = getOrCreateTimeline(sid)
-  tl.addOptimisticUserPrompt(
+  if (draft.startsWith('/')) {
+    const headToken = draft.slice(1).trim().split(/\s+/u, 1)[0] ?? ''
+    const knownCmds = state.commandsBySession.get(sid) ?? []
+    const matchedCmd = knownCmds.some(
+      (c) => c.name.replace(/^\/+/u, '').toLowerCase() === headToken.toLowerCase(),
+    )
+    if (headToken && matchedCmd) {
+      if (attachments.length > 0) {
+        showToast('Slash commands cannot be sent with image attachments.')
+        return
+      }
+      state.submittingPrompt = true
+      state.draftBySession.set(sid, '')
+      renderComposer()
+      try {
+        const res = await client.executeCommand(sid, draft)
+        const msg = res.ok
+          ? (res.output?.trim() || `Executed /${headToken}`)
+          : (res.error?.trim() || `Command /${headToken} failed`)
+        tl.addLocalNotice(msg, !res.ok)
+        renderTimelineArea()
+        scrollChatToBottom()
+      } catch (err) {
+        if ((state.draftBySession.get(sid) ?? '') === '') {
+          state.draftBySession.set(sid, draft)
+        }
+        showToast(`Command failed: ${err instanceof Error ? err.message : String(err)}`)
+      } finally {
+        state.submittingPrompt = false
+        renderComposer()
+      }
+      return
+    }
+  }
+
+  const decodedTotal = totalAttachmentDecodedBytes(attachments)
+  if (decodedTotal > MAX_PROMPT_IMAGE_DECODED_BYTES) {
+    showToast(
+      `Combined images (${decodedTotal.toLocaleString()} B) exceed the ${MAX_PROMPT_IMAGE_DECODED_BYTES.toLocaleString()}-byte host attachment limit.`,
+    )
+    return
+  }
+
+  const mode = tl.status === 'running' ? state.promptMode : 'followup'
+  const promptText = draft || '[image]'
+  const envelopeBytes = estimateRpcEnvelopeBytes(
+    'prompt.submit',
+    {
+      sessionId: sid,
+      prompt: promptText,
+      mode,
+      ...(attachments.length > 0 ? { attachments } : {}),
+    },
+    true,
+  )
+  if (envelopeBytes > MAX_NOISE_PLAINTEXT_BYTES) {
+    showToast(
+      `Message payload (${envelopeBytes.toLocaleString()} B) exceeds the ${MAX_NOISE_PLAINTEXT_BYTES.toLocaleString()}-byte Noise encrypted frame limit.`,
+    )
+    return
+  }
+
+  state.submittingPrompt = true
+  const optId = tl.addOptimisticUserPrompt(
     draft,
     attachments.map((a) => a.name ?? 'image'),
   )
@@ -389,11 +553,19 @@ async function handleSubmitPrompt(): Promise<void> {
   scrollChatToBottom()
 
   try {
-    await client.submitPrompt(sid, draft || '[image]', {
-      mode: tl.status === 'running' ? state.promptMode : 'followup',
+    await client.submitPrompt(sid, promptText, {
+      mode,
       attachments,
     })
   } catch (err) {
+    tl.removeOptimisticItem(optId)
+    if ((state.draftBySession.get(sid) ?? '') === '' && draft) {
+      state.draftBySession.set(sid, draft)
+    }
+    if (state.pendingAttachments.length === 0 && attachments.length > 0) {
+      state.pendingAttachments = attachments
+    }
+    renderTimelineArea()
     showToast(`Send failed: ${err instanceof Error ? err.message : String(err)}`)
   } finally {
     state.submittingPrompt = false
@@ -409,26 +581,59 @@ async function handleImagePick(files: FileList | null): Promise<void> {
     'image/webp': 'image/webp',
     'image/gif': 'image/gif',
   }
+  const sid = state.activeSessionId
   for (const file of Array.from(files)) {
+    if (state.pendingAttachments.length >= MAX_PROMPT_IMAGE_COUNT) {
+      showToast(`At most ${MAX_PROMPT_IMAGE_COUNT} image attachments are permitted per prompt`)
+      break
+    }
     const mediaType = allowed[file.type]
     if (!mediaType) {
       showToast(`Unsupported image type: ${file.type || file.name}`)
       continue
     }
-    if (file.size > 3_500_000) {
-      showToast(`Image "${file.name}" exceeds 3.5 MB browser limit`)
+    const usedBytes = totalAttachmentDecodedBytes(state.pendingAttachments)
+    const remainingBudget = MAX_PROMPT_IMAGE_DECODED_BYTES - usedBytes
+    if (remainingBudget <= 0) {
+      showToast(`Combined image attachments reach ${MAX_PROMPT_IMAGE_DECODED_BYTES.toLocaleString()}-byte limit`)
+      break
+    }
+
+    let attachment: PromptImageAttachment | undefined
+    if (file.size <= remainingBudget) {
+      const buf = new Uint8Array(await file.arrayBuffer())
+      if (buf.byteLength <= remainingBudget) {
+        attachment = {
+          type: 'image',
+          mediaType,
+          dataBase64: base64Encode(buf),
+          name: file.name,
+        }
+      }
+    }
+    if (!attachment) {
+      attachment = await compressImageToBudget(file, remainingBudget)
+    }
+    if (!attachment || base64DecodedLength(attachment.dataBase64) > remainingBudget) {
+      showToast(
+        `Image "${file.name}" exceeds the ${MAX_PROMPT_IMAGE_DECODED_BYTES.toLocaleString()}-byte E2EE transport budget`,
+      )
       continue
     }
-    const buf = new Uint8Array(await file.arrayBuffer())
-    state.pendingAttachments = [
-      ...state.pendingAttachments,
-      {
-        type: 'image',
-        mediaType,
-        dataBase64: base64Encode(buf),
-        name: file.name,
-      },
-    ]
+    const candidateAttachments = [...state.pendingAttachments, attachment]
+    const draft = (sid ? state.draftBySession.get(sid) : undefined)?.trim() || '[image]'
+    const envelopeBytes = estimateRpcEnvelopeBytes(
+      'prompt.submit',
+      { sessionId: sid ?? 'session', prompt: draft, mode: 'followup', attachments: candidateAttachments },
+      true,
+    )
+    if (envelopeBytes > MAX_NOISE_PLAINTEXT_BYTES) {
+      showToast(
+        `Adding "${file.name}" would exceed the ${MAX_NOISE_PLAINTEXT_BYTES.toLocaleString()}-byte Noise encrypted frame limit`,
+      )
+      continue
+    }
+    state.pendingAttachments = candidateAttachments
   }
   renderComposer()
 }
@@ -1028,7 +1233,15 @@ function buildQuestionCard(q: PendingQuestionSnapshot): HTMLElement {
           } else {
             draftMap.set(idx, [opt.label])
             if (qList.length === 1) {
-              void sendQuestionAnswer(q, opt.label)
+              void sendQuestionAnswer(q, {
+                answers: [
+                  {
+                    id: promptItem.id || 'q1',
+                    question: promptItem.question,
+                    selected: [opt.label],
+                  },
+                ],
+              })
             } else {
               renderPendingActionsTray()
             }
@@ -1053,14 +1266,19 @@ function buildQuestionCard(q: PendingQuestionSnapshot): HTMLElement {
   customRow.addEventListener('submit', (evt) => {
     evt.preventDefault()
     const typed = customInput.value.trim()
-    if (typed && qList.length === 1) {
+    if (qList.length === 0 && typed) {
       void sendQuestionAnswer(q, typed)
       return
     }
-    const answers = qList.map((p, i) => ({
-      question: p.question,
-      selected: draftMap.get(i) ?? (typed ? [typed] : []),
-    }))
+    const answers = qList.map((p, i) => {
+      const selected = draftMap.get(i) ?? []
+      return {
+        id: p.id || `q${i + 1}`,
+        question: p.question,
+        selected,
+        ...(typed && selected.length === 0 ? { custom: typed } : {}),
+      }
+    })
     void sendQuestionAnswer(q, { answers })
   })
 
@@ -1149,8 +1367,9 @@ function renderComposer(): void {
     placeholder.value = ''
     cmdSel.appendChild(placeholder)
     for (const c of cmds) {
-      const opt = el('option', undefined, `/${c.name} — ${c.description.slice(0, 40)}`)
-      opt.value = `/${c.name}`
+      const cmdName = c.name.replace(/^\/+/u, '')
+      const opt = el('option', undefined, `/${cmdName} — ${c.description.slice(0, 40)}`)
+      opt.value = `/${cmdName}`
       cmdSel.appendChild(opt)
     }
     cmdSel.addEventListener('change', () => {
@@ -1525,6 +1744,7 @@ function renderModals(root: HTMLElement): void {
       discBtn.type = 'button'
       discBtn.addEventListener('click', () => {
         client.disconnect()
+        resetHostScopedState(undefined)
         state.securityModalOpen = false
         renderApp()
       })
@@ -1534,6 +1754,7 @@ function renderModals(root: HTMLElement): void {
     rotateBtn.type = 'button'
     rotateBtn.addEventListener('click', () => {
       client.disconnect()
+      resetHostScopedState(undefined)
       void keyStore.rotateClientKeyPair().then(async (nextId) => {
         state.identity = nextId
         state.securityModalOpen = false

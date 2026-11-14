@@ -4,10 +4,14 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { InMemoryHostIdentityStore, computeFingerprint } from '@dsh-community/remote-adapter'
 import { parsePairingInput, validateStunOnlyUrls } from '../src/client/pairing.ts'
+import { estimateRpcEnvelopeBytes } from '../src/client/remote-client.ts'
 import { SessionTimelineState } from '../src/client/timeline.ts'
+import { MAX_NOISE_PLAINTEXT_BYTES } from '../src/client/types.ts'
 import {
+  createBrowserWebRtcTransport,
   DataChannelFrameReassembler,
   encodeDataChannelChunks,
+  type WebSocketLike,
 } from '../src/client/transports.ts'
 import { bytesToHex, sha256Hex, utf8Encode } from '../src/crypto/bytes.ts'
 import { isSafeLinkUrl, renderMarkdown, renderUnifiedDiff } from '../src/ui/markdown.ts'
@@ -251,5 +255,158 @@ describe('remote-web pairing security, safe Markdown/Diff DOM, and CSP hygiene',
       1,
     )
     expect(tl.items[0]?.kind).toBe('user')
+  })
+
+  it('unwraps nested data.chunk deltas, merges reset recovery history chronologically, preserves question IDs, and bounds RPC envelope size', () => {
+    const tl = new SessionTimelineState('dsh-nested')
+    tl.applyEvent({ seq: 1, type: 'user/message', data: { message: { content: 'Explain E2EE' } } })
+    tl.applyEvent({
+      seq: 2,
+      type: 'assistant/chunk',
+      data: { chunk: { type: 'reasoning-delta', text: 'checking handshake ' }, text: 'checking handshake ' },
+    })
+    tl.applyEvent({
+      seq: 3,
+      type: 'assistant/chunk',
+      data: { chunk: { type: 'text-delta', text: 'Noise IK ' } },
+    })
+    tl.applyEvent({
+      seq: 4,
+      type: 'assistant/chunk',
+      data: { chunk: 'works!' },
+    })
+
+    const partial = tl.items[1] as Extract<(typeof tl.items)[number], { kind: 'assistant' }>
+    expect(partial.thinkingText).toBe('checking handshake ')
+    expect(partial.markdownText).toBe('Noise IK works!')
+    expect(partial.finalized).toBe(false)
+
+    // Replay reset occurs; newer durable history arrives at higher seqs while previous items stay in order
+    tl.applyEvent({ seq: 5, type: 'user/message', data: { message: { content: 'Followup' } } })
+    tl.applyResetRecoveryHistory(
+      [
+        { seq: 5, type: 'user/message', data: { message: { content: 'Followup' } } },
+        { seq: 6, type: 'assistant/message', data: { message: { content: 'Durable answer' } } },
+      ],
+      true,
+      5,
+    )
+    expect(tl.items.map((i) => i.kind)).toEqual(['user', 'assistant', 'user', 'assistant'])
+    const firstAssistant = tl.items[1] as Extract<(typeof tl.items)[number], { kind: 'assistant' }>
+    const latestAssistant = tl.items[3] as Extract<(typeof tl.items)[number], { kind: 'assistant' }>
+    expect(firstAssistant.finalized).toBe(true)
+    expect(latestAssistant.markdownText).toBe('Durable answer')
+    expect(latestAssistant.finalized).toBe(true)
+
+    // Question ID preservation
+    tl.applyEvent({
+      seq: 7,
+      type: 'question.request',
+      data: {
+        questionId: 'qreq-1',
+        questions: [
+          { id: 'env', header: 'Environment', question: 'Where to deploy?', multiSelect: true },
+          { question: 'Confirm?' },
+        ],
+      },
+    })
+    expect(tl.pendingQuestions[0]?.questions?.[0]?.id).toBe('env')
+    expect(tl.pendingQuestions[0]?.questions?.[1]?.id).toBe('q2')
+
+    // Envelope limit enforcement
+    const oversizedAttachment = {
+      type: 'image',
+      mediaType: 'image/png',
+      dataBase64: 'A'.repeat(65_500),
+    }
+    expect(
+      estimateRpcEnvelopeBytes('prompt.submit', { sessionId: 's1', prompt: 'hi', attachments: [oversizedAttachment] }),
+    ).toBeGreaterThan(MAX_NOISE_PLAINTEXT_BYTES)
+  })
+
+  it('suppresses stale WebRTC DataChannel close/error callbacks during intentional transport.close()', async () => {
+    const prevRtc = globalThis.RTCPeerConnection
+    const createdChannels: Array<{
+      readyState: string
+      binaryType: string
+      onopen: (() => void) | null
+      onclose: (() => void) | null
+      onerror: (() => void) | null
+      onmessage: unknown
+      close(): void
+    }> = []
+    class FakePeerConnection {
+      onicecandidate: unknown = null
+      onconnectionstatechange: unknown = null
+      createDataChannel() {
+        const ch = {
+          readyState: 'connecting',
+          binaryType: 'arraybuffer',
+          onopen: null as (() => void) | null,
+          onclose: null as (() => void) | null,
+          onerror: null as (() => void) | null,
+          onmessage: null as unknown,
+          close() {
+            ch.readyState = 'closed'
+            queueMicrotask(() => ch.onclose?.())
+          },
+        }
+        createdChannels.push(ch)
+        return ch
+      }
+      async createOffer() {
+        return { type: 'offer', sdp: 'v=0' }
+      }
+      async setLocalDescription() {}
+      async setRemoteDescription() {}
+      async addIceCandidate() {}
+      close() {}
+    }
+    globalThis.RTCPeerConnection = FakePeerConnection as unknown as typeof RTCPeerConnection
+    try {
+      const transport = createBrowserWebRtcTransport({
+        signalingUrl: 'ws://127.0.0.1:9999',
+        roomId: 'room-test-1234',
+        webSocketFactory: () =>
+          ({
+            readyState: 0,
+            binaryType: 'arraybuffer',
+            send() {},
+            close() {},
+            onopen: null,
+            onmessage: null,
+            onerror: null,
+            onclose: null,
+          }) as unknown as WebSocketLike,
+      })
+
+      let closedFired = 0
+      let errorFired = 0
+      const connectPromise = transport.connect({
+        onMessage: () => {},
+        onError: () => {
+          errorFired += 1
+        },
+        onClose: () => {
+          closedFired += 1
+        },
+      })
+
+      const dc = createdChannels[0]!
+      const savedOnClose = dc.onclose
+      dc.readyState = 'open'
+      dc.onopen?.()
+      await connectPromise
+
+      transport.close()
+      // Fire even if browser retains an earlier onclose reference asynchronously
+      savedOnClose?.()
+      await new Promise((r) => setTimeout(r, 15))
+      expect(dc.onclose).toBeNull()
+      expect(closedFired).toBe(0)
+      expect(errorFired).toBe(0)
+    } finally {
+      globalThis.RTCPeerConnection = prevRtc
+    }
   })
 })
