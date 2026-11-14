@@ -1,5 +1,6 @@
 export * from './constants.js'
 export * from './address-validator.js'
+export * from './ip-cap.js'
 export * from './websocket-frame.js'
 export * from './transport.js'
 export * from './remote-channel.js'

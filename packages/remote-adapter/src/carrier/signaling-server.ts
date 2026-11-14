@@ -2,7 +2,7 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import { createServer, type IncomingMessage, type Server } from 'node:http'
 import { isIP, type AddressInfo, type Socket } from 'node:net'
 import { RemoteCryptoError } from '../crypto/errors.js'
-import { PerIpConnectionTracker } from './ip-cap.js'
+import { ProxyAwareHttpConnectionGuard } from './ip-cap.js'
 import {
   encodeCloseFrame,
   encodeWebSocketFrame,
@@ -51,6 +51,8 @@ export interface SelfHostedSignalingServerOptions {
   readonly maxPeersPerRoom?: number | undefined
   readonly maxConnections?: number | undefined
   readonly maxConnectionsPerIp?: number | undefined
+  /** Explicit trusted reverse-proxy IPs/CIDRs allowed to supply forwarded client IPs (fail-closed by default). */
+  readonly trustedProxies?: readonly string[] | undefined
   readonly maxFrameBytes?: number | undefined
   readonly maxOutboundQueue?: number | undefined
   readonly maxMessagesPerSecond?: number | undefined
@@ -145,8 +147,7 @@ export class SelfHostedSignalingServer {
 
   private server: Server | undefined = undefined
   private isRunning = false
-  private readonly ipTracker: PerIpConnectionTracker
-  private readonly preUpgradeSockets = new Map<Socket, NodeJS.Timeout>()
+  private readonly connectionGuard: ProxyAwareHttpConnectionGuard
   private readonly peers = new Set<SignalingPeer>()
   private readonly rooms = new Map<string, SignalingRoom>()
   private relayedMessages = 0
@@ -159,12 +160,20 @@ export class SelfHostedSignalingServer {
     this.maxPeersPerRoom = options.maxPeersPerRoom ?? 16
     this.maxConnections = options.maxConnections ?? 128
     this.maxConnectionsPerIp = options.maxConnectionsPerIp ?? 16
-    this.ipTracker = new PerIpConnectionTracker(this.maxConnectionsPerIp)
     this.maxFrameBytes = options.maxFrameBytes ?? 32_768
     this.maxOutboundQueue = options.maxOutboundQueue ?? 32
     this.maxMessagesPerSecond = options.maxMessagesPerSecond ?? 60
     this.registerTimeoutMs = options.registerTimeoutMs ?? 5_000
     this.idleTimeoutMs = options.idleTimeoutMs ?? 60_000
+    this.connectionGuard = new ProxyAwareHttpConnectionGuard({
+      maxConnections: this.maxConnections,
+      maxConnectionsPerIp: this.maxConnectionsPerIp,
+      registerTimeoutMs: this.registerTimeoutMs,
+      ...(options.trustedProxies !== undefined ? { trustedProxies: options.trustedProxies } : {}),
+      onPerIpRejected: () => {
+        this.rejectedPerIpCap += 1
+      },
+    })
     this.hostAuthDigest =
       options.hostAuthSecret !== undefined && options.hostAuthSecret.length > 0
         ? sha256Digest(options.hostAuthSecret)
@@ -232,6 +241,9 @@ export class SelfHostedSignalingServer {
     }
 
     const server = createServer((req, res) => {
+      if (!this.connectionGuard.handleHttpRequest(req, res)) {
+        return
+      }
       if (req.url === '/healthz') {
         res.writeHead(200, { 'Content-Type': 'application/json' })
         res.end('{"ok":true}')
@@ -242,34 +254,12 @@ export class SelfHostedSignalingServer {
     })
 
     server.on('connection', (socket: Socket) => {
-      if (this.preUpgradeSockets.size + this.peers.size >= this.maxConnections) {
-        socket.write('HTTP/1.1 503 Service Unavailable\r\n\r\n')
-        socket.destroy()
-        return
-      }
-      if (!this.ipTracker.tryAcquire(socket)) {
-        this.rejectedPerIpCap += 1
-        socket.write('HTTP/1.1 429 Too Many Requests\r\n\r\n')
-        socket.destroy()
-        return
-      }
-      const timer = setTimeout(() => {
-        this.preUpgradeSockets.delete(socket)
-        socket.destroy()
-      }, this.registerTimeoutMs)
-      this.preUpgradeSockets.set(socket, timer)
-      const clearPreUpgrade = () => {
-        const existing = this.preUpgradeSockets.get(socket)
-        if (existing) {
-          clearTimeout(existing)
-          this.preUpgradeSockets.delete(socket)
-        }
-      }
-      socket.once('close', clearPreUpgrade)
-      socket.once('error', clearPreUpgrade)
+      this.connectionGuard.handleConnection(socket)
     })
 
     server.on('upgrade', (req, socket, head) => {
+      const clientIp = this.connectionGuard.acquireUpgrade(req, socket as Socket)
+      if (!clientIp) return
       this.handleUpgrade(req, socket as Socket, head)
     })
 
@@ -293,28 +283,27 @@ export class SelfHostedSignalingServer {
    * Handles a WebSocket upgrade delegated from a shared HTTP gateway (e.g. BlindGatewayServer).
    * Fails closed unless `options.enabled === true`.
    */
-  handleUpgradeRequest(req: IncomingMessage, socket: Socket, head: Buffer): void {
+  handleUpgradeRequest(
+    req: IncomingMessage,
+    socket: Socket,
+    head: Buffer,
+    resolvedClientIp?: string,
+  ): void {
     if (this.options.enabled !== true) {
       socket.write('HTTP/1.1 503 Service Unavailable\r\n\r\n')
       socket.destroy()
       return
     }
     this.isRunning = true
-    if (!this.ipTracker.tryAcquire(socket)) {
-      this.rejectedPerIpCap += 1
-      socket.write('HTTP/1.1 429 Too Many Requests\r\n\r\n')
-      socket.destroy()
+    const clientIp = this.connectionGuard.acquireUpgrade(req, socket, resolvedClientIp)
+    if (!clientIp) {
       return
     }
     this.handleUpgrade(req, socket, head)
   }
 
   private handleUpgrade(req: IncomingMessage, socket: Socket, head: Buffer): void {
-    const preTimer = this.preUpgradeSockets.get(socket)
-    if (preTimer) {
-      clearTimeout(preTimer)
-      this.preUpgradeSockets.delete(socket)
-    }
+    this.connectionGuard.clearPendingTimer(socket)
 
     if (this.peers.size >= this.maxConnections) {
       socket.write('HTTP/1.1 503 Service Unavailable\r\n\r\n')
@@ -810,13 +799,7 @@ export class SelfHostedSignalingServer {
     if (!this.isRunning && !this.server) return
     this.isRunning = false
 
-    for (const [socket, timer] of this.preUpgradeSockets.entries()) {
-      clearTimeout(timer)
-      try {
-        socket.destroy()
-      } catch {}
-    }
-    this.preUpgradeSockets.clear()
+    this.connectionGuard.destroyPendingAndReset()
 
     for (const peer of Array.from(this.peers)) {
       this.terminatePeer(peer, 1001, 'signaling server shutting down')

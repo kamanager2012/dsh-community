@@ -3,7 +3,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { isIP, type AddressInfo, type Socket } from 'node:net'
 import { extname, resolve, sep } from 'node:path'
 import { RemoteCryptoError } from '../crypto/errors.js'
-import { PerIpConnectionTracker } from './ip-cap.js'
+import { ProxyAwareHttpConnectionGuard } from './ip-cap.js'
 import {
   BlindRelayServer,
   type BlindRelayFrameObservation,
@@ -63,6 +63,8 @@ export interface BlindGatewayServerOptions {
   readonly maxPeersPerRoom?: number | undefined
   readonly maxConnections?: number | undefined
   readonly maxConnectionsPerIp?: number | undefined
+  /** Explicit trusted reverse-proxy IPs/CIDRs allowed to supply forwarded client IPs (fail-closed by default). */
+  readonly trustedProxies?: readonly string[] | undefined
   readonly maxOpaquePayloadBytes?: number | undefined
   readonly maxFrameBytes?: number | undefined
   readonly maxOutboundQueue?: number | undefined
@@ -216,8 +218,7 @@ export class BlindGatewayServer {
   private readonly options: BlindGatewayServerOptions
   private readonly maxConnections: number
   private readonly registerTimeoutMs: number
-  private readonly ipTracker: PerIpConnectionTracker
-  private readonly pendingHandshakeTimers = new Map<Socket, ReturnType<typeof setTimeout>>()
+  private readonly connectionGuard: ProxyAwareHttpConnectionGuard
   private server: Server | undefined = undefined
   private canonicalWebAppRoot: string | undefined = undefined
   private isRunning = false
@@ -230,7 +231,15 @@ export class BlindGatewayServer {
     this.options = options
     this.maxConnections = options.maxConnections ?? 128
     this.registerTimeoutMs = options.registerTimeoutMs ?? 5_000
-    this.ipTracker = new PerIpConnectionTracker(options.maxConnectionsPerIp ?? 16)
+    this.connectionGuard = new ProxyAwareHttpConnectionGuard({
+      maxConnections: this.maxConnections,
+      maxConnectionsPerIp: options.maxConnectionsPerIp ?? 16,
+      registerTimeoutMs: this.registerTimeoutMs,
+      ...(options.trustedProxies !== undefined ? { trustedProxies: options.trustedProxies } : {}),
+      onPerIpRejected: () => {
+        this.rejectedPerIpCap += 1
+      },
+    })
 
     const relaySecret = options.relayHostSecret ?? options.hostAuthSecret
     const signalingSecret = options.signalingHostSecret ?? options.hostAuthSecret
@@ -245,6 +254,7 @@ export class BlindGatewayServer {
       ...(options.maxClientsPerRoom !== undefined ? { maxClientsPerRoom: options.maxClientsPerRoom } : {}),
       maxConnections: this.maxConnections,
       ...(options.maxConnectionsPerIp !== undefined ? { maxConnectionsPerIp: options.maxConnectionsPerIp } : {}),
+      ...(options.trustedProxies !== undefined ? { trustedProxies: options.trustedProxies } : {}),
       ...(options.maxOpaquePayloadBytes !== undefined
         ? { maxOpaquePayloadBytes: options.maxOpaquePayloadBytes }
         : {}),
@@ -265,6 +275,7 @@ export class BlindGatewayServer {
       ...(options.maxPeersPerRoom !== undefined ? { maxPeersPerRoom: options.maxPeersPerRoom } : {}),
       maxConnections: this.maxConnections,
       ...(options.maxConnectionsPerIp !== undefined ? { maxConnectionsPerIp: options.maxConnectionsPerIp } : {}),
+      ...(options.trustedProxies !== undefined ? { trustedProxies: options.trustedProxies } : {}),
       ...(options.maxFrameBytes !== undefined ? { maxFrameBytes: options.maxFrameBytes } : {}),
       ...(options.maxOutboundQueue !== undefined ? { maxOutboundQueue: options.maxOutboundQueue } : {}),
       ...(options.maxMessagesPerSecond !== undefined ? { maxMessagesPerSecond: options.maxMessagesPerSecond } : {}),
@@ -324,14 +335,6 @@ export class BlindGatewayServer {
     }
   }
 
-  private clearPendingHandshakeTimer(socket: Socket): void {
-    const timer = this.pendingHandshakeTimers.get(socket)
-    if (timer) {
-      clearTimeout(timer)
-      this.pendingHandshakeTimers.delete(socket)
-    }
-  }
-
   async start(): Promise<void> {
     if (this.isRunning) return
 
@@ -370,7 +373,9 @@ export class BlindGatewayServer {
         : undefined
 
     const server = createServer((req, res) => {
-      this.clearPendingHandshakeTimer(req.socket)
+      if (!this.connectionGuard.handleHttpRequest(req, res)) {
+        return
+      }
       this.handleHttpRequest(req, res)
     })
     server.maxConnections = this.maxConnections
@@ -379,31 +384,11 @@ export class BlindGatewayServer {
     server.keepAliveTimeout = 5_000
 
     server.on('connection', (socket: Socket) => {
-      if (this.ipTracker.totalTracked >= this.maxConnections) {
-        socket.write('HTTP/1.1 503 Service Unavailable\r\n\r\n')
-        socket.destroy()
-        return
-      }
-      if (!this.ipTracker.tryAcquire(socket)) {
-        this.rejectedPerIpCap += 1
-        socket.write('HTTP/1.1 429 Too Many Requests\r\n\r\n')
-        socket.destroy()
-        return
-      }
-      const timer = setTimeout(() => {
-        this.pendingHandshakeTimers.delete(socket)
-        socket.destroy()
-      }, this.registerTimeoutMs)
-      this.pendingHandshakeTimers.set(socket, timer)
-      const clearTimer = (): void => {
-        this.clearPendingHandshakeTimer(socket)
-      }
-      socket.once('close', clearTimer)
-      socket.once('error', clearTimer)
+      this.connectionGuard.handleConnection(socket)
     })
 
     server.on('upgrade', (req: IncomingMessage, socket: Socket, head: Buffer) => {
-      this.clearPendingHandshakeTimer(socket)
+      this.connectionGuard.clearPendingTimer(socket)
       this.handleUpgrade(req, socket, head)
     })
 
@@ -538,18 +523,11 @@ export class BlindGatewayServer {
     }
 
     if (pathname === '/relay' || pathname === '/relay/') {
-      if (!this.ipTracker.has(socket) && this.ipTracker.totalTracked >= this.maxConnections) {
-        socket.write('HTTP/1.1 503 Service Unavailable\r\n\r\n')
-        socket.destroy()
+      const clientIp = this.connectionGuard.acquireUpgrade(req, socket)
+      if (!clientIp) {
         return
       }
-      if (!this.ipTracker.has(socket) && !this.ipTracker.tryAcquire(socket)) {
-        this.rejectedPerIpCap += 1
-        socket.write('HTTP/1.1 429 Too Many Requests\r\n\r\n')
-        socket.destroy()
-        return
-      }
-      this.relay.handleUpgradeRequest(req, socket, head)
+      this.relay.handleUpgradeRequest(req, socket, head, clientIp)
       return
     }
     if (
@@ -558,18 +536,11 @@ export class BlindGatewayServer {
       pathname === '/signaling' ||
       pathname === '/signaling/'
     ) {
-      if (!this.ipTracker.has(socket) && this.ipTracker.totalTracked >= this.maxConnections) {
-        socket.write('HTTP/1.1 503 Service Unavailable\r\n\r\n')
-        socket.destroy()
+      const clientIp = this.connectionGuard.acquireUpgrade(req, socket)
+      if (!clientIp) {
         return
       }
-      if (!this.ipTracker.has(socket) && !this.ipTracker.tryAcquire(socket)) {
-        this.rejectedPerIpCap += 1
-        socket.write('HTTP/1.1 429 Too Many Requests\r\n\r\n')
-        socket.destroy()
-        return
-      }
-      this.signaling.handleUpgradeRequest(req, socket, head)
+      this.signaling.handleUpgradeRequest(req, socket, head, clientIp)
       return
     }
 
@@ -585,11 +556,7 @@ export class BlindGatewayServer {
 
     await Promise.allSettled([this.relay.stop(), this.signaling.stop()])
 
-    for (const [socket, timer] of this.pendingHandshakeTimers) {
-      clearTimeout(timer)
-      socket.destroy()
-    }
-    this.pendingHandshakeTimers.clear()
+    this.connectionGuard.destroyPendingAndReset()
 
     if (this.server) {
       const server = this.server

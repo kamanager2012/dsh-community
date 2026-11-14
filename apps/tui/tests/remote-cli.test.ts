@@ -861,4 +861,42 @@ async function spawnCliUntilReadyJson<T>(
     ).toBe(2)
     expect(envIo.stderr()).toContain('--web-url')
   })
+
+  it('parses --trusted-proxies / env on remote gateway and fails closed on invalid CIDRs', async () => {
+    expect(COMMUNITY_REMOTE_HELP).toContain('--trusted-proxies')
+
+    for (const badCidr of ['not-a-cidr', '0.0.0.0/0', '::/0', '127.0.0.1/33', '127.0.0.1,']) {
+      const io = captureOutputs()
+      expect(
+        await runRemoteCommand(['gateway', '--trusted-proxies', badCidr], {}, process.cwd()),
+      ).toBe(2)
+      expect(io.stderr()).toMatch(/trusted prox(y|ies)/i)
+    }
+
+    const badEnvIo = captureOutputs()
+    expect(
+      await runRemoteCommand(
+        ['gateway'],
+        { DSH_REMOTE_GATEWAY_TRUSTED_PROXIES: 'invalid-proxy' },
+        process.cwd(),
+      ),
+    ).toBe(2)
+    expect(badEnvIo.stderr()).toMatch(/trusted prox(y|ies)/i)
+
+    const binPath = ensureBuiltTuiBin()
+    const { ready, stopAndWait } = await spawnCliUntilReadyJson<{
+      kind: string
+      trustedProxies?: string[]
+    }>(
+      binPath,
+      ['remote', 'gateway', '--port', '0', '--trusted-proxies', '127.0.0.1,10.0.0.0/8', '--json'],
+      {},
+    )
+    try {
+      expect(ready.kind).toBe('blind-gateway')
+      expect(ready.trustedProxies).toEqual(['127.0.0.1', '10.0.0.0/8'])
+    } finally {
+      await stopAndWait()
+    }
+  })
 })

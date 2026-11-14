@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto'
 import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { createConnection, type Socket } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -7,6 +8,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import dh from 'noise-handshake/dh.js'
 import {
   BlindGatewayServer,
+  BlindRelayServer,
   encodePairingWebUrl,
   FailoverRemoteClient,
   InMemoryDeviceTrustStore,
@@ -34,6 +36,74 @@ function makeKeyPair() {
     publicKey: new Uint8Array(raw.publicKey),
     secretKey: new Uint8Array(raw.secretKey),
   }
+}
+
+async function openRawWebSocketUpgrade(
+  host: string,
+  port: number,
+  path: string,
+  headers: Record<string, string> = {},
+): Promise<{ statusCode: number; socket: Socket }> {
+  return await new Promise((resolve, reject) => {
+    const socket = createConnection({ host, port })
+    const timer = setTimeout(() => {
+      socket.destroy()
+      reject(new Error(`timed out waiting for HTTP upgrade response on ${path}`))
+    }, 3_000)
+    const wsKey = randomBytes(16).toString('base64')
+    const headerLines = [
+      `GET ${path} HTTP/1.1`,
+      `Host: ${host}:${port}`,
+      'Upgrade: websocket',
+      'Connection: Upgrade',
+      'Sec-WebSocket-Version: 13',
+      `Sec-WebSocket-Key: ${wsKey}`,
+      ...Object.entries(headers).map(([k, v]) => `${k}: ${v}`),
+      '\r\n',
+    ]
+    let buffered = ''
+    const finish = (statusCode: number) => {
+      clearTimeout(timer)
+      socket.off('data', onData)
+      socket.off('error', onError)
+      socket.off('close', onClose)
+      resolve({ statusCode, socket })
+    }
+    const onError = (err: Error) => {
+      clearTimeout(timer)
+      reject(err)
+    }
+    const onClose = () => {
+      clearTimeout(timer)
+      const firstLine = buffered.split('\r\n')[0] ?? ''
+      const match = /^HTTP\/\d+\.\d+\s+(\d{3})/.exec(firstLine)
+      if (match) {
+        resolve({ statusCode: Number(match[1]), socket })
+      } else {
+        reject(new Error(`socket closed before HTTP response (${buffered})`))
+      }
+    }
+    const onData = (chunk: Buffer) => {
+      buffered += chunk.toString('utf8')
+      const headerEnd = buffered.indexOf('\r\n\r\n')
+      if (headerEnd === -1) return
+      const statusLine = buffered.slice(0, buffered.indexOf('\r\n'))
+      const match = /^HTTP\/\d+\.\d+\s+(\d{3})/.exec(statusLine)
+      if (!match) {
+        clearTimeout(timer)
+        socket.destroy()
+        reject(new Error(`invalid HTTP response status line: ${statusLine}`))
+        return
+      }
+      finish(Number(match[1]))
+    }
+    socket.on('error', onError)
+    socket.once('close', onClose)
+    socket.on('data', onData)
+    socket.once('connect', () => {
+      socket.write(headerLines.join('\r\n'))
+    })
+  })
 }
 
 const cleanups: Array<() => Promise<void>> = []
@@ -436,5 +506,216 @@ describe('BlindGatewayServer', () => {
       ws.onerror = () => resolve(false)
     })
     expect(wsOk).toBe(true)
+  })
+
+  it('distinguishes proxied client IPs across /relay and /signal when trustedProxies is set and resists spoofed headers', async () => {
+    const gateway = new BlindGatewayServer({
+      enabled: true,
+      host: '127.0.0.1',
+      port: 0,
+      maxConnections: 16,
+      maxConnectionsPerIp: 2,
+      trustedProxies: ['127.0.0.1', '10.0.0.0/8'],
+    })
+    await gateway.start()
+    cleanups.push(() => gateway.stop())
+
+    const addr = gateway.getBoundAddress()!
+    const openSockets: Socket[] = []
+    cleanups.push(async () => {
+      for (const s of openSockets) s.destroy()
+    })
+
+    // 5 concurrent upgrades from distinct proxied client IPs exceed maxConnectionsPerIp (2) if bucketed by 127.0.0.1
+    const distinctClients = [
+      { path: '/relay', xff: '203.0.113.1' },
+      { path: '/signal', xff: '203.0.113.2' },
+      { path: '/relay', xff: '203.0.113.3' },
+      { path: '/signal', xff: '203.0.113.4, 10.0.0.12' },
+      { path: '/relay', xff: '203.0.113.5' },
+    ]
+    for (const c of distinctClients) {
+      const res = await openRawWebSocketUpgrade('127.0.0.1', addr.port, c.path, {
+        'X-Forwarded-For': c.xff,
+      })
+      openSockets.push(res.socket)
+      expect(res.statusCode).toBe(101)
+    }
+
+    // Abusive client spoofing arbitrary left-side hops still shares one bucket ('203.0.113.9')
+    const abuser1 = await openRawWebSocketUpgrade('127.0.0.1', addr.port, '/relay', {
+      'X-Forwarded-For': '1.1.1.1, 203.0.113.9',
+    })
+    openSockets.push(abuser1.socket)
+    expect(abuser1.statusCode).toBe(101)
+
+    const abuser2 = await openRawWebSocketUpgrade('127.0.0.1', addr.port, '/signal', {
+      'X-Forwarded-For': '8.8.8.8, ::ffff:203.0.113.9, 10.0.0.9',
+    })
+    openSockets.push(abuser2.socket)
+    expect(abuser2.statusCode).toBe(101)
+
+    const abuserBlocked = await openRawWebSocketUpgrade('127.0.0.1', addr.port, '/relay', {
+      'X-Forwarded-For': '9.9.9.9, 203.0.113.9:51234',
+    })
+    abuserBlocked.socket.destroy()
+    expect(abuserBlocked.statusCode).toBe(429)
+    expect(gateway.getStats().rejectedPerIpCap).toBeGreaterThanOrEqual(1)
+
+    // Saturated client is also throttled on HTTP endpoints while healthy proxied clients succeed
+    const blockedHttp = await fetch(`${gateway.getHttpBaseUrl()!}/healthz`, {
+      headers: { 'X-Forwarded-For': '203.0.113.9' },
+    })
+    expect(blockedHttp.status).toBe(429)
+
+    const healthyHttp = await fetch(`${gateway.getHttpBaseUrl()!}/healthz`, {
+      headers: { 'X-Forwarded-For': '203.0.113.10' },
+    })
+    expect(healthyHttp.status).toBe(200)
+
+    // RFC 7239 Forwarded header resolves cleanly for another client while abuser stays blocked
+    const rfcClient = await openRawWebSocketUpgrade('127.0.0.1', addr.port, '/signal', {
+      Forwarded: 'for="203.0.113.11:4444";proto=https',
+    })
+    openSockets.push(rfcClient.socket)
+    expect(rfcClient.statusCode).toBe(101)
+  })
+
+  it('fails closed on forwarding headers unless peer matches trustedProxies and rejects invalid CIDRs', async () => {
+    expect(
+      () =>
+        new BlindGatewayServer({
+          enabled: true,
+          host: '127.0.0.1',
+          port: 0,
+          trustedProxies: ['0.0.0.0/0'],
+        }),
+    ).toThrow(/between 1 and 32/i)
+    expect(
+      () =>
+        new BlindGatewayServer({
+          enabled: true,
+          host: '127.0.0.1',
+          port: 0,
+          trustedProxies: ['not-a-cidr'],
+        }),
+    ).toThrow(/invalid trusted proxy/i)
+
+    // Without trustedProxies, X-Forwarded-For is completely ignored and peer IP is capped
+    const noProxyGw = new BlindGatewayServer({
+      enabled: true,
+      host: '127.0.0.1',
+      port: 0,
+      maxConnectionsPerIp: 2,
+    })
+    await noProxyGw.start()
+    cleanups.push(() => noProxyGw.stop())
+
+    const addr1 = noProxyGw.getBoundAddress()!
+    const s1 = await openRawWebSocketUpgrade('127.0.0.1', addr1.port, '/relay', {
+      'X-Forwarded-For': '203.0.113.21',
+    })
+    const s2 = await openRawWebSocketUpgrade('127.0.0.1', addr1.port, '/relay', {
+      'X-Forwarded-For': '203.0.113.22',
+    })
+    cleanups.push(async () => {
+      s1.socket.destroy()
+      s2.socket.destroy()
+    })
+    expect(s1.statusCode).toBe(101)
+    expect(s2.statusCode).toBe(101)
+
+    const s3 = await openRawWebSocketUpgrade('127.0.0.1', addr1.port, '/relay', {
+      'X-Forwarded-For': '203.0.113.23',
+    })
+    s3.socket.destroy()
+    expect(s3.statusCode).toBe(429)
+
+    // With non-matching trustedProxies (10.20.0.0/16), loopback 127.0.0.1 peer still cannot spoof X-Forwarded-For
+    const mismatchProxyGw = new BlindGatewayServer({
+      enabled: true,
+      host: '127.0.0.1',
+      port: 0,
+      maxConnectionsPerIp: 1,
+      trustedProxies: ['10.20.0.0/16'],
+    })
+    await mismatchProxyGw.start()
+    cleanups.push(() => mismatchProxyGw.stop())
+
+    const addr2 = mismatchProxyGw.getBoundAddress()!
+    const m1 = await openRawWebSocketUpgrade('127.0.0.1', addr2.port, '/signal', {
+      'X-Forwarded-For': '203.0.113.31',
+    })
+    cleanups.push(async () => m1.socket.destroy())
+    expect(m1.statusCode).toBe(101)
+
+    const m2 = await openRawWebSocketUpgrade('127.0.0.1', addr2.port, '/signal', {
+      'X-Forwarded-For': '203.0.113.32',
+    })
+    m2.socket.destroy()
+    expect(m2.statusCode).toBe(429)
+  })
+
+  it('supports proxy-aware per-IP caps and IPv6 canonicalization on standalone BlindRelayServer and SelfHostedSignalingServer', async () => {
+    const relay = new BlindRelayServer({
+      enabled: true,
+      host: '127.0.0.1',
+      port: 0,
+      maxConnectionsPerIp: 1,
+      trustedProxies: ['127.0.0.1'],
+    })
+    await relay.start()
+    cleanups.push(() => relay.stop())
+    const rAddr = relay.getBoundAddress()!
+
+    const r1 = await openRawWebSocketUpgrade('127.0.0.1', rAddr.port, '/', {
+      'X-Forwarded-For': '203.0.113.41',
+    })
+    const r2 = await openRawWebSocketUpgrade('127.0.0.1', rAddr.port, '/', {
+      'X-Forwarded-For': '203.0.113.42',
+    })
+    cleanups.push(async () => {
+      r1.socket.destroy()
+      r2.socket.destroy()
+    })
+    expect(r1.statusCode).toBe(101)
+    expect(r2.statusCode).toBe(101)
+
+    const r3 = await openRawWebSocketUpgrade('127.0.0.1', rAddr.port, '/', {
+      'X-Forwarded-For': '203.0.113.41',
+    })
+    r3.socket.destroy()
+    expect(r3.statusCode).toBe(429)
+
+    const signaling = new SelfHostedSignalingServer({
+      enabled: true,
+      host: '127.0.0.1',
+      port: 0,
+      maxConnectionsPerIp: 1,
+      trustedProxies: ['127.0.0.1'],
+    })
+    await signaling.start()
+    cleanups.push(() => signaling.stop())
+    const sAddr = signaling.getBoundAddress()!
+
+    const sig1 = await openRawWebSocketUpgrade('127.0.0.1', sAddr.port, '/', {
+      'X-Forwarded-For': '[2001:0db8::1]:40001',
+    })
+    const sig2 = await openRawWebSocketUpgrade('127.0.0.1', sAddr.port, '/', {
+      'X-Forwarded-For': '2001:db8:0:0::2',
+    })
+    cleanups.push(async () => {
+      sig1.socket.destroy()
+      sig2.socket.destroy()
+    })
+    expect(sig1.statusCode).toBe(101)
+    expect(sig2.statusCode).toBe(101)
+
+    // Equivalent non-canonical IPv6 form hits the same per-IP cap as sig1
+    const sigDup = await openRawWebSocketUpgrade('127.0.0.1', sAddr.port, '/', {
+      'X-Forwarded-For': '2001:db8:0000:0000:0000:0000:0000:0001',
+    })
+    sigDup.socket.destroy()
+    expect(sigDup.statusCode).toBe(429)
   })
 })

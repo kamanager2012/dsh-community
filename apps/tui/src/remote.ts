@@ -29,6 +29,7 @@ import {
   openPersistentRemoteStores,
   parsePairingInput,
   parseRequestedEngines,
+  parseTrustedProxyList,
   resolveRemoteDefaultTransportEnv,
   SelfHostedSignalingServer,
   SelfHostedStunServer,
@@ -62,6 +63,7 @@ export const COMMUNITY_REMOTE_HELP = `dsh-community remote — 多引擎 E2EE �
     --port <n>                          TCP/WS 端口（默认 8787；0 为系统分配）
     --allow-wildcard                    显式允许 0.0.0.0 / :: 通配地址监听
     --host-secret <secret>              可选宿主注册鉴权密钥（或设 DSH_REMOTE_RELAY_HOST_SECRET）
+    --trusted-proxies <cidrs>           可选可信反向代理 IP/CIDR 列表（逗号分隔；或设 DSH_REMOTE_RELAY_TRUSTED_PROXIES）
     --max-rooms <n>                     最大房间数（默认 64）
     --max-frame-bytes <n>               单帧密文上限字节（默认 65536）
     --max-fps <n>                       单连接每秒帧率上限（默认 240）
@@ -74,6 +76,7 @@ export const COMMUNITY_REMOTE_HELP = `dsh-community remote — 多引擎 E2EE �
     --stun-port <n>                     可选同时拉起自建 STUN Server（UDP 端口，0 为自动分配）
     --allow-wildcard                    显式允许 0.0.0.0 / :: 通配地址监听
     --host-secret <secret>              可选宿主注册鉴权密钥（或设 DSH_REMOTE_SIGNALING_HOST_SECRET）
+    --trusted-proxies <cidrs>           可选可信反向代理 IP/CIDR 列表（逗号分隔；或设 DSH_REMOTE_SIGNALING_TRUSTED_PROXIES）
     --max-rooms <n>                     最大房间数（默认 64）
     --json                              输出单行 JSON 就绪信息（不含任何密钥）
 
@@ -82,6 +85,7 @@ export const COMMUNITY_REMOTE_HELP = `dsh-community remote — 多引擎 E2EE �
     --port <n>                          HTTP/WS 端口（默认 8787；0 为系统分配）
     --allow-wildcard                    显式允许 0.0.0.0 / :: 通配地址监听
     --host-secret <secret>              可选宿主注册鉴权密钥（或设 DSH_REMOTE_GATEWAY_HOST_SECRET）
+    --trusted-proxies <cidrs>           可选可信反向代理 IP/CIDR 列表（逗号分隔；或设 DSH_REMOTE_GATEWAY_TRUSTED_PROXIES）
     --stun-host <ip>                    可选 STUN UDP 绑定 IP（默认复用 --host）
     --stun-port <n>                     可选同时拉起自建 STUN Server（UDP 端口，0 为自动分配）
     --serve-web                         可选在 /app/ 只读托管构建后的 Remote Web PWA
@@ -225,11 +229,22 @@ function handleRemoteFlagParseError(err: unknown): number {
   return 2
 }
 
+function resolveTrustedProxiesOption(
+  cliEntries: readonly string[],
+  envValue: string | undefined,
+): readonly string[] | undefined {
+  if (cliEntries.length > 0) return cliEntries
+  const raw = envValue?.trim()
+  if (!raw) return undefined
+  return parseTrustedProxyList(raw)
+}
+
 interface RelayFlags {
   readonly host: string
   readonly port: number
   readonly allowWildcard: boolean
   readonly hostSecret?: string | undefined
+  readonly trustedProxies?: readonly string[] | undefined
   readonly maxRooms?: number | undefined
   readonly maxFrameBytes?: number | undefined
   readonly maxFps?: number | undefined
@@ -241,6 +256,7 @@ function parseRelayFlags(args: readonly string[], env: NodeJS.ProcessEnv): Relay
   let port = 8787
   let allowWildcard = false
   let hostSecret = env.DSH_REMOTE_RELAY_HOST_SECRET?.trim() || undefined
+  const cliTrustedProxies: string[] = []
   let maxRooms: number | undefined
   let maxFrameBytes: number | undefined
   let maxFps: number | undefined
@@ -257,6 +273,7 @@ function parseRelayFlags(args: readonly string[], env: NodeJS.ProcessEnv): Relay
     else if (arg === '--port') port = parsePortValue(readVal(), '--port')
     else if (arg === '--allow-wildcard') allowWildcard = true
     else if (arg === '--host-secret') hostSecret = readVal()
+    else if (arg === '--trusted-proxies') cliTrustedProxies.push(...parseTrustedProxyList(readVal()))
     else if (arg === '--max-rooms') maxRooms = parsePositiveIntValue(readVal(), '--max-rooms')
     else if (arg === '--max-frame-bytes') maxFrameBytes = parsePositiveIntValue(readVal(), '--max-frame-bytes')
     else if (arg === '--max-fps') maxFps = parsePositiveIntValue(readVal(), '--max-fps')
@@ -264,7 +281,11 @@ function parseRelayFlags(args: readonly string[], env: NodeJS.ProcessEnv): Relay
     else handleUnknownRemoteFlag(arg)
   }
 
-  return { host, port, allowWildcard, hostSecret, maxRooms, maxFrameBytes, maxFps, json }
+  const trustedProxies = resolveTrustedProxiesOption(
+    cliTrustedProxies,
+    env.DSH_REMOTE_RELAY_TRUSTED_PROXIES,
+  )
+  return { host, port, allowWildcard, hostSecret, trustedProxies, maxRooms, maxFrameBytes, maxFps, json }
 }
 
 interface SignalingFlags {
@@ -274,6 +295,7 @@ interface SignalingFlags {
   readonly stunPort?: number | undefined
   readonly allowWildcard: boolean
   readonly hostSecret?: string | undefined
+  readonly trustedProxies?: readonly string[] | undefined
   readonly maxRooms?: number | undefined
   readonly json: boolean
 }
@@ -285,6 +307,7 @@ function parseSignalingFlags(args: readonly string[], env: NodeJS.ProcessEnv): S
   let stunPort: number | undefined
   let allowWildcard = false
   let hostSecret = env.DSH_REMOTE_SIGNALING_HOST_SECRET?.trim() || undefined
+  const cliTrustedProxies: string[] = []
   let maxRooms: number | undefined
   let json = false
 
@@ -301,12 +324,17 @@ function parseSignalingFlags(args: readonly string[], env: NodeJS.ProcessEnv): S
     else if (arg === '--stun-port') stunPort = parsePortValue(readVal(), '--stun-port')
     else if (arg === '--allow-wildcard') allowWildcard = true
     else if (arg === '--host-secret') hostSecret = readVal()
+    else if (arg === '--trusted-proxies') cliTrustedProxies.push(...parseTrustedProxyList(readVal()))
     else if (arg === '--max-rooms') maxRooms = parsePositiveIntValue(readVal(), '--max-rooms')
     else if (arg === '--json') json = true
     else handleUnknownRemoteFlag(arg)
   }
 
-  return { host, port, stunHost, stunPort, allowWildcard, hostSecret, maxRooms, json }
+  const trustedProxies = resolveTrustedProxiesOption(
+    cliTrustedProxies,
+    env.DSH_REMOTE_SIGNALING_TRUSTED_PROXIES,
+  )
+  return { host, port, stunHost, stunPort, allowWildcard, hostSecret, trustedProxies, maxRooms, json }
 }
 
 interface GatewayFlags {
@@ -314,6 +342,7 @@ interface GatewayFlags {
   readonly port: number
   readonly allowWildcard: boolean
   readonly hostSecret?: string | undefined
+  readonly trustedProxies?: readonly string[] | undefined
   readonly stunHost?: string | undefined
   readonly stunPort?: number | undefined
   readonly serveWeb: boolean
@@ -332,6 +361,7 @@ function parseGatewayFlags(args: readonly string[], env: NodeJS.ProcessEnv): Gat
     env.DSH_REMOTE_GATEWAY_HOST_SECRET?.trim() ||
     env.DSH_REMOTE_RELAY_HOST_SECRET?.trim() ||
     undefined
+  const cliTrustedProxies: string[] = []
   let stunHost: string | undefined
   let stunPort: number | undefined
   let serveWeb = false
@@ -352,6 +382,7 @@ function parseGatewayFlags(args: readonly string[], env: NodeJS.ProcessEnv): Gat
     else if (arg === '--port') port = parsePortValue(readVal(), '--port')
     else if (arg === '--allow-wildcard') allowWildcard = true
     else if (arg === '--host-secret') hostSecret = readVal()
+    else if (arg === '--trusted-proxies') cliTrustedProxies.push(...parseTrustedProxyList(readVal()))
     else if (arg === '--stun-host') stunHost = readVal()
     else if (arg === '--stun-port') stunPort = parsePortValue(readVal(), '--stun-port')
     else if (arg === '--serve-web') serveWeb = true
@@ -363,11 +394,16 @@ function parseGatewayFlags(args: readonly string[], env: NodeJS.ProcessEnv): Gat
     else handleUnknownRemoteFlag(arg)
   }
 
+  const trustedProxies = resolveTrustedProxiesOption(
+    cliTrustedProxies,
+    env.DSH_REMOTE_GATEWAY_TRUSTED_PROXIES,
+  )
   return {
     host,
     port,
     allowWildcard,
     hostSecret,
+    trustedProxies,
     stunHost,
     stunPort,
     serveWeb,
@@ -1179,6 +1215,7 @@ export async function runRemoteCommand(
       port: flags.port,
       allowWildcardHost: flags.allowWildcard,
       ...(flags.hostSecret !== undefined ? { hostAuthSecret: flags.hostSecret } : {}),
+      ...(flags.trustedProxies !== undefined ? { trustedProxies: flags.trustedProxies } : {}),
       ...(flags.maxRooms !== undefined ? { maxRooms: flags.maxRooms } : {}),
       ...(flags.maxFrameBytes !== undefined ? { maxOpaquePayloadBytes: flags.maxFrameBytes } : {}),
       ...(flags.maxFps !== undefined ? { maxFramesPerSecond: flags.maxFps } : {}),
@@ -1202,6 +1239,7 @@ export async function runRemoteCommand(
           endpointUrl,
           healthzUrl,
           authRequired: flags.hostSecret !== undefined && flags.hostSecret.length > 0,
+          ...(flags.trustedProxies !== undefined ? { trustedProxies: flags.trustedProxies } : {}),
         })}\n`,
       )
     } else {
@@ -1211,6 +1249,7 @@ export async function runRemoteCommand(
           `  WS 地址: ${endpointUrl}`,
           `  健康检查: ${healthzUrl}`,
           `  宿主鉴权: ${flags.hostSecret ? '已启用 (hostAuthSecret)' : '未启用'}`,
+          `  可信代理: ${flags.trustedProxies ? flags.trustedProxies.join(', ') : '未启用（直连模式，忽略转发头）'}`,
           `按 Ctrl+C / SIGTERM 优雅关闭。`,
         ].join('\n') + '\n',
       )
@@ -1234,6 +1273,7 @@ export async function runRemoteCommand(
       port: flags.port,
       allowWildcardHost: flags.allowWildcard,
       ...(flags.hostSecret !== undefined ? { hostAuthSecret: flags.hostSecret } : {}),
+      ...(flags.trustedProxies !== undefined ? { trustedProxies: flags.trustedProxies } : {}),
       ...(flags.maxRooms !== undefined ? { maxRooms: flags.maxRooms } : {}),
     })
     const stun =
@@ -1269,6 +1309,7 @@ export async function runRemoteCommand(
           endpointUrl,
           healthzUrl,
           authRequired: flags.hostSecret !== undefined && flags.hostSecret.length > 0,
+          ...(flags.trustedProxies !== undefined ? { trustedProxies: flags.trustedProxies } : {}),
           ...(stunUrl !== undefined ? { stunUrl } : {}),
         })}\n`,
       )
@@ -1278,6 +1319,7 @@ export async function runRemoteCommand(
         `  WS 地址: ${endpointUrl}`,
         `  健康检查: ${healthzUrl}`,
         `  宿主鉴权: ${flags.hostSecret ? '已启用 (hostAuthSecret)' : '未启用'}`,
+        `  可信代理: ${flags.trustedProxies ? flags.trustedProxies.join(', ') : '未启用（直连模式，忽略转发头）'}`,
       ]
       if (stunUrl) {
         lines.push(`  STUN 地址: ${stunUrl}`)
@@ -1313,6 +1355,7 @@ export async function runRemoteCommand(
       port: flags.port,
       allowWildcardHost: flags.allowWildcard,
       ...(flags.hostSecret !== undefined ? { hostAuthSecret: flags.hostSecret } : {}),
+      ...(flags.trustedProxies !== undefined ? { trustedProxies: flags.trustedProxies } : {}),
       ...(flags.maxRooms !== undefined ? { maxRooms: flags.maxRooms } : {}),
       ...(flags.maxFrameBytes !== undefined ? { maxOpaquePayloadBytes: flags.maxFrameBytes } : {}),
       ...(flags.maxFps !== undefined ? { maxFramesPerSecond: flags.maxFps } : {}),
@@ -1357,6 +1400,7 @@ export async function runRemoteCommand(
           ...(webAppUrl !== undefined ? { webAppUrl } : {}),
           ...(stunUrl !== undefined ? { stunUrl } : {}),
           authRequired: flags.hostSecret !== undefined && flags.hostSecret.length > 0,
+          ...(flags.trustedProxies !== undefined ? { trustedProxies: flags.trustedProxies } : {}),
         })}\n`,
       )
     } else {
@@ -1367,6 +1411,7 @@ export async function runRemoteCommand(
         `  健康检查: ${healthzUrl}`,
         `  Web 托管: ${webAppUrl ?? '未启用（使用 --serve-web 或 --web-dir 开启只读 /app/）'}`,
         `  宿主鉴权: ${flags.hostSecret ? '已启用 (hostAuthSecret)' : '未启用'}`,
+        `  可信代理: ${flags.trustedProxies ? flags.trustedProxies.join(', ') : '未启用（直连模式，忽略转发头）'}`,
       ]
       if (stunUrl) {
         lines.push(`  STUN 地址: ${stunUrl}`)
