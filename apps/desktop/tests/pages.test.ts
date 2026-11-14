@@ -4,6 +4,7 @@ import {
   renderDiagnosticsPage,
   renderErrorPage,
   renderLoadingPage,
+  renderMarketplacePage,
   renderOfficialSessionsPage,
   renderRemotePage,
   renderRuntimePage,
@@ -420,5 +421,170 @@ describe('shell pages', () => {
     expect(remoteErrorHtml).toContain('class="custom-host-input hidden-row"')
     expect(remoteErrorHtml).toContain('copyWithFeedback')
     expect(remoteErrorHtml).not.toMatch(/style="/i)
+  })
+
+  it('formats Marketplace fetchedAt in local timezone without raw ISO suffix', () => {
+    const html = renderMarketplacePage({
+      product: 'DSH Community',
+      catalog: undefined,
+      source: 'cache',
+      fetchedAt: '2026-08-16T01:00:00.000Z',
+      registryUrl: 'https://github.com/kamanager2012/dsh-community/blob/main/packages/marketplace/catalog.json',
+      installed: [],
+      profile: 'web',
+    })
+    expect(html).toContain('抓取时间 ')
+    expect(html).toContain('(UTC')
+    expect(html).not.toContain('2026-08-16T01:00:00.000Z')
+    expect(html).not.toMatch(/style="/i)
+
+    const emptyTimeHtml = renderMarketplacePage({
+      product: 'DSH Community',
+      catalog: undefined,
+      source: 'none',
+      fetchedAt: '',
+      registryUrl: 'https://github.com/kamanager2012/dsh-community/blob/main/packages/marketplace/catalog.json',
+      installed: [],
+      profile: 'web',
+    })
+    expect(emptyTimeHtml).toContain('抓取时间 —')
+  })
+
+  it('paginates Official Sessions over 50 rows while keeping full-list filtering and CSP', () => {
+    const makeSessions = (count: number) =>
+      Array.from({ length: count }, (_, idx) => ({
+        id: `sess-${String(idx + 1).padStart(3, '0')}`,
+        projectKey: `proj-${String(idx + 1)}`,
+        transcript: `/tmp/.dsh/projects/proj-${String(idx + 1)}/sess-${String(idx + 1).padStart(3, '0')}.jsonl`,
+        updatedAt: '2026-11-14 09:00',
+        title: `Session ${String(idx + 1)}`,
+      }))
+
+    const underCap = renderOfficialSessionsPage({
+      product: 'DSH Community',
+      officialHome: '/tmp/.dsh',
+      isolated: false,
+      sessions: makeSessions(50),
+    })
+    expect(underCap).not.toContain('id="sessions-more-row"')
+    expect(underCap).not.toMatch(/<tr data-session-row="[^"]*" class="hidden-row">/)
+
+    const overCap = renderOfficialSessionsPage({
+      product: 'DSH Community',
+      officialHome: '/tmp/.dsh',
+      isolated: false,
+      sessions: makeSessions(60),
+    })
+    expect(overCap).toContain('<h1>官方 Session（60）</h1>')
+    expect(overCap).toContain('id="sessions-more-row"')
+    expect(overCap).toContain('id="sessions-show-more">显示全部 60 条会话</button>')
+    const hiddenRows = overCap.match(/<tr data-session-row="[^"]*" class="hidden-row">/g) ?? []
+    expect(hiddenRows).toHaveLength(10)
+    expect(overCap).toContain('hiddenByQuery')
+    expect(overCap).toContain('hiddenByPage')
+    expect(overCap).not.toMatch(/style="/i)
+
+    // Execute the inline page script against a lightweight mock DOM to verify pagination + full-list filter behavior.
+    const scripts = [...overCap.matchAll(/<script nonce="[^"]+">([\s\S]*?)<\/script>/g)]
+    const pageScript = scripts.find((match) => match[1].includes('applySessionFilter'))?.[1] ?? ''
+    expect(pageScript).toContain('applySessionFilter')
+    const makeClassList = (initialHidden = false) => {
+      const classes = new Set<string>(initialHidden ? ['hidden-row'] : [])
+      return {
+        toggle: (name: string, force?: boolean) => {
+          const shouldAdd = force === undefined ? !classes.has(name) : force
+          if (shouldAdd) classes.add(name)
+          else classes.delete(name)
+          return classes.has(name)
+        },
+        contains: (name: string) => classes.has(name),
+      }
+    }
+    const makeElement = (initialHidden = false) => {
+      const listeners = new Map<string, Array<() => void>>()
+      return {
+        value: '',
+        classList: makeClassList(initialHidden),
+        focus: () => undefined,
+        getAttribute: () => null,
+        addEventListener: (event: string, fn: () => void) => {
+          const list = listeners.get(event) ?? []
+          list.push(fn)
+          listeners.set(event, list)
+        },
+        dispatch: (event: string) => {
+          for (const fn of listeners.get(event) ?? []) fn()
+        },
+      }
+    }
+    const rowElements = Array.from({ length: 60 }, (_, idx) => {
+      const blob = `sess-${String(idx + 1).padStart(3, '0')} session ${String(idx + 1)} proj-${String(idx + 1)}`
+      return {
+        ...makeElement(idx >= 50),
+        getAttribute: (attr: string) => (attr === 'data-session-row' ? blob : null),
+      }
+    })
+    const elementsById = new Map<string, ReturnType<typeof makeElement>>([
+      ['session-filter', makeElement(false)],
+      ['sessions-table', makeElement(false)],
+      ['session-filter-empty', makeElement(true)],
+      ['sessions-more-row', makeElement(false)],
+      ['sessions-show-more', makeElement(false)],
+      ['session-filter-clear', makeElement(false)],
+    ])
+    const mockDoc = {
+      getElementById: (id: string) => elementsById.get(id) ?? null,
+      querySelectorAll: (selector: string) => (selector === 'tr[data-session-row]' ? rowElements : []),
+    }
+    new Function('document', pageScript)(mockDoc)
+
+    // Searching finds session 59 (>50) even before expanding.
+    const filterEl = elementsById.get('session-filter')!
+    const moreRowEl = elementsById.get('sessions-more-row')!
+    filterEl.value = 'sess-059'
+    filterEl.dispatch('input')
+    expect(rowElements.filter((row) => !row.classList.contains('hidden-row'))).toHaveLength(1)
+    expect(rowElements[58].classList.contains('hidden-row')).toBe(false)
+    expect(moreRowEl.classList.contains('hidden-row')).toBe(true)
+
+    // Clearing restores the 50-row initial cap and shows the expand button again.
+    elementsById.get('session-filter-clear')!.dispatch('click')
+    expect(rowElements.filter((row) => !row.classList.contains('hidden-row'))).toHaveLength(50)
+    expect(moreRowEl.classList.contains('hidden-row')).toBe(false)
+
+    // Clicking show more reveals all 60 rows and hides the expand button.
+    elementsById.get('sessions-show-more')!.dispatch('click')
+    expect(rowElements.filter((row) => !row.classList.contains('hidden-row'))).toHaveLength(60)
+    expect(moreRowEl.classList.contains('hidden-row')).toBe(true)
+  })
+
+  it('exposes direct About navigation from Runtime and Diagnostics without adding nav tabs', () => {
+    const runtimeHtml = renderRuntimePage({
+      product: 'DSH Community',
+      installed: '0.2.2-rc.2',
+      latestTested: '0.2.2-rc.2',
+      defaultPin: '0.2.2-rc.2',
+      recommendation: 'stay',
+      canSwitchToTested: false,
+      officialHome: '/tmp/.dsh',
+      desktopRoot: '/tmp/.dsh-desktop',
+      catalogPath: '/tmp/runtime-pin.json',
+      isolated: false,
+    })
+    expect(runtimeHtml).toContain('<button class="secondary" data-go="about">关于与版本</button>')
+    const navMatch = runtimeHtml.match(/<nav class="nav">([\s\S]*?)<\/nav>/)
+    expect(navMatch?.[1].match(/<button /g) ?? []).toHaveLength(7)
+
+    const diagHtml = renderDiagnosticsPage({
+      product: 'DSH Community',
+      officialHome: '/tmp/.dsh',
+      isolated: false,
+      origin: 'http://127.0.0.1:4310',
+      phase: 'ready',
+      pid: '1234',
+      logs: 'ok',
+    })
+    expect(diagHtml).toContain('<button class="secondary" data-go="about">关于与版本</button>')
+    expect(diagHtml).not.toMatch(/style="/i)
   })
 })

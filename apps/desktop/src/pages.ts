@@ -337,15 +337,18 @@ export function renderAboutPage(model: AboutPageModel): string {
   )
 }
 
+const SESSIONS_PAGE_SIZE = 50
+
 export function renderOfficialSessionsPage(model: OfficialSessionsPageModel): string {
   const searchBar = model.sessions.length === 0
     ? ''
     : '<div class="field"><input id="session-filter" type="search" placeholder="搜索会话 ID / 标题 / 摘要 / 目录…" /></div>'
+  const hasMoreSessions = model.sessions.length > SESSIONS_PAGE_SIZE
   const tableHtml = model.sessions.length === 0
     ? '<p>官方 <code>~/.dsh/sessions</code> 里还没有 session。TUI / Web / 本窗口共用这一份，不会另建目录。</p>'
     : `<table id="sessions-table">
          <thead><tr><th>会话与摘要</th><th>项目 / 目录</th><th class="nowrap">更新时间</th><th class="nowrap">操作</th></tr></thead>
-         <tbody>${model.sessions.map((session) => {
+         <tbody>${model.sessions.map((session, idx) => {
            const searchBlob = [session.id, session.title ?? '', session.preview ?? '', session.cwd ?? '', session.projectKey, session.model ?? ''].join(' ').toLowerCase()
            const titleLine = session.title
              ? `<div><strong>${escapeHtml(session.title)}</strong>${session.model ? ` <span class="chip">${escapeHtml(session.model)}</span>` : ''}</div>`
@@ -354,7 +357,8 @@ export function renderOfficialSessionsPage(model: OfficialSessionsPageModel): st
              ? `<div class="session-sub">${escapeHtml(session.preview)}</div>`
              : ''
            const projectDisplay = session.cwd ? `${session.cwd} (${session.projectKey})` : session.projectKey
-           return `<tr data-session-row="${escapeHtml(searchBlob)}">
+           const rowClass = idx >= SESSIONS_PAGE_SIZE ? ' class="hidden-row"' : ''
+           return `<tr data-session-row="${escapeHtml(searchBlob)}"${rowClass}>
               <td class="break-any">${titleLine}<code>${escapeHtml(session.id)}</code>${previewLine}</td>
               <td class="break-any"><code>${escapeHtml(projectDisplay)}</code></td>
               <td class="nowrap">${escapeHtml(session.updatedAt)}</td>
@@ -366,7 +370,10 @@ export function renderOfficialSessionsPage(model: OfficialSessionsPageModel): st
               </td>
             </tr>`
          }).join('')}</tbody>
-       </table>
+       </table>${hasMoreSessions ? `
+       <div id="sessions-more-row" class="row">
+         <button type="button" class="secondary small" id="sessions-show-more">显示全部 ${String(model.sessions.length)} 条会话</button>
+       </div>` : ''}
        <div id="session-filter-empty" class="empty-filter hidden-row">
          <span>没有匹配当前搜索条件的对话。</span>
          <button type="button" class="secondary small" id="session-filter-clear">清空筛选</button>
@@ -395,24 +402,35 @@ export function renderOfficialSessionsPage(model: OfficialSessionsPageModel): st
            if (id) copyWithFeedback(btn, id)
          })
        })
+       const pageSize = ${String(SESSIONS_PAGE_SIZE)}
+       let sessionsExpanded = false
        const filterInput = document.getElementById('session-filter')
        const sessionsTable = document.getElementById('sessions-table')
        const emptyFilter = document.getElementById('session-filter-empty')
+       const moreRow = document.getElementById('sessions-more-row')
+       const showMoreBtn = document.getElementById('sessions-show-more')
        const applySessionFilter = () => {
          const q = (filterInput?.value ?? '').trim().toLowerCase()
          const allRows = document.querySelectorAll('tr[data-session-row]')
          let visible = 0
-         allRows.forEach((tr) => {
+         allRows.forEach((tr, idx) => {
            const blob = tr.getAttribute('data-session-row') ?? ''
-           const hidden = q.length > 0 && !blob.includes(q)
+           const hiddenByQuery = q.length > 0 && !blob.includes(q)
+           const hiddenByPage = q.length === 0 && !sessionsExpanded && idx >= pageSize
+           const hidden = hiddenByQuery || hiddenByPage
            tr.classList.toggle('hidden-row', hidden)
            if (!hidden) visible += 1
          })
          const noMatch = allRows.length > 0 && visible === 0
          sessionsTable?.classList.toggle('hidden-row', noMatch)
          emptyFilter?.classList.toggle('hidden-row', !noMatch)
+         moreRow?.classList.toggle('hidden-row', q.length > 0 || sessionsExpanded || allRows.length <= pageSize)
        }
        filterInput?.addEventListener('input', applySessionFilter)
+       showMoreBtn?.addEventListener('click', () => {
+         sessionsExpanded = true
+         applySessionFilter()
+       })
        document.getElementById('session-filter-clear')?.addEventListener('click', () => {
          if (!filterInput) return
          filterInput.value = ''
@@ -445,6 +463,7 @@ export function renderRuntimePage(model: RuntimePageModel): string {
      <p>${escapeHtml(rec)}</p>
      <div class="row">
        <button class="secondary" data-go="official">返回会话</button>
+       <button class="secondary" data-go="about">关于与版本</button>
      </div>`,
     'runtime',
   )
@@ -567,7 +586,7 @@ export function renderMarketplacePage(model: MarketplacePageModel): string {
     `${model.product} · 社区市场`,
     (nonce) => `<h1>社区市场</h1>
      <p>浏览 <a href="${escapeHtml(model.registryUrl)}">插件目录 catalog.json</a>。安装/卸载按钮唤起官方 <code>dsh plugin --profile ${escapeHtml(model.profile)} add|remove</code>（写完 profile 后重启官方运行时生效）；本窗口不自己实现安装器。TUI profile 的安装仍走 <code>dsh-marketplace install &lt;name&gt;</code> 或上面这行官方命令。</p>
-     <p class="meta">${escapeHtml(sourceLine)} · 抓取时间 ${escapeHtml(model.fetchedAt || '—')} · 已装 ${String(model.installed.length)} 个（${escapeHtml(model.profile)} profile）</p>
+     <p class="meta">${escapeHtml(sourceLine)} · 抓取时间 ${escapeHtml(formatLocalTimestamp(model.fetchedAt))} · 已装 ${String(model.installed.length)} 个（${escapeHtml(model.profile)} profile）</p>
      ${errorBlock}
      <div class="row">
        <button id="refresh"${disabled}>刷新目录</button>
@@ -615,6 +634,7 @@ export function renderDiagnosticsPage(model: DiagnosticsPageModel): string {
        <button id="retry">重新启动官方运行时</button>
        <button class="secondary" id="copy">复制日志</button>
        <button class="secondary" data-go="official">返回会话</button>
+       <button class="secondary" data-go="about">关于与版本</button>
      </div>
      <script nonce="${nonce}">
        ${COPY_FEEDBACK_JS}
@@ -632,9 +652,25 @@ export function renderDiagnosticsPage(model: DiagnosticsPageModel): string {
   )
 }
 
-function formatRemoteTime(ts: number | undefined): string {
-  if (ts === undefined || !Number.isFinite(ts) || ts <= 0) return '—'
-  const d = new Date(ts)
+/**
+ * Format a numeric epoch timestamp or ISO timestamp string into local `YYYY-MM-DD HH:mm:ss (UTC+N)`.
+ */
+function formatLocalTimestamp(
+  input: number | string | undefined,
+  options?: { includeRelative?: boolean },
+): string {
+  let ms: number | undefined
+  if (typeof input === 'number') {
+    ms = Number.isFinite(input) && input > 0 ? input : undefined
+  } else if (typeof input === 'string') {
+    const trimmed = input.trim()
+    if (!trimmed) return '—'
+    const parsed = Date.parse(trimmed)
+    if (!Number.isFinite(parsed) || parsed <= 0) return trimmed
+    ms = parsed
+  }
+  if (ms === undefined) return '—'
+  const d = new Date(ms)
   const pad = (n: number): string => String(n).padStart(2, '0')
   const local = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
   const offsetMin = -d.getTimezoneOffset()
@@ -643,12 +679,18 @@ function formatRemoteTime(ts: number | undefined): string {
   const hh = pad(Math.floor(absMin / 60))
   const mm = pad(absMin % 60)
   const tz = mm === '00' ? `UTC${sign}${Number(hh)}` : `UTC${sign}${hh}:${mm}`
-  const diffMs = ts - Date.now()
-  if (diffMs > 0 && diffMs < 86_400_000) {
-    const mins = Math.max(1, Math.ceil(diffMs / 60_000))
-    return `${local} (${tz}, ${mins} 分钟后)`
+  if (options?.includeRelative) {
+    const diffMs = ms - Date.now()
+    if (diffMs > 0 && diffMs < 86_400_000) {
+      const mins = Math.max(1, Math.ceil(diffMs / 60_000))
+      return `${local} (${tz}, ${mins} 分钟后)`
+    }
   }
   return `${local} (${tz})`
+}
+
+function formatRemoteTime(ts: number | undefined): string {
+  return formatLocalTimestamp(ts, { includeRelative: true })
 }
 
 function remotePhaseBadge(phase: DesktopRemotePhase): string {

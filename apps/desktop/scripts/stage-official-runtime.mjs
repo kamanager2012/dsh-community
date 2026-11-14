@@ -209,4 +209,9 @@ if (bytes < 80_000_000) {
 }
 process.stdout.write(`official dsh archive ${String(bytes)} bytes\n`)
 process.stdout.write(`${archive}\n`)
-process.stdout.write(`${officialBin}\n`)
+if (process.env.DSH_KEEP_RUNTIME_STAGE === '1') {
+  process.stdout.write(`${officialBin}\n`)
+} else {
+  await rm(stageRoot, { recursive: true, force: true })
+  process.stdout.write(`pruned runtime stage ${stageRoot}\n`)
+}

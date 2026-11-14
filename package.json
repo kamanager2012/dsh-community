@@ -31,7 +31,8 @@
     "contracts:extract": "node scripts/extract-official-contracts.mjs",
     "marketplace": "pnpm --filter @dsh-community/marketplace build && pnpm --filter @dsh-community/marketplace start",
     "catalog:verify": "node packages/marketplace/scripts/verify.mjs",
-    "catalog:verify:offline": "node packages/marketplace/scripts/verify.mjs --offline"
+    "catalog:verify:offline": "node packages/marketplace/scripts/verify.mjs --offline",
+    "clean:artifacts": "node scripts/clean-build-artifacts.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.18.0",
