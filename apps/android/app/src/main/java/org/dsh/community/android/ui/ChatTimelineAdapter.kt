@@ -199,17 +199,21 @@ class ChatTimelineAdapter(
             }
         }
 
+        private fun configureLinkTextView(tv: TextView) {
+            tv.setLinkTextColor(ContextCompat.getColor(tv.context, R.color.dsh_text_accent))
+            tv.setTextIsSelectable(true)
+            tv.movementMethod = LinkMovementMethod.getInstance()
+            tv.setOnLongClickListener(itemLongClick)
+        }
+
         private fun createProseView(block: MarkdownRenderBlock.Prose): View {
             val ctx = itemView.context
             return TextView(ctx).apply {
                 text = ChatMarkdownFormatter.formatProseLines(block.lines)
                 textSize = 14f
                 setTextColor(ContextCompat.getColor(ctx, R.color.dsh_text_primary))
-                setLinkTextColor(ContextCompat.getColor(ctx, R.color.dsh_text_accent))
                 setLineSpacing(dp(2).toFloat(), 1f)
-                setTextIsSelectable(true)
-                movementMethod = LinkMovementMethod.getInstance()
-                setOnLongClickListener(itemLongClick)
+                configureLinkTextView(this)
             }
         }
 
@@ -308,8 +312,7 @@ class ChatTimelineAdapter(
                 setTextColor(ContextCompat.getColor(ctx, R.color.dsh_text_primary))
                 setPadding(dp(10), dp(8), dp(10), dp(8))
                 setHorizontallyScrolling(true)
-                setTextIsSelectable(true)
-                setOnLongClickListener(itemLongClick)
+                configureLinkTextView(this)
             }
             hScroll.addView(
                 tableTv,
