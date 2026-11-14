@@ -334,4 +334,55 @@ describe('TUI local /diff, @file completion, and safe workspace helpers', () => 
     expect(store.state.draft).toBe('@foo')
     expect(store.state.atCompletion).toBeUndefined()
   })
+
+  it('rejects pending Tab completions when a question or approval modal opens', async () => {
+    const store = createStore()
+    const resolvers: Array<(matches: string[]) => void> = []
+    const deps: KeyHandlerDeps = {
+      store,
+      onSend: () => {},
+      onCancel: () => {},
+      onExit: () => {},
+      showHelp: () => {},
+      toggleThinking: () => {},
+      completeAtFiles: () =>
+        new Promise<string[]>((resolve) => {
+          resolvers.push(resolve)
+        }),
+    }
+
+    // 1) Question opens while async Tab lookup is pending
+    handleKey(deps, '@foo')
+    handleKey(deps, '\t')
+    const questionPromise = store.askQuestions({
+      questions: [{ id: 'q1', question: 'Confirm?' }],
+    })
+    while (resolvers.length > 0) {
+      resolvers.shift()?.(['foo.ts'])
+    }
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(store.state.draft).toBe('@foo')
+    expect(store.state.atCompletion).toBeUndefined()
+    store.resolveQuestions({ answers: [{ id: 'q1', selected: [], custom: 'done' }] })
+    await questionPromise
+
+    // 2) Approval opens and is aborted while async Tab lookup is pending — still invalidated after closing
+    const ac = new AbortController()
+    handleKey(deps, ' @bar')
+    handleKey(deps, '\t')
+    const approvalPromise = store.askApproval({ toolName: 'bash' }, ac.signal)
+    ac.abort()
+    await expect(approvalPromise).resolves.toBe('cancelled')
+
+    while (resolvers.length > 0) {
+      resolvers.shift()?.(['bar.ts'])
+    }
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(store.state.draft).toBe('@foo @bar')
+    expect(store.state.atCompletion).toBeUndefined()
+  })
 })

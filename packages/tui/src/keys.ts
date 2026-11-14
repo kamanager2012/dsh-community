@@ -32,11 +32,41 @@ export interface KeyHandlerDeps {
 }
 
 const atQueryGenByStore = new WeakMap<UiStore, number>()
+const modalWatchedStores = new WeakSet<UiStore>()
+
+function ensureModalWatcher(store: UiStore): void {
+  if (modalWatchedStores.has(store)) return
+  modalWatchedStores.add(store)
+  if (typeof store.subscribe === 'function') {
+    store.subscribe(() => {
+      const cur = store.state
+      if (cur.fatal !== undefined || cur.approval !== undefined || cur.questions !== undefined) {
+        nextAtQueryGen(store)
+      }
+    })
+  }
+}
 
 function nextAtQueryGen(store: UiStore): number {
+  ensureModalWatcher(store)
   const next = (atQueryGenByStore.get(store) ?? 0) + 1
   atQueryGenByStore.set(store, next)
   return next
+}
+
+function canApplyAtCompletion(
+  store: UiStore,
+  gen: number,
+  expectedDraft: string,
+): boolean {
+  const cur = store.state
+  return (
+    atQueryGenByStore.get(store) === gen
+    && cur.draft === expectedDraft
+    && cur.fatal === undefined
+    && cur.approval === undefined
+    && cur.questions === undefined
+  )
 }
 
 function stageDraftUpdate(store: KeyHandlerDeps['store'], nextDraft: string): void {
@@ -61,13 +91,7 @@ function refreshAtFileCompletion(deps: KeyHandlerDeps): void {
   const gen = nextAtQueryGen(store)
   const publish = (matches: readonly string[]): void => {
     const cur = store.state
-    if (
-      atQueryGenByStore.get(store) !== gen
-      || cur.draft !== targetDraft
-      || cur.fatal !== undefined
-      || cur.approval !== undefined
-      || cur.questions !== undefined
-    ) {
+    if (!canApplyAtCompletion(store, gen, targetDraft)) {
       return
     }
     if (matches.length === 0) {
@@ -257,11 +281,7 @@ function applyChar(deps: KeyHandlerDeps, ch: string, key: KeyEvent): boolean {
         const gen = nextAtQueryGen(store)
         const applyFirst = (matches: readonly string[]): void => {
           const chosen = matches[0]
-          if (
-            !chosen
-            || atQueryGenByStore.get(store) !== gen
-            || store.state.draft !== draftSnapshot
-          ) {
+          if (!chosen || !canApplyAtCompletion(store, gen, draftSnapshot)) {
             return
           }
           store.setAtCompletion(undefined)

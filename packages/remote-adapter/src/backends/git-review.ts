@@ -32,8 +32,12 @@ const WORKSPACE_SUMMARY_TTL_MS = 4000
 const MAX_WORKSPACE_SUMMARY_CACHE = 128
 const WORKSPACE_FILES_CACHE_TTL_MS = 4000
 const MAX_WORKSPACE_FILES_CACHE = 32
+const MAX_WORKSPACE_FILES_QUERY_CACHE = 64
 const MAX_WORKSPACE_FILES_INDEX_ENTRIES = 50_000
 const MAX_CONCURRENT_WORKSPACE_INDEX_BUILDS = 4
+const MAX_WORKSPACE_FILES_RANK_SLACK = 256
+const MAX_WORKSPACE_FILES_TOP_K_CAP = 4_096
+const WORKSPACE_FILES_COLLATOR = new Intl.Collator('en')
 
 async function runGit(
   cwd: string,
@@ -687,9 +691,11 @@ function resolveExistingDirectoryRealpath(cwd: string): string {
   }
 }
 
-function rankWorkspaceFileMatch(relPath: string, queryLower: string): number {
-  const pathLower = relPath.toLowerCase()
-  const baseLower = basename(pathLower)
+function rankIndexedWorkspaceFileMatch(
+  pathLower: string,
+  baseLower: string,
+  queryLower: string,
+): number {
   if (baseLower === queryLower) return 0
   if (baseLower.startsWith(queryLower)) return 1
   if (baseLower.includes(queryLower)) return 2
@@ -769,10 +775,100 @@ function collectFilesFallbackWalk(
   return { paths, walkTruncated }
 }
 
+interface WorkspaceFilesIndexItem {
+  readonly path: string
+  readonly lowerPath: string
+  readonly lowerBase: string
+}
+
+interface WorkspaceFilesCachedQuery {
+  readonly root: string
+  readonly files: readonly string[]
+  readonly totalMatched: number
+  readonly truncated: boolean
+}
+
 interface WorkspaceFilesIndexEntry {
   readonly expiresAt: number
-  readonly paths: readonly string[]
+  readonly entries: readonly WorkspaceFilesIndexItem[]
   readonly walkTruncated: boolean
+  readonly queryCache: Map<string, WorkspaceFilesCachedQuery>
+}
+
+interface ScoredWorkspaceMatch {
+  readonly index: number
+  readonly rank: number
+  readonly pathLen: number
+}
+
+function isWorseScoredMatch(a: ScoredWorkspaceMatch, b: ScoredWorkspaceMatch): boolean {
+  if (a.rank !== b.rank) return a.rank > b.rank
+  if (a.pathLen !== b.pathLen) return a.pathLen > b.pathLen
+  return a.index > b.index
+}
+
+function siftUpMaxHeap(heap: ScoredWorkspaceMatch[], startIdx: number): void {
+  let idx = startIdx
+  const item = heap[idx]!
+  while (idx > 0) {
+    const parentIdx = (idx - 1) >> 1
+    const parent = heap[parentIdx]!
+    if (!isWorseScoredMatch(item, parent)) break
+    heap[idx] = parent
+    idx = parentIdx
+  }
+  heap[idx] = item
+}
+
+function siftDownMaxHeap(heap: ScoredWorkspaceMatch[], startIdx: number): void {
+  let idx = startIdx
+  const len = heap.length
+  const item = heap[idx]!
+  while (true) {
+    const leftIdx = (idx << 1) + 1
+    if (leftIdx >= len) break
+    const rightIdx = leftIdx + 1
+    let worstChildIdx = leftIdx
+    if (rightIdx < len && isWorseScoredMatch(heap[rightIdx]!, heap[leftIdx]!)) {
+      worstChildIdx = rightIdx
+    }
+    if (!isWorseScoredMatch(heap[worstChildIdx]!, item)) break
+    heap[idx] = heap[worstChildIdx]!
+    idx = worstChildIdx
+  }
+  heap[idx] = item
+}
+
+function matchesWorkspacePrefix(
+  relPath: string,
+  normalizedPrefix: string | undefined,
+  prefixDirOnly: boolean,
+): boolean {
+  if (!normalizedPrefix) return true
+  if (prefixDirOnly) {
+    return relPath === normalizedPrefix || relPath.startsWith(`${normalizedPrefix}/`)
+  }
+  return relPath.startsWith(normalizedPrefix)
+}
+
+function validateWorkspaceCandidate(
+  realRoot: string,
+  rootPrefix: string,
+  candidate: string,
+): string | undefined {
+  try {
+    const safeRel = assertSafeRepoRelativePath(realRoot, candidate)
+    const absTarget = join(realRoot, safeRel)
+    if (lstatSync(absTarget).isSymbolicLink()) {
+      const canonicalTarget = realpathSync(absTarget)
+      if (canonicalTarget !== realRoot && !canonicalTarget.startsWith(rootPrefix)) {
+        return undefined
+      }
+    }
+    return safeRel
+  } catch {
+    return undefined
+  }
 }
 
 const workspaceFilesIndexCache = new Map<string, WorkspaceFilesIndexEntry>()
@@ -853,11 +949,23 @@ async function loadWorkspaceFilesIndex(
         seen.add(p)
         paths.push(p)
       }
+      // Pre-sort once per index build so empty queries require zero sorting and
+      // top-K tie-breaking uses integer index order instead of repeated localeCompare.
+      paths.sort((a, b) => WORKSPACE_FILES_COLLATOR.compare(a, b))
+      const entries: WorkspaceFilesIndexItem[] = paths.map((path) => {
+        const lowerPath = path.toLowerCase()
+        return {
+          path,
+          lowerPath,
+          lowerBase: basename(lowerPath),
+        }
+      })
 
       const entry: WorkspaceFilesIndexEntry = {
         expiresAt: Date.now() + WORKSPACE_FILES_CACHE_TTL_MS,
-        paths,
+        entries,
         walkTruncated,
+        queryCache: new Map(),
       }
       workspaceFilesIndexCache.delete(realRoot)
       if (workspaceFilesIndexCache.size >= MAX_WORKSPACE_FILES_CACHE) {
@@ -886,8 +994,8 @@ async function loadWorkspaceFilesIndex(
 /**
  * Lists read-only workspace-relative file paths for `@file` mentions and search.
  * Uses a shared single-flight TTL-cached workspace index keyed by canonical root,
- * enforces global index-build concurrency caps, and checks canonical containment and
- * Noise transport frame payload bounds.
+ * bounded per-query result cache + top-K selection to avoid post-cache O(n log n) sorts,
+ * global index-build concurrency caps, and canonical containment + payload byte bounds.
  */
 export async function inspectWorkspaceFiles(
   params: WorkspaceFilesParams,
@@ -909,82 +1017,126 @@ export async function inspectWorkspaceFiles(
     normalizedPrefix = assertSafeRepoRelativePath(realRoot, cleanBase)
   }
 
-  const indexEntry = await loadWorkspaceFilesIndex(realRoot, options?.forceRefresh === true)
-  const walkTruncated = indexEntry.walkTruncated
+  const forceRefresh = options?.forceRefresh === true
+  const indexEntry = await loadWorkspaceFilesIndex(realRoot, forceRefresh)
+  const queryTrimmed = params.query?.trim().toLowerCase() ?? ''
+  const sessionIdBytes = Buffer.byteLength(params.sessionId, 'utf8')
+  const queryCacheKey = `${sessionIdBytes}\0${prefixDirOnly ? 'd' : 'p'}\0${normalizedPrefix ?? ''}\0${queryTrimmed}\0${limit}`
 
-  const uniquePaths: string[] = []
-  for (const p of indexEntry.paths) {
-    if (normalizedPrefix) {
-      if (prefixDirOnly) {
-        if (p !== normalizedPrefix && !p.startsWith(`${normalizedPrefix}/`)) continue
-      } else if (!p.startsWith(normalizedPrefix)) {
+  if (!forceRefresh) {
+    const cachedQuery = indexEntry.queryCache.get(queryCacheKey)
+    if (cachedQuery) {
+      indexEntry.queryCache.delete(queryCacheKey)
+      indexEntry.queryCache.set(queryCacheKey, cachedQuery)
+      return {
+        sessionId: params.sessionId,
+        root: cachedQuery.root,
+        files: [...cachedQuery.files],
+        totalMatched: cachedQuery.totalMatched,
+        truncated: cachedQuery.truncated,
+      }
+    }
+  }
+
+  const walkTruncated = indexEntry.walkTruncated
+  const rootPrefix = realRoot.endsWith(sep) ? realRoot : `${realRoot}${sep}`
+  const queryTokens = queryTrimmed.length > 0 ? queryTrimmed.split(/\s+/u).filter(Boolean) : []
+  const files: string[] = []
+  let byteBudgetUsed = 256 + sessionIdBytes + Buffer.byteLength(realRoot, 'utf8')
+  let budgetTruncated = false
+  let totalMatched = 0
+
+  if (queryTokens.length === 0) {
+    let collectionDone = false
+    for (const item of indexEntry.entries) {
+      if (!matchesWorkspacePrefix(item.path, normalizedPrefix, prefixDirOnly)) continue
+      totalMatched += 1
+      if (collectionDone) continue
+      if (files.length >= limit) {
+        budgetTruncated = true
+        collectionDone = true
         continue
       }
-    }
-    uniquePaths.push(p)
-  }
-
-  const queryTrimmed = params.query?.trim().toLowerCase() ?? ''
-  const queryTokens = queryTrimmed.length > 0 ? queryTrimmed.split(/\s+/u).filter(Boolean) : []
-  const matched =
-    queryTokens.length === 0
-      ? uniquePaths
-      : uniquePaths.filter((p) => {
-          const lower = p.toLowerCase()
-          return queryTokens.every((tok) => lower.includes(tok))
-        })
-
-  const totalMatched = matched.length
-  if (queryTokens.length > 0) {
-    matched.sort((a, b) => {
-      const rankDiff = rankWorkspaceFileMatch(a, queryTrimmed) - rankWorkspaceFileMatch(b, queryTrimmed)
-      if (rankDiff !== 0) return rankDiff
-      if (a.length !== b.length) return a.length - b.length
-      return a.localeCompare(b, 'en')
-    })
-  } else {
-    matched.sort((a, b) => a.localeCompare(b, 'en'))
-  }
-
-  const files: string[] = []
-  let byteBudgetUsed = 256 + Buffer.byteLength(params.sessionId, 'utf8') + Buffer.byteLength(realRoot, 'utf8')
-  let budgetTruncated = false
-
-  for (const candidate of matched) {
-    if (files.length >= limit) {
-      budgetTruncated = true
-      break
-    }
-    // Verify canonical containment and reject symlinks pointing outside workspace root
-    let safeRel: string
-    try {
-      safeRel = assertSafeRepoRelativePath(realRoot, candidate)
-      const absTarget = join(realRoot, safeRel)
-      if (lstatSync(absTarget).isSymbolicLink()) {
-        const canonicalTarget = realpathSync(absTarget)
-        const rootPrefix = realRoot.endsWith(sep) ? realRoot : `${realRoot}${sep}`
-        if (canonicalTarget !== realRoot && !canonicalTarget.startsWith(rootPrefix)) {
-          continue
-        }
+      const safeRel = validateWorkspaceCandidate(realRoot, rootPrefix, item.path)
+      if (!safeRel) continue
+      const entryBytes = Buffer.byteLength(JSON.stringify(safeRel), 'utf8') + 1
+      if (byteBudgetUsed + entryBytes > MAX_WORKSPACE_FILES_PAYLOAD_BYTES) {
+        budgetTruncated = true
+        collectionDone = true
+        continue
       }
-    } catch {
-      continue
+      byteBudgetUsed += entryBytes
+      files.push(safeRel)
+    }
+  } else {
+    const heapCap = Math.min(
+      indexEntry.entries.length,
+      Math.max(limit * 2, limit + MAX_WORKSPACE_FILES_RANK_SLACK),
+      MAX_WORKSPACE_FILES_TOP_K_CAP,
+    )
+    const heap: ScoredWorkspaceMatch[] = []
+    for (let i = 0; i < indexEntry.entries.length; i += 1) {
+      const item = indexEntry.entries[i]!
+      if (!matchesWorkspacePrefix(item.path, normalizedPrefix, prefixDirOnly)) continue
+      if (!queryTokens.every((tok) => item.lowerPath.includes(tok))) continue
+      totalMatched += 1
+      const candidate: ScoredWorkspaceMatch = {
+        index: i,
+        rank: rankIndexedWorkspaceFileMatch(item.lowerPath, item.lowerBase, queryTrimmed),
+        pathLen: item.path.length,
+      }
+      if (heap.length < heapCap) {
+        heap.push(candidate)
+        siftUpMaxHeap(heap, heap.length - 1)
+      } else if (heapCap > 0 && isWorseScoredMatch(heap[0]!, candidate)) {
+        heap[0] = candidate
+        siftDownMaxHeap(heap, 0)
+      }
     }
 
-    const entryBytes = Buffer.byteLength(JSON.stringify(safeRel), 'utf8') + 1
-    if (byteBudgetUsed + entryBytes > MAX_WORKSPACE_FILES_PAYLOAD_BYTES) {
-      budgetTruncated = true
-      break
+    heap.sort((a, b) => (isWorseScoredMatch(a, b) ? 1 : isWorseScoredMatch(b, a) ? -1 : 0))
+    for (const matchItem of heap) {
+      if (files.length >= limit) {
+        budgetTruncated = true
+        break
+      }
+      const safeRel = validateWorkspaceCandidate(
+        realRoot,
+        rootPrefix,
+        indexEntry.entries[matchItem.index]!.path,
+      )
+      if (!safeRel) continue
+      const entryBytes = Buffer.byteLength(JSON.stringify(safeRel), 'utf8') + 1
+      if (byteBudgetUsed + entryBytes > MAX_WORKSPACE_FILES_PAYLOAD_BYTES) {
+        budgetTruncated = true
+        break
+      }
+      byteBudgetUsed += entryBytes
+      files.push(safeRel)
     }
-    byteBudgetUsed += entryBytes
-    files.push(safeRel)
+    if (!budgetTruncated && totalMatched > heap.length && files.length < limit) {
+      budgetTruncated = true
+    }
   }
+
+  const truncated = walkTruncated || budgetTruncated
+  indexEntry.queryCache.delete(queryCacheKey)
+  if (indexEntry.queryCache.size >= MAX_WORKSPACE_FILES_QUERY_CACHE) {
+    const oldestQueryKey = indexEntry.queryCache.keys().next().value
+    if (oldestQueryKey !== undefined) indexEntry.queryCache.delete(oldestQueryKey)
+  }
+  indexEntry.queryCache.set(queryCacheKey, {
+    root: realRoot,
+    files: [...files],
+    totalMatched,
+    truncated,
+  })
 
   return {
     sessionId: params.sessionId,
     root: realRoot,
     files,
     totalMatched,
-    truncated: walkTruncated || budgetTruncated,
+    truncated,
   }
 }

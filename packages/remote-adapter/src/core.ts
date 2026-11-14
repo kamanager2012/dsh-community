@@ -51,6 +51,8 @@ export interface RemoteAdapterOptions {
   readonly maxDevices?: number
   readonly maxConcurrentWorkspaceFilesPerDevice?: number
   readonly maxConcurrentWorkspaceFilesGlobal?: number
+  readonly maxWorkspaceFilesRequestsPerWindow?: number
+  readonly workspaceFilesRateWindowMs?: number
   readonly trustStore?: DeviceTrustStore
   readonly hostIdentityStore?: HostIdentityStore
 }
@@ -596,8 +598,11 @@ export class RemoteAdapterCore {
   private readonly connectionStateCapacity: number
   private readonly maxConcurrentWorkspaceFilesPerDevice: number
   private readonly maxConcurrentWorkspaceFilesGlobal: number
+  private readonly maxWorkspaceFilesRequestsPerWindow: number
+  private readonly workspaceFilesRateWindowMs: number
   private inFlightWorkspaceFilesTotal = 0
   private readonly inFlightWorkspaceFilesByDevice = new Map<string, number>()
+  private readonly workspaceFilesRequestTimestampsByDevice = new Map<string, number[]>()
 
   constructor(
     private readonly seams: OfficialRemoteSeams,
@@ -624,6 +629,20 @@ export class RemoteAdapterCore {
       || this.maxConcurrentWorkspaceFilesGlobal < 1
     ) {
       throw new Error('maxConcurrentWorkspaceFilesGlobal must be a positive integer')
+    }
+    this.maxWorkspaceFilesRequestsPerWindow = options.maxWorkspaceFilesRequestsPerWindow ?? 20
+    if (
+      !Number.isInteger(this.maxWorkspaceFilesRequestsPerWindow)
+      || this.maxWorkspaceFilesRequestsPerWindow < 1
+    ) {
+      throw new Error('maxWorkspaceFilesRequestsPerWindow must be a positive integer')
+    }
+    this.workspaceFilesRateWindowMs = options.workspaceFilesRateWindowMs ?? 5_000
+    if (
+      !Number.isInteger(this.workspaceFilesRateWindowMs)
+      || this.workspaceFilesRateWindowMs < 1
+    ) {
+      throw new Error('workspaceFilesRateWindowMs must be a positive integer')
     }
     this.hostIdentityStore = options.hostIdentityStore ?? new InMemoryHostIdentityStore()
     this.devices = new DeviceRegistry(
@@ -668,6 +687,47 @@ export class RemoteAdapterCore {
       latestSeq: buffer.getLatestSeq() ?? null,
       size: buffer.size(),
     }
+  }
+
+  private consumeWorkspaceFilesRateBudget(deviceId: string): void {
+    const now = Date.now()
+    const cutoff = now - this.workspaceFilesRateWindowMs
+    let timestamps = this.workspaceFilesRequestTimestampsByDevice.get(deviceId)
+    if (!timestamps) {
+      if (this.workspaceFilesRequestTimestampsByDevice.size >= this.connectionStateCapacity) {
+        for (const [key, list] of this.workspaceFilesRequestTimestampsByDevice) {
+          if (list.length === 0 || list[list.length - 1]! <= cutoff) {
+            this.workspaceFilesRequestTimestampsByDevice.delete(key)
+          }
+        }
+        if (this.workspaceFilesRequestTimestampsByDevice.size >= this.connectionStateCapacity) {
+          const oldestKey = this.workspaceFilesRequestTimestampsByDevice.keys().next().value
+          if (oldestKey !== undefined) {
+            this.workspaceFilesRequestTimestampsByDevice.delete(oldestKey)
+          }
+        }
+      }
+      timestamps = []
+    } else {
+      let trimCount = 0
+      while (trimCount < timestamps.length && timestamps[trimCount]! <= cutoff) {
+        trimCount += 1
+      }
+      if (trimCount > 0) {
+        timestamps.splice(0, trimCount)
+      }
+      this.workspaceFilesRequestTimestampsByDevice.delete(deviceId)
+    }
+
+    if (timestamps.length >= this.maxWorkspaceFilesRequestsPerWindow) {
+      this.workspaceFilesRequestTimestampsByDevice.set(deviceId, timestamps)
+      throw new RemoteProtocolError(
+        'STATE_CAPACITY_EXCEEDED',
+        'workspace.files rate limit exceeded for device',
+      )
+    }
+    timestamps.push(now)
+    this.workspaceFilesRequestTimestampsByDevice.set(deviceId, timestamps)
   }
 
   closeConnection(peer: AuthenticatedPeer): void {
@@ -720,6 +780,7 @@ export class RemoteAdapterCore {
             'workspace.files is not supported by this host',
           )
         }
+        this.consumeWorkspaceFilesRateBudget(peer.deviceId)
         const perDeviceActive = this.inFlightWorkspaceFilesByDevice.get(peer.deviceId) ?? 0
         if (perDeviceActive >= this.maxConcurrentWorkspaceFilesPerDevice) {
           throw new RemoteProtocolError(

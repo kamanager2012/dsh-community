@@ -277,4 +277,104 @@ describe('bounded read-only workspace.files RPC and helpers', () => {
     }
     await expect(afterRelease).resolves.toMatchObject({ files: ['a.ts'] })
   })
+
+  it('uses bounded top-K ranking + query cache and enforces per-device workspace.files rate budget', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'dsh-ws-rate-topk-'))
+    tempDirs.push(dir)
+    initGitRepo(dir)
+
+    // Seed > 600 matching files plus an exact basename match placed late lexicographically
+    for (let i = 0; i < 600; i += 1) {
+      writeFileSync(join(dir, `z_${String(i).padStart(3, '0')}_target_match.ts`), '', 'utf8')
+    }
+    mkdirSync(join(dir, 'z_nested'), { recursive: true })
+    writeFileSync(join(dir, 'z_nested', 'target.ts'), '', 'utf8')
+    execFileSync('git', ['add', '.'], { cwd: dir, stdio: 'pipe' })
+    execFileSync('git', ['commit', '-m', 'seed'], { cwd: dir, stdio: 'pipe' })
+
+    const topLimited = await inspectWorkspaceFiles(
+      { sessionId: 's-topk', query: 'target.ts', limit: 3 },
+      dir,
+    )
+    expect(topLimited.files).toEqual(['z_nested/target.ts'])
+    expect(topLimited.totalMatched).toBe(1)
+
+    const matchAll = await inspectWorkspaceFiles(
+      { sessionId: 's-topk', query: 'target', limit: 5 },
+      dir,
+    )
+    expect(matchAll.files[0]).toBe('z_nested/target.ts')
+    expect(matchAll.files).toHaveLength(5)
+    expect(matchAll.totalMatched).toBe(601)
+    expect(matchAll.truncated).toBe(true)
+
+    // Query cache returns defensive copies across hits
+    matchAll.files.push('mutated.ts')
+    const cachedHit = await inspectWorkspaceFiles(
+      { sessionId: 's-topk', query: 'target', limit: 5 },
+      dir,
+    )
+    expect(cachedHit.files).toHaveLength(5)
+    expect(cachedHit.files).not.toContain('mutated.ts')
+
+    // Per-device rate budget blocks rapid sequential loops without blocking other devices
+    const core = new RemoteAdapterCore(
+      {
+        listSessions: async () => [{ id: 'dsh-1', cwd: dir }],
+        assertSession: async () => {},
+        followup: async () => ({ accepted: true }),
+        respondApproval: async () => ({ ok: true }),
+        respondQuestion: async () => ({ ok: true }),
+        listWorkspaceFiles: (params) => inspectWorkspaceFiles(params, dir),
+      },
+      {
+        maxWorkspaceFilesRequestsPerWindow: 2,
+        workspaceFilesRateWindowMs: 60,
+      },
+    )
+
+    const hostIdentity = await core.hostIdentityStore.getPublicIdentity()
+    const kp1 = await new InMemoryHostIdentityStore().loadOrCreate()
+    const kp2 = await new InMemoryHostIdentityStore().loadOrCreate()
+    const d1 = core.devices.trust(kp1.identity.publicKey, ['observe'], {
+      displayName: 'D1',
+      trustDomainId: hostIdentity.trustDomainId,
+    })
+    const d2 = core.devices.trust(kp2.identity.publicKey, ['observe'], {
+      displayName: 'D2',
+      trustDomainId: hostIdentity.trustDomainId,
+    })
+    const peer1: AuthenticatedPeer = {
+      deviceId: d1.deviceId,
+      publicKey: kp1.identity.publicKey,
+      connectionEpoch: 1,
+    }
+    const peer2: AuthenticatedPeer = {
+      deviceId: d2.deviceId,
+      publicKey: kp2.identity.publicKey,
+      connectionEpoch: 1,
+    }
+
+    const callFiles = (peer: AuthenticatedPeer, seq: number) =>
+      core.handle(peer, {
+        jsonrpc: '2.0',
+        id: `wf-rate-${peer.deviceId}-${seq}`,
+        method: 'workspace.files',
+        protocolVersion: REMOTE_PROTOCOL_VERSION,
+        connectionEpoch: 1,
+        requestSeq: seq,
+        params: { sessionId: 'dsh-1', query: 'target', limit: 2 },
+      })
+
+    await expect(callFiles(peer1, 1)).resolves.toMatchObject({ totalMatched: 601 })
+    await expect(callFiles(peer1, 2)).resolves.toMatchObject({ totalMatched: 601 })
+    await expect(callFiles(peer1, 3)).rejects.toMatchObject({ code: 'STATE_CAPACITY_EXCEEDED' })
+
+    // Peer 2 maintains its independent rate budget
+    await expect(callFiles(peer2, 1)).resolves.toMatchObject({ totalMatched: 601 })
+
+    // Peer 1 recovers after rate window expires
+    await new Promise((resolve) => setTimeout(resolve, 75))
+    await expect(callFiles(peer1, 4)).resolves.toMatchObject({ totalMatched: 601 })
+  })
 })
