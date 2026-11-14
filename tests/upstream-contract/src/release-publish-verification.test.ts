@@ -35,6 +35,14 @@ describe('release publish verification boundary', () => {
     expect(release).not.toContain('*-community.* || "$TAG" == *preview* || "$TAG" == *beta*')
   })
 
+  it('downloads only payload artifacts into dist-artifacts and keeps signed bundles in dist-signed', () => {
+    const publish = release.slice(release.indexOf('  publish:'), release.length)
+    expect(publish).toContain('name: linux\n          path: dist-artifacts/linux')
+    expect(publish).toContain('name: sbom\n          path: dist-artifacts/sbom')
+    expect(publish).toContain('name: signed\n          path: dist-signed')
+    expect(publish).not.toContain('merge-multiple: false')
+  })
+
   it('does not allow verification failure to be ignored', () => {
     expect(release).not.toMatch(
       /Verify release set structure and SHA256[\s\S]{0,240}continue-on-error:\s*true/u,
