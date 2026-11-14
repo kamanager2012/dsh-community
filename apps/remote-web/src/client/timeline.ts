@@ -310,9 +310,18 @@ export class SessionTimelineState implements SessionStoreState {
     if (snap.usage !== undefined) this.usage = snap.usage
     const prevByCallId = new Map(this.pendingApprovals.map((a) => [a.callId, a]))
     this.pendingApprovals = snap.pendingApprovals.map((approval) => {
-      if (approval.args !== undefined) return approval
       const prev = prevByCallId.get(approval.callId)
-      if (prev?.args !== undefined) return { ...approval, args: prev.args }
+      if (approval.argsTruncated && prev && prev.args !== undefined && !prev.argsTruncated) {
+        return { ...approval, args: prev.args, argsTruncated: undefined }
+      }
+      if (approval.args !== undefined) return approval
+      if (prev?.args !== undefined) {
+        return {
+          ...approval,
+          args: prev.args,
+          ...(prev.argsTruncated ? { argsTruncated: true } : {}),
+        }
+      }
       const matchedTool = this.items.find(
         (it): it is Extract<TimelineItem, { kind: 'tool' }> =>
           it.kind === 'tool' && it.callId === approval.callId && it.argumentsText.length > 0,
@@ -768,6 +777,7 @@ export class SessionTimelineState implements SessionStoreState {
           ...(typeof data.reason === 'string' ? { reason: data.reason } : {}),
           ...(typeof data.summary === 'string' ? { summary: data.summary } : {}),
           ...(rawArgs !== undefined ? { args: rawArgs } : {}),
+          ...(data.argsTruncated === true ? { argsTruncated: true } : {}),
           sessionId: this.sessionId,
         }
         const existingIdx = this.pendingApprovals.findIndex((a) => a.callId === approval.callId)
@@ -776,7 +786,10 @@ export class SessionTimelineState implements SessionStoreState {
           if (markUnread) this.unreadCount += 1
         } else {
           const prev = this.pendingApprovals[existingIdx]!
-          if (prev.args === undefined && approval.args !== undefined) {
+          if (
+            (prev.args === undefined || (prev.argsTruncated && !approval.argsTruncated)) &&
+            approval.args !== undefined
+          ) {
             this.pendingApprovals = this.pendingApprovals.map((a, idx) =>
               idx === existingIdx ? { ...a, ...approval } : a,
             )

@@ -1,0 +1,104 @@
+import type { PendingApprovalSnapshot } from './types.ts'
+
+export const MAX_APPROVAL_ARGS_CHARS = 65_536
+
+const TRUNCATION_MARKER_REGEX =
+  /(?:… \[truncated(?:, \d+ B total)?\]$|^\[truncated nested value\]$|^… \(\+\d+ items omitted\)$)/u
+
+export interface FormattedApprovalArgs {
+  readonly text: string
+  readonly truncated: boolean
+}
+
+export interface ApprovalInputSecurityAssessment {
+  readonly formatted: FormattedApprovalArgs
+  readonly truncated: boolean
+  readonly unavailable: boolean
+  readonly allowBlocked: boolean
+  readonly blockReason?: string | undefined
+}
+
+export function hasTruncatedApprovalMarker(value: unknown, depth = 0): boolean {
+  if (depth > 8 || value === undefined || value === null) return false
+  if (typeof value === 'string') {
+    return TRUNCATION_MARKER_REGEX.test(value)
+  }
+  if (Array.isArray(value)) {
+    return value.some((item) => hasTruncatedApprovalMarker(item, depth + 1))
+  }
+  if (typeof value === 'object') {
+    const obj = value as Record<string, unknown>
+    if (obj._truncated === true || typeof obj._omittedKeys === 'number') {
+      return true
+    }
+    return Object.values(obj).some((child) => hasTruncatedApprovalMarker(child, depth + 1))
+  }
+  return false
+}
+
+export function formatApprovalArgsDetailed(rawArgs: unknown): FormattedApprovalArgs {
+  if (rawArgs === undefined || rawArgs === null) {
+    return { text: '', truncated: false }
+  }
+  let text: string
+  if (typeof rawArgs === 'string') {
+    text = rawArgs
+  } else {
+    try {
+      text = JSON.stringify(rawArgs, null, 2) ?? ''
+    } catch {
+      text = String(rawArgs)
+    }
+  }
+  const trimmed = text.trim()
+  if (trimmed.length <= MAX_APPROVAL_ARGS_CHARS) {
+    return { text: trimmed, truncated: false }
+  }
+  return {
+    text: `${trimmed.slice(0, MAX_APPROVAL_ARGS_CHARS)}\n… (truncated, ${trimmed.length} chars total)`,
+    truncated: true,
+  }
+}
+
+export function assessApprovalInputSecurity(
+  approval: PendingApprovalSnapshot,
+  matchedToolArgsText?: string,
+): ApprovalInputSecurityAssessment {
+  const effectiveRawArgs = approval.args !== undefined ? approval.args : matchedToolArgsText
+  const formatted = formatApprovalArgsDetailed(effectiveRawArgs)
+  const truncated =
+    approval.argsTruncated === true ||
+    formatted.truncated ||
+    hasTruncatedApprovalMarker(effectiveRawArgs) ||
+    hasTruncatedApprovalMarker(approval.reason) ||
+    hasTruncatedApprovalMarker(approval.summary)
+  const unavailable =
+    formatted.text.length === 0 && !approval.reason?.trim() && !approval.summary?.trim()
+
+  if (truncated) {
+    return {
+      formatted,
+      truncated: true,
+      unavailable,
+      allowBlocked: true,
+      blockReason:
+        'Full tool input is truncated on remote display. Inspect and approve directly on host, or reject here.',
+    }
+  }
+  if (unavailable) {
+    return {
+      formatted,
+      truncated: false,
+      unavailable: true,
+      allowBlocked: true,
+      blockReason:
+        'Tool input details are unavailable from host. Inspect on host before approving, or reject here.',
+    }
+  }
+  return {
+    formatted,
+    truncated: false,
+    unavailable: false,
+    allowBlocked: false,
+  }
+}

@@ -36,7 +36,7 @@ import type {
   WorkspaceGitStatusResult,
 } from '../protocol.js'
 import {
-  boundApprovalArgs,
+  boundApprovalRequestEvent,
   boundLiveStateSnapshot,
   boundPendingApprovalSnapshot,
 } from '../session-state-fold.js'
@@ -1044,12 +1044,16 @@ export class ClaudeAgentBackend implements ManagedAgentBackend {
           requestId: obj.request_id,
           worker,
         })
-        this.emitter.emit(meta.sessionId, 'approval.request', {
-          callId,
-          toolName,
-          ...(reason !== undefined ? { reason } : {}),
-          args: boundApprovalArgs(input),
-        })
+        this.emitter.emit(
+          meta.sessionId,
+          'approval.request',
+          boundApprovalRequestEvent({
+            callId,
+            toolName,
+            ...(reason !== undefined ? { reason } : {}),
+            args: input,
+          }),
+        )
       }
     }
   }

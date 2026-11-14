@@ -1,4 +1,5 @@
 import { base64Encode, hexToBytes, randomUuid, sha256Hex } from './crypto/bytes.ts'
+import { assessApprovalInputSecurity, formatApprovalArgsDetailed } from './client/approval-input.ts'
 import { RemoteWebKeyStore, type ClientDeviceIdentity } from './client/keystore.ts'
 import {
   consumePairFragmentFromLocation,
@@ -1334,23 +1335,8 @@ function renderPendingActionsTray(): void {
   }
 }
 
-const MAX_APPROVAL_ARGS_CHARS = 8_192
-
 function formatApprovalArgsText(rawArgs: unknown): string {
-  if (rawArgs === undefined || rawArgs === null) return ''
-  let text: string
-  if (typeof rawArgs === 'string') {
-    text = rawArgs
-  } else {
-    try {
-      text = JSON.stringify(rawArgs, null, 2) ?? ''
-    } catch {
-      text = String(rawArgs)
-    }
-  }
-  const trimmed = text.trim()
-  if (trimmed.length <= MAX_APPROVAL_ARGS_CHARS) return trimmed
-  return `${trimmed.slice(0, MAX_APPROVAL_ARGS_CHARS)}\n… (truncated, ${trimmed.length} chars total)`
+  return formatApprovalArgsDetailed(rawArgs).text
 }
 
 function buildApprovalCard(approval: PendingApprovalSnapshot): HTMLElement {
@@ -1385,6 +1371,7 @@ function buildApprovalCard(approval: PendingApprovalSnapshot): HTMLElement {
   const formattedArgs = formatApprovalArgsText(
     approval.args !== undefined ? approval.args : matchedTool?.argumentsText,
   )
+  const security = assessApprovalInputSecurity(approval, matchedTool?.argumentsText)
   if (formattedArgs) {
     const argsWrap = el('div', 'action-args-wrap')
     argsWrap.appendChild(el('div', 'field-label', 'Tool Input'))
@@ -1393,16 +1380,29 @@ function buildApprovalCard(approval: PendingApprovalSnapshot): HTMLElement {
   } else if (!approval.reason && !approval.summary) {
     card.appendChild(el('div', 'action-context', 'Tool input details: (none provided by host)'))
   }
+  if (security.allowBlocked && security.blockReason) {
+    card.appendChild(el('div', 'notice-card', security.blockReason))
+  }
 
   const btns = el('div', 'action-buttons')
   const allowBtn = el('button', 'btn-primary btn-sm', 'Allow Once')
   allowBtn.type = 'button'
+  if (security.allowBlocked) {
+    allowBtn.disabled = true
+    if (security.blockReason) {
+      allowBtn.title = security.blockReason
+    }
+  }
   const rejectBtn = el('button', 'btn-danger btn-sm', 'Reject')
   rejectBtn.type = 'button'
   const diffBtn = el('button', 'btn-ghost btn-sm', 'Inspect Diff')
   diffBtn.type = 'button'
 
   const resolveDecision = async (decision: 'approved' | 'rejected'): Promise<void> => {
+    if (decision === 'approved' && security.allowBlocked) {
+      showToast(security.blockReason ?? 'Full tool input unavailable; approve on host.')
+      return
+    }
     allowBtn.disabled = true
     rejectBtn.disabled = true
     try {
@@ -1414,7 +1414,7 @@ function buildApprovalCard(approval: PendingApprovalSnapshot): HTMLElement {
       renderSidebarBodyOnly()
     } catch (err) {
       showToast(`Approval failed: ${err instanceof Error ? err.message : String(err)}`)
-      allowBtn.disabled = false
+      allowBtn.disabled = security.allowBlocked
       rejectBtn.disabled = false
     }
   }

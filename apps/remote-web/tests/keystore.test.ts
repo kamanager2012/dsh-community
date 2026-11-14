@@ -299,12 +299,16 @@ describe('RemoteWebKeyStore atomic client identity', () => {
     expect(updatedByTab2?.lastEpoch).toBe(102)
     expect(updatedByTab2?.preferredTransport).toBe('relay')
 
-    // Tab 1 (whose local memory previously held 100) tries to accept a stale clone at 101:
+    // Tab 1 (whose local memory previously held 100) tries to accept a stale clone at 101 or replay 102:
     // both updateHostEpoch and saveTrustedHost must fail closed and leave 102 intact in IDB.
     await expect(tab1.updateHostEpoch(fp, 101)).rejects.toThrow(/Epoch rollback blocked \(101 < 102\)/)
+    await expect(tab1.updateHostEpoch(fp, 102)).rejects.toThrow(/Epoch rollback blocked \(102 <= 102\)/)
     await expect(
       tab1.saveTrustedHost({ ...baseProfile, lastEpoch: 101 }),
     ).rejects.toThrow(/Epoch rollback blocked \(101 < 102\)/)
+    await expect(
+      tab1.saveTrustedHost({ ...baseProfile, lastEpoch: 102 }),
+    ).rejects.toThrow(/Epoch rollback blocked \(102 <= 102\)/)
 
     expect((await tab1.getTrustedHost(fp))?.lastEpoch).toBe(102)
     expect((await tab2.getTrustedHost(fp))?.lastEpoch).toBe(102)

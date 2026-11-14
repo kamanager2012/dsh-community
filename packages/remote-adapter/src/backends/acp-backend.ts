@@ -22,7 +22,7 @@ import type {
   WorkspaceGitStatusResult,
 } from '../protocol.js'
 import {
-  boundApprovalArgs,
+  boundApprovalRequestEvent,
   boundLiveStateSnapshot,
   boundPendingApprovalSnapshot,
 } from '../session-state-fold.js'
@@ -593,11 +593,15 @@ export class AcpAgentBackend implements ManagedAgentBackend {
           resolve,
           reject,
         })
-        this.emitter.emit(publicId, 'approval.request', {
-          callId,
-          toolName,
-          args: boundApprovalArgs(args),
-        })
+        this.emitter.emit(
+          publicId,
+          'approval.request',
+          boundApprovalRequestEvent({
+            callId,
+            toolName,
+            args,
+          }),
+        )
       })
     }
 

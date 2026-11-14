@@ -533,4 +533,58 @@ describe('remote-web live E2EE host interoperability', () => {
     expect(statuses).toEqual([])
     await expect(client.listSessions()).resolves.toMatchObject([{ id: 'claude--s1' }])
   })
+
+  it('rejects crafted pairing links whose host returns an epoch equal to stored lastEpoch unless explicitly reset', async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), 'dsh-rweb-eq-epoch-'))
+    cleanupCallbacks.push(() => rmSync(tmpDir, { recursive: true, force: true }))
+    const dshHome = join(tmpDir, 'dsh-home')
+    const configDir = join(tmpDir, 'remote-config')
+
+    const mock = createMockMultiAgentBackend(tmpDir)
+    const host = new MultiAgentRemoteHost({
+      dshHome,
+      configDir,
+      cwd: tmpDir,
+      backends: [mock.backend],
+      autoConfirmCapabilities: ['observe', 'prompt'],
+      carrier: { enabled: true, host: '127.0.0.1', port: 0 },
+    })
+    await host.start()
+    cleanupCallbacks.push(() => host.stop())
+
+    const keyStore = new RemoteWebKeyStore(false)
+    const client = new RemoteWebClient(keyStore)
+    cleanupCallbacks.push(() => client.disconnect())
+
+    const issued = await host.issuePairingDescriptor()
+    const saved = await client.connectWithPairing(issued.descriptor, {
+      displayName: 'Equal Epoch Peer',
+      autoPairPollIntervalMs: 30,
+    })
+    expect(saved.lastEpoch).toBeGreaterThanOrEqual(2)
+    client.disconnect()
+    await host.stop()
+
+    // Spin up a stale host clone with identical static key & trusted device record; its allocator
+    // advances through 1..saved.lastEpoch, reaching exact epoch equality with stored lastEpoch.
+    const cloneHost = new MultiAgentRemoteHost({
+      dshHome,
+      configDir,
+      cwd: tmpDir,
+      backends: [mock.backend],
+      autoConfirmCapabilities: ['observe', 'prompt'],
+      carrier: { enabled: true, host: '127.0.0.1', port: 0 },
+    })
+    await cloneHost.start()
+    cleanupCallbacks.push(() => cloneHost.stop())
+
+    const cloneIssued = await cloneHost.issuePairingDescriptor()
+    for (let step = 1; step <= saved.lastEpoch; step += 1) {
+      await expect(client.connectWithPairing(cloneIssued.descriptor)).rejects.toMatchObject({
+        code: 'EPOCH_DOWNGRADE',
+      })
+    }
+    expect((await keyStore.getTrustedHost(saved.hostFingerprint))?.lastEpoch).toBe(saved.lastEpoch)
+    expect((await keyStore.getTrustedHost(saved.hostFingerprint))?.endpointUrl).toBe(saved.endpointUrl)
+  })
 })

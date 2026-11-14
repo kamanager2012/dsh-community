@@ -81,7 +81,7 @@ import {
   type WorkspaceUploadOpenResult,
 } from './protocol.js'
 import {
-  boundApprovalArgs,
+  boundApprovalRequestEvent,
   boundPendingApprovalSnapshot,
   buildAttachLiveStateSnapshot,
   foldNormalizedSessionEvents,
@@ -738,14 +738,17 @@ export class OfficialHostCordisBridge {
             },
           })
 
-          const boundedArgs = args !== undefined ? boundApprovalArgs(args) : undefined
-          this.emitNormalizedEvent(agentId, 'approval.request', {
-            callId,
-            toolName,
-            ...(reason !== undefined ? { reason } : {}),
-            ...(summary !== undefined ? { summary } : {}),
-            ...(boundedArgs !== undefined ? { args: boundedArgs } : {}),
-          })
+          this.emitNormalizedEvent(
+            agentId,
+            'approval.request',
+            boundApprovalRequestEvent({
+              callId,
+              toolName,
+              ...(reason !== undefined ? { reason } : {}),
+              ...(summary !== undefined ? { summary } : {}),
+              ...(args !== undefined ? { args } : {}),
+            }),
+          )
         })
       })
       this.rootUnsubscribes.push(unsubApproval)

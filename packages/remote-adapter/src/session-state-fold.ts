@@ -101,26 +101,33 @@ function shrinkJsonValue(
 
 /**
  * Bounds arbitrary approval tool arguments so live events and `session.attach`
- * snapshots always stay safely within encrypted transport frame limits.
+ * snapshots always stay safely within encrypted transport frame limits,
+ * returning both the bounded value and whether any truncation occurred.
  */
-export function boundApprovalArgs(args: unknown, maxBytes = MAX_APPROVAL_ARGS_BYTES): unknown {
-  if (args === undefined || args === null) return args
+export function inspectAndBoundApprovalArgs(
+  args: unknown,
+  maxBytes = MAX_APPROVAL_ARGS_BYTES,
+): { readonly value: unknown; readonly truncated: boolean } {
+  if (args === undefined || args === null) return { value: args, truncated: false }
   const limit = Math.max(128, Math.floor(maxBytes))
   const rawSerialized = safeJsonStringify(args)
   if (rawSerialized !== undefined && Buffer.byteLength(rawSerialized, 'utf8') <= limit) {
-    return args
+    return { value: args, truncated: false }
   }
-  const originalBytes = rawSerialized !== undefined ? Buffer.byteLength(rawSerialized, 'utf8') : Buffer.byteLength(String(args), 'utf8')
+  const originalBytes =
+    rawSerialized !== undefined ? Buffer.byteLength(rawSerialized, 'utf8') : Buffer.byteLength(String(args), 'utf8')
 
   if (typeof args === 'string') {
     const suffix = `… [truncated, ${originalBytes} B total]`
     let previewLimit = Math.max(32, limit - Buffer.byteLength(suffix, 'utf8') - 32)
     for (let i = 0; i < 6; i += 1) {
       const candidate = `${truncateUtf8ToBytes(args, previewLimit)}${suffix}`
-      if (jsonByteLength(candidate) <= limit) return candidate
+      if (jsonByteLength(candidate) <= limit) return { value: candidate, truncated: true }
       previewLimit = Math.max(16, Math.floor(previewLimit * 0.6))
     }
-    return truncateUtf8ToBytes(args, Math.max(16, Math.floor(limit / 2)))
+    const shortSuffix = '… [truncated]'
+    const keepBytes = Math.max(16, Math.floor(limit / 2) - Buffer.byteLength(shortSuffix, 'utf8'))
+    return { value: `${truncateUtf8ToBytes(args, keepBytes)}${shortSuffix}`, truncated: true }
   }
 
   const attempts = [
@@ -135,7 +142,7 @@ export function boundApprovalArgs(args: unknown, maxBytes = MAX_APPROVAL_ARGS_BY
         ? { ...(shrunk as Record<string, unknown>), _truncated: true, _originalBytes: originalBytes }
         : { _truncated: true, _originalBytes: originalBytes, preview: shrunk }
     if (jsonByteLength(candidate) <= limit) {
-      return candidate
+      return { value: candidate, truncated: true }
     }
   }
 
@@ -147,33 +154,66 @@ export function boundApprovalArgs(args: unknown, maxBytes = MAX_APPROVAL_ARGS_BY
       _originalBytes: originalBytes,
       preview: truncateUtf8ToBytes(rawText, previewBudget),
     }
-    if (jsonByteLength(fallback) <= limit) return fallback
+    if (jsonByteLength(fallback) <= limit) return { value: fallback, truncated: true }
     previewBudget = Math.max(8, Math.floor(previewBudget * 0.6))
   }
-  return { _truncated: true, _originalBytes: originalBytes }
+  return { value: { _truncated: true, _originalBytes: originalBytes }, truncated: true }
+}
+
+/**
+ * Bounds arbitrary approval tool arguments so live events and `session.attach`
+ * snapshots always stay safely within encrypted transport frame limits.
+ */
+export function boundApprovalArgs(args: unknown, maxBytes = MAX_APPROVAL_ARGS_BYTES): unknown {
+  return inspectAndBoundApprovalArgs(args, maxBytes).value
 }
 
 export function boundPendingApprovalSnapshot(
   approval: PendingApprovalSnapshot,
   maxArgsBytes = MAX_APPROVAL_ARGS_BYTES,
 ): PendingApprovalSnapshot {
-  const boundText = (val: string | undefined): string | undefined => {
-    if (val === undefined) return undefined
+  const boundText = (val: string | undefined): { readonly text: string | undefined; readonly truncated: boolean } => {
+    if (val === undefined) return { text: undefined, truncated: false }
     const clean = sanitizeLoneSurrogates(val)
-    return Buffer.byteLength(clean, 'utf8') <= MAX_APPROVAL_TEXT_BYTES
-      ? clean
-      : `${truncateUtf8ToBytes(clean, MAX_APPROVAL_TEXT_BYTES - 16)}… [truncated]`
+    if (Buffer.byteLength(clean, 'utf8') <= MAX_APPROVAL_TEXT_BYTES) {
+      return { text: clean, truncated: false }
+    }
+    return {
+      text: `${truncateUtf8ToBytes(clean, MAX_APPROVAL_TEXT_BYTES - 16)}… [truncated]`,
+      truncated: true,
+    }
   }
   const boundedReason = boundText(approval.reason)
   const boundedSummary = boundText(approval.summary)
-  const boundedArgs = approval.args !== undefined ? boundApprovalArgs(approval.args, maxArgsBytes) : undefined
+  const boundedArgs =
+    approval.args !== undefined ? inspectAndBoundApprovalArgs(approval.args, maxArgsBytes) : undefined
+  const argsTruncated =
+    approval.argsTruncated === true ||
+    boundedArgs?.truncated === true ||
+    boundedReason.truncated ||
+    boundedSummary.truncated
   return {
     callId: approval.callId,
     toolName: truncateByCodePoints(approval.toolName, 256),
-    ...(boundedReason !== undefined ? { reason: boundedReason } : {}),
-    ...(boundedSummary !== undefined ? { summary: boundedSummary } : {}),
-    ...(boundedArgs !== undefined ? { args: boundedArgs } : {}),
+    ...(boundedReason.text !== undefined ? { reason: boundedReason.text } : {}),
+    ...(boundedSummary.text !== undefined ? { summary: boundedSummary.text } : {}),
+    ...(boundedArgs !== undefined ? { args: boundedArgs.value } : {}),
+    ...(argsTruncated ? { argsTruncated: true } : {}),
     ...(approval.sessionId !== undefined ? { sessionId: approval.sessionId } : {}),
+  }
+}
+
+export function boundApprovalRequestEvent(
+  approval: Omit<PendingApprovalSnapshot, 'sessionId'>,
+): Record<string, unknown> {
+  const bounded = boundPendingApprovalSnapshot(approval)
+  return {
+    callId: bounded.callId,
+    toolName: bounded.toolName,
+    ...(bounded.reason !== undefined ? { reason: bounded.reason } : {}),
+    ...(bounded.summary !== undefined ? { summary: bounded.summary } : {}),
+    ...(bounded.args !== undefined ? { args: bounded.args } : {}),
+    ...(bounded.argsTruncated ? { argsTruncated: true } : {}),
   }
 }
 
@@ -232,6 +272,7 @@ export function boundLiveStateSnapshot(
       callId: a.callId,
       toolName: truncateByCodePoints(a.toolName, 120),
       args: { _truncated: true },
+      argsTruncated: true,
       ...(a.sessionId !== undefined ? { sessionId: a.sessionId } : {}),
     })),
     pendingQuestions: snapshot.pendingQuestions.slice(0, 4).map((q) => ({

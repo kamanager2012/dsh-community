@@ -3,6 +3,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { InMemoryHostIdentityStore, computeFingerprint } from '@dsh-community/remote-adapter'
+import { assessApprovalInputSecurity } from '../src/client/approval-input.ts'
 import { parsePairingInput, validateStunOnlyUrls } from '../src/client/pairing.ts'
 import { estimateRpcEnvelopeBytes } from '../src/client/remote-client.ts'
 import { SessionTimelineState } from '../src/client/timeline.ts'
@@ -790,5 +791,66 @@ describe('remote-web pairing security, safe Markdown/Diff DOM, and CSP hygiene',
     expect(attachBlock).toContain('const wasHydrated = tl.historyHydrated')
     expect(attachBlock).toContain('const afterSeq = wasHydrated && tl.highestSeq > 0 ? tl.highestSeq : undefined')
     expect(attachBlock).toContain('captureResetGen !== hostResetGeneration')
+  })
+
+  it('displays 10KB untruncated tool inputs cleanly and fails closed whenever approval input is truncated or unavailable', () => {
+    const tenKbCommand = { command: `echo ok && ${'a'.repeat(10_000)}` }
+    const okAssessment = assessApprovalInputSecurity({
+      callId: 'appr-10k',
+      toolName: 'Bash',
+      args: tenKbCommand,
+    })
+    expect(okAssessment.truncated).toBe(false)
+    expect(okAssessment.allowBlocked).toBe(false)
+    expect(okAssessment.formatted.text).toContain('a'.repeat(10_000))
+
+    const hostFlagged = assessApprovalInputSecurity({
+      callId: 'appr-flag',
+      toolName: 'Write',
+      args: { file_path: 'foo.ts' },
+      argsTruncated: true,
+    })
+    expect(hostFlagged.truncated).toBe(true)
+    expect(hostFlagged.allowBlocked).toBe(true)
+
+    const hostMarked = assessApprovalInputSecurity({
+      callId: 'appr-marker',
+      toolName: 'Bash',
+      args: { command: 'ls', _truncated: true, _originalBytes: 70_000 },
+    })
+    expect(hostMarked.truncated).toBe(true)
+    expect(hostMarked.allowBlocked).toBe(true)
+
+    const nestedStringMarked = assessApprovalInputSecurity({
+      callId: 'appr-nested',
+      toolName: 'Write',
+      args: { content: 'prefix… [truncated, 18000 B total]' },
+    })
+    expect(nestedStringMarked.truncated).toBe(true)
+    expect(nestedStringMarked.allowBlocked).toBe(true)
+
+    const uiOverflow = assessApprovalInputSecurity({
+      callId: 'appr-ui-cap',
+      toolName: 'Write',
+      args: { content: 'z'.repeat(70_000) },
+    })
+    expect(uiOverflow.formatted.truncated).toBe(true)
+    expect(uiOverflow.allowBlocked).toBe(true)
+
+    const emptyUnavailable = assessApprovalInputSecurity({
+      callId: 'appr-empty',
+      toolName: 'Bash',
+    })
+    expect(emptyUnavailable.unavailable).toBe(true)
+    expect(emptyUnavailable.allowBlocked).toBe(true)
+
+    const mainSrc = readFileSync(join(APP_ROOT, 'src/main.ts'), 'utf8')
+    const cardBlock = mainSrc.slice(
+      mainSrc.indexOf('function buildApprovalCard('),
+      mainSrc.indexOf('function buildQuestionCard('),
+    )
+    expect(cardBlock).toContain('assessApprovalInputSecurity')
+    expect(cardBlock).toContain('if (security.allowBlocked)')
+    expect(cardBlock).toContain('allowBtn.disabled = true')
   })
 })

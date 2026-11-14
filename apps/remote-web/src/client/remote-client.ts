@@ -709,12 +709,22 @@ export class RemoteWebClient {
                 return
               }
 
-              // Strict epoch monotonicity unless explicit fresh-pairing reset permitted
-              if (epoch < profile.lastEpoch && options.allowEpochReset !== true) {
+              if (epoch < 1) {
                 failHandshake(
                   new RemoteRpcError(
                     'EPOCH_DOWNGRADE',
-                    `Host epoch ${epoch} is older than recorded epoch ${profile.lastEpoch}`,
+                    `Host sent invalid connection epoch ${epoch}`,
+                  ),
+                )
+                return
+              }
+
+              // Require strict epoch advance unless explicit fresh-pairing reset permitted
+              if (profile.lastEpoch > 0 && epoch <= profile.lastEpoch && options.allowEpochReset !== true) {
+                failHandshake(
+                  new RemoteRpcError(
+                    'EPOCH_DOWNGRADE',
+                    `Host epoch ${epoch} is not newer than recorded epoch ${profile.lastEpoch}`,
                   ),
                 )
                 return

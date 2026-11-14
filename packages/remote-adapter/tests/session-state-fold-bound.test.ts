@@ -85,6 +85,8 @@ describe('bounded approval inputs and liveState budget in session.attach', () =>
       MAX_ATTACH_LIVESTATE_BYTES,
     )
     expect(bounded.pendingApprovals).toHaveLength(2)
+    expect(bounded.pendingApprovals[0]?.argsTruncated).toBe(true)
+    expect(bounded.pendingApprovals[1]?.argsTruncated).toBe(true)
   })
 
   it('budgets liveState and replay events together inside RemoteAdapterCore.attach under 65536B', async () => {

@@ -76,6 +76,21 @@ function sanitizeHostProfile(profile: TrustedHostProfile): TrustedHostProfile {
   }
 }
 
+function checkEpochAdvance(
+  incomingEpoch: number,
+  storedEpoch: number,
+  allowReset: boolean | undefined,
+): Error | undefined {
+  if (allowReset === true) return undefined
+  if (storedEpoch > 0 && incomingEpoch <= storedEpoch) {
+    const cmp = incomingEpoch < storedEpoch ? '<' : '<='
+    return new Error(
+      `Epoch rollback blocked (${incomingEpoch} ${cmp} ${storedEpoch}); fresh pairing confirmation required`,
+    )
+  }
+  return undefined
+}
+
 export class RemoteWebKeyStore {
   private memoryIdentity: ClientDeviceIdentity | undefined = undefined
   private readonly memoryHosts = new Map<string, TrustedHostProfile>()
@@ -321,10 +336,11 @@ export class RemoteWebKeyStore {
     const db = await this.openDb()
     if (!db) {
       const mem = this.memoryHosts.get(sanitized.hostFingerprint)
-      if (mem && sanitized.lastEpoch < mem.lastEpoch && options?.allowEpochReset !== true) {
-        throw new Error(
-          `Epoch rollback blocked (${sanitized.lastEpoch} < ${mem.lastEpoch}); fresh pairing confirmation required`,
-        )
+      const rollbackErr = mem
+        ? checkEpochAdvance(sanitized.lastEpoch, mem.lastEpoch, options?.allowEpochReset)
+        : undefined
+      if (rollbackErr) {
+        throw rollbackErr
       }
       this.memoryHosts.set(sanitized.hostFingerprint, sanitized)
       return
@@ -349,15 +365,12 @@ export class RemoteWebKeyStore {
         let rollbackError: Error | undefined
         req.onsuccess = () => {
           const existing = req.result as TrustedHostProfile | undefined
-          if (
-            existing &&
-            sanitized.lastEpoch < existing.lastEpoch &&
-            options?.allowEpochReset !== true
-          ) {
+          const err = existing
+            ? checkEpochAdvance(sanitized.lastEpoch, existing.lastEpoch, options?.allowEpochReset)
+            : undefined
+          if (existing && err) {
             this.memoryHosts.set(sanitized.hostFingerprint, existing)
-            rollbackError = new Error(
-              `Epoch rollback blocked (${sanitized.lastEpoch} < ${existing.lastEpoch}); fresh pairing confirmation required`,
-            )
+            rollbackError = err
             return
           }
           try {
@@ -422,10 +435,9 @@ export class RemoteWebKeyStore {
     if (!db) {
       const existing = this.memoryHosts.get(key)
       if (!existing) return undefined
-      if (epoch < existing.lastEpoch && options?.allowReset !== true) {
-        throw new Error(
-          `Epoch rollback blocked (${epoch} < ${existing.lastEpoch}); fresh pairing confirmation required`,
-        )
+      const err = checkEpochAdvance(epoch, existing.lastEpoch, options?.allowReset)
+      if (err) {
+        throw err
       }
       const updated = buildUpdated(existing)
       this.memoryHosts.set(key, updated)
@@ -458,11 +470,10 @@ export class RemoteWebKeyStore {
             updated = undefined
             return
           }
-          if (epoch < existing.lastEpoch && options?.allowReset !== true) {
+          const err = checkEpochAdvance(epoch, existing.lastEpoch, options?.allowReset)
+          if (err) {
             this.memoryHosts.set(key, existing)
-            rollbackError = new Error(
-              `Epoch rollback blocked (${epoch} < ${existing.lastEpoch}); fresh pairing confirmation required`,
-            )
+            rollbackError = err
             return
           }
           updated = buildUpdated(existing)
@@ -511,12 +522,9 @@ export class RemoteWebKeyStore {
           settleOk(undefined)
           return
         }
-        if (epoch < mem.lastEpoch && options?.allowReset !== true) {
-          settleErr(
-            new Error(
-              `Epoch rollback blocked (${epoch} < ${mem.lastEpoch}); fresh pairing confirmation required`,
-            ),
-          )
+        const err = checkEpochAdvance(epoch, mem.lastEpoch, options?.allowReset)
+        if (err) {
+          settleErr(err)
           return
         }
         const fallbackUpdated = buildUpdated(mem)

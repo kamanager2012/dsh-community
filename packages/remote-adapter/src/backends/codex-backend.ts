@@ -27,7 +27,7 @@ import type {
   WorkspaceGitStatusResult,
 } from '../protocol.js'
 import {
-  boundApprovalArgs,
+  boundApprovalRequestEvent,
   boundLiveStateSnapshot,
   boundPendingApprovalSnapshot,
 } from '../session-state-fold.js'
@@ -1076,13 +1076,17 @@ export class CodexAgentBackend implements ManagedAgentBackend {
           resolve,
           reject,
         })
-        this.emitter.emit(publicId, 'approval.request', {
-          callId,
-          toolName,
-          ...(reason !== undefined ? { reason } : {}),
-          summary,
-          args: boundApprovalArgs(args),
-        })
+        this.emitter.emit(
+          publicId,
+          'approval.request',
+          boundApprovalRequestEvent({
+            callId,
+            toolName,
+            ...(reason !== undefined ? { reason } : {}),
+            summary,
+            args,
+          }),
+        )
       })
     }
 
