@@ -422,6 +422,13 @@ async function attachActiveSession(sessionId: string): Promise<void> {
   scrollChatToBottom()
 }
 
+async function activateSessionAfterMutation(sessionId: string, captureResetGen: number): Promise<void> {
+  if (captureResetGen !== hostResetGeneration || client.getStatus() !== 'active') return
+  await refreshWorkspaceData()
+  if (captureResetGen !== hostResetGeneration || client.getStatus() !== 'active') return
+  await attachActiveSession(sessionId)
+}
+
 async function loadOlderHistory(): Promise<void> {
   const sid = state.activeSessionId
   if (!sid || client.getStatus() !== 'active') return
@@ -1165,6 +1172,7 @@ function buildNewSessionForm(): HTMLElement {
   form.addEventListener('submit', (evt) => {
     evt.preventDefault()
     createBtn.disabled = true
+    const captureResetGen = hostResetGeneration
     void client
       .createSession({
         engine: engineSel.value,
@@ -1172,12 +1180,15 @@ function buildNewSessionForm(): HTMLElement {
         ...(cwdInput.value.trim() ? { cwd: cwdInput.value.trim() } : {}),
       })
       .then(async (created) => {
+        if (captureResetGen !== hostResetGeneration || client.getStatus() !== 'active') return
         state.newSessionOpen = false
         state.mobileDrawerOpen = false
-        await refreshWorkspaceData()
-        await attachActiveSession(created.id)
+        await activateSessionAfterMutation(created.id, captureResetGen)
       })
-      .catch((err) => showToast(`Create failed: ${err instanceof Error ? err.message : String(err)}`))
+      .catch((err) => {
+        if (captureResetGen !== hostResetGeneration) return
+        showToast(`Create failed: ${err instanceof Error ? err.message : String(err)}`)
+      })
       .finally(() => {
         createBtn.disabled = false
       })
@@ -1846,13 +1857,17 @@ function renderMainBody(): void {
     const forkBtn = el('button', 'btn-ghost btn-xs', 'Fork')
     forkBtn.type = 'button'
     forkBtn.addEventListener('click', () => {
+      const captureResetGen = hostResetGeneration
       void client
         .forkSession(sid)
         .then(async (forked) => {
-          await refreshWorkspaceData()
-          await attachActiveSession(forked.id)
+          if (captureResetGen !== hostResetGeneration || client.getStatus() !== 'active') return
+          await activateSessionAfterMutation(forked.id, captureResetGen)
         })
-        .catch((err) => showToast(`Fork failed: ${err instanceof Error ? err.message : String(err)}`))
+        .catch((err) => {
+          if (captureResetGen !== hostResetGeneration) return
+          showToast(`Fork failed: ${err instanceof Error ? err.message : String(err)}`)
+        })
     })
     const renameBtn = el('button', 'btn-ghost btn-xs', 'Rename')
     renameBtn.type = 'button'
@@ -1860,10 +1875,17 @@ function renderMainBody(): void {
       const cur = tl?.title ?? getActiveSession()?.title ?? ''
       const next = typeof globalThis.prompt === 'function' ? globalThis.prompt('New session title:', cur) : null
       if (next && next.trim()) {
+        const captureResetGen = hostResetGeneration
         void client
           .renameSession(sid, next.trim())
-          .then(() => refreshWorkspaceData())
-          .catch((err) => showToast(`Rename failed: ${err instanceof Error ? err.message : String(err)}`))
+          .then(async () => {
+            if (captureResetGen !== hostResetGeneration || client.getStatus() !== 'active') return
+            await refreshWorkspaceData()
+          })
+          .catch((err) => {
+            if (captureResetGen !== hostResetGeneration) return
+            showToast(`Rename failed: ${err instanceof Error ? err.message : String(err)}`)
+          })
       }
     })
     actions.append(forkBtn, renameBtn)

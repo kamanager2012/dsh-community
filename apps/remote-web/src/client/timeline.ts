@@ -159,6 +159,16 @@ function unwrapAssistantChunk(
   return { delta, isThinking }
 }
 
+function extractThinkingMessage(data: Record<string, unknown> | undefined): string {
+  if (!data) return ''
+  if (typeof data.text === 'string' && data.text.length > 0) return data.text
+  if (typeof data.thinking === 'string' && data.thinking.length > 0) return data.thinking
+  if (typeof data.summary === 'string' && data.summary.length > 0) return data.summary
+  const msg = isRecord(data.message) ? data.message : data
+  const extracted = extractTextFromBlocks(msg.content)
+  return extracted.thinking || extracted.text
+}
+
 function parseSeqFromEventKey(key: string): number {
   const colon = key.indexOf(':')
   if (colon <= 0) return Number.NaN
@@ -206,6 +216,8 @@ export class SessionTimelineState implements SessionStoreState {
   private rawEvents = new Map<string, OfficialSessionEvent>()
   private itemCounter = 0
   private unmergedStreamedAssistantId: string | undefined = undefined
+  private streamedThinkingItemId: string | undefined = undefined
+  private streamedThinkingPrefix = ''
   private compactedBaseline: SessionTimelineState | undefined = undefined
   private compactedMinSeq: number | null = null
   private hasAuthoritativeSnapshot = false
@@ -215,6 +227,26 @@ export class SessionTimelineState implements SessionStoreState {
   private nextId(prefix: string): string {
     this.itemCounter += 1
     return `${prefix}-${this.itemCounter}`
+  }
+
+  private resetStreamingTrackers(): void {
+    this.unmergedStreamedAssistantId = undefined
+    this.streamedThinkingItemId = undefined
+    this.streamedThinkingPrefix = ''
+  }
+
+  private findOpenAssistantIndex(): number {
+    for (let i = this.items.length - 1; i >= 0; i -= 1) {
+      const it = this.items[i]!
+      if (
+        it.kind === 'assistant' &&
+        (!it.finalized ||
+          (this.unmergedStreamedAssistantId !== undefined && it.id === this.unmergedStreamedAssistantId))
+      ) {
+        return i
+      }
+    }
+    return -1
   }
 
   private hasSeenRetainedEvent(key: string): boolean {
@@ -412,6 +444,8 @@ export class SessionTimelineState implements SessionStoreState {
     this.highestSeq = base ? base.highestSeq : 0
     this.oldestSeq = base ? base.oldestSeq : null
     this.unmergedStreamedAssistantId = base?.unmergedStreamedAssistantId
+    this.streamedThinkingItemId = base?.streamedThinkingItemId
+    this.streamedThinkingPrefix = base?.streamedThinkingPrefix ?? ''
     if (base) {
       this.status = base.status
       this.title = base.title
@@ -431,7 +465,7 @@ export class SessionTimelineState implements SessionStoreState {
       ) {
         crossedThreshold = true
         finalizeOpenAssistants(this.items)
-        this.unmergedStreamedAssistantId = undefined
+        this.resetStreamingTrackers()
       }
       this.applyEvent(ev, { markUnread: false, skipRawStore: true })
     }
@@ -584,7 +618,7 @@ export class SessionTimelineState implements SessionStoreState {
         this.rebuildChronological({ preserveRuntimeState: this.hasAuthoritativeSnapshot })
       } else {
         finalizeOpenAssistants(this.items)
-        this.unmergedStreamedAssistantId = undefined
+        this.resetStreamingTrackers()
       }
     }
 
@@ -632,7 +666,7 @@ export class SessionTimelineState implements SessionStoreState {
       case 'user/message':
       case 'user.message':
       case 'prompt': {
-        this.unmergedStreamedAssistantId = undefined
+        this.resetStreamingTrackers()
         const extracted = extractUserMessage(data)
         if (!extracted) return
         const optIdx = this.items.findIndex(
@@ -673,6 +707,10 @@ export class SessionTimelineState implements SessionStoreState {
         const tail = this.items[this.items.length - 1]
         if (tail && tail.kind === 'assistant' && !tail.finalized) {
           this.unmergedStreamedAssistantId = tail.id
+          if (isThinking && this.streamedThinkingItemId !== tail.id) {
+            this.streamedThinkingItemId = tail.id
+            this.streamedThinkingPrefix = tail.thinkingText
+          }
           this.items[this.items.length - 1] = {
             ...tail,
             seq: event.seq,
@@ -682,12 +720,59 @@ export class SessionTimelineState implements SessionStoreState {
         } else {
           const id = this.nextId('a')
           this.unmergedStreamedAssistantId = id
+          if (isThinking) {
+            this.streamedThinkingItemId = id
+            this.streamedThinkingPrefix = ''
+          }
           this.items.push({
             kind: 'assistant',
             id,
             seq: event.seq,
             thinkingText: isThinking ? delta : '',
             markdownText: isThinking ? '' : delta,
+            finalized: false,
+          })
+          if (markUnread) this.unreadCount += 1
+        }
+        return
+      }
+
+      case 'thinking/message':
+      case 'thinking.message':
+      case 'reasoning/message': {
+        const thinking = extractThinkingMessage(data)
+        if (!thinking) return
+        const openIdx = this.findOpenAssistantIndex()
+        if (openIdx >= 0) {
+          const prev = this.items[openIdx] as Extract<TimelineItem, { kind: 'assistant' }>
+          let mergedThinking: string
+          if (this.streamedThinkingItemId === prev.id) {
+            mergedThinking = this.streamedThinkingPrefix
+              ? `${this.streamedThinkingPrefix}\n\n${thinking}`
+              : thinking
+            this.streamedThinkingItemId = undefined
+            this.streamedThinkingPrefix = ''
+          } else if (prev.thinkingText === thinking) {
+            mergedThinking = prev.thinkingText
+          } else {
+            mergedThinking = prev.thinkingText ? `${prev.thinkingText}\n\n${thinking}` : thinking
+          }
+          this.items[openIdx] = {
+            ...prev,
+            seq: event.seq,
+            thinkingText: mergedThinking,
+          }
+        } else {
+          const id = this.nextId('a')
+          this.unmergedStreamedAssistantId = id
+          this.streamedThinkingItemId = undefined
+          this.streamedThinkingPrefix = ''
+          this.items.push({
+            kind: 'assistant',
+            id,
+            seq: event.seq,
+            thinkingText: thinking,
+            markdownText: '',
             finalized: false,
           })
           if (markUnread) this.unreadCount += 1
@@ -708,19 +793,8 @@ export class SessionTimelineState implements SessionStoreState {
           data.stopReason === 'aborted' ||
           msg.stopReason === 'aborted'
 
-        let openIdx = -1
-        for (let i = this.items.length - 1; i >= 0; i -= 1) {
-          const it = this.items[i]!
-          if (
-            it.kind === 'assistant' &&
-            (!it.finalized ||
-              (this.unmergedStreamedAssistantId !== undefined && it.id === this.unmergedStreamedAssistantId))
-          ) {
-            openIdx = i
-            break
-          }
-        }
-        this.unmergedStreamedAssistantId = undefined
+        const openIdx = this.findOpenAssistantIndex()
+        this.resetStreamingTrackers()
 
         if (openIdx >= 0) {
           const prev = this.items[openIdx] as Extract<TimelineItem, { kind: 'assistant' }>
@@ -797,7 +871,7 @@ export class SessionTimelineState implements SessionStoreState {
 
       case 'tool/result':
       case 'tool.result': {
-        this.unmergedStreamedAssistantId = undefined
+        this.resetStreamingTrackers()
         if (!data) return
         const msg = isRecord(data.message) ? data.message : data
         const callId = String(msg.callId ?? data.callId ?? '')
@@ -957,7 +1031,7 @@ export class SessionTimelineState implements SessionStoreState {
 
       case 'turn/start':
       case 'turn.start': {
-        this.unmergedStreamedAssistantId = undefined
+        this.resetStreamingTrackers()
         this.status = 'running'
         this.todos = []
         return
@@ -965,7 +1039,7 @@ export class SessionTimelineState implements SessionStoreState {
 
       case 'turn/end':
       case 'turn.end': {
-        this.unmergedStreamedAssistantId = undefined
+        this.resetStreamingTrackers()
         this.status = 'idle'
         finalizeOpenAssistants(this.items)
         const reasonObj = isRecord(data?.reason) ? data.reason : undefined
@@ -1042,7 +1116,7 @@ export class SessionTimelineState implements SessionStoreState {
       case 'session/error':
       case 'agent/error':
       case 'agent.error': {
-        this.unmergedStreamedAssistantId = undefined
+        this.resetStreamingTrackers()
         const errText =
           typeof data?.message === 'string' && data.message.length > 0
             ? data.message

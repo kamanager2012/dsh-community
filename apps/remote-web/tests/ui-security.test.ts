@@ -1010,5 +1010,45 @@ describe('remote-web pairing security, safe Markdown/Diff DOM, and CSP hygiene',
     })
     expect(emptyObj.unavailable).toBe(true)
     expect(emptyObj.allowBlocked).toBe(true)
+
+    // 5. Fold complete thinking/message events from saved history and reconcile streamed reasoning deltas
+    const tlThinkingHist = new SessionTimelineState('sess-thinking-history')
+    tlThinkingHist.applyEvent({
+      seq: 1,
+      type: 'user/message',
+      data: { message: { role: 'user', content: 'Explain' } },
+    })
+    tlThinkingHist.applyEvent({ seq: 2, type: 'thinking/message', data: { text: 'Step 1' } })
+    tlThinkingHist.applyEvent({ seq: 3, type: 'thinking/message', data: { text: 'Step 2' } })
+    tlThinkingHist.applyEvent({
+      seq: 4,
+      type: 'assistant/message',
+      data: { message: { role: 'assistant', content: 'Final response' } },
+    })
+    expect(tlThinkingHist.items).toHaveLength(2)
+    const foldedHistItem = tlThinkingHist.items[1] as Extract<(typeof tlThinkingHist.items)[number], { kind: 'assistant' }>
+    expect(foldedHistItem.finalized).toBe(true)
+    expect(foldedHistItem.thinkingText).toBe('Step 1\n\nStep 2')
+    expect(foldedHistItem.markdownText).toBe('Final response')
+
+    const tlThinkingStream = new SessionTimelineState('sess-thinking-reconcile')
+    tlThinkingStream.applyEvent({ seq: 1, type: 'thinking/delta', data: { text: 'Ste' } })
+    tlThinkingStream.applyEvent({ seq: 2, type: 'thinking/delta', data: { text: 'p A' } })
+    tlThinkingStream.applyEvent({ seq: 3, type: 'thinking/message', data: { text: 'Step A' } })
+    tlThinkingStream.applyEvent({
+      seq: 4,
+      type: 'assistant/message',
+      data: { message: { role: 'assistant', content: 'Output A' } },
+    })
+    expect(tlThinkingStream.items).toHaveLength(1)
+    const reconciledItem = tlThinkingStream.items[0] as Extract<(typeof tlThinkingStream.items)[number], { kind: 'assistant' }>
+    expect(reconciledItem.thinkingText).toBe('Step A')
+    expect(reconciledItem.markdownText).toBe('Output A')
+
+    // 6. Post-create and post-fork attach paths verify hostResetGeneration & active client status
+    expect(mainSrc).toContain('async function activateSessionAfterMutation(')
+    expect(mainSrc).toContain('if (captureResetGen !== hostResetGeneration || client.getStatus() !== \'active\') return')
+    expect(mainSrc).toContain('await activateSessionAfterMutation(created.id, captureResetGen)')
+    expect(mainSrc).toContain('await activateSessionAfterMutation(forked.id, captureResetGen)')
   })
 })
