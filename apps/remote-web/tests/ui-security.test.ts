@@ -6,7 +6,14 @@ import { InMemoryHostIdentityStore, computeFingerprint } from '@dsh-community/re
 import { assessApprovalInputSecurity, isWindowFramed } from '../src/client/approval-input.ts'
 import { parsePairingInput, validateStunOnlyUrls } from '../src/client/pairing.ts'
 import { buildPromptSubmitSignature, estimateRpcEnvelopeBytes } from '../src/client/remote-client.ts'
-import { buildQuestionSubmissionAnswers, SessionTimelineState } from '../src/client/timeline.ts'
+import {
+  applySessionSearchHits,
+  beginSessionSearch,
+  buildQuestionSubmissionAnswers,
+  clearSessionSearch,
+  SessionTimelineState,
+  type SessionSearchState,
+} from '../src/client/timeline.ts'
 import { MAX_NOISE_PLAINTEXT_BYTES, SAFE_GIT_DIFF_MAX_BYTES } from '../src/client/types.ts'
 import {
   createBrowserWebRtcTransport,
@@ -1157,5 +1164,53 @@ describe('remote-web pairing security, safe Markdown/Diff DOM, and CSP hygiene',
     expect(codeClasses.has('tok-kw')).toBe(true)
     expect(codeClasses.has('tok-num')).toBe(true)
     expect(codeClasses.has('tok-str')).toBe(true)
+
+    // 12. Superseded or cleared session-search responses never overwrite newer results or restore cleared state
+    const searchState: SessionSearchState = {
+      searchQuery: 'alpha',
+      searchHits: undefined,
+      searchGeneration: 0,
+    }
+    const req1 = beginSessionSearch(searchState)!
+    expect(req1.query).toBe('alpha')
+    searchState.searchQuery = 'beta'
+    const req2 = beginSessionSearch(searchState)!
+    expect(req2.query).toBe('beta')
+    expect(
+      applySessionSearchHits(searchState, req2.generation, [
+        { sessionId: 's2', title: 'Beta', type: 'assistant/message', snippet: 'beta match', seq: 2 },
+      ]),
+    ).toBe(true)
+    expect(
+      applySessionSearchHits(searchState, req1.generation, [
+        { sessionId: 's1', title: 'Alpha', type: 'assistant/message', snippet: 'stale alpha match', seq: 1 },
+      ]),
+    ).toBe(false)
+    expect(searchState.searchHits?.map((h) => h.sessionId)).toEqual(['s2'])
+
+    searchState.searchQuery = 'gamma'
+    const req3 = beginSessionSearch(searchState)!
+    clearSessionSearch(searchState)
+    expect(searchState.searchQuery).toBe('')
+    expect(searchState.searchHits).toBeUndefined()
+    expect(
+      applySessionSearchHits(searchState, req3.generation, [
+        { sessionId: 's3', title: 'Gamma', type: 'assistant/message', snippet: 'late gamma match', seq: 3 },
+      ]),
+    ).toBe(false)
+    expect(searchState.searchHits).toBeUndefined()
+
+    searchState.searchQuery = 'delta'
+    const req4 = beginSessionSearch(searchState)!
+    searchState.searchQuery = '   '
+    expect(beginSessionSearch(searchState)).toBeUndefined()
+    expect(
+      applySessionSearchHits(searchState, req4.generation, [
+        { sessionId: 's4', title: 'Delta', type: 'assistant/message', snippet: 'late delta match', seq: 4 },
+      ]),
+    ).toBe(false)
+    expect(mainSrc).toContain('const pending = beginSessionSearch(state)')
+    expect(mainSrc).toContain('!applySessionSearchHits(state, pending.generation, res.hits)')
+    expect(mainSrc).toContain('clearSessionSearch(state)')
   })
 })

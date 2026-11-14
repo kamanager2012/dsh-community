@@ -13,7 +13,13 @@ import {
   RemoteWebClient,
   type RemoteClientStatusEvent,
 } from './client/remote-client.ts'
-import { buildQuestionSubmissionAnswers, SessionTimelineState } from './client/timeline.ts'
+import {
+  applySessionSearchHits,
+  beginSessionSearch,
+  buildQuestionSubmissionAnswers,
+  clearSessionSearch,
+  SessionTimelineState,
+} from './client/timeline.ts'
 import {
   MAX_NOISE_PLAINTEXT_BYTES,
   MAX_PROMPT_IMAGE_COUNT,
@@ -71,6 +77,7 @@ interface AppState {
   modelModalOpen: boolean
   searchQuery: string
   searchHits: SessionSearchHit[] | undefined
+  searchGeneration: number
   draftBySession: Map<string, string>
   promptMode: 'followup' | 'steer'
   attachmentsBySession: Map<string, PromptImageAttachment[]>
@@ -112,6 +119,7 @@ const state: AppState = {
   modelModalOpen: false,
   searchQuery: '',
   searchHits: undefined,
+  searchGeneration: 0,
   draftBySession: new Map(),
   promptMode: 'followup',
   attachmentsBySession: new Map(),
@@ -190,8 +198,7 @@ function resetHostScopedState(nextHostFingerprint?: string): void {
   state.gitError = undefined
   state.gitLoading = false
   state.activeTab = 'chat'
-  state.searchQuery = ''
-  state.searchHits = undefined
+  clearSessionSearch(state)
   state.draftBySession.clear()
   state.attachmentsBySession.clear()
   state.expandedDetailIds.clear()
@@ -966,8 +973,7 @@ function renderSidebarBodyOnly(): void {
     const clearBtn = el('button', 'btn-ghost btn-xs', 'Clear')
     clearBtn.type = 'button'
     clearBtn.addEventListener('click', () => {
-      state.searchQuery = ''
-      state.searchHits = undefined
+      clearSessionSearch(state)
       renderApp()
     })
     head.appendChild(clearBtn)
@@ -1116,25 +1122,38 @@ function renderSidebar(aside: HTMLElement): void {
   searchInput.value = state.searchQuery
   searchInput.addEventListener('input', () => {
     state.searchQuery = searchInput.value
+    if (!searchInput.value.trim()) {
+      clearSessionSearch(state, false)
+    }
     renderSidebarBodyOnly()
   })
   const searchBtn = el('button', 'btn-ghost btn-sm', 'Search')
   searchBtn.type = 'submit'
   searchBar.addEventListener('submit', (evt) => {
     evt.preventDefault()
-    const q = state.searchQuery.trim()
-    if (!q) {
-      state.searchHits = undefined
+    const pending = beginSessionSearch(state)
+    if (!pending) {
       renderSidebarBodyOnly()
       return
     }
+    const captureResetGen = hostResetGeneration
     void client
-      .searchSessions(q)
+      .searchSessions(pending.query)
       .then((res) => {
-        state.searchHits = [...res.hits]
+        if (
+          captureResetGen !== hostResetGeneration ||
+          !applySessionSearchHits(state, pending.generation, res.hits)
+        ) {
+          return
+        }
         renderSidebarBodyOnly()
       })
-      .catch((err) => showToast(err instanceof Error ? err.message : String(err)))
+      .catch((err) => {
+        if (captureResetGen !== hostResetGeneration || pending.generation !== state.searchGeneration) {
+          return
+        }
+        showToast(err instanceof Error ? err.message : String(err))
+      })
   })
   searchBar.append(searchInput, searchBtn)
   aside.appendChild(searchBar)

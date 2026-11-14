@@ -5,6 +5,7 @@ import type {
   PendingQuestionPrompt,
   PendingQuestionSnapshot,
   SessionLiveStateSnapshot,
+  SessionSearchHit,
   SessionUsageSnapshot,
   TimelineItem,
   TodoItemSnapshot,
@@ -1159,4 +1160,42 @@ export class SessionTimelineState implements SessionStoreState {
       }
     }
   }
+}
+
+export interface SessionSearchState {
+  searchQuery: string
+  searchHits: SessionSearchHit[] | undefined
+  searchGeneration: number
+}
+
+export function beginSessionSearch(
+  state: SessionSearchState,
+): { generation: number; query: string } | undefined {
+  state.searchGeneration += 1
+  const query = state.searchQuery.trim()
+  if (!query) {
+    state.searchHits = undefined
+    return undefined
+  }
+  return { generation: state.searchGeneration, query }
+}
+
+export function clearSessionSearch(state: SessionSearchState, resetQuery = true): void {
+  state.searchGeneration += 1
+  if (resetQuery) {
+    state.searchQuery = ''
+  }
+  state.searchHits = undefined
+}
+
+export function applySessionSearchHits(
+  state: SessionSearchState,
+  generation: number,
+  hits: readonly SessionSearchHit[],
+): boolean {
+  if (generation !== state.searchGeneration) {
+    return false
+  }
+  state.searchHits = [...hits]
+  return true
 }
