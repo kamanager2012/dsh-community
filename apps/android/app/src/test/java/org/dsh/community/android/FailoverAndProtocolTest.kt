@@ -9,6 +9,7 @@ import org.dsh.community.android.protocol.JsonString
 import org.dsh.community.android.protocol.RemoteFrameCodec
 import org.dsh.community.android.protocol.RemoteProtocol
 import org.dsh.community.android.service.BackoffPolicy
+import org.dsh.community.android.service.RemoteSessionService
 import org.dsh.community.android.transport.AndroidWebRtcPeerEngine
 import org.dsh.community.android.transport.DataChannelChunkCodec
 import org.dsh.community.android.transport.PeerRevokedException
@@ -60,6 +61,48 @@ class FailoverAndProtocolTest {
         assertEquals(2_000L, BackoffPolicy.nextDelayMs(1))
         assertEquals(4_000L, BackoffPolicy.nextDelayMs(2))
         assertTrue(BackoffPolicy.nextDelayMs(9) <= 30_000L)
+    }
+
+    @Test
+    fun multiTierReconnectScheduleContinuesBeyondAttemptFive() {
+        assertEquals(1_000L, BackoffPolicy.nextReconnectDelayMs(0))
+        assertEquals(1_000L, BackoffPolicy.nextReconnectDelayMs(1))
+        assertEquals(2_000L, BackoffPolicy.nextReconnectDelayMs(2))
+        assertEquals(4_000L, BackoffPolicy.nextReconnectDelayMs(3))
+        assertEquals(8_000L, BackoffPolicy.nextReconnectDelayMs(4))
+        assertEquals(16_000L, BackoffPolicy.nextReconnectDelayMs(5))
+        assertEquals(30_000L, BackoffPolicy.nextReconnectDelayMs(6))
+        assertEquals(30_000L, BackoffPolicy.nextReconnectDelayMs(12))
+        assertEquals(60_000L, BackoffPolicy.nextReconnectDelayMs(13))
+        assertEquals(60_000L, BackoffPolicy.nextReconnectDelayMs(30))
+        assertEquals(120_000L, BackoffPolicy.nextReconnectDelayMs(31))
+        assertEquals(120_000L, BackoffPolicy.nextReconnectDelayMs(100))
+    }
+
+    @Test
+    fun epochRegressionMatcherWalksCauseChainStrictly() {
+        val direct = SecurityException("host connectionEpoch regression/replay detected: new=1 prev=4")
+        val wrapped = IOException("failover failed", direct)
+        val aggregated = IOException(
+            "all remote transports failed [lan: connect timed out; relay: host connectionEpoch regression/replay detected: new=1 prev=4]",
+        )
+        assertTrue(RemoteSessionService.isEpochRegressionError(direct))
+        assertTrue(RemoteSessionService.isEpochRegressionError(wrapped))
+        assertTrue(RemoteSessionService.isEpochRegressionError(aggregated))
+
+        assertFalse(
+            RemoteSessionService.isEpochRegressionError(
+                SecurityException("expected handshake.complete after Noise Msg2"),
+            ),
+        )
+        assertFalse(RemoteSessionService.isEpochRegressionError(IOException("all remote transports failed [lan: timeout]")))
+        assertFalse(RemoteSessionService.isEpochRegressionError(PeerRevokedException("revoked")))
+        assertFalse(RemoteSessionService.isEpochRegressionError(null))
+
+        val cycA = RuntimeException("a")
+        val cycB = RuntimeException("b", cycA)
+        cycA.initCause(cycB)
+        assertFalse(RemoteSessionService.isEpochRegressionError(cycA))
     }
 
     @Test

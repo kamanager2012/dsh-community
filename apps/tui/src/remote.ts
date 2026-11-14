@@ -26,6 +26,7 @@ import {
   findBinaryOnPath,
   openPersistentRemoteStores,
   parseRequestedEngines,
+  resolveRemoteDefaultTransportEnv,
   SelfHostedSignalingServer,
   SelfHostedStunServer,
 } from '@dsh-community/remote-adapter'
@@ -43,9 +44,9 @@ export const COMMUNITY_REMOTE_HELP = `dsh-community remote — 多引擎 E2EE �
     --qr                                启动后在终端输出可扫码 UTF-8 二维码
     --relay-url <ws(s)://...>           可选社区盲中继地址（或设 DSH_REMOTE_DEFAULT_RELAY_URL）
     --relay-room <id>                   可选中继房间 ID
-    --signaling-url <ws(s)://...>       可选 WebRTC 信令地址
+    --signaling-url <ws(s)://...>       可选 WebRTC 信令地址（或设 DSH_REMOTE_DEFAULT_SIGNALING_URL）
     --signaling-room <id>               可选 WebRTC 信令房间 ID
-    --stun <stun:host:port[,...]>       可选自建 STUN URL（支持逗号分隔多条）
+    --stun <stun:host:port[,...]>       可选自建 STUN URL（仅 stun:；或设 DSH_REMOTE_DEFAULT_STUN_URLS）
     --session <id>                      恢复或新建指定会话 ID
     --new                               启动时新建一条会话
     --cwd <dir>                         工作目录（默认当前目录）
@@ -697,7 +698,18 @@ export async function runRemoteCommand(
       return 2
     }
 
-    const relayUrl = flags.relayUrl ?? (env.DSH_REMOTE_DEFAULT_RELAY_URL?.trim() || undefined)
+    const resolvedTransport = resolveRemoteDefaultTransportEnv(env, {
+      relayUrl: flags.relayUrl,
+      signalingUrl: flags.signalingUrl,
+      stunUrls: flags.stunUrl,
+    })
+    if (resolvedTransport.error !== undefined) {
+      process.stderr.write(`${resolvedTransport.error}\n`)
+      return 2
+    }
+    const relayUrl = resolvedTransport.relayUrl
+    const signalingUrl = resolvedTransport.signalingUrl
+    const stunUrls = resolvedTransport.stunUrlsRaw
     const tmpDir = mkdtempSync(join(tmpdir(), 'dsh-community-remote-'))
     const readyFile = join(tmpDir, 'ready.json')
     const controlToken = randomBytes(24).toString('hex')
@@ -744,9 +756,9 @@ export async function runRemoteCommand(
           ...(flags.mdns ? { DSH_REMOTE_ENABLE_MDNS: '1' } : {}),
           ...(relayUrl ? { DSH_REMOTE_RELAY_URL: relayUrl } : {}),
           ...(flags.relayRoom ? { DSH_REMOTE_RELAY_ROOM_ID: flags.relayRoom } : {}),
-          ...(flags.signalingUrl ? { DSH_REMOTE_SIGNALING_URL: flags.signalingUrl } : {}),
+          ...(signalingUrl ? { DSH_REMOTE_SIGNALING_URL: signalingUrl } : {}),
           ...(flags.signalingRoom ? { DSH_REMOTE_SIGNALING_ROOM_ID: flags.signalingRoom } : {}),
-          ...(flags.stunUrl ? { DSH_REMOTE_STUN_URLS: flags.stunUrl } : {}),
+          ...(stunUrls ? { DSH_REMOTE_STUN_URLS: stunUrls } : {}),
           ...(flags.sessionId ? { DSH_REMOTE_INITIAL_SESSION_ID: flags.sessionId } : {}),
           DSH_REMOTE_CONTROL_PORT: '0',
           DSH_REMOTE_CONTROL_TOKEN: controlToken,

@@ -34,6 +34,11 @@ import {
   defaultRemoteConfigDir,
   openPersistentRemoteStores,
 } from '@dsh-community/remote-adapter/stores'
+import {
+  normalizeStunUrlList,
+  resolveRemoteDefaultTransportEnv,
+  validateWsEndpointUrl,
+} from '@dsh-community/remote-adapter/remote-env'
 import { readJsonFile, writeJsonFile } from './json-file.ts'
 import { assertHostLaunchPaths, type HostLaunchPaths } from './paths.ts'
 
@@ -161,6 +166,12 @@ export function parseSessionWorkspaceSummary(raw: unknown): DesktopSessionWorksp
   return Object.keys(summary).length > 0 ? summary : undefined
 }
 
+export interface DesktopRemoteEnvDefaults {
+  readonly relayUrl?: string | undefined
+  readonly signalingUrl?: string | undefined
+  readonly stunUrls?: string | undefined
+}
+
 export interface DesktopRemoteSnapshot {
   readonly phase: DesktopRemotePhase
   readonly pid: string
@@ -172,6 +183,7 @@ export interface DesktopRemoteSnapshot {
   readonly lanCandidates: readonly string[]
   readonly effectiveListenHost: string
   readonly settings: DesktopRemoteSettings
+  readonly envDefaults?: DesktopRemoteEnvDefaults | undefined
   readonly lanUrl: string
   readonly relayUrl: string
   readonly relayRoomId: string
@@ -217,7 +229,6 @@ export const DEFAULT_DESKTOP_REMOTE_SETTINGS: DesktopRemoteSettings = Object.fre
 const MAX_REMOTE_LOG_CHARS = 32_768
 const MAX_LISTEN_HOST_CHARS = 128
 const MAX_URL_CHARS = 512
-const STUN_URL_RE = /^stun:[^\s,]+(?::\d+)?$/iu
 const ANSI_ESCAPE_RE = /\u001b\[[0-9;]*[a-zA-Z]/gu
 const CANDIDATE_ID_RE = /^[a-zA-Z0-9_-]{1,128}$/u
 
@@ -421,19 +432,49 @@ export function parseDesktopRemoteSettings(raw: unknown): DesktopRemoteSettings 
   }
 }
 
-function validateWsUrl(raw: string, fieldLabel: string): string | undefined {
-  if (raw === '') return undefined
-  if (raw.length > MAX_URL_CHARS || /[\s\u0000-\u001f]/u.test(raw)) {
-    return `${fieldLabel} 格式无效或包含空白字符`
-  }
-  try {
-    const parsed = new URL(raw)
-    if (parsed.protocol !== 'ws:' && parsed.protocol !== 'wss:') {
-      return `${fieldLabel} 必须使用 ws:// 或 wss:// 协议`
-    }
+export function resolveDesktopRemoteEnvDefaults(
+  env: NodeJS.ProcessEnv = process.env,
+): DesktopRemoteEnvDefaults | undefined {
+  const defaults = resolveRemoteDefaultTransportEnv(env)
+  if (defaults.error !== undefined) return undefined
+  if (defaults.relayUrl === undefined && defaults.signalingUrl === undefined && defaults.stunUrlsRaw === undefined) {
     return undefined
-  } catch {
-    return `${fieldLabel} 不是有效的 URL`
+  }
+  return {
+    ...(defaults.relayUrl !== undefined ? { relayUrl: defaults.relayUrl } : {}),
+    ...(defaults.signalingUrl !== undefined ? { signalingUrl: defaults.signalingUrl } : {}),
+    ...(defaults.stunUrlsRaw !== undefined ? { stunUrls: defaults.stunUrlsRaw } : {}),
+  }
+}
+
+export function resolveEffectiveDesktopRemoteSettings(
+  settings: DesktopRemoteSettings,
+  env: NodeJS.ProcessEnv = process.env,
+):
+  | {
+      readonly ok: true
+      readonly settings: DesktopRemoteSettings
+      readonly envDefaults?: DesktopRemoteEnvDefaults | undefined
+    }
+  | { readonly ok: false; readonly error: string } {
+  const effective = resolveRemoteDefaultTransportEnv(env, {
+    relayUrl: settings.relayUrl,
+    signalingUrl: settings.signalingUrl,
+    stunUrls: settings.stunUrls,
+  })
+  if (effective.error !== undefined) {
+    return { ok: false, error: effective.error }
+  }
+  const envDefaults = resolveDesktopRemoteEnvDefaults(env)
+  return {
+    ok: true,
+    settings: {
+      ...settings,
+      relayUrl: effective.relayUrl ?? '',
+      signalingUrl: effective.signalingUrl ?? '',
+      stunUrls: settings.stunUrls !== '' ? settings.stunUrls : (effective.stunUrlsRaw ?? ''),
+    },
+    ...(envDefaults !== undefined ? { envDefaults } : {}),
   }
 }
 
@@ -461,28 +502,16 @@ export function validateRemoteStartInput(
 
   const enableMdns = rec.enableMdns !== false
   const relayUrl = typeof rec.relayUrl === 'string' ? rec.relayUrl.trim() : ''
-  const relayErr = validateWsUrl(relayUrl, '盲中继地址 (Relay URL)')
+  const relayErr = validateWsEndpointUrl(relayUrl, '盲中继地址 (Relay URL)')
   if (relayErr !== undefined) return { ok: false, error: relayErr }
 
   const signalingUrl = typeof rec.signalingUrl === 'string' ? rec.signalingUrl.trim() : ''
-  const signalingErr = validateWsUrl(signalingUrl, 'WebRTC 信令地址 (Signaling URL)')
+  const signalingErr = validateWsEndpointUrl(signalingUrl, 'WebRTC 信令地址 (Signaling URL)')
   if (signalingErr !== undefined) return { ok: false, error: signalingErr }
 
   const stunUrls = typeof rec.stunUrls === 'string' ? rec.stunUrls.trim() : ''
-  if (stunUrls !== '') {
-    if (stunUrls.length > MAX_URL_CHARS) {
-      return { ok: false, error: 'STUN URL 列表过长' }
-    }
-    const items = stunUrls
-      .split(',')
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0)
-    for (const item of items) {
-      if (!STUN_URL_RE.test(item)) {
-        return { ok: false, error: `STUN 地址格式无效: ${item}（应形如 stun:host:port）` }
-      }
-    }
-  }
+  const parsedStun = normalizeStunUrlList(stunUrls, 'STUN 地址')
+  if (!parsedStun.ok) return { ok: false, error: parsedStun.error }
 
   const parsedEngines = parseDesktopEngineList(typeof rec.engines === 'string' ? rec.engines : undefined)
   if (!parsedEngines.ok) {
@@ -836,6 +865,7 @@ export class DesktopRemoteController {
       await this.refreshOfflineDevices(configDir, ctx.dshHome)
     }
     const settings = this.getSettings()
+    const envDefaults = resolveDesktopRemoteEnvDefaults(ctx.env)
     const lanCandidates = detectLanIpv4Candidates()
     const effectiveListenHost = resolveEffectiveListenHost(settings.listenHost, lanCandidates)
     const ready = this.cachedReady
@@ -883,6 +913,7 @@ export class DesktopRemoteController {
       lanCandidates,
       effectiveListenHost,
       settings,
+      ...(envDefaults !== undefined ? { envDefaults } : {}),
       lanUrl,
       relayUrl,
       relayRoomId,
@@ -918,6 +949,14 @@ export class DesktopRemoteController {
     }
 
     const ctx = this.getContext()
+    const resolvedTransport = resolveEffectiveDesktopRemoteSettings(validated.settings, ctx.env)
+    if (!resolvedTransport.ok) {
+      this.phase = 'error'
+      this.lastError = resolvedTransport.error
+      this.notice = undefined
+      this.emitChange()
+      return
+    }
     this.saveSettings(ctx, validated.settings)
     const configDir = resolveDesktopRemoteConfigDir(ctx)
     this.notice = undefined
@@ -1027,11 +1066,15 @@ export class DesktopRemoteController {
             DSH_REMOTE_LAN_PORT: String(validated.settings.port),
             DSH_REMOTE_ENABLE_MDNS: validated.settings.enableMdns ? '1' : '0',
             ...(enginesForEnv.length > 0 ? { DSH_REMOTE_ENGINES: enginesForEnv.join(',') } : {}),
-            ...(validated.settings.relayUrl ? { DSH_REMOTE_RELAY_URL: validated.settings.relayUrl } : {}),
-            ...(validated.settings.signalingUrl
-              ? { DSH_REMOTE_SIGNALING_URL: validated.settings.signalingUrl }
+            ...(resolvedTransport.settings.relayUrl
+              ? { DSH_REMOTE_RELAY_URL: resolvedTransport.settings.relayUrl }
               : {}),
-            ...(validated.settings.stunUrls ? { DSH_REMOTE_STUN_URLS: validated.settings.stunUrls } : {}),
+            ...(resolvedTransport.settings.signalingUrl
+              ? { DSH_REMOTE_SIGNALING_URL: resolvedTransport.settings.signalingUrl }
+              : {}),
+            ...(resolvedTransport.settings.stunUrls
+              ? { DSH_REMOTE_STUN_URLS: resolvedTransport.settings.stunUrls }
+              : {}),
             DSH_REMOTE_CONTROL_PORT: '0',
             DSH_REMOTE_CONTROL_TOKEN: controlToken,
             DSH_REMOTE_READY_FILE: readyFile,

@@ -905,4 +905,44 @@ describe('shell pages', () => {
       ahead: 2,
     })
   })
+
+  it('renders envDefaults placeholders, R3 stun guidance, and CSP-safe fill button when configured', () => {
+    const html = renderRemotePage({
+      product: 'DSH Community',
+      phase: 'stopped',
+      apiKeyPresent: true,
+      dshHome: '/tmp/.dsh',
+      configDir: '/tmp/remote',
+      isolated: false,
+      pid: '—',
+      hostFingerprint: 'fp-env',
+      lanCandidates: [],
+      effectiveListenHost: '127.0.0.1',
+      settings: { listenHost: '', port: 0, enableMdns: true, relayUrl: '', signalingUrl: '', stunUrls: '' },
+      envDefaults: {
+        relayUrl: 'wss://relay.example.com/ws',
+        signalingUrl: 'wss://signal.example.com/"<script>alert(1)</script>',
+        stunUrls: 'stun:stun.example.com:3478',
+      },
+      lanUrl: '',
+      relayUrl: '',
+      relayRoomId: '',
+      signalingUrl: '',
+      signalingRoomId: '',
+      stunUrls: [],
+      activeConnections: 0,
+      pendingCandidates: [],
+      devices: [],
+      logs: '',
+    })
+    expect(html).toContain('默认环境变量: wss://relay.example.com/ws')
+    expect(html).toContain('默认环境变量: stun:stun.example.com:3478')
+    expect(html).toContain('id="fill-remote-env-defaults"')
+    expect(html).toContain('id="remote-env-defaults-tpl"')
+    expect(html).toContain('禁止 <code>turn:</code>')
+    expect(html).not.toContain('onclick=')
+    expect(html).not.toContain('style=')
+    expect(html).not.toContain('<script>alert(1)</script>')
+    expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;')
+  })
 })
