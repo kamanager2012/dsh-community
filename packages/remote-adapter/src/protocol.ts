@@ -11,28 +11,48 @@ export type Capability =
 export type RemoteMethod =
   | 'session.list'
   | 'session.attach'
+  | 'session.history'
+  | 'session.search'
   | 'session.create'
   | 'session.rename'
+  | 'session.fork'
   | 'prompt.submit'
   | 'turn.abort'
   | 'approval.respond'
   | 'question.respond'
   | 'model.list'
   | 'model.select'
+  | 'command.list'
+  | 'command.execute'
+  | 'skill.list'
+  | 'workspace.upload.open'
+  | 'workspace.upload.chunk'
+  | 'workspace.upload.commit'
+  | 'workspace.upload.abort'
   | 'stream.ack'
   | 'ping'
 
 const REMOTE_METHODS = new Set<RemoteMethod>([
   'session.list',
   'session.attach',
+  'session.history',
+  'session.search',
   'session.create',
   'session.rename',
+  'session.fork',
   'prompt.submit',
   'turn.abort',
   'approval.respond',
   'question.respond',
   'model.list',
   'model.select',
+  'command.list',
+  'command.execute',
+  'skill.list',
+  'workspace.upload.open',
+  'workspace.upload.chunk',
+  'workspace.upload.commit',
+  'workspace.upload.abort',
   'stream.ack',
   'ping',
 ])
@@ -58,6 +78,11 @@ export interface SessionRef {
   readonly title?: string
   readonly updatedAtMs?: number | undefined
   readonly cwd?: string | undefined
+  readonly status?: 'running' | 'idle' | undefined
+  readonly preview?: string | undefined
+  readonly model?: ModelSelectionParams | undefined
+  readonly pendingApprovals?: number | undefined
+  readonly pendingQuestions?: number | undefined
 }
 
 export interface OfficialSessionEvent {
@@ -157,6 +182,159 @@ export interface ModelCatalogResult {
   readonly models: readonly ModelOptionRef[]
 }
 
+export interface PendingApprovalSnapshot {
+  readonly callId: string
+  readonly toolName: string
+  readonly reason?: string | undefined
+  readonly summary?: string | undefined
+  readonly sessionId?: string | undefined
+}
+
+export interface PendingQuestionSnapshot {
+  readonly questionId: string
+  readonly prompt: string
+  readonly questions?: readonly unknown[] | undefined
+  readonly sessionId?: string | undefined
+}
+
+export interface TodoItemSnapshot {
+  readonly id?: string | undefined
+  readonly content: string
+  readonly status: string
+  readonly priority?: string | undefined
+}
+
+export interface SessionUsageSnapshot {
+  readonly inputTokens: number
+  readonly outputTokens: number
+  readonly cacheReadTokens?: number | undefined
+  readonly cacheWriteTokens?: number | undefined
+  readonly totalTokens: number
+  readonly turns: number
+}
+
+export interface SessionLiveStateSnapshot {
+  readonly status: 'running' | 'idle'
+  readonly model?: ModelSelectionParams | undefined
+  readonly title?: string | undefined
+  readonly pendingApprovals: readonly PendingApprovalSnapshot[]
+  readonly pendingQuestions: readonly PendingQuestionSnapshot[]
+  readonly todos: readonly TodoItemSnapshot[]
+  readonly usage?: SessionUsageSnapshot | undefined
+  readonly oldestSeq?: number | null | undefined
+  readonly latestSeq?: number | null | undefined
+  readonly hasMoreHistory?: boolean | undefined
+  readonly turnCount?: number | undefined
+}
+
+export interface SessionHistoryParams {
+  readonly sessionId: string
+  readonly beforeSeq?: number | undefined
+  readonly limit?: number | undefined
+  readonly minTurns?: number | undefined
+}
+
+export interface SessionHistoryResult {
+  readonly sessionId: string
+  readonly events: readonly { readonly seq: number; readonly type: string; readonly time?: number | undefined; readonly data?: unknown }[]
+  readonly hasMore: boolean
+  readonly oldestSeq: number | null
+  readonly latestSeq: number | null
+  readonly source: 'live' | 'disk'
+}
+
+export interface SessionForkParams {
+  readonly sessionId: string
+  readonly atSeq?: number | undefined
+  readonly title?: string | undefined
+}
+
+export interface SessionSearchParams {
+  readonly query: string
+  readonly sessionId?: string | undefined
+  readonly limit?: number | undefined
+}
+
+export interface SessionSearchHit {
+  readonly sessionId: string
+  readonly title?: string | undefined
+  readonly seq: number
+  readonly type: string
+  readonly snippet: string
+  readonly updatedAt?: string | undefined
+}
+
+export interface SessionSearchResult {
+  readonly query: string
+  readonly hits: readonly SessionSearchHit[]
+  readonly hasMore: boolean
+}
+
+export interface RemoteCommandDescriptor {
+  readonly name: string
+  readonly description: string
+  readonly inputHint?: string | undefined
+  readonly acceptsAttachments?: boolean | undefined
+}
+
+export interface RemoteSkillSummary {
+  readonly name: string
+  readonly description: string
+  readonly whenToUse?: string | undefined
+  readonly source?: string | undefined
+}
+
+export interface WorkspaceUploadOpenParams {
+  readonly sessionId: string
+  readonly filename: string
+  readonly sizeBytes: number
+  readonly chunkBytes?: number | undefined
+  readonly sha256?: string | undefined
+  readonly conflictPolicy?: 'rename' | 'fail' | undefined
+}
+
+export interface WorkspaceUploadOpenResult {
+  readonly uploadId: string
+  readonly sessionId: string
+  readonly chunkBytes: number
+  readonly maxBytes: number
+  readonly relativePath: string
+}
+
+export interface WorkspaceUploadChunkParams {
+  readonly uploadId: string
+  readonly offset: number
+  readonly dataBase64: string
+}
+
+export interface WorkspaceUploadChunkResult {
+  readonly uploadId: string
+  readonly receivedBytes: number
+  readonly nextOffset: number
+}
+
+export interface WorkspaceUploadCommitParams {
+  readonly uploadId: string
+  readonly sha256?: string | undefined
+}
+
+export interface WorkspaceUploadCommitResult {
+  readonly uploadId: string
+  readonly sessionId: string
+  readonly relativePath: string
+  readonly bytesWritten: number
+  readonly sha256: string
+}
+
+export interface WorkspaceUploadAbortParams {
+  readonly uploadId: string
+}
+
+export interface WorkspaceUploadAbortResult {
+  readonly uploadId: string
+  readonly aborted: boolean
+}
+
 export interface OfficialRemoteSeams {
   listSessions(): Promise<readonly SessionRef[]>
   assertSession(sessionId: string): Promise<void>
@@ -168,6 +346,17 @@ export interface OfficialRemoteSeams {
   abortTurn?(sessionId: string, options?: { readonly keepInbox?: boolean | undefined }): Promise<unknown>
   listModels?(sessionId?: string): Promise<ModelCatalogResult>
   selectModel?(sessionId: string, selection: ModelSelectionParams): Promise<unknown>
+  getSessionLiveState?(sessionId: string): Promise<SessionLiveStateSnapshot | undefined>
+  getSessionHistory?(params: SessionHistoryParams): Promise<SessionHistoryResult>
+  forkSession?(params: SessionForkParams): Promise<SessionRef>
+  searchSessions?(params: SessionSearchParams): Promise<SessionSearchResult>
+  listCommands?(sessionId?: string): Promise<readonly RemoteCommandDescriptor[]>
+  executeCommand?(sessionId: string, command: string): Promise<{ readonly ok: boolean; readonly commandId?: string | undefined; readonly output?: string | undefined; readonly error?: string | undefined }>
+  listSkills?(sessionId?: string): Promise<readonly RemoteSkillSummary[]>
+  openWorkspaceUpload?(deviceId: string, params: WorkspaceUploadOpenParams): Promise<WorkspaceUploadOpenResult>
+  appendWorkspaceUploadChunk?(deviceId: string, params: WorkspaceUploadChunkParams): Promise<WorkspaceUploadChunkResult>
+  commitWorkspaceUpload?(deviceId: string, params: WorkspaceUploadCommitParams): Promise<WorkspaceUploadCommitResult>
+  abortWorkspaceUpload?(deviceId: string, params: WorkspaceUploadAbortParams): Promise<WorkspaceUploadAbortResult>
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

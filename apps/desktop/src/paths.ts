@@ -3,6 +3,27 @@ import { spawnSync } from 'node:child_process'
 import { join } from 'node:path'
 import { resolveOfficialDsh, type OfficialDshInstall } from '@dsh-community/dsh-bridge'
 
+export const MINIMUM_DESKTOP_NODE_VERSION: readonly [number, number, number] = [22, 15, 0]
+
+export function parseNodeSemver(raw: string): readonly [number, number, number] | undefined {
+  const match = raw.trim().match(/^v?(\d+)\.(\d+)\.(\d+)/u)
+  if (!match) return undefined
+  return [Number(match[1]), Number(match[2]), Number(match[3])]
+}
+
+export function isCompatibleNodeVersion(
+  raw: string,
+  minimum: readonly [number, number, number] = MINIMUM_DESKTOP_NODE_VERSION,
+): boolean {
+  const parsed = parseNodeSemver(raw)
+  if (parsed === undefined) return false
+  for (let i = 0; i < 3; i += 1) {
+    if (parsed[i]! > minimum[i]!) return true
+    if (parsed[i]! < minimum[i]!) return false
+  }
+  return true
+}
+
 export interface HostLaunchPaths {
   readonly nodeExecutable: string
   readonly cliEntry: string
@@ -19,6 +40,7 @@ export interface ResolveHostLaunchInput {
   readonly resourcesPath: string
   readonly homedir: string
   readonly cwd: string
+  readonly probeNodeVersion?: ((env: NodeJS.ProcessEnv) => string | undefined) | undefined
 }
 
 function devNodeExecutable(input: ResolveHostLaunchInput): string {
@@ -29,24 +51,32 @@ function devNodeExecutable(input: ResolveHostLaunchInput): string {
   return 'node'
 }
 
+function defaultProbeNodeVersion(env: NodeJS.ProcessEnv): string | undefined {
+  try {
+    const probe = spawnSync('node', ['--version'], {
+      env,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 5_000,
+    })
+    return probe.status === 0 ? probe.stdout : undefined
+  } catch {
+    return undefined
+  }
+}
+
 /**
- * Packaged builds prefer a real Node over Electron-as-node. The official
- * web server does not reliably bind its socket when launched through
- * Electron-as-node, so a system Node is the stable path; Electron-as-node
- * stays as the last resort for machines without Node.
+ * Packaged builds prefer a compatible real Node (>= 22.15.0) over Electron-as-node.
+ * The official web server does not reliably bind its socket when launched through
+ * Electron-as-node, so a compatible system Node is the stable path; Electron-as-node
+ * stays as the last resort for machines without Node or with an older distro Node.
  */
 function packagedNodeExecutable(input: ResolveHostLaunchInput): string {
   const override = input.env.DSH_DESKTOP_NODE_EXECUTABLE
   if (override !== undefined && override !== '' && existsSync(override)) return override
-  try {
-    const probe = spawnSync('node', ['--version'], {
-      env: input.env,
-      stdio: 'ignore',
-      timeout: 5_000,
-    })
-    if (probe.status === 0) return 'node'
-  } catch {
-    // fall through to Electron-as-node
+  const versionOutput = (input.probeNodeVersion ?? defaultProbeNodeVersion)(input.env)
+  if (versionOutput !== undefined && isCompatibleNodeVersion(versionOutput)) {
+    return 'node'
   }
   return input.execPath
 }

@@ -100,6 +100,24 @@ export interface WebRtcIceConfigOptions {
   readonly iceUseIpv4?: boolean | undefined
   readonly iceUseIpv6?: boolean | undefined
   readonly iceUseTcp?: boolean | undefined
+  /**
+   * 'all' (default) allows all ICE candidates; 'direct-only' strips/ignores `typ relay` candidates
+   * during local/P2P probing so direct LAN/STUN stage never leaks relay paths.
+   */
+  readonly iceTransportPolicy?: 'all' | 'direct-only' | undefined
+}
+
+export function isRelayIceCandidate(payload: RtcIceCandidatePayload | null): boolean {
+  if (!payload || typeof payload.candidate !== 'string') return false
+  return /\btyp\s+relay\b/iu.test(payload.candidate)
+}
+
+export function shouldAllowIceCandidate(
+  payload: RtcIceCandidatePayload | null,
+  policy: WebRtcIceConfigOptions['iceTransportPolicy'],
+): boolean {
+  if (policy !== 'direct-only') return true
+  return !isRelayIceCandidate(payload)
 }
 
 export function validateSelfOwnedStunUrls(

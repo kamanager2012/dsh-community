@@ -23,6 +23,7 @@ data class UserMessageItem(
     val text: String,
     val isOptimistic: Boolean = false,
     val attachmentLabels: List<String> = emptyList(),
+    val sendError: String? = null,
 ) : ChatTimelineItem
 
 data class AssistantTurnItem(
@@ -59,40 +60,162 @@ data class SystemNoticeItem(
  */
 class ChatTimelineStore {
     private val itemsBySession = LinkedHashMap<String, MutableList<ChatTimelineItem>>()
+    private val sessionLruOrder = ArrayDeque<String>()
     private val highestSeqBySession = HashMap<String, Long>()
-    private val seenEventKeysBySession = HashMap<String, HashSet<String>>()
+    private val seenEventKeysBySession = HashMap<String, LinkedHashSet<String>>()
     private var idSeq = 0L
+
+    private fun touchSessionLocked(sessionId: String) {
+        sessionLruOrder.remove(sessionId)
+        sessionLruOrder.addLast(sessionId)
+        while (sessionLruOrder.size > MAX_TRACKED_SESSIONS) {
+            val evicted = sessionLruOrder.removeFirst()
+            if (evicted != sessionId) {
+                itemsBySession.remove(evicted)
+                highestSeqBySession.remove(evicted)
+                seenEventKeysBySession.remove(evicted)
+            }
+        }
+    }
+
+    private fun recordSeenKeyLocked(sessionId: String, key: String): Boolean {
+        val seen = seenEventKeysBySession.getOrPut(sessionId) { LinkedHashSet() }
+        if (!seen.add(key)) {
+            return false
+        }
+        while (seen.size > MAX_SEEN_EVENT_KEYS_PER_SESSION) {
+            val it = seen.iterator()
+            if (!it.hasNext()) break
+            it.next()
+            it.remove()
+        }
+        return true
+    }
+
+    private fun clampSessionItemsLocked(list: MutableList<ChatTimelineItem>) {
+        while (list.size > MAX_ITEMS_PER_SESSION) {
+            list.removeAt(0)
+        }
+    }
 
     @Synchronized
     fun addOptimisticUserPrompt(
         sessionId: String,
         prompt: String,
         attachmentNames: List<String> = emptyList(),
-    ) {
+    ): String {
         val clean = sanitizeMultiline(prompt, MAX_MESSAGE_CHARS).trim()
         val cleanAttachments = attachmentNames
             .mapNotNull { DisplayTextSanitizer.sanitizeSingleLine(it).takeIf { s -> s.isNotEmpty() } }
             .take(2)
-        if (clean.isEmpty() && cleanAttachments.isEmpty()) return
+        if (clean.isEmpty() && cleanAttachments.isEmpty()) return ""
+        touchSessionLocked(sessionId)
         val list = itemsBySession.getOrPut(sessionId) { ArrayList() }
         val localSeq = (highestSeqBySession[sessionId] ?: 0L)
+        val stableId = "u-${++idSeq}"
         list.add(
             UserMessageItem(
-                stableId = "u-${++idSeq}",
+                stableId = stableId,
                 seq = localSeq,
                 text = clean,
                 isOptimistic = true,
                 attachmentLabels = cleanAttachments,
             ),
         )
+        clampSessionItemsLocked(list)
+        return stableId
     }
 
     @Synchronized
+    fun markOptimisticUserFailed(
+        sessionId: String,
+        optimisticId: String?,
+        reason: String,
+    ): Boolean {
+        val list = itemsBySession[sessionId] ?: return false
+        val idx = if (!optimisticId.isNullOrBlank()) {
+            list.indexOfLast { it is UserMessageItem && it.stableId == optimisticId && it.isOptimistic }
+        } else {
+            list.indexOfLast { it is UserMessageItem && it.isOptimistic }
+        }
+        if (idx < 0) return false
+        val current = list[idx] as UserMessageItem
+        val cleanReason = DisplayTextSanitizer.sanitizeSingleLine(reason).ifEmpty { "Send failed" }
+        list[idx] = current.copy(isOptimistic = false, sendError = cleanReason)
+        return true
+    }
+
+    @Synchronized
+    fun prependHistory(sessionId: String, events: List<OfficialSessionEvent>): Int {
+        if (events.isEmpty()) return 0
+        touchSessionLocked(sessionId)
+        val seen = seenEventKeysBySession.getOrPut(sessionId) { LinkedHashSet() }
+        val unseen = events
+            .sortedBy { it.seq }
+            .filter { evt ->
+                if (evt.seq <= 0L) {
+                    true
+                } else {
+                    val key = "${evt.seq}:${evt.type}"
+                    !seen.contains(key)
+                }
+            }
+        if (unseen.isEmpty()) return 0
+
+        val staging = ChatTimelineStore()
+        for (evt in unseen) {
+            staging.applyEvent(sessionId, evt)
+            if (evt.seq > 0L) {
+                recordSeenKeyLocked(sessionId, "${evt.seq}:${evt.type}")
+                val prevHigh = highestSeqBySession[sessionId] ?: 0L
+                if (evt.seq > prevHigh) {
+                    highestSeqBySession[sessionId] = evt.seq
+                }
+            }
+        }
+        val prepended = staging.itemsForSession(sessionId).map { item ->
+            when (item) {
+                is UserMessageItem -> item.copy(stableId = "uh-${++idSeq}")
+                is AssistantTurnItem -> item.copy(stableId = "ah-${++idSeq}", isFinalized = true)
+                is ToolExecutionItem -> item.copy(stableId = "th-${++idSeq}")
+                is SystemNoticeItem -> item.copy(stableId = "nh-${++idSeq}")
+            }
+        }
+        if (prepended.isEmpty()) return 0
+
+        val list = itemsBySession.getOrPut(sessionId) { ArrayList() }
+        list.addAll(0, prepended)
+        clampSessionItemsLocked(list)
+        return prepended.size
+    }
+
+    @Synchronized
+    fun oldestLoadedSeq(sessionId: String): Long? {
+        val list = itemsBySession[sessionId] ?: return null
+        var minSeq: Long? = null
+        for (item in list) {
+            val s = when (item) {
+                is UserMessageItem -> item.seq
+                is AssistantTurnItem -> item.seq
+                is ToolExecutionItem -> item.seq
+                is SystemNoticeItem -> item.seq
+            }
+            if (s > 0L && (minSeq == null || s < minSeq)) {
+                minSeq = s
+            }
+        }
+        return minSeq
+    }
+
+    @Synchronized
+    fun trackedSessionCount(): Int = itemsBySession.size
+
+    @Synchronized
     fun applyEvent(sessionId: String, event: OfficialSessionEvent) {
+        touchSessionLocked(sessionId)
         if (event.seq > 0L) {
-            val seen = seenEventKeysBySession.getOrPut(sessionId) { HashSet() }
             val key = "${event.seq}:${event.type}"
-            if (!seen.add(key)) {
+            if (!recordSeenKeyLocked(sessionId, key)) {
                 return
             }
             val prevHigh = highestSeqBySession[sessionId] ?: 0L
@@ -335,11 +458,13 @@ class ChatTimelineStore {
                 )
             }
         }
+        clampSessionItemsLocked(list)
     }
 
     @Synchronized
     fun clearSession(sessionId: String) {
         itemsBySession.remove(sessionId)
+        sessionLruOrder.remove(sessionId)
         highestSeqBySession.remove(sessionId)
         seenEventKeysBySession.remove(sessionId)
     }
@@ -347,6 +472,7 @@ class ChatTimelineStore {
     @Synchronized
     fun clearAll() {
         itemsBySession.clear()
+        sessionLruOrder.clear()
         highestSeqBySession.clear()
         seenEventKeysBySession.clear()
     }
@@ -603,35 +729,19 @@ class ChatTimelineStore {
     }
 
     companion object {
+        const val MAX_TRACKED_SESSIONS = 16
+        const val MAX_ITEMS_PER_SESSION = 500
+        const val MAX_SEEN_EVENT_KEYS_PER_SESSION = 2_000
         private const val MAX_MESSAGE_CHARS = 24_000
         private const val MAX_TOOL_CHARS = 6_000
 
-        fun sanitizeMultiline(raw: String, maxChars: Int = MAX_MESSAGE_CHARS): String {
-            val withoutAnsi = raw.replace(Regex("\u001B\\[[0-?]*[ -/]*[@-~]"), "")
-            val normalized = withoutAnsi.replace("\r\n", "\n").replace('\r', '\n')
-            val out = StringBuilder(minOf(normalized.length, maxChars))
-            for (ch in normalized) {
-                if (ch == '\n' || ch == '\t' || (ch.code >= 0x20 && ch.code != 0x7F)) {
-                    out.append(ch)
-                    if (out.length >= maxChars) break
-                }
-            }
-            return out.toString()
-        }
+        fun sanitizeMultiline(raw: String, maxCodePoints: Int = MAX_MESSAGE_CHARS): String =
+            DisplayTextSanitizer.sanitizeMultiline(raw, maxCodePoints)
 
-        private fun sanitizeChunk(raw: String): String {
-            val withoutAnsi = raw.replace(Regex("\u001B\\[[0-?]*[ -/]*[@-~]"), "")
-            val normalized = withoutAnsi.replace("\r\n", "\n").replace('\r', '\n')
-            val out = StringBuilder(normalized.length)
-            for (ch in normalized) {
-                if (ch == '\n' || ch == '\t' || (ch.code >= 0x20 && ch.code != 0x7F)) {
-                    out.append(ch)
-                }
-            }
-            return out.toString()
-        }
+        private fun sanitizeChunk(raw: String): String =
+            DisplayTextSanitizer.sanitizeMultiline(raw)
 
-        private fun clampText(text: String, maxChars: Int): String =
-            if (text.length <= maxChars) text else text.take(maxChars) + "\n…(truncated)"
+        private fun clampText(text: String, maxCodePoints: Int): String =
+            DisplayTextSanitizer.truncateByCodePoints(text, maxCodePoints, ellipsis = "\n…(truncated)")
     }
 }

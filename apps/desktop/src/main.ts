@@ -29,6 +29,7 @@ import {
   listOfficialSessions,
   officialSessionRoot,
   parseRuntimeCatalog,
+  peekOfficialSessionSummary,
   PINNED_DSH_VERSION,
   pinDefault,
   resolveDesktopAppLayout,
@@ -69,6 +70,7 @@ import {
   renderRemotePage,
   renderRuntimePage,
   renderSettingsPage,
+  type RemotePageModel,
 } from './pages.ts'
 import {
   DesktopRemoteController,
@@ -92,7 +94,7 @@ import {
   readSettingsPatch,
   type DesktopSettings,
 } from './settings.ts'
-import { decideHostCrash, decideWindowClose } from './shell-policy.ts'
+import { decideHostCrash, decideWindowClose, shouldApplyAsyncPageUpdate } from './shell-policy.ts'
 import {
   DEFAULT_WINDOW_STATE,
   parseWindowState,
@@ -123,6 +125,7 @@ let origin = ''
 let officialBootstrapUrl: string | undefined
 let showingOfficial = false
 let currentShellPage: ShellPage = 'loading'
+let marketplaceFetchSeq = 0
 let quitting = false
 let settings = DEFAULT_DESKTOP_SETTINGS
 let catalog: RuntimeCatalog | undefined
@@ -341,23 +344,32 @@ function officialSessionsModel() {
     product: COMMUNITY_PRODUCT_NAME,
     officialHome: home,
     isolated: isolatedNow(),
-    sessions: listOfficialSessions(officialSessionRoot(home)).map((session) => ({
-      id: session.id,
-      projectKey: session.projectKey,
-      transcript: session.transcript,
-      updatedAt: formatSessionMtime(session.mtimeMs),
-    })),
+    sessions: listOfficialSessions(officialSessionRoot(home)).map((session, index) => {
+      const summary = index < 40 ? peekOfficialSessionSummary(session.transcript) : undefined
+      return {
+        id: session.id,
+        projectKey: session.projectKey,
+        transcript: session.transcript,
+        updatedAt: formatSessionMtime(session.mtimeMs),
+        ...(summary?.title !== undefined ? { title: summary.title } : {}),
+        ...(summary?.cwd !== undefined ? { cwd: summary.cwd } : {}),
+        ...(summary?.preview !== undefined ? { preview: summary.preview } : {}),
+        ...(summary?.model !== undefined ? { model: summary.model } : {}),
+      }
+    }),
   }
 }
 
-function settingsModel() {
+function settingsModel(saved = false) {
   return {
     product: COMMUNITY_PRODUCT_NAME,
     hideToTray: settings.hideToTray,
+    trayAvailable: trayAvailable(),
     isolated: isolatedNow(),
     envIsolated: isolatedDesktopRequested(),
     officialHome: officialHome(),
     isolatedHome: desktopLayout().isolatedOfficialHome,
+    saved,
   }
 }
 
@@ -476,7 +488,14 @@ async function runPluginAction(request: { name: string; action: PluginAction }):
     pluginResult = { plugin: request.name, action: request.action, ok, log: fullLog }
     pluginTask = undefined
     pluginChild = undefined
-    if (!quitting) void showHtml(renderMarketplacePage(marketplaceModel()), 'marketplace')
+    if (shouldApplyAsyncPageUpdate({
+      quitting,
+      showingOfficial,
+      currentPage: currentShellPage,
+      expectedPage: 'marketplace',
+    })) {
+      void showHtml(renderMarketplacePage(marketplaceModel()), 'marketplace')
+    }
   }
 
   child.on('error', (error) => finish(false, error.message))
@@ -507,12 +526,15 @@ async function fetchLiveMarketplace(): Promise<
   }
 }
 
+function isFreshMarketplaceCache(cached: MarketplaceSnapshot | undefined): cached is MarketplaceSnapshot {
+  if (cached === undefined) return false
+  const fetchedMs = Date.parse(cached.fetchedAt)
+  return !Number.isNaN(fetchedMs) && Date.now() - fetchedMs < MARKETPLACE_CACHE_TTL_MS
+}
+
 async function refreshMarketplaceCatalog(force: boolean): Promise<void> {
   const cached = parseMarketplaceSnapshot(readJsonFile(marketplaceCachePath()))
-  const cacheFresh = cached !== undefined
-    && !Number.isNaN(Date.parse(cached.fetchedAt))
-    && Date.now() - Date.parse(cached.fetchedAt) < MARKETPLACE_CACHE_TTL_MS
-  if (!force && cacheFresh) {
+  if (!force && isFreshMarketplaceCache(cached)) {
     marketplace = cached
     return
   }
@@ -543,7 +565,26 @@ async function refreshMarketplaceCatalog(force: boolean): Promise<void> {
 }
 
 async function showMarketplace(force = false): Promise<void> {
+  const mySeq = ++marketplaceFetchSeq
+  const cached = parseMarketplaceSnapshot(readJsonFile(marketplaceCachePath()))
+  if (!force && isFreshMarketplaceCache(cached)) {
+    marketplace = cached
+    await showHtml(renderMarketplacePage(marketplaceModel()), 'marketplace')
+    return
+  }
+  await showHtml(
+    renderLoadingPage('正在获取社区市场目录…', { heading: '社区市场', activeNav: 'marketplace' }),
+    'marketplace',
+  )
   await refreshMarketplaceCatalog(force)
+  if (
+    quitting
+    || mySeq !== marketplaceFetchSeq
+    || currentShellPage !== 'marketplace'
+    || showingOfficial
+  ) {
+    return
+  }
   await showHtml(renderMarketplacePage(marketplaceModel()), 'marketplace')
 }
 
@@ -576,6 +617,11 @@ function remoteUiKey(snap: Awaited<ReturnType<DesktopRemoteController['snapshot'
     snap.phase,
     snap.pid,
     String(snap.activeConnections),
+    String(snap.pendingApprovals ?? 0),
+    String(snap.pendingQuestions ?? 0),
+    (snap.liveSessions ?? [])
+      .map((s) => `${s.id}:${s.status ?? ''}:${String(s.pendingApprovals ?? 0)}:${String(s.pendingQuestions ?? 0)}`)
+      .join(','),
     snap.pairing?.deepLink ?? '',
     String(snap.pendingCandidates.length),
     snap.pendingCandidates.map((c) => `${c.candidateId}:${c.state}`).join(','),
@@ -619,6 +665,49 @@ function syncRemotePollTimer(): void {
   }
 }
 
+async function captureRemoteFormDraft(): Promise<RemotePageModel['settings'] | undefined> {
+  if (window === undefined || window.isDestroyed() || showingOfficial || currentShellPage !== 'remote') {
+    return undefined
+  }
+  try {
+    const raw = (await window.webContents.executeJavaScript(`(() => {
+      const hs = document.getElementById('listen-host-select');
+      const hc = document.getElementById('listen-host-custom');
+      const portEl = document.getElementById('remote-port');
+      const mdnsEl = document.getElementById('remote-mdns');
+      const relayEl = document.getElementById('remote-relay');
+      const sigEl = document.getElementById('remote-signaling');
+      const stunEl = document.getElementById('remote-stun');
+      if (!hs || !portEl) return null;
+      const listenHost = hs.value === '__custom__' ? (hc ? hc.value : '') : (hs.value || '');
+      const portNum = Number(portEl.value);
+      return {
+        listenHost,
+        port: Number.isFinite(portNum) ? portNum : 0,
+        enableMdns: mdnsEl ? mdnsEl.checked === true : true,
+        relayUrl: relayEl ? relayEl.value : '',
+        signalingUrl: sigEl ? sigEl.value : '',
+        stunUrls: stunEl ? stunEl.value : '',
+      };
+    })()`, true)) as RemotePageModel['settings'] | null
+    return raw ?? undefined
+  } catch {
+    return undefined
+  }
+}
+
+async function renderRemoteSnapshotHtml(
+  snap: Awaited<ReturnType<DesktopRemoteController['snapshot']>>,
+  preserveDraft: boolean,
+): Promise<void> {
+  const draft = preserveDraft ? await captureRemoteFormDraft() : undefined
+  if (currentShellPage !== 'remote' || showingOfficial) return
+  const model: RemotePageModel = draft === undefined
+    ? { product: COMMUNITY_PRODUCT_NAME, ...snap }
+    : { product: COMMUNITY_PRODUCT_NAME, ...snap, settings: draft }
+  await showHtml(renderRemotePage(model), 'remote')
+}
+
 async function applyRemoteSnapshotSideEffects(
   snap: Awaited<ReturnType<DesktopRemoteController['snapshot']>>,
   forceRender: boolean,
@@ -630,9 +719,31 @@ async function applyRemoteSnapshotSideEffects(
     const key = remoteUiKey(snap)
     if (forceRender || key !== lastRemoteUiKey) {
       lastRemoteUiKey = key
-      await showHtml(renderRemotePage({ product: COMMUNITY_PRODUCT_NAME, ...snap }), 'remote')
+      await renderRemoteSnapshotHtml(snap, true)
     }
   }
+}
+
+async function finishRemoteAction(options?: {
+  readonly refreshLive?: boolean | undefined
+  readonly preserveDraft?: boolean | undefined
+}): Promise<void> {
+  const ctrl = ensureRemoteController()
+  const snap = await ctrl.snapshot({ refreshLive: options?.refreshLive === true })
+  if (shouldApplyAsyncPageUpdate({
+    quitting,
+    showingOfficial,
+    currentPage: currentShellPage,
+    expectedPage: 'remote',
+  })) {
+    lastRemoteUiKey = remoteUiKey(snap)
+    notifyPendingPairingIfIncreased(snap.pendingCandidates.length)
+    syncRemotePollTimer()
+    updateTrayMenu()
+    await renderRemoteSnapshotHtml(snap, options?.preserveDraft === true)
+    return
+  }
+  await applyRemoteSnapshotSideEffects(snap, false)
 }
 
 async function refreshRemoteViewFromController(): Promise<void> {
@@ -651,7 +762,10 @@ async function pollRemoteRuntime(): Promise<void> {
   await applyRemoteSnapshotSideEffects(snap, false)
 }
 
-async function showRemote(options?: { readonly refreshLive?: boolean | undefined }): Promise<void> {
+async function showRemote(options?: {
+  readonly refreshLive?: boolean | undefined
+  readonly preserveDraft?: boolean | undefined
+}): Promise<void> {
   currentShellPage = 'remote'
   showingOfficial = false
   layoutOfficial()
@@ -661,7 +775,7 @@ async function showRemote(options?: { readonly refreshLive?: boolean | undefined
   notifyPendingPairingIfIncreased(snap.pendingCandidates.length)
   syncRemotePollTimer()
   updateTrayMenu()
-  await showHtml(renderRemotePage({ product: COMMUNITY_PRODUCT_NAME, ...snap }), 'remote')
+  await renderRemoteSnapshotHtml(snap, options?.preserveDraft === true)
 }
 
 async function showOfficialSessions(): Promise<void> {
@@ -672,8 +786,8 @@ async function showRuntime(): Promise<void> {
   await showHtml(renderRuntimePage(runtimeModel()), 'runtime')
 }
 
-async function showSettings(): Promise<void> {
-  await showHtml(renderSettingsPage(settingsModel()), 'settings')
+async function showSettings(saved = false): Promise<void> {
+  await showHtml(renderSettingsPage(settingsModel(saved)), 'settings')
 }
 
 async function showDiagnostics(): Promise<void> {
@@ -703,7 +817,7 @@ async function restartOfficial(then: 'official' | 'settings' = 'official'): Prom
   origin = next
   officialBootstrapUrl = host.takeBrowserBootstrapUrl()
   await waitForOfficialWeb(next, 8_000)
-  if (then === 'settings') await showSettings()
+  if (then === 'settings') await showSettings(true)
   else await showOfficial(next)
 }
 
@@ -720,7 +834,7 @@ async function applySettings(raw: unknown): Promise<void> {
     await restartOfficial('settings')
     return
   }
-  await showSettings()
+  await showSettings(true)
 }
 
 function copyDesktopText(text: unknown): boolean {
@@ -920,36 +1034,38 @@ function bindIpc(): void {
   })
   ipcMain.handle(DESKTOP_IPC.remoteStart, async (event, config: unknown) => {
     assertAuthorizedSender(event)
-    await ensureRemoteController().start(config)
-    await showRemote()
+    const ctrl = ensureRemoteController()
+    await ctrl.start(config)
+    const snap = await ctrl.snapshot({ refreshLive: false })
+    await finishRemoteAction({ refreshLive: false, preserveDraft: snap.error !== undefined })
   })
   ipcMain.handle(DESKTOP_IPC.remoteStop, async (event) => {
     assertAuthorizedSender(event)
     await ensureRemoteController().stop()
-    await showRemote({ refreshLive: false })
+    await finishRemoteAction({ refreshLive: false, preserveDraft: true })
   })
   ipcMain.handle(DESKTOP_IPC.remoteRefresh, async (event) => {
     assertAuthorizedSender(event)
-    await showRemote({ refreshLive: true })
+    await finishRemoteAction({ refreshLive: true, preserveDraft: true })
   })
   ipcMain.handle(DESKTOP_IPC.remoteNewPairing, async (event) => {
     assertAuthorizedSender(event)
     await ensureRemoteController().refreshPairingQr()
-    await showRemote()
+    await finishRemoteAction({ preserveDraft: true })
   })
   ipcMain.handle(DESKTOP_IPC.remoteConfirmPairing, async (event, raw: unknown) => {
     assertAuthorizedSender(event)
     const req = parseConfirmPairingInput(raw)
     if (req === undefined) return
     await ensureRemoteController().confirmPairing(req.candidateId, req.allowApprove)
-    await showRemote()
+    await finishRemoteAction({ preserveDraft: true })
   })
   ipcMain.handle(DESKTOP_IPC.remoteRevokeDevice, async (event, raw: unknown) => {
     assertAuthorizedSender(event)
     const deviceId = parseRevokeDeviceInput(raw)
     if (deviceId === undefined) return
     await ensureRemoteController().revokeDevice(deviceId)
-    await showRemote()
+    await finishRemoteAction({ preserveDraft: true })
   })
 }
 
@@ -1055,12 +1171,12 @@ async function boot(): Promise<void> {
     host.onChange((snapshot) => {
       if (snapshot.phase !== 'failed') return
       if (decideHostCrash(quitting) === 'ignore') return
-      void showHtml(renderErrorPage(snapshot.error))
+      void showHtml(renderErrorPage(snapshot.error), 'error')
     })
     await startOfficial()
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    await showHtml(renderErrorPage(message))
+    await showHtml(renderErrorPage(message), 'error')
   }
 }
 
@@ -1091,6 +1207,11 @@ if (!gotLock) {
     const message = error instanceof Error ? error.stack ?? error.message : String(error)
     process.stderr.write(`dsh-community uncaught exception: ${message}\n`)
   })
+  const handleTerminationSignal = (): void => {
+    if (!quitting) app.quit()
+  }
+  process.once('SIGINT', handleTerminationSignal)
+  process.once('SIGTERM', handleTerminationSignal)
   app.on('before-quit', (event) => {
     persistWindowState()
     pluginChild?.kill('SIGTERM')

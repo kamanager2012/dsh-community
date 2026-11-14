@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { composeCommunityTuiPatch } from '../src/compose-patch.ts'
+import { profileInstallEnv } from '../src/install.ts'
 import {
   COMMUNITY_TUI_HELP,
   initialPromptForLaunch,
@@ -120,5 +121,35 @@ describe('our TUI profile', () => {
       id: 'last',
       rest: [],
     })
+  })
+
+  it('rejects unknown CLI flags instead of forwarding them as an initial prompt', () => {
+    expect(parseCommunityLaunch(['--bogus-flag'])).toEqual({
+      kind: 'error',
+      message: '未知选项: --bogus-flag。运行 --help 查看可用参数。',
+    })
+    expect(parseCommunityLaunch(['-x'])).toEqual({
+      kind: 'error',
+      message: '未知选项: -x。运行 --help 查看可用参数。',
+    })
+    expect(parseCommunityLaunch(['resume', '--bogus'])).toMatchObject({
+      kind: 'error',
+      message: expect.stringContaining('--bogus'),
+    })
+  })
+
+  it('supports --help and -h across subcommands', () => {
+    for (const sub of ['version', 'doctor', 'desktop', 'plugins', 'sessions', 'list', 'resume', 'new']) {
+      expect(parseCommunityLaunch([sub, '--help'])).toEqual({ kind: 'help' })
+      expect(parseCommunityLaunch([sub, '-h'])).toEqual({ kind: 'help' })
+    }
+  })
+
+  it('builds non-interactive pnpm install env without update notifier prompts', () => {
+    const installEnv = profileInstallEnv({ PATH: '/usr/bin', CUSTOM: '1' })
+    expect(installEnv.CI).toBe('true')
+    expect(installEnv.npm_config_update_notifier).toBe('false')
+    expect(installEnv.pnpm_config_update_notifier).toBe('false')
+    expect(installEnv.CUSTOM).toBe('1')
   })
 })

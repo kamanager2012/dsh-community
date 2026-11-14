@@ -5,6 +5,8 @@ import org.dsh.community.android.crypto.NoiseIkClient
 import org.dsh.community.android.crypto.TrustedHostRecord
 import org.dsh.community.android.protocol.AttachResumeResult
 import org.dsh.community.android.protocol.ClientOperationFactory
+import org.dsh.community.android.protocol.CommandExecuteResult
+import org.dsh.community.android.protocol.DisplayTextSanitizer
 import org.dsh.community.android.protocol.InboundHostFrame
 import org.dsh.community.android.protocol.JsonArray
 import org.dsh.community.android.protocol.JsonBool
@@ -17,12 +19,20 @@ import org.dsh.community.android.protocol.ModelCatalogResult
 import org.dsh.community.android.protocol.ModelOptionRef
 import org.dsh.community.android.protocol.OfficialSessionEvent
 import org.dsh.community.android.protocol.PromptImageAttachment
+import org.dsh.community.android.protocol.RemoteCommandDescriptor
 import org.dsh.community.android.protocol.RemoteFrameCodec
 import org.dsh.community.android.protocol.RemoteProtocol
+import org.dsh.community.android.protocol.RemoteSkillSummary
 import org.dsh.community.android.protocol.RpcErrorPayload
+import org.dsh.community.android.protocol.SessionHistoryResult
 import org.dsh.community.android.protocol.SessionRef
+import org.dsh.community.android.protocol.SessionSearchResult
+import org.dsh.community.android.protocol.WorkspaceUploadAbortResult
+import org.dsh.community.android.protocol.WorkspaceUploadCommitResult
 import java.io.IOException
 import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
+import java.util.Base64
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
@@ -95,6 +105,8 @@ class PeerRevokedException(val reason: String) :
 data class TransportFailureRecord(
     val kind: TransportKind,
     val message: String,
+    val durationMs: Long = 0L,
+    val attemptAtMs: Long = 0L,
 )
 
 /**
@@ -111,7 +123,26 @@ class FailoverRemoteSession(
     private val requestTimeoutMs: Long = 10_000L,
     private val handshakeTimeoutMs: Long = 10_000L,
     initialHighestEpoch: Int = 0,
+    private val failureCooldownMs: Long = 0L,
+    private val iceTransportPolicy: WebRtcIceTransportPolicy = WebRtcIceTransportPolicy.ALL,
+    private val clock: () -> Long = System::currentTimeMillis,
 ) {
+    companion object {
+        const val MAX_FAILOVER_HISTORY = 64
+        const val DEFAULT_UPLOAD_CHUNK_BYTES = 32_768
+        private val SECRET_QUERY_RE = Regex("""([?&](?:token|clientToken|bootstrapToken|auth|key)=)[^&\s]+""", RegexOption.IGNORE_CASE)
+        private val BEARER_RE = Regex("""(Bearer\s+)[A-Za-z0-9._\-+/=]+""", RegexOption.IGNORE_CASE)
+
+        fun sanitizeDiagnosticMessage(raw: String?): String {
+            if (raw.isNullOrBlank()) return "transport error"
+            val maskedQuery = SECRET_QUERY_RE.replace(raw, "$1[REDACTED]")
+            val maskedBearer = BEARER_RE.replace(maskedQuery, "$1[REDACTED]")
+            return DisplayTextSanitizer.truncateByCodePoints(
+                DisplayTextSanitizer.sanitizeSingleLine(maskedBearer),
+                240,
+            ).ifBlank { "transport error" }
+        }
+    }
     interface Listener {
         fun onPhaseChanged(phase: RemoteConnectionPhase, carrier: TransportKind?, epoch: Int) {}
         fun onStreamEvent(sessionId: String, event: OfficialSessionEvent) {}
@@ -158,6 +189,8 @@ class FailoverRemoteSession(
         private set
 
     val attemptErrors: MutableList<TransportFailureRecord> = CopyOnWriteArrayList()
+    val failoverHistory: MutableList<TransportFailureRecord> = CopyOnWriteArrayList()
+    private val cooldownUntilByKind = ConcurrentHashMap<TransportKind, Long>()
 
     fun addListener(listener: Listener) {
         listeners.add(listener)
@@ -169,38 +202,67 @@ class FailoverRemoteSession(
 
     fun getLastConfirmedSeq(sessionId: String): Long? = lastConfirmedSeqBySession[sessionId]
 
+    fun resetCooldowns() {
+        cooldownUntilByKind.clear()
+    }
+
     fun isTransportOpen(): Boolean = activeTransport?.isOpen() == true
 
     /**
-     * Connects using ordered fallback (`LAN -> WebRTC -> Relay`), or starting from the requested
-     * subset of carriers (e.g., when reconnecting after LAN failure).
+     * Connects using ordered fallback (`LAN -> WebRTC -> Relay`), skipping carriers currently
+     * inside `failureCooldownMs` (unless all configured carriers are cooling down, preventing
+     * failover deadlock).
      */
     fun connect(allowedKinds: List<TransportKind> = listOf(TransportKind.LAN, TransportKind.WEBRTC, TransportKind.RELAY)): RemoteConnectionPhase {
         attemptErrors.clear()
         revokedByHost = false
         revokedReason = null
-        val candidates = buildCandidateTransports(allowedKinds)
-        if (candidates.isEmpty()) {
+        val allCandidates = buildCandidateSpecs(allowedKinds)
+        if (allCandidates.isEmpty()) {
             phase = RemoteConnectionPhase.FAILED
             notifyPhase()
             throw IOException("no configured transport candidates for $allowedKinds")
         }
 
-        for (transport in candidates) {
+        val now = clock()
+        val eligible = if (failureCooldownMs > 0L) {
+            allCandidates.filter { (kind, _) ->
+                val until = cooldownUntilByKind[kind] ?: 0L
+                now >= until
+            }
+        } else {
+            allCandidates
+        }
+        val candidates = if (eligible.isNotEmpty()) eligible else allCandidates
+
+        for ((kind, factory) in candidates) {
+            val startedMs = clock()
             try {
+                val transport = factory()
                 connectSingleTransport(transport)
+                cooldownUntilByKind.remove(kind)
                 return phase
             } catch (t: Throwable) {
-                attemptErrors.add(
-                    TransportFailureRecord(
-                        transport.kind,
-                        t.message ?: t.javaClass.simpleName,
-                    ),
+                val finishedMs = clock()
+                val elapsedMs = maxOf(0L, finishedMs - startedMs)
+                val record = TransportFailureRecord(
+                    kind = kind,
+                    message = sanitizeDiagnosticMessage(t.message ?: t.javaClass.simpleName),
+                    durationMs = elapsedMs,
+                    attemptAtMs = finishedMs,
                 )
+                attemptErrors.add(record)
+                failoverHistory.add(record)
+                while (failoverHistory.size > MAX_FAILOVER_HISTORY) {
+                    failoverHistory.removeAt(0)
+                }
                 if (t is PeerRevokedException || revokedByHost) {
                     phase = RemoteConnectionPhase.REVOKED
                     notifyPhase()
                     throw t
+                }
+                if (failureCooldownMs > 0L) {
+                    cooldownUntilByKind[kind] = finishedMs + failureCooldownMs
                 }
             }
         }
@@ -380,6 +442,167 @@ class FailoverRemoteSession(
         return ModelOptionRef(provider = provider, model = model, name = model)
     }
 
+    fun getSessionHistory(
+        sessionId: String,
+        beforeSeq: Long? = null,
+        limit: Int = 50,
+        minTurns: Int? = null,
+    ): SessionHistoryResult {
+        val params = JsonObject.of(
+            "sessionId" to JsonString(sessionId),
+            "beforeSeq" to beforeSeq?.let { JsonNumber(it) },
+            "limit" to JsonNumber(limit.coerceIn(1, 200)),
+            "minTurns" to minTurns?.let { JsonNumber(it) },
+        )
+        val res = dispatchRpc(RemoteProtocol.METHOD_SESSION_HISTORY, params)
+        return RemoteFrameCodec.parseSessionHistoryResult(res)
+    }
+
+    fun searchSessions(
+        query: String,
+        sessionId: String? = null,
+        limit: Int = 30,
+    ): SessionSearchResult {
+        val cleanQuery = query.trim()
+        require(cleanQuery.isNotEmpty()) { "search query must not be blank" }
+        val params = JsonObject.of(
+            "query" to JsonString(cleanQuery),
+            "sessionId" to sessionId?.takeIf { it.isNotBlank() }?.let { JsonString(it) },
+            "limit" to JsonNumber(limit.coerceIn(1, 100)),
+        )
+        val res = dispatchRpc(RemoteProtocol.METHOD_SESSION_SEARCH, params)
+        return RemoteFrameCodec.parseSessionSearchResult(res)
+    }
+
+    fun forkSession(
+        sessionId: String,
+        atSeq: Long? = null,
+        title: String? = null,
+        idempotencyKey: String = newOperationKey("fork"),
+    ): SessionRef {
+        val params = JsonObject.of(
+            "sessionId" to JsonString(sessionId),
+            "atSeq" to atSeq?.let { JsonNumber(it) },
+            "title" to title?.trim()?.takeIf { it.isNotEmpty() }?.let { JsonString(it) },
+        )
+        val res = dispatchRpc(RemoteProtocol.METHOD_SESSION_FORK, params, idempotencyKey = idempotencyKey)
+        return RemoteFrameCodec.parseSessionRef(res)
+    }
+
+    fun listCommands(sessionId: String? = null): List<RemoteCommandDescriptor> {
+        val params = JsonObject.of(
+            "sessionId" to sessionId?.takeIf { it.isNotBlank() }?.let { JsonString(it) },
+        )
+        val res = dispatchRpc(RemoteProtocol.METHOD_COMMAND_LIST, params)
+        return RemoteFrameCodec.parseCommandList(res)
+    }
+
+    fun executeCommand(
+        sessionId: String,
+        command: String,
+        idempotencyKey: String = newOperationKey("cmd"),
+    ): CommandExecuteResult {
+        val cleanCmd = command.trim()
+        require(cleanCmd.isNotEmpty()) { "command must not be blank" }
+        val params = JsonObject.of(
+            "sessionId" to JsonString(sessionId),
+            "command" to JsonString(cleanCmd),
+        )
+        val res = dispatchRpc(RemoteProtocol.METHOD_COMMAND_EXECUTE, params, idempotencyKey = idempotencyKey)
+        return RemoteFrameCodec.parseCommandExecuteResult(res)
+    }
+
+    fun listSkills(sessionId: String? = null): List<RemoteSkillSummary> {
+        val params = JsonObject.of(
+            "sessionId" to sessionId?.takeIf { it.isNotBlank() }?.let { JsonString(it) },
+        )
+        val res = dispatchRpc(RemoteProtocol.METHOD_SKILL_LIST, params)
+        return RemoteFrameCodec.parseSkillList(res)
+    }
+
+    fun uploadWorkspaceBytes(
+        sessionId: String,
+        filename: String,
+        bytes: ByteArray,
+        chunkBytes: Int = DEFAULT_UPLOAD_CHUNK_BYTES,
+        conflictPolicy: String = "rename",
+        expectedSha256: String? = null,
+    ): WorkspaceUploadCommitResult {
+        require(bytes.isNotEmpty()) { "upload bytes must not be empty" }
+        val digestHex = expectedSha256?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }
+            ?: MessageDigest.getInstance("SHA-256")
+                .digest(bytes)
+                .joinToString("") { b -> "%02x".format(b) }
+        val boundedChunk = chunkBytes.coerceIn(1, DEFAULT_UPLOAD_CHUNK_BYTES)
+        val openRes = RemoteFrameCodec.parseWorkspaceUploadOpenResult(
+            dispatchRpc(
+                RemoteProtocol.METHOD_WORKSPACE_UPLOAD_OPEN,
+                JsonObject.of(
+                    "sessionId" to JsonString(sessionId),
+                    "filename" to JsonString(filename),
+                    "sizeBytes" to JsonNumber(bytes.size),
+                    "chunkBytes" to JsonNumber(boundedChunk),
+                    "sha256" to JsonString(digestHex),
+                    "conflictPolicy" to JsonString(conflictPolicy),
+                ),
+                idempotencyKey = newOperationKey("upl-open"),
+            ),
+        )
+        val stepBytes = openRes.chunkBytes.coerceIn(1, DEFAULT_UPLOAD_CHUNK_BYTES)
+        val encoder = Base64.getEncoder()
+        var uploadSucceeded = false
+        try {
+            var offset = 0
+            while (offset < bytes.size) {
+                val end = minOf(bytes.size, offset + stepBytes)
+                val slice = bytes.copyOfRange(offset, end)
+                val b64 = encoder.encodeToString(slice)
+                RemoteFrameCodec.parseWorkspaceUploadChunkResult(
+                    dispatchRpc(
+                        RemoteProtocol.METHOD_WORKSPACE_UPLOAD_CHUNK,
+                        JsonObject.of(
+                            "uploadId" to JsonString(openRes.uploadId),
+                            "offset" to JsonNumber(offset),
+                            "dataBase64" to JsonString(b64),
+                        ),
+                    ),
+                )
+                offset = end
+            }
+            val commitRes = RemoteFrameCodec.parseWorkspaceUploadCommitResult(
+                dispatchRpc(
+                    RemoteProtocol.METHOD_WORKSPACE_UPLOAD_COMMIT,
+                    JsonObject.of(
+                        "uploadId" to JsonString(openRes.uploadId),
+                        "sha256" to JsonString(digestHex),
+                    ),
+                    idempotencyKey = newOperationKey("upl-commit"),
+                ),
+            )
+            uploadSucceeded = true
+            return commitRes
+        } finally {
+            if (!uploadSucceeded) {
+                try {
+                    abortWorkspaceUpload(openRes.uploadId)
+                } catch (_: Throwable) {
+                }
+            }
+        }
+    }
+
+    fun abortWorkspaceUpload(
+        uploadId: String,
+        idempotencyKey: String = newOperationKey("upl-abort"),
+    ): WorkspaceUploadAbortResult {
+        val res = dispatchRpc(
+            RemoteProtocol.METHOD_WORKSPACE_UPLOAD_ABORT,
+            JsonObject.of("uploadId" to JsonString(uploadId)),
+            idempotencyKey = idempotencyKey,
+        )
+        return RemoteFrameCodec.parseWorkspaceUploadAbortResult(res)
+    }
+
     /**
      * Switches carriers (e.g. drops LAN and connects via WebRTC -> Relay) on a fresh Noise
      * session while enforcing monotonic `connectionEpoch` and re-attaching all tracked sessions.
@@ -447,26 +670,33 @@ class FailoverRemoteSession(
         }
     }
 
-    private fun buildCandidateTransports(allowedKinds: List<TransportKind>): List<RemoteClientTransport> {
-        val list = ArrayList<RemoteClientTransport>()
+    private fun buildCandidateSpecs(allowedKinds: List<TransportKind>): List<Pair<TransportKind, () -> RemoteClientTransport>> {
+        val list = ArrayList<Pair<TransportKind, () -> RemoteClientTransport>>()
         for (kind in allowedKinds) {
             when (kind) {
                 TransportKind.LAN -> {
                     val lan = profile.lanUrl
                     if (!lan.isNullOrBlank()) {
-                        list.add(lanFactory?.invoke(lan) ?: LanWebSocketTransport(lan))
+                        list.add(
+                            TransportKind.LAN to {
+                                lanFactory?.invoke(lan) ?: LanWebSocketTransport(lan)
+                            },
+                        )
                     }
                 }
                 TransportKind.WEBRTC -> {
                     val sig = profile.signalingUrl
                     if (!sig.isNullOrBlank()) {
                         list.add(
-                            WebRtcDataChannelTransport(
-                                signalingUrl = sig,
-                                roomId = profile.signalingRoomId ?: profile.hostFingerprint,
-                                stunUrls = profile.stunUrls,
-                                peerEngine = webRtcPeerEngine,
-                            ),
+                            TransportKind.WEBRTC to {
+                                WebRtcDataChannelTransport(
+                                    signalingUrl = sig,
+                                    roomId = profile.signalingRoomId ?: profile.hostFingerprint,
+                                    stunUrls = profile.stunUrls,
+                                    peerEngine = webRtcPeerEngine,
+                                    iceTransportPolicy = iceTransportPolicy,
+                                )
+                            },
                         )
                     }
                 }
@@ -475,8 +705,10 @@ class FailoverRemoteSession(
                     if (!relay.isNullOrBlank()) {
                         val room = profile.relayRoomId ?: profile.hostFingerprint
                         list.add(
-                            relayFactory?.invoke(relay, room, profile.relayClientToken)
-                                ?: RelayWebSocketTransport(relay, room, profile.relayClientToken),
+                            TransportKind.RELAY to {
+                                relayFactory?.invoke(relay, room, profile.relayClientToken)
+                                    ?: RelayWebSocketTransport(relay, room, profile.relayClientToken)
+                            },
                         )
                     }
                 }

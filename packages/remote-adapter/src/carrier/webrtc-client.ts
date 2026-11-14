@@ -17,6 +17,7 @@ import {
   DSH_WEBRTC_DATA_CHANNEL_LABEL,
   encodeDataChannelChunks,
   getSelectedIceCandidatePair,
+  shouldAllowIceCandidate,
   toRtcIceCandidateInit,
   validateSelfOwnedStunUrls,
   type SelectedIceCandidatePairInfo,
@@ -158,6 +159,9 @@ export function createWebRtcTransport(
           },
           onIceCandidate: (msg) => {
             if (closed) return
+            if (!shouldAllowIceCandidate(msg.candidate, options.ice?.iceTransportPolicy)) {
+              return
+            }
             remoteIceQueue.push(msg.candidate)
             if (remoteDescSet) {
               void flushRemoteIce()
@@ -173,6 +177,9 @@ export function createWebRtcTransport(
         pc.onicecandidate = ({ candidate }) => {
           if (closed) return
           const payload: RtcIceCandidatePayload | null = candidate ? candidate.toJSON() : null
+          if (!shouldAllowIceCandidate(payload, options.ice?.iceTransportPolicy)) {
+            return
+          }
           if (!offerSent || !hostPeerId || !signaling.isOpen()) {
             localIceBuffer.push(payload)
             return

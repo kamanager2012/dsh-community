@@ -430,4 +430,128 @@ class ChatAndQrUnitTest {
         assertTrue(mdExport.contains("shot.jpg"))
         assertTrue(mdExport.contains("_Interrupted_"))
     }
+
+    @Test
+    fun chatTimelineStoreBoundsTrackedSessionsItemsAndPrependsHistory() {
+        val store = ChatTimelineStore()
+        for (i in 1..20) {
+            val sessionId = "s-${i.toString().padStart(2, '0')}"
+            store.applyEvent(
+                sessionId,
+                OfficialSessionEvent(
+                    seq = 1,
+                    type = "user/message",
+                    data = JsonObject.of("text" to JsonString("msg $sessionId")),
+                ),
+            )
+        }
+        assertEquals(ChatTimelineStore.MAX_TRACKED_SESSIONS, store.trackedSessionCount())
+        assertTrue(store.itemsForSession("s-01").isEmpty())
+        assertEquals(1, store.itemsForSession("s-05").size)
+
+        // Touch s-05 via applyEvent so it becomes most recently used before adding s-21, evicting s-06.
+        store.applyEvent(
+            "s-05",
+            OfficialSessionEvent(
+                seq = 2,
+                type = "user/message",
+                data = JsonObject.of("text" to JsonString("keep s-05")),
+            ),
+        )
+        store.applyEvent(
+            "s-21",
+            OfficialSessionEvent(
+                seq = 1,
+                type = "user/message",
+                data = JsonObject.of("text" to JsonString("new s-21")),
+            ),
+        )
+        assertEquals(ChatTimelineStore.MAX_TRACKED_SESSIONS, store.trackedSessionCount())
+        assertEquals(2, store.itemsForSession("s-05").size)
+        assertTrue(store.itemsForSession("s-06").isEmpty())
+
+        // Bounding MAX_ITEMS_PER_SESSION
+        val crowded = "s-crowded"
+        for (seq in 1..520) {
+            store.applyEvent(
+                crowded,
+                OfficialSessionEvent(
+                    seq = seq.toLong(),
+                    type = "user/message",
+                    data = JsonObject.of("text" to JsonString("line $seq")),
+                ),
+            )
+        }
+        assertEquals(ChatTimelineStore.MAX_ITEMS_PER_SESSION, store.itemsForSession(crowded).size)
+
+        // prependHistory ordering + dedupe
+        val paged = "s-paged"
+        store.applyEvent(
+            paged,
+            OfficialSessionEvent(
+                seq = 3,
+                type = "user/message",
+                data = JsonObject.of("text" to JsonString("newer prompt")),
+            ),
+        )
+        assertEquals(3L, store.oldestLoadedSeq(paged))
+        val addedCount = store.prependHistory(
+            paged,
+            listOf(
+                OfficialSessionEvent(
+                    seq = 1,
+                    type = "user/message",
+                    data = JsonObject.of("text" to JsonString("older prompt")),
+                ),
+                OfficialSessionEvent(
+                    seq = 3,
+                    type = "user/message",
+                    data = JsonObject.of("text" to JsonString("duplicate seq 3")),
+                ),
+            ),
+        )
+        assertEquals(1, addedCount)
+        assertEquals(1L, store.oldestLoadedSeq(paged))
+        val orderedTexts = store.itemsForSession(paged).map { (it as UserMessageItem).text }
+        assertEquals(listOf("older prompt", "newer prompt"), orderedTexts)
+    }
+
+    @Test
+    fun slashCommandHelperParsesPriority2CommandsAndPassesUnknownToHost() {
+        assertEquals(
+            ParsedSlashCommand.ForkSession("Feature Branch"),
+            SlashCommandHelper.parse("/fork Feature Branch"),
+        )
+        assertEquals(
+            ParsedSlashCommand.ForkSession(null),
+            SlashCommandHelper.parse("/fork   "),
+        )
+        assertEquals(ParsedSlashCommand.LoadHistory, SlashCommandHelper.parse("/history"))
+        assertEquals(
+            ParsedSlashCommand.SearchSessions("auth token"),
+            SlashCommandHelper.parse("/search auth token"),
+        )
+        assertTrue(SlashCommandHelper.parse("/search   ") is ParsedSlashCommand.Error)
+        assertEquals(ParsedSlashCommand.ListCommands, SlashCommandHelper.parse("/commands"))
+        assertEquals(ParsedSlashCommand.ListSkills, SlashCommandHelper.parse("/skills"))
+        assertNull(SlashCommandHelper.parse("/custom-host-skill arg1"))
+    }
+
+    @Test
+    fun markOptimisticUserFailedClearsSendingAndRecordsError() {
+        val store = ChatTimelineStore()
+        val optimisticId = store.addOptimisticUserPrompt("s-fail", "hello host", listOf("shot.jpg"))
+        assertTrue(optimisticId.isNotEmpty())
+        val pendingItem = store.itemsForSession("s-fail").single() as UserMessageItem
+        assertTrue(pendingItem.isOptimistic)
+        assertNull(pendingItem.sendError)
+
+        val updated = store.markOptimisticUserFailed("s-fail", optimisticId, "socket timeout\nretry")
+        assertTrue(updated)
+        val failedItem = store.itemsForSession("s-fail").single() as UserMessageItem
+        assertFalse(failedItem.isOptimistic)
+        assertEquals("socket timeout retry", failedItem.sendError)
+        assertEquals(listOf("shot.jpg"), failedItem.attachmentLabels)
+        assertFalse(store.markOptimisticUserFailed("s-fail", optimisticId, "twice"))
+    }
 }

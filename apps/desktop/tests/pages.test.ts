@@ -4,6 +4,7 @@ import {
   renderDiagnosticsPage,
   renderErrorPage,
   renderLoadingPage,
+  renderMarketplacePage,
   renderOfficialSessionsPage,
   renderRemotePage,
   renderRuntimePage,
@@ -91,6 +92,19 @@ describe('shell pages', () => {
     expect(html).toMatch(/isolated-dsh/)
     expect(html).toMatch(/不再共用/)
     expect(html).toMatch(/data-go="settings"/)
+    expect(html).not.toMatch(/settings-tray-unavailable/)
+
+    const noTrayHtml = renderSettingsPage({
+      product: 'DSH Community',
+      hideToTray: true,
+      trayAvailable: false,
+      isolated: false,
+      envIsolated: false,
+      officialHome: '/home/dev/.dsh',
+      isolatedHome: '/home/dev/.config/dsh-community/isolated-dsh',
+    })
+    expect(noTrayHtml).toMatch(/settings-tray-unavailable/)
+    expect(noTrayHtml).toMatch(/直接退出应用/)
   })
 
   it('shows host logs as diagnostics only', () => {
@@ -262,5 +276,431 @@ describe('shell pages', () => {
     expect(html).toContain('提示: 当前仅监听 loopback')
     expect(html).toContain('缺少 DEEPSEEK_API_KEY')
     expect(html).toContain('Test failure banner')
+  })
+
+  it('renders rich session titles, previews, search filter, and live remote session status without inline styles', () => {
+    const sessionsHtml = renderOfficialSessionsPage({
+      product: 'Cogitally-OS Desktop (Community)',
+      officialHome: '/tmp/.dsh',
+      isolated: false,
+      sessions: [
+        {
+          id: 'sess-ui-1',
+          projectKey: '--tmp-repo--',
+          transcript: '/tmp/session.v4.jsonl.zstd',
+          updatedAt: '2026-11-14 01:00:00 UTC',
+          title: 'Competitor Deep Dive',
+          cwd: '/tmp/repo',
+          preview: 'Optimized replay buffer and pagination <script>x</script>',
+          model: 'deepseek-reasoner',
+        },
+      ],
+    })
+    expect(sessionsHtml).toContain('Competitor Deep Dive')
+    expect(sessionsHtml).toContain('deepseek-reasoner')
+    expect(sessionsHtml).toContain('&lt;script&gt;x&lt;/script&gt;')
+    expect(sessionsHtml).toContain('id="session-filter"')
+    expect(sessionsHtml).toContain('data-copy-id="sess-ui-1"')
+    expect(sessionsHtml).not.toMatch(/style="/i)
+
+    const remoteHtml = renderRemotePage({
+      product: 'Cogitally-OS Desktop (Community)',
+      phase: 'running',
+      pid: '4242',
+      configDir: '/tmp/remote',
+      dshHome: '/tmp/.dsh',
+      isolated: false,
+      apiKeyPresent: true,
+      hostFingerprint: 'fp-1234',
+      lanCandidates: ['192.168.1.2'],
+      effectiveListenHost: '192.168.1.2',
+      settings: { listenHost: '', port: 0, enableMdns: true, relayUrl: '', signalingUrl: '', stunUrls: '' },
+      lanUrl: 'ws://192.168.1.2:9000',
+      relayUrl: '',
+      relayRoomId: '',
+      signalingUrl: '',
+      signalingRoomId: '',
+      stunUrls: [],
+      activeConnections: 1,
+      pendingApprovals: 2,
+      pendingQuestions: 1,
+      liveSessions: [
+        {
+          id: 'sess-live-9',
+          title: 'Mobile Refactor',
+          status: 'running',
+          preview: 'Running cargo/pnpm suite',
+          model: 'deepseek-chat',
+          pendingApprovals: 2,
+          pendingQuestions: 1,
+        },
+      ],
+      pairing: {
+        deepLink: 'dsh-remote://pair?fp=1',
+        pairingJson: '{}',
+        qrSvg: '<svg viewBox="0 0 10 10"></svg>',
+      },
+      pendingCandidates: [],
+      devices: [],
+      logs: '',
+    })
+    expect(remoteHtml).toContain('待审批 2')
+    expect(remoteHtml).toContain('待回答 1')
+    expect(remoteHtml).toContain('Mobile Refactor')
+    expect(remoteHtml).toContain('运行中')
+    expect(remoteHtml).toContain('id="copy-host-fp-btn"')
+    expect(remoteHtml).not.toMatch(/style="/i)
+  })
+
+  it('highlights active nav tab, surfaces copy/save feedback, wraps errors, and shows local remote timestamps', () => {
+    const settingsHtml = renderSettingsPage({
+      product: 'DSH Community',
+      hideToTray: true,
+      isolated: false,
+      envIsolated: false,
+      officialHome: '/tmp/.dsh',
+      isolatedHome: '/tmp/iso',
+      saved: true,
+    })
+    expect(settingsHtml).toContain('data-go="settings" data-active="true"')
+    expect(settingsHtml).toContain('id="settings-saved-notice"')
+    expect(settingsHtml).not.toMatch(/style="/i)
+
+    const sessionsHtml = renderOfficialSessionsPage({
+      product: 'DSH Community',
+      officialHome: '/tmp/.dsh',
+      isolated: false,
+      sessions: [
+        {
+          id: 'sess-ux-1',
+          projectKey: 'proj',
+          updatedAt: '2026-11-14 01:00:00 UTC',
+          title: 'UX Check',
+        },
+      ],
+    })
+    expect(sessionsHtml).toContain('data-go="sessions" data-active="true"')
+    expect(sessionsHtml).toContain('copyWithFeedback')
+    expect(sessionsHtml).toContain('id="session-filter-empty"')
+    expect(sessionsHtml).toContain('id="session-filter-clear"')
+    expect(sessionsHtml).toContain('class="table-actions"')
+    expect(sessionsHtml).not.toMatch(/style="/i)
+
+    const diagHtml = renderDiagnosticsPage({
+      product: 'DSH Community',
+      officialHome: '/tmp/.dsh',
+      isolated: false,
+      origin: 'http://127.0.0.1:4310',
+      phase: 'ready',
+      pid: '1234',
+      logs: 'ok log',
+    })
+    expect(diagHtml).toContain('data-go="diagnostics" data-active="true"')
+    expect(diagHtml).toContain('copyWithFeedback')
+    expect(diagHtml).not.toMatch(/style="/i)
+
+    const remoteErrorHtml = renderRemotePage({
+      product: 'DSH Community',
+      phase: 'error',
+      apiKeyPresent: true,
+      dshHome: '/tmp/.dsh',
+      configDir: '/tmp/remote',
+      isolated: false,
+      pid: '—',
+      hostFingerprint: 'fp-1234',
+      lanCandidates: ['192.168.1.2'],
+      effectiveListenHost: '127.0.0.1',
+      settings: { listenHost: '', port: 0, enableMdns: true, relayUrl: '', signalingUrl: '', stunUrls: '' },
+      error: 'https://very-long-url.example.com/failed',
+      relayUrl: '',
+      relayRoomId: '',
+      signalingUrl: '',
+      signalingRoomId: '',
+      stunUrls: [],
+      activeConnections: 0,
+      pairing: {
+        deepLink: 'dsh-remote://pair?fp=1',
+        pairingJson: '{}',
+        qrSvg: '<svg viewBox="0 0 10 10"></svg>',
+        expiresAt: Date.now() + 600_000,
+      },
+      pendingCandidates: [],
+      devices: [],
+      logs: '',
+    })
+    expect(remoteErrorHtml).toContain('data-go="remote" data-active="true"')
+    expect(remoteErrorHtml).toContain('<pre class="error">https://very-long-url.example.com/failed</pre>')
+    expect(remoteErrorHtml).toContain('(UTC')
+    expect(remoteErrorHtml).toContain('class="custom-host-input hidden-row"')
+    expect(remoteErrorHtml).toContain('copyWithFeedback')
+    expect(remoteErrorHtml).not.toMatch(/style="/i)
+  })
+
+  it('formats Marketplace fetchedAt in local timezone without raw ISO suffix', () => {
+    const html = renderMarketplacePage({
+      product: 'DSH Community',
+      catalog: undefined,
+      source: 'cache',
+      fetchedAt: '2026-08-16T01:00:00.000Z',
+      registryUrl: 'https://github.com/kamanager2012/dsh-community/blob/main/packages/marketplace/catalog.json',
+      installed: [],
+      profile: 'web',
+    })
+    expect(html).toContain('抓取时间 ')
+    expect(html).toContain('(UTC')
+    expect(html).not.toContain('2026-08-16T01:00:00.000Z')
+    expect(html).not.toMatch(/style="/i)
+
+    const emptyTimeHtml = renderMarketplacePage({
+      product: 'DSH Community',
+      catalog: undefined,
+      source: 'none',
+      fetchedAt: '',
+      registryUrl: 'https://github.com/kamanager2012/dsh-community/blob/main/packages/marketplace/catalog.json',
+      installed: [],
+      profile: 'web',
+    })
+    expect(emptyTimeHtml).toContain('抓取时间 —')
+  })
+
+  it('paginates Official Sessions over 50 rows while keeping full-list filtering and CSP', () => {
+    const makeSessions = (count: number) =>
+      Array.from({ length: count }, (_, idx) => ({
+        id: `sess-${String(idx + 1).padStart(3, '0')}`,
+        projectKey: `proj-${String(idx + 1)}`,
+        transcript: `/tmp/.dsh/projects/proj-${String(idx + 1)}/sess-${String(idx + 1).padStart(3, '0')}.jsonl`,
+        updatedAt: '2026-11-14 09:00',
+        title: `Session ${String(idx + 1)}`,
+      }))
+
+    const underCap = renderOfficialSessionsPage({
+      product: 'DSH Community',
+      officialHome: '/tmp/.dsh',
+      isolated: false,
+      sessions: makeSessions(50),
+    })
+    expect(underCap).not.toContain('id="sessions-more-row"')
+    expect(underCap).not.toMatch(/<tr data-session-row="[^"]*" class="hidden-row">/)
+
+    const overCap = renderOfficialSessionsPage({
+      product: 'DSH Community',
+      officialHome: '/tmp/.dsh',
+      isolated: false,
+      sessions: makeSessions(60),
+    })
+    expect(overCap).toContain('<h1>官方 Session（60）</h1>')
+    expect(overCap).toContain('id="sessions-more-row"')
+    expect(overCap).toContain('id="sessions-show-more">显示全部 60 条会话</button>')
+    const hiddenRows = overCap.match(/<tr data-session-row="[^"]*" class="hidden-row">/g) ?? []
+    expect(hiddenRows).toHaveLength(10)
+    expect(overCap).toContain('hiddenByQuery')
+    expect(overCap).toContain('hiddenByPage')
+    expect(overCap).not.toMatch(/style="/i)
+
+    // Execute the inline page script against a lightweight mock DOM to verify pagination + full-list filter behavior.
+    const scripts = [...overCap.matchAll(/<script nonce="[^"]+">([\s\S]*?)<\/script>/g)]
+    const pageScript = scripts.find((match) => match[1].includes('applySessionFilter'))?.[1] ?? ''
+    expect(pageScript).toContain('applySessionFilter')
+    const makeClassList = (initialHidden = false) => {
+      const classes = new Set<string>(initialHidden ? ['hidden-row'] : [])
+      return {
+        toggle: (name: string, force?: boolean) => {
+          const shouldAdd = force === undefined ? !classes.has(name) : force
+          if (shouldAdd) classes.add(name)
+          else classes.delete(name)
+          return classes.has(name)
+        },
+        contains: (name: string) => classes.has(name),
+      }
+    }
+    const makeElement = (initialHidden = false) => {
+      const listeners = new Map<string, Array<() => void>>()
+      return {
+        value: '',
+        classList: makeClassList(initialHidden),
+        focus: () => undefined,
+        getAttribute: () => null,
+        addEventListener: (event: string, fn: () => void) => {
+          const list = listeners.get(event) ?? []
+          list.push(fn)
+          listeners.set(event, list)
+        },
+        dispatch: (event: string) => {
+          for (const fn of listeners.get(event) ?? []) fn()
+        },
+      }
+    }
+    const rowElements = Array.from({ length: 60 }, (_, idx) => {
+      const blob = `sess-${String(idx + 1).padStart(3, '0')} session ${String(idx + 1)} proj-${String(idx + 1)}`
+      return {
+        ...makeElement(idx >= 50),
+        getAttribute: (attr: string) => (attr === 'data-session-row' ? blob : null),
+      }
+    })
+    const elementsById = new Map<string, ReturnType<typeof makeElement>>([
+      ['session-filter', makeElement(false)],
+      ['sessions-table', makeElement(false)],
+      ['session-filter-empty', makeElement(true)],
+      ['sessions-more-row', makeElement(false)],
+      ['sessions-show-more', makeElement(false)],
+      ['session-filter-clear', makeElement(false)],
+    ])
+    const mockDoc = {
+      getElementById: (id: string) => elementsById.get(id) ?? null,
+      querySelectorAll: (selector: string) => (selector === 'tr[data-session-row]' ? rowElements : []),
+    }
+    new Function('document', pageScript)(mockDoc)
+
+    // Searching finds session 59 (>50) even before expanding.
+    const filterEl = elementsById.get('session-filter')!
+    const moreRowEl = elementsById.get('sessions-more-row')!
+    filterEl.value = 'sess-059'
+    filterEl.dispatch('input')
+    expect(rowElements.filter((row) => !row.classList.contains('hidden-row'))).toHaveLength(1)
+    expect(rowElements[58].classList.contains('hidden-row')).toBe(false)
+    expect(moreRowEl.classList.contains('hidden-row')).toBe(true)
+
+    // Clearing restores the 50-row initial cap and shows the expand button again.
+    elementsById.get('session-filter-clear')!.dispatch('click')
+    expect(rowElements.filter((row) => !row.classList.contains('hidden-row'))).toHaveLength(50)
+    expect(moreRowEl.classList.contains('hidden-row')).toBe(false)
+
+    // Clicking show more reveals all 60 rows and hides the expand button.
+    elementsById.get('sessions-show-more')!.dispatch('click')
+    expect(rowElements.filter((row) => !row.classList.contains('hidden-row'))).toHaveLength(60)
+    expect(moreRowEl.classList.contains('hidden-row')).toBe(true)
+  })
+
+  it('exposes direct About navigation from Runtime and Diagnostics without adding nav tabs', () => {
+    const runtimeHtml = renderRuntimePage({
+      product: 'DSH Community',
+      installed: '0.2.2-rc.2',
+      latestTested: '0.2.2-rc.2',
+      defaultPin: '0.2.2-rc.2',
+      recommendation: 'stay',
+      canSwitchToTested: false,
+      officialHome: '/tmp/.dsh',
+      desktopRoot: '/tmp/.dsh-desktop',
+      catalogPath: '/tmp/runtime-pin.json',
+      isolated: false,
+    })
+    expect(runtimeHtml).toContain('<button class="secondary" data-go="about">关于与版本</button>')
+    const navMatch = runtimeHtml.match(/<nav class="nav">([\s\S]*?)<\/nav>/)
+    expect(navMatch?.[1].match(/<button /g) ?? []).toHaveLength(7)
+
+    const diagHtml = renderDiagnosticsPage({
+      product: 'DSH Community',
+      officialHome: '/tmp/.dsh',
+      isolated: false,
+      origin: 'http://127.0.0.1:4310',
+      phase: 'ready',
+      pid: '1234',
+      logs: 'ok',
+    })
+    expect(diagHtml).toContain('<button class="secondary" data-go="about">关于与版本</button>')
+    expect(diagHtml).not.toMatch(/style="/i)
+  })
+
+  it('keeps isolated session empty state accurate, styles marketplace errors, and guards empty log copies', () => {
+    const isolatedEmpty = renderOfficialSessionsPage({
+      product: 'DSH Community',
+      officialHome: '/tmp/desk-userData/isolated-dsh',
+      isolated: true,
+      sessions: [],
+    })
+    expect(isolatedEmpty).toContain('/tmp/desk-userData/isolated-dsh/sessions')
+    expect(isolatedEmpty).toContain('当前隔离目录')
+    expect(isolatedEmpty).not.toContain('官方 <code>~/.dsh/sessions</code>')
+    expect(isolatedEmpty).not.toMatch(/style="/i)
+
+    const customHomeEmpty = renderOfficialSessionsPage({
+      product: 'DSH Community',
+      officialHome: '/tmp/custom-dsh-home',
+      isolated: false,
+      sessions: [],
+    })
+    expect(customHomeEmpty).toContain('/tmp/custom-dsh-home/sessions')
+    expect(customHomeEmpty).not.toContain('~/.dsh/sessions')
+
+    const mktLoading = renderLoadingPage('正在获取社区市场目录…', {
+      heading: '社区市场',
+      activeNav: 'marketplace',
+    })
+    expect(mktLoading).toContain('data-go="marketplace" data-active="true"')
+    expect(mktLoading).toContain('<h1>社区市场</h1>')
+    expect(mktLoading).toContain('正在获取社区市场目录…')
+    expect(mktLoading).not.toContain('dsh web')
+    expect(mktLoading).not.toMatch(/style="/i)
+
+    const mktFailed = renderMarketplacePage({
+      product: 'DSH Community',
+      catalog: undefined,
+      source: 'none',
+      fetchedAt: '',
+      registryUrl: 'https://example.com/catalog.json',
+      installed: [],
+      profile: 'web',
+      result: {
+        plugin: 'bad-plugin',
+        action: 'install',
+        ok: false,
+        log: 'npm E404',
+      },
+    })
+    expect(mktFailed).toContain('<pre class="error">安装失败：bad-plugin')
+    expect(mktFailed).not.toMatch(/style="/i)
+
+    const diagEmpty = renderDiagnosticsPage({
+      product: 'DSH Community',
+      officialHome: '/tmp/.dsh',
+      isolated: false,
+      origin: 'http://127.0.0.1:4310',
+      phase: 'ready',
+      pid: '1234',
+      logs: '',
+    })
+    expect(diagEmpty).toContain('id="copy" disabled title="暂无可复制日志"')
+
+    const diagFilled = renderDiagnosticsPage({
+      product: 'DSH Community',
+      officialHome: '/tmp/.dsh',
+      isolated: false,
+      origin: 'http://127.0.0.1:4310',
+      phase: 'ready',
+      pid: '1234',
+      logs: 'host booted',
+    })
+    expect(diagFilled).toContain('<button class="secondary" id="copy">复制日志</button>')
+    expect(diagFilled).not.toContain('id="copy" disabled')
+
+    const remoteEmpty = renderRemotePage({
+      product: 'DSH Community',
+      phase: 'stopped',
+      apiKeyPresent: true,
+      dshHome: '/tmp/.dsh',
+      configDir: '/tmp/remote',
+      isolated: false,
+      pid: '—',
+      hostFingerprint: 'fp-1',
+      lanCandidates: [],
+      effectiveListenHost: '127.0.0.1',
+      settings: { listenHost: '', port: 0, enableMdns: true, relayUrl: '', signalingUrl: '', stunUrls: '' },
+      relayUrl: '',
+      relayRoomId: '',
+      signalingUrl: '',
+      signalingRoomId: '',
+      stunUrls: [],
+      activeConnections: 0,
+      pairing: {
+        deepLink: 'dsh-remote://pair?fp=1',
+        pairingJson: '{}',
+        qrSvg: '<svg viewBox="0 0 10 10"></svg>',
+        expiresAt: Date.now() + 600_000,
+      },
+      pendingCandidates: [],
+      devices: [],
+      logs: '   ',
+    })
+    expect(remoteEmpty).toContain('id="copy-remote-logs-btn" disabled title="暂无可复制日志"')
   })
 })

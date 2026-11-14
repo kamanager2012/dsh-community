@@ -12,8 +12,11 @@ object RemoteProtocol {
     const val METHOD_PAIRING_REQUEST = "pairing.request"
     const val METHOD_SESSION_LIST = "session.list"
     const val METHOD_SESSION_ATTACH = "session.attach"
+    const val METHOD_SESSION_HISTORY = "session.history"
+    const val METHOD_SESSION_SEARCH = "session.search"
     const val METHOD_SESSION_CREATE = "session.create"
     const val METHOD_SESSION_RENAME = "session.rename"
+    const val METHOD_SESSION_FORK = "session.fork"
     const val METHOD_STREAM_ACK = "stream.ack"
     const val METHOD_PROMPT_SUBMIT = "prompt.submit"
     const val METHOD_TURN_ABORT = "turn.abort"
@@ -21,6 +24,13 @@ object RemoteProtocol {
     const val METHOD_QUESTION_RESPOND = "question.respond"
     const val METHOD_MODEL_LIST = "model.list"
     const val METHOD_MODEL_SELECT = "model.select"
+    const val METHOD_COMMAND_LIST = "command.list"
+    const val METHOD_COMMAND_EXECUTE = "command.execute"
+    const val METHOD_SKILL_LIST = "skill.list"
+    const val METHOD_WORKSPACE_UPLOAD_OPEN = "workspace.upload.open"
+    const val METHOD_WORKSPACE_UPLOAD_CHUNK = "workspace.upload.chunk"
+    const val METHOD_WORKSPACE_UPLOAD_COMMIT = "workspace.upload.commit"
+    const val METHOD_WORKSPACE_UPLOAD_ABORT = "workspace.upload.abort"
 }
 
 data class SessionRef(
@@ -28,6 +38,82 @@ data class SessionRef(
     val title: String?,
     val updatedAtMs: Long? = null,
     val cwd: String? = null,
+    val status: String? = null,
+    val preview: String? = null,
+    val pendingApprovals: Int = 0,
+    val pendingQuestions: Int = 0,
+)
+
+data class SessionHistoryResult(
+    val sessionId: String,
+    val events: List<OfficialSessionEvent>,
+    val hasMore: Boolean,
+    val oldestSeq: Long?,
+    val latestSeq: Long?,
+    val source: String,
+)
+
+data class SessionSearchHit(
+    val sessionId: String,
+    val title: String?,
+    val seq: Long,
+    val type: String,
+    val snippet: String,
+    val updatedAt: String? = null,
+)
+
+data class SessionSearchResult(
+    val query: String,
+    val hits: List<SessionSearchHit>,
+    val hasMore: Boolean,
+)
+
+data class RemoteCommandDescriptor(
+    val name: String,
+    val description: String,
+    val inputHint: String? = null,
+    val acceptsAttachments: Boolean = false,
+)
+
+data class CommandExecuteResult(
+    val ok: Boolean,
+    val commandId: String? = null,
+    val output: String? = null,
+    val error: String? = null,
+)
+
+data class RemoteSkillSummary(
+    val name: String,
+    val description: String,
+    val whenToUse: String? = null,
+    val source: String? = null,
+)
+
+data class WorkspaceUploadOpenResult(
+    val uploadId: String,
+    val sessionId: String,
+    val chunkBytes: Int,
+    val maxBytes: Int,
+    val relativePath: String,
+)
+
+data class WorkspaceUploadChunkResult(
+    val uploadId: String,
+    val receivedBytes: Int,
+    val nextOffset: Int,
+)
+
+data class WorkspaceUploadCommitResult(
+    val uploadId: String,
+    val sessionId: String,
+    val relativePath: String,
+    val bytesWritten: Int,
+    val sha256: String,
+)
+
+data class WorkspaceUploadAbortResult(
+    val uploadId: String,
+    val aborted: Boolean,
 )
 
 data class ReasoningEffortOption(
@@ -232,9 +318,151 @@ object RemoteFrameCodec {
         val obj = rawObj.obj("session") ?: rawObj
         return SessionRef(
             id = obj.str("id") ?: throw IllegalArgumentException("session item missing id"),
-            title = obj.str("title"),
+            title = obj.str("title")?.let(DisplayTextSanitizer::sanitizeLoneSurrogates),
             updatedAtMs = obj.longVal("updatedAtMs"),
-            cwd = obj.str("cwd"),
+            cwd = obj.str("cwd")?.let(DisplayTextSanitizer::sanitizeLoneSurrogates),
+            status = obj.str("status"),
+            preview = obj.str("preview")?.let {
+                DisplayTextSanitizer.truncateByCodePoints(DisplayTextSanitizer.sanitizeSingleLine(it), 160)
+            },
+            pendingApprovals = obj.intVal("pendingApprovals") ?: 0,
+            pendingQuestions = obj.intVal("pendingQuestions") ?: 0,
+        )
+    }
+
+    fun parseSessionHistoryResult(result: JsonValue): SessionHistoryResult {
+        val obj = result as? JsonObject
+            ?: throw IllegalArgumentException("session.history result must be JSON object")
+        val eventsArr = obj.arr("events")?.items.orEmpty()
+        val events = eventsArr.map { item ->
+            parseSessionEvent(
+                item as? JsonObject
+                    ?: throw IllegalArgumentException("session.history event must be JSON object"),
+            )
+        }
+        return SessionHistoryResult(
+            sessionId = obj.str("sessionId")
+                ?: throw IllegalArgumentException("session.history result missing sessionId"),
+            events = events,
+            hasMore = obj.bool("hasMore") == true,
+            oldestSeq = obj.longVal("oldestSeq"),
+            latestSeq = obj.longVal("latestSeq"),
+            source = obj.str("source") ?: "live",
+        )
+    }
+
+    fun parseSessionSearchResult(result: JsonValue): SessionSearchResult {
+        val obj = result as? JsonObject
+            ?: throw IllegalArgumentException("session.search result must be JSON object")
+        val hitsArr = obj.arr("hits")?.items.orEmpty()
+        val hits = hitsArr.mapNotNull { item ->
+            val hObj = item as? JsonObject ?: return@mapNotNull null
+            val sid = hObj.str("sessionId") ?: return@mapNotNull null
+            SessionSearchHit(
+                sessionId = sid,
+                title = hObj.str("title"),
+                seq = hObj.longVal("seq") ?: 0L,
+                type = hObj.str("type") ?: "event",
+                snippet = hObj.str("snippet") ?: "",
+                updatedAt = hObj.str("updatedAt"),
+            )
+        }
+        return SessionSearchResult(
+            query = obj.str("query") ?: "",
+            hits = hits,
+            hasMore = obj.bool("hasMore") == true,
+        )
+    }
+
+    fun parseCommandList(result: JsonValue): List<RemoteCommandDescriptor> {
+        val arr = when (result) {
+            is JsonArray -> result.items
+            is JsonObject -> result.arr("commands")?.items.orEmpty()
+            else -> emptyList()
+        }
+        return arr.mapNotNull { item ->
+            val obj = item as? JsonObject ?: return@mapNotNull null
+            val name = obj.str("name")?.trim()?.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+            RemoteCommandDescriptor(
+                name = name,
+                description = obj.str("description") ?: "",
+                inputHint = obj.str("inputHint"),
+                acceptsAttachments = obj.bool("acceptsAttachments") == true,
+            )
+        }
+    }
+
+    fun parseCommandExecuteResult(result: JsonValue): CommandExecuteResult {
+        val obj = result as? JsonObject ?: return CommandExecuteResult(ok = false, error = "invalid response")
+        return CommandExecuteResult(
+            ok = obj.bool("ok") != false,
+            commandId = obj.str("commandId"),
+            output = obj.str("output"),
+            error = obj.str("error"),
+        )
+    }
+
+    fun parseSkillList(result: JsonValue): List<RemoteSkillSummary> {
+        val arr = when (result) {
+            is JsonArray -> result.items
+            is JsonObject -> result.arr("skills")?.items.orEmpty()
+            else -> emptyList()
+        }
+        return arr.mapNotNull { item ->
+            val obj = item as? JsonObject ?: return@mapNotNull null
+            val name = obj.str("name")?.trim()?.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+            RemoteSkillSummary(
+                name = name,
+                description = obj.str("description") ?: "",
+                whenToUse = obj.str("whenToUse"),
+                source = obj.str("source"),
+            )
+        }
+    }
+
+    fun parseWorkspaceUploadOpenResult(result: JsonValue): WorkspaceUploadOpenResult {
+        val obj = result as? JsonObject
+            ?: throw IllegalArgumentException("workspace.upload.open result must be JSON object")
+        return WorkspaceUploadOpenResult(
+            uploadId = obj.str("uploadId")
+                ?: throw IllegalArgumentException("workspace.upload.open missing uploadId"),
+            sessionId = obj.str("sessionId") ?: "",
+            chunkBytes = obj.intVal("chunkBytes") ?: 32_768,
+            maxBytes = obj.intVal("maxBytes") ?: 20 * 1024 * 1024,
+            relativePath = obj.str("relativePath") ?: "",
+        )
+    }
+
+    fun parseWorkspaceUploadChunkResult(result: JsonValue): WorkspaceUploadChunkResult {
+        val obj = result as? JsonObject
+            ?: throw IllegalArgumentException("workspace.upload.chunk result must be JSON object")
+        return WorkspaceUploadChunkResult(
+            uploadId = obj.str("uploadId")
+                ?: throw IllegalArgumentException("workspace.upload.chunk missing uploadId"),
+            receivedBytes = obj.intVal("receivedBytes") ?: 0,
+            nextOffset = obj.intVal("nextOffset") ?: 0,
+        )
+    }
+
+    fun parseWorkspaceUploadCommitResult(result: JsonValue): WorkspaceUploadCommitResult {
+        val obj = result as? JsonObject
+            ?: throw IllegalArgumentException("workspace.upload.commit result must be JSON object")
+        return WorkspaceUploadCommitResult(
+            uploadId = obj.str("uploadId")
+                ?: throw IllegalArgumentException("workspace.upload.commit missing uploadId"),
+            sessionId = obj.str("sessionId") ?: "",
+            relativePath = obj.str("relativePath") ?: "",
+            bytesWritten = obj.intVal("bytesWritten") ?: 0,
+            sha256 = obj.str("sha256") ?: "",
+        )
+    }
+
+    fun parseWorkspaceUploadAbortResult(result: JsonValue): WorkspaceUploadAbortResult {
+        val obj = result as? JsonObject
+            ?: throw IllegalArgumentException("workspace.upload.abort result must be JSON object")
+        return WorkspaceUploadAbortResult(
+            uploadId = obj.str("uploadId") ?: "",
+            aborted = obj.bool("aborted") == true,
         )
     }
 

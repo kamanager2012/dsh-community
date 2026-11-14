@@ -51,6 +51,20 @@ class AndroidWebRtcPeerEngine(
         roomId: String,
         stunUrls: List<String>,
         callbacks: RemoteTransportCallbacks,
+    ): WebRtcPeerHandle = openDataChannel(
+        signalingUrl = signalingUrl,
+        roomId = roomId,
+        stunUrls = stunUrls,
+        callbacks = callbacks,
+        iceTransportPolicy = WebRtcIceTransportPolicy.ALL,
+    )
+
+    override fun openDataChannel(
+        signalingUrl: String,
+        roomId: String,
+        stunUrls: List<String>,
+        callbacks: RemoteTransportCallbacks,
+        iceTransportPolicy: WebRtcIceTransportPolicy,
     ): WebRtcPeerHandle {
         val normalizedSignalingUrl = validateSignalingUrl(signalingUrl)
         val normalizedRoomId = validateRoomId(roomId)
@@ -65,6 +79,7 @@ class AndroidWebRtcPeerEngine(
             signalingUrl = normalizedSignalingUrl,
             roomId = normalizedRoomId,
             iceServers = iceServers,
+            iceTransportPolicy = iceTransportPolicy,
             connectTimeoutMs = connectTimeoutMs,
             wsConnectTimeoutMs = minOf(wsConnectTimeoutMs, maxOf(1_000, connectTimeoutMs.toInt())),
             maxFrameBytes = maxFrameBytes,
@@ -80,6 +95,7 @@ class AndroidWebRtcPeerEngine(
         private val signalingUrl: String,
         private val roomId: String,
         private val iceServers: List<PeerConnection.IceServer>,
+        private val iceTransportPolicy: WebRtcIceTransportPolicy,
         private val connectTimeoutMs: Long,
         private val wsConnectTimeoutMs: Int,
         private val maxFrameBytes: Int,
@@ -315,6 +331,10 @@ class AndroidWebRtcPeerEngine(
 
                     override fun onIceCandidate(candidate: IceCandidate?) {
                         if (candidate == null || closed.get()) return
+                        if (!WebRtcCandidateFilter.shouldAllowCandidate(candidate.sdp, iceTransportPolicy)) {
+                            logWebRtc("filtered local ICE candidate (${iceTransportPolicy.wireName}) ${describeCandidate(candidate.sdp)}")
+                            return
+                        }
                         logWebRtc("local ICE candidate ${describeCandidate(candidate.sdp)}")
                         val candJson = JsonObject.of(
                             "candidate" to JsonString(candidate.sdp),
@@ -636,6 +656,10 @@ class AndroidWebRtcPeerEngine(
             val candObj = candVal as? JsonObject ?: return
             val candStr = candObj.str("candidate")
             if (candStr.isNullOrEmpty()) return
+            if (!WebRtcCandidateFilter.shouldAllowCandidate(candStr, iceTransportPolicy)) {
+                logWebRtc("filtered remote ICE candidate (${iceTransportPolicy.wireName}) ${describeCandidate(candStr)}")
+                return
+            }
             val sdpMid = candObj.str("sdpMid") ?: "0"
             val sdpMLineIndex = candObj.intVal("sdpMLineIndex") ?: 0
             val candidate = IceCandidate(sdpMid, sdpMLineIndex, candStr)

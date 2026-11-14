@@ -19,3 +19,16 @@ export function decideWindowClose(input: WindowCloseInput): WindowCloseDecision 
 export function decideHostCrash(quitting: boolean): HostCrashDecision {
   return quitting ? 'ignore' : 'offer-restart'
 }
+
+/**
+ * Ensures async background completions (e.g. remote host start or plugin install)
+ * only re-render and switch into their target HTML view when the user is still on that page.
+ */
+export function shouldApplyAsyncPageUpdate(input: {
+  readonly quitting: boolean
+  readonly showingOfficial: boolean
+  readonly currentPage: string
+  readonly expectedPage: string
+}): boolean {
+  return !input.quitting && !input.showingOfficial && input.currentPage === input.expectedPage
+}

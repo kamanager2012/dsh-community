@@ -61,9 +61,11 @@ export {
   formatOfficialSessionMtime,
   listOfficialSessions,
   officialSessionRoot,
+  peekOfficialSessionSummary,
   OFFICIAL_SESSION_DIR,
   OFFICIAL_SESSION_FILES,
   type OfficialSessionRef,
+  type OfficialSessionSummary,
 } from './session-store.js'
 export {
   emptyRuntimeCatalog,

@@ -257,6 +257,27 @@ jobs:
           adb shell input keyevent 224 || true
           adb shell wm dismiss-keyguard || true
           adb shell input keyevent 82 || true
+          ipv4_ready=0
+          i=0
+          while [ "$i" -lt 30 ]; do
+            links="$(adb shell ip link 2>/dev/null || true)"
+            if printf '%s\n' "$links" | grep -q 'wlan0:'; then
+              if adb shell ip -4 addr show dev wlan0 2>/dev/null | grep -q 'inet '; then
+                ipv4_ready=1
+                break
+              fi
+            elif adb shell ip -4 addr 2>/dev/null | grep 'inet ' | grep -qv '127\.0\.0\.1'; then
+              ipv4_ready=1
+              break
+            fi
+            i=$((i + 1))
+            sleep 1
+          done
+          adb shell ip -4 addr || true
+          if [ "$ipv4_ready" -ne 1 ]; then
+            echo "ERROR: emulator did not acquire an IPv4 address within 30s" >&2
+            exit 1
+          fi
 
       - name: Build host remote-adapter and run R6 instrumentation acceptance on emulator
         if: env.KVM_ENABLED == '1'

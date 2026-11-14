@@ -79,6 +79,8 @@ class ChatTimelineAdapter(
             }
             if (item.isOptimistic) {
                 metaParts.add("Sending…")
+            } else if (!item.sendError.isNullOrBlank()) {
+                metaParts.add("Send failed: ${item.sendError}")
             }
             if (metaParts.isNotEmpty()) {
                 tvUserMeta.visibility = View.VISIBLE

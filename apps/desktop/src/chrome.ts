@@ -69,16 +69,26 @@ export function renderChromePage(model: ChromeBarModel): string {
       :root { color-scheme: dark; }
       html, body { height: 100%; margin: 0; background: #101218; color: #d9dee8;
         font: 13px/1.4 ui-sans-serif, system-ui, sans-serif; overflow: hidden; }
-      .bar { height: ${String(CHROME_HEIGHT)}px; box-sizing: border-box;
-        display: flex; align-items: center; gap: 10px; padding: 0 12px;
+      .bar { height: ${String(CHROME_HEIGHT)}px; box-sizing: border-box; width: 100%;
+        display: flex; align-items: center; gap: 8px; padding: 0 10px; min-width: 0; overflow: hidden;
         border-bottom: 1px solid #2a303b; background: #161922; }
-      strong { font-weight: 600; white-space: nowrap; }
+      strong { font-weight: 600; white-space: nowrap; flex: 0 1 auto; min-width: 0;
+        overflow: hidden; text-overflow: ellipsis; }
       .status { color: #9aa3b2; font: 12px/1.3 ui-monospace, SFMono-Regular, monospace;
+        flex: 1 1 0; min-width: 0;
         overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      nav { margin-left: auto; display: flex; gap: 6px; flex-wrap: nowrap; }
+      nav { margin-left: auto; flex: 0 0 auto; display: flex; gap: 5px; flex-wrap: nowrap; }
       button { appearance: none; border: 0; border-radius: 6px; padding: 5px 9px;
+        white-space: nowrap; flex-shrink: 0;
         background: #2a303b; color: #d9dee8; font: inherit; cursor: pointer; }
       button[data-active="true"] { background: #2f6fed; color: white; }
+      @media (max-width: 880px) {
+        .bar { gap: 6px; padding: 0 8px; }
+        strong { max-width: 112px; font-size: 12px; }
+        .status { display: none; }
+        nav { gap: 4px; }
+        button { padding: 4px 7px; font-size: 12px; }
+      }
     </style>
   </head>
   <body>

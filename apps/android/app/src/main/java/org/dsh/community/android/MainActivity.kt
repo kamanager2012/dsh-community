@@ -16,6 +16,7 @@ import android.provider.Settings
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.View
+import android.view.inputmethod.EditorInfo
 import android.widget.Button
 import android.widget.EditText
 import android.widget.HorizontalScrollView
@@ -27,10 +28,13 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import org.dsh.community.android.crypto.DeviceIdentity
 import org.dsh.community.android.crypto.TrustedHostRecord
+import org.dsh.community.android.protocol.CommandExecuteResult
 import org.dsh.community.android.protocol.DisplayTextSanitizer
 import org.dsh.community.android.protocol.JsonArray
 import org.dsh.community.android.protocol.JsonObject
@@ -40,7 +44,11 @@ import org.dsh.community.android.protocol.ModelOptionRef
 import org.dsh.community.android.protocol.OfficialSessionEvent
 import org.dsh.community.android.protocol.PromptImageAttachment
 import org.dsh.community.android.protocol.QuestionSpec
+import org.dsh.community.android.protocol.RemoteCommandDescriptor
+import org.dsh.community.android.protocol.RemoteSkillSummary
+import org.dsh.community.android.protocol.SessionHistoryResult
 import org.dsh.community.android.protocol.SessionRef
+import org.dsh.community.android.protocol.SessionSearchResult
 import org.dsh.community.android.qr.QrScanActivity
 import org.dsh.community.android.service.BackgroundLifecycleStats
 import org.dsh.community.android.service.DiscoverySelectOutcome
@@ -58,8 +66,10 @@ import org.dsh.community.android.ui.ChatMarkdownFormatter
 import org.dsh.community.android.ui.ChatTimelineAdapter
 import org.dsh.community.android.ui.ChatTimelineItem
 import org.dsh.community.android.ui.ChatTimelineStore
+import org.dsh.community.android.ui.ConstrainedScrollView
 import org.dsh.community.android.ui.ParsedSlashCommand
 import org.dsh.community.android.ui.PromptImageHelper
+import org.dsh.community.android.ui.RemoteLayoutBudget
 import org.dsh.community.android.ui.SlashCommandHelper
 import org.dsh.community.android.ui.SystemNoticeItem
 import org.dsh.community.android.ui.ToolExecutionItem
@@ -81,9 +91,12 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
     private lateinit var agentStatusView: TextView
     private lateinit var deviceIdView: TextView
     private lateinit var metricsView: TextView
+    private lateinit var rootMainView: android.view.View
     private lateinit var connectionPanel: LinearLayout
+    private lateinit var connectionScroll: ConstrainedScrollView
     private lateinit var logsPanel: LinearLayout
     private lateinit var pendingCard: LinearLayout
+    private lateinit var pendingScroll: ConstrainedScrollView
     private lateinit var questionOptionsScroll: HorizontalScrollView
     private lateinit var questionOptionsContainer: LinearLayout
     private lateinit var pairingInput: EditText
@@ -114,9 +127,16 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
     private lateinit var attachmentBar: LinearLayout
     private lateinit var attachmentSummaryView: TextView
 
+    private data class InFlightPromptSnapshot(
+        val sessionId: String,
+        val promptText: String,
+        val attachments: List<Pair<PromptImageAttachment, Int>>,
+    )
+
     private val timelineStore = ChatTimelineStore()
     private lateinit var timelineAdapter: ChatTimelineAdapter
     private val pendingAttachments = ArrayList<Pair<PromptImageAttachment, Int>>()
+    private val inFlightPromptSnapshots = LinkedHashMap<String, InFlightPromptSnapshot>()
 
     private var pendingCallId: String? = null
     private var pendingQuestionId: String? = null
@@ -133,6 +153,8 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
     private var currentPhase: RemoteConnectionPhase = RemoteConnectionPhase.DISCONNECTED
     private var userPinnedConnectionDrawer: Boolean? = null
     private var logsPanelVisible = false
+    private var lastInsetsVerticalPx = 0
+    private var lastImeVisible = false
     private var steerEnabled = false
     private var isAgentRunning = false
     private var pendingOpenModelPicker = false
@@ -194,13 +216,45 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        val rootView = findViewById<android.view.View>(R.id.root_main)
+        rootMainView = rootView
+        val baseLeft = rootView.paddingLeft
+        val baseTop = rootView.paddingTop
+        val baseRight = rootView.paddingRight
+        val baseBottom = rootView.paddingBottom
+        ViewCompat.setOnApplyWindowInsetsListener(rootView) { view, windowInsets ->
+            val insets = windowInsets.getInsets(
+                WindowInsetsCompat.Type.systemBars() or
+                    WindowInsetsCompat.Type.displayCutout() or
+                    WindowInsetsCompat.Type.ime()
+            )
+            lastInsetsVerticalPx = baseTop + baseBottom + insets.top + insets.bottom
+            lastImeVisible = windowInsets.isVisible(WindowInsetsCompat.Type.ime())
+            view.setPadding(
+                baseLeft + insets.left,
+                baseTop + insets.top,
+                baseRight + insets.right,
+                baseBottom + insets.bottom
+            )
+            updateResponsiveLayoutBudget()
+            windowInsets
+        }
+        rootView.addOnLayoutChangeListener { _, _, top, _, bottom, _, oldTop, _, oldBottom ->
+            if ((bottom - top) != (oldBottom - oldTop)) {
+                updateResponsiveLayoutBudget()
+            }
+        }
+        ViewCompat.requestApplyInsets(rootView)
+
         statusView = findViewById(R.id.tv_status)
         agentStatusView = findViewById(R.id.tv_agent_status)
         deviceIdView = findViewById(R.id.tv_device_id)
         metricsView = findViewById(R.id.tv_metrics)
         connectionPanel = findViewById(R.id.ll_connection_panel)
+        connectionScroll = findViewById(R.id.scroll_connection_panel)
         logsPanel = findViewById(R.id.ll_logs_panel)
         pendingCard = findViewById(R.id.ll_pending_card)
+        pendingScroll = findViewById(R.id.scroll_pending_card)
         questionOptionsScroll = findViewById(R.id.hsv_question_options)
         questionOptionsContainer = findViewById(R.id.ll_question_options)
         pairingInput = findViewById(R.id.et_pairing_json)
@@ -274,6 +328,7 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
                     if (logsPanelVisible) R.color.dsh_text_accent else R.color.dsh_text_primary,
                 ),
             )
+            updateResponsiveLayoutBudget()
         }
 
         findViewById<Button>(R.id.btn_export_chat).setOnClickListener {
@@ -290,11 +345,13 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
 
         findViewById<Button>(R.id.btn_connect).setOnClickListener {
             val raw = pairingInput.text.toString().trim()
-            if (raw.isNotEmpty()) {
-                stickyStatusError = null
-                userPinnedConnectionDrawer = null
-                service?.connectWithPairingInput(raw)
+            if (raw.isEmpty()) {
+                pairingInput.requestFocus()
+                showUiFailure("Paste pairing JSON / dsh-remote:// URI or tap Scan QR first", isWarning = true)
+                return@setOnClickListener
             }
+            val payload = PairingInputHelper.extractPairingPayload(raw) ?: raw
+            acceptPairingPayload(payload, sourceLabel = "Manual")
         }
 
         findViewById<Button>(R.id.btn_scan_lan).setOnClickListener {
@@ -349,6 +406,9 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
             val sid = sessionIdInput.text.toString().trim()
             if (sid.isNotEmpty()) {
                 selectAndAttachSession(sid)
+            } else {
+                service?.refreshSessionsAsync()
+                showSessionBrowserDialog()
             }
         }
 
@@ -406,6 +466,29 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
         btnAnswerQuestion.setOnClickListener {
             val qid = pendingQuestionId ?: return@setOnClickListener
             submitQuestionResponse(qid)
+        }
+
+        sessionIdInput.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_GO || actionId == EditorInfo.IME_ACTION_DONE) {
+                findViewById<Button>(R.id.btn_attach).performClick()
+                true
+            } else {
+                false
+            }
+        }
+
+        answerInput.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_SEND || actionId == EditorInfo.IME_ACTION_DONE) {
+                val qid = pendingQuestionId
+                if (qid != null) {
+                    submitQuestionResponse(qid)
+                    true
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
         }
 
         updateSteerButtonUi()
@@ -553,6 +636,142 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
             val cleanTitle = DisplayTextSanitizer.sanitizeSingleLine(session.title).ifBlank { session.id }
             appendLog("Session renamed: $cleanTitle")
             renderSessionChips(lastSessions)
+        }
+    }
+
+    override fun onSessionForked(forked: SessionRef) {
+        runOnUiThread {
+            val cleanTitle = DisplayTextSanitizer.sanitizeSingleLine(forked.title).ifBlank { forked.id }
+            appendLog("Forked session ${forked.id} ($cleanTitle)")
+            sessionIdInput.setText(forked.id)
+            renderSessionChips(lastSessions)
+        }
+    }
+
+    override fun onSessionHistoryLoaded(history: SessionHistoryResult) {
+        runOnUiThread {
+            val inserted = timelineStore.prependHistory(history.sessionId, history.events)
+            for (evt in history.events) {
+                if (evt.seq > 0L) {
+                    markEventSeen("${history.sessionId}:${evt.seq}:${evt.type}")
+                }
+            }
+            if (activeTimelineSessionId() == history.sessionId) {
+                refreshTimelineUi(scrollToBottom = false)
+            }
+            val msg = "Loaded ${history.events.size} history events (+$inserted cards, source=${history.source}, hasMore=${history.hasMore})"
+            appendLog(msg)
+            Toast.makeText(
+                this,
+                if (inserted > 0) "Loaded $inserted older timeline entries" else "No older events remaining",
+                Toast.LENGTH_SHORT,
+            ).show()
+        }
+    }
+
+    override fun onSessionSearchResults(results: SessionSearchResult) {
+        runOnUiThread {
+            if (results.hits.isEmpty()) {
+                AlertDialog.Builder(this)
+                    .setTitle("Search · ${DisplayTextSanitizer.sanitizeSingleLine(results.query)}")
+                    .setMessage("No matching messages found across Host sessions.")
+                    .setPositiveButton("OK", null)
+                    .show()
+                return@runOnUiThread
+            }
+            val labels = results.hits.map { hit ->
+                val title = DisplayTextSanitizer.sanitizeSingleLine(hit.title).ifBlank { hit.sessionId }
+                val snippet = DisplayTextSanitizer.truncateByCodePoints(
+                    DisplayTextSanitizer.sanitizeSingleLine(hit.snippet),
+                    120,
+                )
+                "$title (#${hit.seq})\n$snippet"
+            }
+            AlertDialog.Builder(this)
+                .setTitle("Search (${results.hits.size}${if (results.hasMore) "+" else ""}) · ${DisplayTextSanitizer.sanitizeSingleLine(results.query)}")
+                .setItems(labels.toTypedArray()) { _, which ->
+                    val chosen = results.hits[which]
+                    selectAndAttachSession(chosen.sessionId)
+                    appendLog("Jumped to search hit ${chosen.sessionId} seq=${chosen.seq}")
+                }
+                .setNegativeButton("Close", null)
+                .show()
+        }
+    }
+
+    override fun onCommandsListed(sessionId: String?, commands: List<RemoteCommandDescriptor>) {
+        runOnUiThread {
+            if (commands.isEmpty()) {
+                Toast.makeText(this, "No Host commands advertised", Toast.LENGTH_SHORT).show()
+                return@runOnUiThread
+            }
+            val labels = commands.map { cmd ->
+                val cleanName = DisplayTextSanitizer.sanitizeSingleLine(cmd.name)
+                val cleanDesc = DisplayTextSanitizer.sanitizeSingleLine(cmd.description)
+                val hint = cmd.inputHint?.takeIf { it.isNotBlank() }?.let { " ${DisplayTextSanitizer.sanitizeSingleLine(it)}" }.orEmpty()
+                "$cleanName$hint\n$cleanDesc"
+            }
+            AlertDialog.Builder(this)
+                .setTitle("Host Commands (${commands.size})")
+                .setItems(labels.toTypedArray()) { _, which ->
+                    val chosen = commands[which]
+                    val targetSid = sessionId ?: activeTimelineSessionId()
+                    if (chosen.inputHint.isNullOrBlank() && targetSid != null) {
+                        service?.executeCommandAsync(targetSid, chosen.name)
+                    } else {
+                        val fill = "${chosen.name} "
+                        promptInput.setText(fill)
+                        promptInput.setSelection(fill.length)
+                        promptInput.requestFocus()
+                    }
+                }
+                .setNegativeButton("Close", null)
+                .show()
+        }
+    }
+
+    override fun onCommandExecuted(sessionId: String, command: String, result: CommandExecuteResult) {
+        runOnUiThread {
+            val cleanOut = DisplayTextSanitizer.sanitizeMultiline(result.output ?: result.error ?: "", 2_000).trim()
+            if (cleanOut.isNotEmpty()) {
+                appendLog("[command ${DisplayTextSanitizer.sanitizeSingleLine(command)}] $cleanOut")
+                AlertDialog.Builder(this)
+                    .setTitle(DisplayTextSanitizer.sanitizeSingleLine(command))
+                    .setMessage(cleanOut)
+                    .setPositiveButton("OK", null)
+                    .show()
+            } else {
+                val msg = if (result.ok) "Executed $command" else "Command failed"
+                Toast.makeText(this, DisplayTextSanitizer.sanitizeSingleLine(msg), Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    override fun onSkillsListed(sessionId: String?, skills: List<RemoteSkillSummary>) {
+        runOnUiThread {
+            if (skills.isEmpty()) {
+                Toast.makeText(this, "No Host skills reported", Toast.LENGTH_SHORT).show()
+                return@runOnUiThread
+            }
+            val labels = skills.map { sk ->
+                val cleanName = DisplayTextSanitizer.sanitizeSingleLine(sk.name)
+                val desc = DisplayTextSanitizer.truncateByCodePoints(
+                    DisplayTextSanitizer.sanitizeSingleLine(sk.description),
+                    100,
+                )
+                "$cleanName\n$desc"
+            }
+            AlertDialog.Builder(this)
+                .setTitle("Host Skills (${skills.size})")
+                .setItems(labels.toTypedArray()) { _, which ->
+                    val sk = skills[which]
+                    val fill = "/skill ${sk.name} "
+                    promptInput.setText(fill)
+                    promptInput.setSelection(fill.length)
+                    promptInput.requestFocus()
+                }
+                .setNegativeButton("Close", null)
+                .show()
         }
     }
 
@@ -793,6 +1012,28 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
                 if (visible) R.color.dsh_text_accent else R.color.dsh_text_primary,
             ),
         )
+        updateResponsiveLayoutBudget()
+    }
+
+    private fun updateResponsiveLayoutBudget() {
+        if (!::rootMainView.isInitialized || !::connectionScroll.isInitialized) return
+        val viewportPx = (rootMainView.height - lastInsetsVerticalPx).coerceAtLeast(0)
+        if (viewportPx <= 0) return
+        val budget = RemoteLayoutBudget.compute(
+            viewportHeightPx = viewportPx,
+            density = resources.displayMetrics.density,
+            imeVisible = lastImeVisible,
+            connectionVisible = connectionPanel.visibility == View.VISIBLE,
+            logsVisible = logsPanel.visibility == View.VISIBLE,
+            pendingVisible = pendingCard.visibility == View.VISIBLE,
+        )
+        connectionScroll.maxHeightPx = budget.connectionPanelMaxPx
+        pendingScroll.maxHeightPx = budget.pendingPanelMaxPx
+        val lp = logsPanel.layoutParams
+        if (lp != null && lp.height != budget.logsPanelHeightPx) {
+            lp.height = budget.logsPanelHeightPx
+            logsPanel.layoutParams = lp
+        }
     }
 
     private fun updateSteerButtonUi() {
@@ -909,6 +1150,38 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
                     promptInput.text.clear()
                     service?.renameSessionAsync(targetSid, parsed.title)
                 }
+                is ParsedSlashCommand.ForkSession -> {
+                    val targetSid = activeTimelineSessionId()
+                    if (targetSid == null) {
+                        Toast.makeText(this, "Attach or create a session first", Toast.LENGTH_SHORT).show()
+                        return
+                    }
+                    promptInput.text.clear()
+                    stickyStatusError = null
+                    service?.forkSessionAsync(targetSid, title = parsed.title, autoAttach = true)
+                }
+                is ParsedSlashCommand.SearchSessions -> {
+                    promptInput.text.clear()
+                    service?.searchSessionsAsync(parsed.query)
+                }
+                ParsedSlashCommand.LoadHistory -> {
+                    val targetSid = activeTimelineSessionId()
+                    if (targetSid == null) {
+                        Toast.makeText(this, "Attach or create a session first", Toast.LENGTH_SHORT).show()
+                        return
+                    }
+                    promptInput.text.clear()
+                    val beforeSeq = timelineStore.oldestLoadedSeq(targetSid)
+                    service?.loadHistoryAsync(targetSid, beforeSeq = beforeSeq)
+                }
+                ParsedSlashCommand.ListCommands -> {
+                    promptInput.text.clear()
+                    service?.listCommandsAsync(activeTimelineSessionId())
+                }
+                ParsedSlashCommand.ListSkills -> {
+                    promptInput.text.clear()
+                    service?.listSkillsAsync(activeTimelineSessionId())
+                }
                 ParsedSlashCommand.StopTurn -> {
                     val targetSid = activeTimelineSessionId()
                     if (targetSid == null) {
@@ -969,7 +1242,8 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
         if (attachedSessionId != sid) {
             selectAndAttachSession(sid)
         }
-        val attachmentsToSend = pendingAttachments.map { it.first }
+        val attachmentSnapshot = pendingAttachments.toList()
+        val attachmentsToSend = attachmentSnapshot.map { it.first }
         val attachmentLabels = attachmentsToSend.map { it.name ?: it.mediaType }
         if (pendingAttachments.isNotEmpty()) {
             pendingAttachments.clear()
@@ -979,10 +1253,19 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
             promptInput.text.clear()
         }
         lastEventSessionId = sid
-        timelineStore.addOptimisticUserPrompt(sid, prompt, attachmentLabels)
+        val optimisticId = timelineStore.addOptimisticUserPrompt(sid, prompt, attachmentLabels)
+        inFlightPromptSnapshots[optimisticId] = InFlightPromptSnapshot(
+            sessionId = sid,
+            promptText = prompt,
+            attachments = attachmentSnapshot,
+        )
+        while (inFlightPromptSnapshots.size > 16) {
+            val oldest = inFlightPromptSnapshots.keys.firstOrNull() ?: break
+            inFlightPromptSnapshots.remove(oldest)
+        }
         refreshTimelineUi(scrollToBottom = true)
         val mode = modeOverride ?: if (steerEnabled) "steer" else null
-        service?.submitPromptAsync(sid, prompt, mode, attachmentsToSend)
+        service?.submitPromptAsync(sid, prompt, mode, attachmentsToSend, optimisticId = optimisticId)
     }
 
     private fun attachPickedImage(uri: Uri) {
@@ -1210,14 +1493,25 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
 
     private fun showSessionActionDialog(session: SessionRef) {
         val title = DisplayTextSanitizer.sanitizeSingleLine(session.title).ifBlank { session.id }
-        val actions = arrayOf("Switch to Session", "Rename Session", "Copy Session ID")
+        val actions = arrayOf(
+            "Switch to Session",
+            "Rename Session",
+            "Fork Session",
+            "Load Older History",
+            "Copy Session ID",
+        )
         AlertDialog.Builder(this)
             .setTitle(title)
             .setItems(actions) { _, which ->
                 when (which) {
                     0 -> selectAndAttachSession(session.id)
                     1 -> showRenameSessionDialog(session)
-                    2 -> copyTextToClipboard("Session ID", session.id, "Copied session ID")
+                    2 -> service?.forkSessionAsync(session.id, autoAttach = true)
+                    3 -> {
+                        val before = timelineStore.oldestLoadedSeq(session.id)
+                        service?.loadHistoryAsync(session.id, beforeSeq = before)
+                    }
+                    4 -> copyTextToClipboard("Session ID", session.id, "Copied session ID")
                 }
             }
             .setNegativeButton("Cancel", null)
@@ -1383,13 +1677,17 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
     private fun exportCurrentSessionMarkdown() {
         val sid = activeTimelineSessionId()
         if (sid.isNullOrBlank()) {
-            appendLog("Select or attach a session first before exporting chat")
+            val msg = "Select or attach a session first before exporting chat"
+            appendLog(msg)
+            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
             return
         }
         val title = lastSessions.firstOrNull { it.id == sid }?.title
         val md = timelineStore.exportAsMarkdown(sid, title)
         if (md.isBlank()) {
-            appendLog("No messages to export yet for session $sid")
+            val msg = "No messages to export yet for session $sid"
+            appendLog(msg)
+            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
             return
         }
         val sendIntent = Intent(Intent.ACTION_SEND).apply {
@@ -1397,7 +1695,11 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
             putExtra(Intent.EXTRA_SUBJECT, "DSH Session ${title ?: sid}")
             putExtra(Intent.EXTRA_TEXT, md)
         }
-        startActivity(Intent.createChooser(sendIntent, "Export DSH Conversation"))
+        try {
+            startActivity(Intent.createChooser(sendIntent, "Export DSH Conversation"))
+        } catch (_: Throwable) {
+            copyTextToClipboard("DSH Session", md, "No share target available — copied exported Markdown")
+        }
     }
 
     private fun openBatteryOptimizationSettings() {
@@ -1411,7 +1713,9 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
             try {
                 startActivity(fallback)
             } catch (_: Throwable) {
-                appendLog("Unable to open battery optimization settings on this device")
+                val msg = "Unable to open battery optimization settings on this device"
+                appendLog(msg)
+                Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -1534,20 +1838,17 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
             }
             DiscoverySelectOutcome.UNKNOWN_UNPAIRED_HOST -> {
                 val msg = "[UNPAIRED] mDNS host ${host.hostDisplayLabel} is untrusted — scan QR or paste dsh-remote:// URI (discovery !== trust)"
-                stickyStatusError = msg
-                statusView.text = msg
-                statusView.setTextColor(ContextCompat.getColor(this, R.color.dsh_status_warn))
-                appendLog(msg)
+                showUiFailure(msg, isWarning = true)
             }
             DiscoverySelectOutcome.REVOKED_HOST -> {
                 val msg = "[REVOKED] Discovered host ${host.hostFingerprint?.take(12)}... is revoked — Forget & re-pair after Host re-trusts"
-                stickyStatusError = msg
-                statusView.text = msg
-                statusView.setTextColor(ContextCompat.getColor(this, R.color.dsh_status_danger))
-                appendLog(msg)
+                showUiFailure(msg, isWarning = false)
             }
             DiscoverySelectOutcome.MISSING_FINGERPRINT, null -> {
-                appendLog("Discovered mDNS host ${host.hostDisplayLabel} missing hostFingerprint")
+                showUiFailure(
+                    "Discovered mDNS host ${host.hostDisplayLabel} missing hostFingerprint — scan QR or paste dsh-remote:// URI instead",
+                    isWarning = true,
+                )
             }
         }
     }
@@ -1593,11 +1894,54 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
         }
     }
 
+    private fun showUiFailure(message: String, isWarning: Boolean = false) {
+        val clean = DisplayTextSanitizer.sanitizeSingleLine(message)
+        stickyStatusError = clean
+        statusView.text = clean
+        statusView.setTextColor(
+            ContextCompat.getColor(
+                this,
+                if (isWarning) R.color.dsh_status_warn else R.color.dsh_status_danger,
+            ),
+        )
+        appendLog(clean)
+        Toast.makeText(this, clean, Toast.LENGTH_LONG).show()
+    }
+
     override fun onActionFailed(action: String, reason: String) {
+        val cleanAction = DisplayTextSanitizer.sanitizeSingleLine(action)
         val cleanReason = DisplayTextSanitizer.sanitizeSingleLine(reason)
         runOnUiThread {
-            appendLog("[${DisplayTextSanitizer.sanitizeSingleLine(action)} failed] $cleanReason")
             renderApprovalBanner()
+            showUiFailure("$cleanAction failed: $cleanReason")
+        }
+    }
+
+    override fun onPromptSubmitSucceeded(sessionId: String, optimisticId: String?) {
+        runOnUiThread {
+            if (optimisticId != null) {
+                inFlightPromptSnapshots.remove(optimisticId)
+            }
+        }
+    }
+
+    override fun onPromptSubmitFailed(sessionId: String, optimisticId: String?, reason: String) {
+        val cleanReason = DisplayTextSanitizer.sanitizeSingleLine(reason)
+        runOnUiThread {
+            if (timelineStore.markOptimisticUserFailed(sessionId, optimisticId, cleanReason)) {
+                refreshTimelineUi(scrollToBottom = false)
+            }
+            val snapshot = if (optimisticId != null) inFlightPromptSnapshots.remove(optimisticId) else null
+            if (snapshot != null && snapshot.sessionId == attachedSessionId) {
+                if (snapshot.attachments.isNotEmpty() && pendingAttachments.isEmpty()) {
+                    pendingAttachments.addAll(snapshot.attachments)
+                    renderAttachmentBar()
+                }
+                if (snapshot.promptText.isNotEmpty() && promptInput.text.isNullOrBlank()) {
+                    promptInput.setText(snapshot.promptText)
+                    promptInput.setSelection(promptInput.text.length)
+                }
+            }
         }
     }
 
@@ -1612,6 +1956,7 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
                 pendingCard.visibility = View.VISIBLE
                 btnApprove.visibility = View.VISIBLE
                 btnReject.visibility = View.VISIBLE
+                etAnswerVisibility(visible = false)
                 questionOptionsScroll.visibility = View.GONE
             } else {
                 renderApprovalBanner()
@@ -1628,6 +1973,7 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
                 pendingCard.visibility = View.VISIBLE
                 btnApprove.visibility = View.GONE
                 btnReject.visibility = View.GONE
+                etAnswerVisibility(visible = true)
                 questionOptionsScroll.visibility = View.GONE
             } else {
                 renderApprovalBanner()
@@ -1649,13 +1995,21 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
                 pendingCard.visibility = View.VISIBLE
                 btnApprove.visibility = View.VISIBLE
                 btnReject.visibility = View.VISIBLE
-                etAnswerVisibility(visible = headQuestion != null)
+                etAnswerVisibility(visible = false)
                 questionOptionsScroll.visibility = View.GONE
             }
             headQuestion != null -> {
                 val extra = latestQuestions.size - 1
                 val suffix = if (extra > 0) " (+$extra more)" else ""
-                val cleanPrompt = DisplayTextSanitizer.sanitizeSingleLine(headQuestion.prompt)
+                val cleanPrompt = if (headQuestion.questions.size > 1) {
+                    headQuestion.questions.joinToString(" | ") { spec ->
+                        val label = DisplayTextSanitizer.sanitizeSingleLine(spec.header ?: spec.id)
+                        val qText = DisplayTextSanitizer.sanitizeSingleLine(spec.question)
+                        if (qText.isNotEmpty()) "$label: $qText" else label
+                    }
+                } else {
+                    DisplayTextSanitizer.sanitizeSingleLine(headQuestion.prompt)
+                }
                 approvalBanner.text = "QUESTION (${headQuestion.questionId}): $cleanPrompt$suffix"
                 pendingCard.visibility = View.VISIBLE
                 btnApprove.visibility = View.GONE
@@ -1672,6 +2026,7 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
                 renderedQuestionSignature = null
             }
         }
+        updateResponsiveLayoutBudget()
     }
 
     private fun etAnswerVisibility(visible: Boolean) {
@@ -1767,7 +2122,9 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
         }
         if (ansText.isNotEmpty()) {
             service?.respondQuestionAsync(questionId, ansText)
+            return
         }
+        Toast.makeText(this, "Select an option or type a reply first", Toast.LENGTH_SHORT).show()
     }
 
     private fun markEventSeen(key: String): Boolean {

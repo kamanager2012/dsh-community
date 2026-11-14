@@ -31,6 +31,10 @@ export interface OfficialSessionRow {
   readonly projectKey: string
   readonly transcript: string
   readonly updatedAt: string
+  readonly title?: string | undefined
+  readonly cwd?: string | undefined
+  readonly preview?: string | undefined
+  readonly model?: string | undefined
 }
 
 export interface OfficialSessionsPageModel {
@@ -56,10 +60,12 @@ export interface RuntimePageModel {
 export interface SettingsPageModel {
   readonly product: string
   readonly hideToTray: boolean
+  readonly trayAvailable?: boolean
   readonly isolated: boolean
   readonly envIsolated: boolean
   readonly officialHome: string
   readonly isolatedHome: string
+  readonly saved?: boolean
 }
 
 export interface DiagnosticsPageModel {
@@ -107,7 +113,55 @@ function createCspNonce(): string {
   return randomBytes(16).toString('base64')
 }
 
-function shellDocument(title: string, bodyOrRender: string | ((nonce: string) => string)): string {
+export type ShellNavId = 'official' | 'remote' | 'sessions' | 'marketplace' | 'runtime' | 'settings' | 'diagnostics'
+
+const COPY_FEEDBACK_JS = `function copyWithFeedback(btn, text) {
+  if (!btn) return;
+  if (!btn.dataset.copyLabel) btn.dataset.copyLabel = btn.textContent || '复制';
+  if (!text) {
+    var emptyPrev = Number(btn.dataset.copyTimer || 0);
+    if (emptyPrev) window.clearTimeout(emptyPrev);
+    btn.textContent = '暂无内容';
+    btn.dataset.copyTimer = String(window.setTimeout(function () {
+      btn.textContent = btn.dataset.copyLabel || '复制';
+      delete btn.dataset.copyTimer;
+    }, 1800));
+    return;
+  }
+  var runner = window.dshCommunity && window.dshCommunity.copyText
+    ? Promise.resolve(window.dshCommunity.copyText(text)).then(function (ok) {
+        if (ok === false) throw new Error('copy rejected');
+      })
+    : Promise.reject(new Error('copyText unavailable'));
+  runner.then(
+    function () {
+      var prev = Number(btn.dataset.copyTimer || 0);
+      if (prev) window.clearTimeout(prev);
+      btn.textContent = '已复制 ✓';
+      btn.dataset.copied = 'true';
+      btn.dataset.copyTimer = String(window.setTimeout(function () {
+        btn.textContent = btn.dataset.copyLabel || '复制';
+        delete btn.dataset.copied;
+        delete btn.dataset.copyTimer;
+      }, 1800));
+    },
+    function () {
+      var prev = Number(btn.dataset.copyTimer || 0);
+      if (prev) window.clearTimeout(prev);
+      btn.textContent = '复制失败';
+      btn.dataset.copyTimer = String(window.setTimeout(function () {
+        btn.textContent = btn.dataset.copyLabel || '复制';
+        delete btn.dataset.copyTimer;
+      }, 1800));
+    }
+  );
+}`
+
+function shellDocument(
+  title: string,
+  bodyOrRender: string | ((nonce: string) => string),
+  activeNav?: ShellNavId,
+): string {
   const nonce = createCspNonce()
   const body = typeof bodyOrRender === 'function' ? bodyOrRender(nonce) : bodyOrRender
   const csp = [
@@ -131,31 +185,42 @@ function shellDocument(title: string, bodyOrRender: string | ((nonce: string) =>
       :root { color-scheme: dark; }
       html, body { height: 100%; margin: 0; background: #101218; color: #d9dee8;
         font: 15px/1.5 ui-sans-serif, system-ui, sans-serif; }
-      main { min-height: 100%; display: grid; place-items: center; padding: 32px; }
-      .card { max-width: 42rem; }
+      main { min-height: 100%; display: flex; flex-direction: column; align-items: center;
+        justify-content: flex-start; padding: 28px 24px 40px; box-sizing: border-box; }
+      .card { width: 100%; max-width: 44rem; box-sizing: border-box; }
       h1 { font-size: 1.35rem; font-weight: 600; margin: 0 0 0.6rem; }
       p, li { color: #9aa3b2; }
       code, pre { font: 12px/1.45 ui-monospace, SFMono-Regular, monospace; }
-      pre { max-height: 12rem; overflow: auto; background: #0b0d12; padding: 12px; border-radius: 8px; }
+      pre { max-height: 14rem; overflow: auto; background: #0b0d12; padding: 12px; border-radius: 8px;
+        white-space: pre-wrap; overflow-wrap: anywhere; }
       button { appearance: none; border: 0; border-radius: 8px; padding: 8px 14px;
         background: #2f6fed; color: white; font: inherit; cursor: pointer; }
       button.secondary { background: #2a303b; }
       button.small { padding: 4px 10px; font-size: 13px; }
       button:disabled { opacity: 0.5; cursor: not-allowed; }
+      button[data-copied="true"] { background: #1f6f4a; color: #ffffff; }
       pre.ok { background: #0b1a12; border: 1px solid #1d4a2c; }
+      pre.error { background: #1c0c0e; border: 1px solid #7a2929; color: #ffb4b4; }
       .chip.ok { color: #7ee2a8; border-color: #2f6fed; }
       .chip.risk-med { color: #f5c26b; border-color: #7c5816; }
       .chip.risk-high { color: #ff8e8e; border-color: #7a2929; background: #1c0c0e; }
       .row { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
       nav.nav { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 18px; }
       nav.nav button { font-size: 13px; padding: 6px 10px; }
+      nav.nav button[data-active="true"] { background: #2f6fed; color: #ffffff; }
       label.opt { display: flex; gap: 8px; align-items: flex-start; margin: 10px 0; color: #d9dee8; }
       label.opt input { margin-top: 4px; }
       dt { color: #6d7686; font-size: 12px; }
-      dd { margin: 0 0 10px; word-break: break-all; }
+      dd { margin: 0 0 10px; overflow-wrap: anywhere; }
       table { width: 100%; border-collapse: collapse; margin: 12px 0 4px; font: 12px/1.45 ui-monospace, SFMono-Regular, monospace; }
-      th, td { text-align: left; padding: 6px 8px 6px 0; border-bottom: 1px solid #2a303b; word-break: break-all; }
-      th { color: #6d7686; font-weight: 500; }
+      th, td { text-align: left; padding: 8px 10px 8px 0; border-bottom: 1px solid #2a303b;
+        overflow-wrap: anywhere; vertical-align: middle; }
+      th { color: #6d7686; font-weight: 500; white-space: nowrap; }
+      td button { white-space: nowrap; }
+      .nowrap { white-space: nowrap; word-break: normal; }
+      .break-any { overflow-wrap: anywhere; word-break: normal; }
+      .empty-filter { margin-top: 12px; padding: 14px; border: 1px dashed #2a303b; border-radius: 8px;
+        color: #9aa3b2; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
       h2 { font-size: 1.05rem; font-weight: 600; color: #c6cdd9; margin: 20px 0 8px; }
       ul.plugins { list-style: none; margin: 0; padding: 0; }
       ul.plugins li { border: 1px solid #2a303b; border-radius: 8px; padding: 12px; margin: 0 0 10px; }
@@ -180,11 +245,14 @@ function shellDocument(title: string, bodyOrRender: string | ((nonce: string) =>
       .pair-info { flex: 1 1 240px; min-width: 0; }
       .field-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
       .field label { display: block; color: #9aa3b2; font-size: 12px; margin-bottom: 4px; }
-      .field input[type="text"], .field input[type="number"], .field select {
+      .field input[type="text"], .field input[type="number"], .field select, input[type="search"] {
         width: 100%; box-sizing: border-box; background: #0b0d12; color: #d9dee8;
         border: 1px solid #2a303b; border-radius: 6px; padding: 7px 10px;
         font: 12px/1.4 ui-monospace, SFMono-Regular, monospace;
       }
+      input:disabled, select:disabled { opacity: 0.45; cursor: not-allowed; }
+      .hidden-row { display: none; }
+      .session-sub { color: #9ea6b3; font-size: 12px; margin-top: 2px; font-family: system-ui, sans-serif; }
       .custom-host-input { margin-top: 6px; }
       .pending-item { border: 1px solid #2f6fed; border-radius: 8px; padding: 12px; margin-top: 10px; background: #0b1120; }
       .status-line { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 8px 0; }
@@ -193,13 +261,13 @@ function shellDocument(title: string, bodyOrRender: string | ((nonce: string) =>
   <body>
     <main><div class="card">
       <nav class="nav">
-        <button class="secondary" data-go="official">官方 Web</button>
-        <button class="secondary" data-go="sessions">Session</button>
-        <button class="secondary" data-go="remote">远程</button>
-        <button class="secondary" data-go="marketplace">市场</button>
-        <button class="secondary" data-go="runtime">运行时</button>
-        <button class="secondary" data-go="settings">设置</button>
-        <button class="secondary" data-go="diagnostics">诊断</button>
+        <button class="secondary" data-go="official"${activeNav === 'official' ? ' data-active="true"' : ''}>官方 Web</button>
+        <button class="secondary" data-go="sessions"${activeNav === 'sessions' ? ' data-active="true"' : ''}>Session</button>
+        <button class="secondary" data-go="remote"${activeNav === 'remote' ? ' data-active="true"' : ''}>远程</button>
+        <button class="secondary" data-go="marketplace"${activeNav === 'marketplace' ? ' data-active="true"' : ''}>市场</button>
+        <button class="secondary" data-go="runtime"${activeNav === 'runtime' ? ' data-active="true"' : ''}>运行时</button>
+        <button class="secondary" data-go="settings"${activeNav === 'settings' ? ' data-active="true"' : ''}>设置</button>
+        <button class="secondary" data-go="diagnostics"${activeNav === 'diagnostics' ? ' data-active="true"' : ''}>诊断</button>
       </nav>
       ${body}
     </div></main>
@@ -225,14 +293,28 @@ function shellDocument(title: string, bodyOrRender: string | ((nonce: string) =>
 </html>`
 }
 
-export function renderLoadingPage(detail?: string): string {
+function copyDisabledAttrs(text: string): string {
+  return text.trim().length > 0 ? '' : ' disabled title="暂无可复制日志"'
+}
+
+export interface LoadingPageOptions {
+  readonly heading?: string
+  readonly activeNav?: ShellNavId
+}
+
+export function renderLoadingPage(detail?: string, options?: LoadingPageOptions): string {
+  const heading = options?.heading ?? COMMUNITY_PRODUCT_NAME
+  const lead = options?.heading
+    ? ''
+    : '<p>正在启动官方 <code>dsh web</code>。本窗口只做壳，不跑第二套 agent loop。</p>'
   const extra = detail === undefined || detail.length === 0
     ? ''
     : `<p>${escapeHtml(detail)}</p>`
   return shellDocument(
-    COMMUNITY_PRODUCT_NAME,
-    `<h1>${escapeHtml(COMMUNITY_PRODUCT_NAME)}</h1>
-     <p>正在启动官方 <code>dsh web</code>。本窗口只做壳，不跑第二套 agent loop。</p>${extra}`,
+    heading,
+    `<h1>${escapeHtml(heading)}</h1>
+     ${lead}${extra}`,
+    options?.activeNav,
   )
 }
 
@@ -241,7 +323,7 @@ export function renderErrorPage(message: string): string {
     `${COMMUNITY_PRODUCT_NAME} · 官方运行时`,
     (nonce) => `<h1>官方运行时没有就绪</h1>
      <p>这是社区壳。失败发生在已发布的 <code>@deepseek-ai/dsh</code> 子进程，而不是本仓的 harness 拷贝。</p>
-     <pre>${escapeHtml(message)}</pre>
+     <pre class="error">${escapeHtml(message)}</pre>
      <div class="row">
        <button id="retry">重新启动官方运行时</button>
      </div>
@@ -280,37 +362,113 @@ export function renderAboutPage(model: AboutPageModel): string {
   )
 }
 
+const SESSIONS_PAGE_SIZE = 50
+
 export function renderOfficialSessionsPage(model: OfficialSessionsPageModel): string {
-  const rows = model.sessions.length === 0
-    ? '<p>官方 <code>~/.dsh/sessions</code> 里还没有 session。TUI / Web / 本窗口共用这一份，不会另建目录。</p>'
-    : `<table>
-         <thead><tr><th>session</th><th>project</th><th>updated</th><th></th></tr></thead>
-         <tbody>${model.sessions.map((session) =>
-           `<tr>
-              <td><code>${escapeHtml(session.id)}</code></td>
-              <td><code>${escapeHtml(session.projectKey)}</code></td>
-              <td>${escapeHtml(session.updatedAt)}</td>
-              <td><button class="secondary" data-resume="${escapeHtml(session.id)}">复制 --resume</button></td>
-            </tr>`,
-         ).join('')}</tbody>
-       </table>`
+  const searchBar = model.sessions.length === 0
+    ? ''
+    : '<div class="field"><input id="session-filter" type="search" placeholder="搜索会话 ID / 标题 / 摘要 / 目录…" /></div>'
+  const hasMoreSessions = model.sessions.length > SESSIONS_PAGE_SIZE
+  const usesDefaultHome = !model.isolated && /[/\\]\.dsh$/u.test(model.officialHome)
+  const sessionsDirLabel = usesDefaultHome ? '~/.dsh/sessions' : `${model.officialHome}/sessions`
+  const emptySessionsCopy = model.isolated
+    ? `当前隔离目录 <code>${escapeHtml(sessionsDirLabel)}</code> 里还没有 session。隔离模式不会读取或写入默认 <code>~/.dsh</code>，在本窗口创建的会话会保存在该目录下。`
+    : `官方 <code>${escapeHtml(sessionsDirLabel)}</code> 里还没有 session。TUI / Web / 本窗口共用这一份，不会另建目录。`
+  const tableHtml = model.sessions.length === 0
+    ? `<p>${emptySessionsCopy}</p>`
+    : `<table id="sessions-table">
+         <thead><tr><th>会话与摘要</th><th>项目 / 目录</th><th class="nowrap">更新时间</th><th class="nowrap">操作</th></tr></thead>
+         <tbody>${model.sessions.map((session, idx) => {
+           const searchBlob = [session.id, session.title ?? '', session.preview ?? '', session.cwd ?? '', session.projectKey, session.model ?? ''].join(' ').toLowerCase()
+           const titleLine = session.title
+             ? `<div><strong>${escapeHtml(session.title)}</strong>${session.model ? ` <span class="chip">${escapeHtml(session.model)}</span>` : ''}</div>`
+             : ''
+           const previewLine = session.preview
+             ? `<div class="session-sub">${escapeHtml(session.preview)}</div>`
+             : ''
+           const projectDisplay = session.cwd ? `${session.cwd} (${session.projectKey})` : session.projectKey
+           const rowClass = idx >= SESSIONS_PAGE_SIZE ? ' class="hidden-row"' : ''
+           return `<tr data-session-row="${escapeHtml(searchBlob)}"${rowClass}>
+              <td class="break-any">${titleLine}<code>${escapeHtml(session.id)}</code>${previewLine}</td>
+              <td class="break-any"><code>${escapeHtml(projectDisplay)}</code></td>
+              <td class="nowrap">${escapeHtml(session.updatedAt)}</td>
+              <td class="nowrap">
+                <div class="table-actions">
+                  <button class="secondary small" data-resume="${escapeHtml(session.id)}">复制 --resume</button>
+                  <button class="secondary small" data-copy-id="${escapeHtml(session.id)}">复制 ID</button>
+                </div>
+              </td>
+            </tr>`
+         }).join('')}</tbody>
+       </table>${hasMoreSessions ? `
+       <div id="sessions-more-row" class="row">
+         <button type="button" class="secondary small" id="sessions-show-more">显示全部 ${String(model.sessions.length)} 条会话</button>
+       </div>` : ''}
+       <div id="session-filter-empty" class="empty-filter hidden-row">
+         <span>没有匹配当前搜索条件的对话。</span>
+         <button type="button" class="secondary small" id="session-filter-clear">清空筛选</button>
+       </div>`
   return shellDocument(
     `${model.product} · 官方 Session`,
-    (nonce) => `<h1>官方 Session</h1>
+    (nonce) => `<h1>官方 Session（${String(model.sessions.length)}）</h1>
      <p>只读列出官方 <code>${escapeHtml(model.officialHome)}</code>${model.isolated ? '（隔离）' : ''} 下的 <code>sessions/</code>。恢复对话走官方 Web 或 <code>dsh-community-tui --resume &lt;id&gt;</code>。本页不另建 session 目录。</p>
-     ${rows}
+     ${searchBar}
+     ${tableHtml}
      <div class="row">
        <button data-go="official">打开官方 Web</button>
        <button class="secondary" data-go="sessions">刷新列表</button>
      </div>
      <script nonce="${nonce}">
+       ${COPY_FEEDBACK_JS}
        document.querySelectorAll('[data-resume]').forEach((btn) => {
          btn.addEventListener('click', () => {
            const id = btn.getAttribute('data-resume')
-           if (id) window.dshCommunity?.copyText('dsh-community-tui --resume ' + id)
+           if (id) copyWithFeedback(btn, 'dsh-community-tui --resume ' + id)
          })
        })
+       document.querySelectorAll('[data-copy-id]').forEach((btn) => {
+         btn.addEventListener('click', () => {
+           const id = btn.getAttribute('data-copy-id')
+           if (id) copyWithFeedback(btn, id)
+         })
+       })
+       const pageSize = ${String(SESSIONS_PAGE_SIZE)}
+       let sessionsExpanded = false
+       const filterInput = document.getElementById('session-filter')
+       const sessionsTable = document.getElementById('sessions-table')
+       const emptyFilter = document.getElementById('session-filter-empty')
+       const moreRow = document.getElementById('sessions-more-row')
+       const showMoreBtn = document.getElementById('sessions-show-more')
+       const applySessionFilter = () => {
+         const q = (filterInput?.value ?? '').trim().toLowerCase()
+         const allRows = document.querySelectorAll('tr[data-session-row]')
+         let visible = 0
+         allRows.forEach((tr, idx) => {
+           const blob = tr.getAttribute('data-session-row') ?? ''
+           const hiddenByQuery = q.length > 0 && !blob.includes(q)
+           const hiddenByPage = q.length === 0 && !sessionsExpanded && idx >= pageSize
+           const hidden = hiddenByQuery || hiddenByPage
+           tr.classList.toggle('hidden-row', hidden)
+           if (!hidden) visible += 1
+         })
+         const noMatch = allRows.length > 0 && visible === 0
+         sessionsTable?.classList.toggle('hidden-row', noMatch)
+         emptyFilter?.classList.toggle('hidden-row', !noMatch)
+         moreRow?.classList.toggle('hidden-row', q.length > 0 || sessionsExpanded || allRows.length <= pageSize)
+       }
+       filterInput?.addEventListener('input', applySessionFilter)
+       showMoreBtn?.addEventListener('click', () => {
+         sessionsExpanded = true
+         applySessionFilter()
+       })
+       document.getElementById('session-filter-clear')?.addEventListener('click', () => {
+         if (!filterInput) return
+         filterInput.value = ''
+         applySessionFilter()
+         filterInput.focus()
+       })
      </script>`,
+    'sessions',
   )
 }
 
@@ -335,15 +493,24 @@ export function renderRuntimePage(model: RuntimePageModel): string {
      <p>${escapeHtml(rec)}</p>
      <div class="row">
        <button class="secondary" data-go="official">返回会话</button>
+       <button class="secondary" data-go="about">关于与版本</button>
      </div>`,
+    'runtime',
   )
 }
 
 export function renderSettingsPage(model: SettingsPageModel): string {
+  const savedBanner = model.saved === true
+    ? '<pre class="ok" id="settings-saved-notice">已保存桌面设置。</pre>'
+    : ''
+  const trayNotice = model.hideToTray && model.trayAvailable === false
+    ? '<pre class="error" id="settings-tray-unavailable">当前桌面环境未提供可用系统托盘（Tray），关闭窗口时无法驻留托盘，会直接退出应用。</pre>'
+    : ''
   return shellDocument(
     `${model.product} · 设置`,
     (nonce) => `<h1>Desktop 设置</h1>
      <p>只改壳自己的偏好。官方 session 仍在 <code>${escapeHtml(model.officialHome)}</code>${model.isolated ? '（独立数据目录）' : ''}。</p>
+     ${savedBanner}${trayNotice}
      <label class="opt">
        <input type="checkbox" id="hideToTray" ${model.hideToTray ? 'checked' : ''} />
        <span>关窗藏到托盘，官方 <code>dsh web</code> 继续跑</span>
@@ -367,6 +534,7 @@ export function renderSettingsPage(model: SettingsPageModel): string {
          })
        })
      </script>`,
+    'settings',
   )
 }
 
@@ -378,7 +546,7 @@ export function renderMarketplacePage(model: MarketplacePageModel): string {
       : '目录不可用'
   const errorBlock = model.error === undefined
     ? ''
-    : `<pre>${escapeHtml(model.error)}</pre>`
+    : `<pre class="error">${escapeHtml(model.error)}</pre>`
   const busy = model.busy
   const busyBlock = busy === undefined
     ? ''
@@ -391,7 +559,7 @@ export function renderMarketplacePage(model: MarketplacePageModel): string {
          <div class="row">
            <button id="restart">重启官方运行时</button>
          </div>`
-      : `<pre>${result.action === 'install' ? '安装' : '卸载'}失败：${escapeHtml(result.plugin)}\n\n${escapeHtml(result.log)}</pre>`
+      : `<pre class="error">${result.action === 'install' ? '安装' : '卸载'}失败：${escapeHtml(result.plugin)}\n\n${escapeHtml(result.log)}</pre>`
   const plugins = model.catalog?.plugins ?? []
   const installedSet = new Set(model.installed)
   const disabled = busy === undefined ? '' : ' disabled'
@@ -451,7 +619,7 @@ export function renderMarketplacePage(model: MarketplacePageModel): string {
     `${model.product} · 社区市场`,
     (nonce) => `<h1>社区市场</h1>
      <p>浏览 <a href="${escapeHtml(model.registryUrl)}">插件目录 catalog.json</a>。安装/卸载按钮唤起官方 <code>dsh plugin --profile ${escapeHtml(model.profile)} add|remove</code>（写完 profile 后重启官方运行时生效）；本窗口不自己实现安装器。TUI profile 的安装仍走 <code>dsh-marketplace install &lt;name&gt;</code> 或上面这行官方命令。</p>
-     <p class="meta">${escapeHtml(sourceLine)} · 抓取时间 ${escapeHtml(model.fetchedAt || '—')} · 已装 ${String(model.installed.length)} 个（${escapeHtml(model.profile)} profile）</p>
+     <p class="meta">${escapeHtml(sourceLine)} · 抓取时间 ${escapeHtml(formatLocalTimestamp(model.fetchedAt))} · 已装 ${String(model.installed.length)} 个（${escapeHtml(model.profile)} profile）</p>
      ${errorBlock}
      <div class="row">
        <button id="refresh"${disabled}>刷新目录</button>
@@ -479,6 +647,7 @@ export function renderMarketplacePage(model: MarketplacePageModel): string {
          })
        })
      </script>`,
+    'marketplace',
   )
 }
 
@@ -496,25 +665,65 @@ export function renderDiagnosticsPage(model: DiagnosticsPageModel): string {
      <template id="copy-logs-data">${escapeHtml(model.logs || '')}</template>
      <div class="row">
        <button id="retry">重新启动官方运行时</button>
-       <button class="secondary" id="copy">复制日志</button>
+       <button class="secondary" id="copy"${copyDisabledAttrs(model.logs || '')}>复制日志</button>
        <button class="secondary" data-go="official">返回会话</button>
+       <button class="secondary" data-go="about">关于与版本</button>
      </div>
      <script nonce="${nonce}">
+       ${COPY_FEEDBACK_JS}
        document.getElementById('retry')?.addEventListener('click', () => {
          window.dshCommunity?.restartHost()
        })
-       document.getElementById('copy')?.addEventListener('click', () => {
+       const copyBtn = document.getElementById('copy')
+       copyBtn?.addEventListener('click', () => {
          const el = document.getElementById('copy-logs-data')
          const text = el && 'content' in el ? (el.content.textContent ?? '') : (el?.textContent ?? '')
-         window.dshCommunity?.copyText(text)
+         copyWithFeedback(copyBtn, text)
        })
      </script>`,
+    'diagnostics',
   )
 }
 
+/**
+ * Format a numeric epoch timestamp or ISO timestamp string into local `YYYY-MM-DD HH:mm:ss (UTC+N)`.
+ */
+function formatLocalTimestamp(
+  input: number | string | undefined,
+  options?: { includeRelative?: boolean },
+): string {
+  let ms: number | undefined
+  if (typeof input === 'number') {
+    ms = Number.isFinite(input) && input > 0 ? input : undefined
+  } else if (typeof input === 'string') {
+    const trimmed = input.trim()
+    if (!trimmed) return '—'
+    const parsed = Date.parse(trimmed)
+    if (!Number.isFinite(parsed) || parsed <= 0) return trimmed
+    ms = parsed
+  }
+  if (ms === undefined) return '—'
+  const d = new Date(ms)
+  const pad = (n: number): string => String(n).padStart(2, '0')
+  const local = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+  const offsetMin = -d.getTimezoneOffset()
+  const sign = offsetMin >= 0 ? '+' : '-'
+  const absMin = Math.abs(offsetMin)
+  const hh = pad(Math.floor(absMin / 60))
+  const mm = pad(absMin % 60)
+  const tz = mm === '00' ? `UTC${sign}${Number(hh)}` : `UTC${sign}${hh}:${mm}`
+  if (options?.includeRelative) {
+    const diffMs = ms - Date.now()
+    if (diffMs > 0 && diffMs < 86_400_000) {
+      const mins = Math.max(1, Math.ceil(diffMs / 60_000))
+      return `${local} (${tz}, ${mins} 分钟后)`
+    }
+  }
+  return `${local} (${tz})`
+}
+
 function formatRemoteTime(ts: number | undefined): string {
-  if (ts === undefined || !Number.isFinite(ts) || ts <= 0) return '—'
-  return `${new Date(ts).toISOString().replace('T', ' ').slice(0, 19)}Z`
+  return formatLocalTimestamp(ts, { includeRelative: true })
 }
 
 function remotePhaseBadge(phase: DesktopRemotePhase): string {
@@ -566,12 +775,14 @@ export function renderRemotePage(model: RemotePageModel): string {
       ? '<span class="chip ok">DEEPSEEK_API_KEY 已配置</span>'
       : '<span class="chip risk-high">缺少 DEEPSEEK_API_KEY</span>'}
     <span class="chip">在线连接 ${String(model.activeConnections)}</span>
+    ${(model.pendingApprovals ?? 0) > 0 ? `<span class="chip risk-med">待审批 ${String(model.pendingApprovals)}</span>` : ''}
+    ${(model.pendingQuestions ?? 0) > 0 ? `<span class="chip risk-med">待回答 ${String(model.pendingQuestions)}</span>` : ''}
     ${model.isolated ? '<span class="chip">独立数据目录</span>' : ''}
   </div>`
 
   const errorBanner = model.error === undefined
     ? ''
-    : `<pre>${escapeHtml(model.error)}</pre>`
+    : `<pre class="error">${escapeHtml(model.error)}</pre>`
   const noticeBanner = model.notice === undefined
     ? ''
     : `<pre class="ok">${escapeHtml(model.notice)}</pre>`
@@ -645,9 +856,11 @@ export function renderRemotePage(model: RemotePageModel): string {
             </dl>
             <template id="copy-pairing-json">${escapeHtml(model.pairing.pairingJson)}</template>
             <template id="copy-deeplink">${escapeHtml(model.pairing.deepLink)}</template>
+            <template id="copy-host-fingerprint">${escapeHtml(model.hostFingerprint)}</template>
             <div class="row">
               <button class="secondary small" id="copy-pairing-json-btn">复制配对 JSON</button>
               <button class="secondary small" id="copy-deeplink-btn">复制 Deep Link</button>
+              ${model.hostFingerprint ? '<button class="secondary small" id="copy-host-fp-btn">复制指纹</button>' : ''}
             </div>
           </div>
         </div>
@@ -669,6 +882,35 @@ export function renderRemotePage(model: RemotePageModel): string {
       <td>${actionBtn}</td>
     </tr>`
   }).join('')
+
+  const liveSessions = model.liveSessions ?? []
+  const liveSessionsBlock = (model.phase === 'running' || model.phase === 'external') && liveSessions.length > 0
+    ? `<section class="panel">
+        <h2>活跃与可接入会话（${String(liveSessions.length)}）</h2>
+        <table>
+          <thead><tr><th>会话与摘要</th><th>模型 / 状态</th><th>待处理</th></tr></thead>
+          <tbody>${liveSessions.map((s) => {
+            const title = s.title ? `<div><strong>${escapeHtml(s.title)}</strong></div>` : ''
+            const preview = s.preview ? `<div class="session-sub">${escapeHtml(s.preview)}</div>` : ''
+            const statusBadge = s.status === 'running'
+              ? '<span class="chip ok">运行中</span>'
+              : s.status === 'idle'
+                ? '<span class="chip">空闲</span>'
+                : ''
+            const modelBadge = s.model ? ` <span class="chip">${escapeHtml(s.model)}</span>` : ''
+            const pendingBadges = [
+              ...(s.pendingApprovals ? [`<span class="chip risk-med">审批 ${String(s.pendingApprovals)}</span>`] : []),
+              ...(s.pendingQuestions ? [`<span class="chip risk-med">提问 ${String(s.pendingQuestions)}</span>`] : []),
+            ].join(' ') || '<span class="meta">—</span>'
+            return `<tr>
+              <td>${title}<code>${escapeHtml(s.id)}</code>${preview}</td>
+              <td>${statusBadge}${modelBadge}</td>
+              <td>${pendingBadges}</td>
+            </tr>`
+          }).join('')}</tbody>
+        </table>
+      </section>`
+    : ''
 
   const devicesBlock = `<section class="panel">
     <h2>已信任设备（${String(model.devices.length)}）</h2>
@@ -694,7 +936,7 @@ export function renderRemotePage(model: RemotePageModel): string {
       <div class="field">
         <label for="listen-host-select">监听地址 (listenHost)</label>
         <select id="listen-host-select">${hostOptions}</select>
-        <input type="text" class="custom-host-input" id="listen-host-custom" value="${escapeHtml(customHostValue)}" placeholder="自定义 IP / 主机名（选自定义时生效）"${isCustomHost ? '' : ' disabled'} />
+        <input type="text" class="custom-host-input${isCustomHost ? '' : ' hidden-row'}" id="listen-host-custom" value="${escapeHtml(customHostValue)}" placeholder="自定义 IP / 主机名（选自定义时生效）"${isCustomHost ? '' : ' disabled'} />
       </div>
       <div class="field">
         <label for="remote-port">监听端口（0 = 自动分配）</label>
@@ -724,7 +966,7 @@ export function renderRemotePage(model: RemotePageModel): string {
     <pre>${escapeHtml(model.logs || '(no remote host log yet)')}</pre>
     <template id="copy-remote-logs">${escapeHtml(model.logs || '')}</template>
     <div class="row">
-      <button class="secondary small" id="copy-remote-logs-btn">复制日志</button>
+      <button class="secondary small" id="copy-remote-logs-btn"${copyDisabledAttrs(model.logs || '')}>复制日志</button>
     </div>
   </section>`
 
@@ -742,10 +984,12 @@ export function renderRemotePage(model: RemotePageModel): string {
      </div>
      ${pendingBlock}
      ${pairingBlock}
+     ${liveSessionsBlock}
      ${devicesBlock}
      ${configBlock}
      ${logsBlock}
      <script nonce="${nonce}">
+       ${COPY_FEEDBACK_JS}
        const readTpl = (id) => {
          const el = document.getElementById(id)
          if (!el) return ''
@@ -753,9 +997,14 @@ export function renderRemotePage(model: RemotePageModel): string {
        }
        const hostSelect = document.getElementById('listen-host-select')
        const hostCustom = document.getElementById('listen-host-custom')
-       hostSelect?.addEventListener('change', () => {
-         if (hostCustom) hostCustom.disabled = hostSelect.value !== '__custom__'
-       })
+       const syncCustomHost = () => {
+         if (!hostCustom) return
+         const custom = hostSelect?.value === '__custom__'
+         hostCustom.disabled = !custom
+         hostCustom.classList.toggle('hidden-row', !custom)
+       }
+       syncCustomHost()
+       hostSelect?.addEventListener('change', syncCustomHost)
        document.getElementById('remote-start')?.addEventListener('click', () => {
          const listenHost = hostSelect?.value === '__custom__'
            ? (hostCustom?.value ?? '')
@@ -778,14 +1027,21 @@ export function renderRemotePage(model: RemotePageModel): string {
        document.getElementById('remote-new-pairing')?.addEventListener('click', () => {
          window.dshCommunity?.remoteNewPairing()
        })
-       document.getElementById('copy-pairing-json-btn')?.addEventListener('click', () => {
-         window.dshCommunity?.copyText(readTpl('copy-pairing-json'))
+       const copyPairingBtn = document.getElementById('copy-pairing-json-btn')
+       copyPairingBtn?.addEventListener('click', () => {
+         copyWithFeedback(copyPairingBtn, readTpl('copy-pairing-json'))
        })
-       document.getElementById('copy-deeplink-btn')?.addEventListener('click', () => {
-         window.dshCommunity?.copyText(readTpl('copy-deeplink'))
+       const copyDeeplinkBtn = document.getElementById('copy-deeplink-btn')
+       copyDeeplinkBtn?.addEventListener('click', () => {
+         copyWithFeedback(copyDeeplinkBtn, readTpl('copy-deeplink'))
        })
-       document.getElementById('copy-remote-logs-btn')?.addEventListener('click', () => {
-         window.dshCommunity?.copyText(readTpl('copy-remote-logs'))
+       const copyHostFpBtn = document.getElementById('copy-host-fp-btn')
+       copyHostFpBtn?.addEventListener('click', () => {
+         copyWithFeedback(copyHostFpBtn, readTpl('copy-host-fingerprint'))
+       })
+       const copyRemoteLogsBtn = document.getElementById('copy-remote-logs-btn')
+       copyRemoteLogsBtn?.addEventListener('click', () => {
+         copyWithFeedback(copyRemoteLogsBtn, readTpl('copy-remote-logs'))
        })
        document.querySelectorAll('[data-confirm-candidate]').forEach((btn) => {
          btn.addEventListener('click', () => {
@@ -806,5 +1062,6 @@ export function renderRemotePage(model: RemotePageModel): string {
          })
        })
      </script>`,
+    'remote',
   )
 }

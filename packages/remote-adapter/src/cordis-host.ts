@@ -9,8 +9,10 @@ import {
   statSync,
 } from 'node:fs'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
+import { createRequire } from 'node:module'
 import type { AddressInfo } from 'node:net'
 import { join, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import type { DeviceRecord } from './crypto/device-trust.js'
 import { RemoteCryptoError } from './crypto/errors.js'
 import { PairingCoordinator, type PairingConfirmationParams, type PairingResult } from './crypto/pairing-coordinator.js'
@@ -45,10 +47,44 @@ import {
   type ModelOptionRef,
   type ModelSelectionParams,
   type OfficialRemoteSeams,
+  type PendingApprovalSnapshot,
+  type PendingQuestionSnapshot,
   type PromptImageAttachment,
   type ReasoningEffortOption,
+  type RemoteCommandDescriptor,
+  type RemoteSkillSummary,
+  type SessionForkParams,
+  type SessionHistoryParams,
+  type SessionHistoryResult,
+  type SessionLiveStateSnapshot,
   type SessionRef,
+  type SessionSearchParams,
+  type SessionSearchResult,
+  type WorkspaceUploadAbortParams,
+  type WorkspaceUploadAbortResult,
+  type WorkspaceUploadChunkParams,
+  type WorkspaceUploadChunkResult,
+  type WorkspaceUploadCommitParams,
+  type WorkspaceUploadCommitResult,
+  type WorkspaceUploadOpenParams,
+  type WorkspaceUploadOpenResult,
 } from './protocol.js'
+import {
+  buildAttachLiveStateSnapshot,
+  foldNormalizedSessionEvents,
+  type FoldedSessionEventsSummary,
+} from './session-state-fold.js'
+import { truncateByCodePoints } from './unicode.js'
+import { WorkspaceUploadManager } from './workspace-upload.js'
+import {
+  findOfficialSessionTranscriptPath,
+  isSafeSessionId,
+  paginateNormalizedTranscriptEvents,
+  readDecodedOfficialTranscript,
+  searchSessionCollections,
+  type DecodedOfficialSessionTranscript,
+  type NormalizedTranscriptEvent,
+} from './session-transcript.js'
 import {
   createPairingBootstrapDescriptor,
   encodePairingDeepLink,
@@ -106,6 +142,8 @@ export interface OfficialCordisContextLike {
     create(options: {
       readonly sessionId: string
       readonly meta?: Record<string, unknown>
+      readonly seed?: readonly unknown[]
+      readonly inheritedEventCount?: number
       readonly agentOptions?: Record<string, unknown>
       readonly setup?: (agentCtx: OfficialAgentContextLike, agent: OfficialAgentLike) => unknown
     }): Promise<OfficialAgentHandleLike>
@@ -125,6 +163,29 @@ export interface OfficialCordisContextLike {
   }
   readonly sessions?: {
     flush?(session: unknown): Promise<void>
+  }
+  readonly commands?: {
+    list?(agent: OfficialAgentLike): readonly {
+      readonly name: string
+      readonly description: string
+      readonly inputHint?: string
+      readonly acceptsAttachments?: boolean
+    }[]
+    find?(agent: OfficialAgentLike, name: string): unknown
+    execute?(
+      agent: OfficialAgentLike,
+      line: string,
+      submittedAttachments?: readonly unknown[],
+      signal?: AbortSignal,
+    ): Promise<unknown>
+  }
+  readonly skills?: {
+    list?(): readonly {
+      readonly name: string
+      readonly description: string
+      readonly whenToUse?: string
+      readonly source?: string
+    }[]
   }
   on?(event: string, listener: (...args: any[]) => unknown, options?: { prepend?: boolean }): () => void
   parallel?(event: string, ...args: unknown[]): Promise<unknown>
@@ -230,7 +291,10 @@ export class ObservablePairingCoordinator extends PairingCoordinator {
 }
 
 function readHeaderTitleFromJsonl(filePath: string): string | undefined {
-  if (filePath.endsWith('.zstd')) return undefined
+  if (filePath.endsWith('.zstd') || filePath.endsWith('.zst')) {
+    const decoded = readDecodedOfficialTranscript(filePath)
+    return decoded?.title ?? decoded?.cwd
+  }
   let fd: number | undefined
   try {
     fd = openSync(filePath, 'r')
@@ -301,6 +365,56 @@ function readHeaderTitleFromJsonl(filePath: string): string | undefined {
       } catch {}
     }
   }
+}
+
+const MAX_SESSION_LIST_BYTES = 44 * 1024
+const MAX_SESSION_METADATA_CACHE = 512
+
+function trimSessionRefFields(
+  ref: SessionRef,
+  level: 'strip-verbose' | 'minimal',
+): SessionRef {
+  if (level === 'minimal') {
+    return {
+      id: ref.id,
+      ...(ref.title !== undefined ? { title: ref.title } : {}),
+      ...(ref.updatedAtMs !== undefined ? { updatedAtMs: ref.updatedAtMs } : {}),
+      ...(ref.status !== undefined ? { status: ref.status } : {}),
+      ...(ref.pendingApprovals !== undefined ? { pendingApprovals: ref.pendingApprovals } : {}),
+      ...(ref.pendingQuestions !== undefined ? { pendingQuestions: ref.pendingQuestions } : {}),
+    }
+  }
+  const { preview: _p, cwd: _c, ...rest } = ref
+  return rest
+}
+
+function boundSessionListPayload(
+  items: readonly SessionRef[],
+  activeIds: ReadonlySet<string>,
+  maxBytes = MAX_SESSION_LIST_BYTES,
+): readonly SessionRef[] {
+  if (items.length === 0 || Buffer.byteLength(JSON.stringify(items), 'utf8') <= maxBytes) {
+    return Object.freeze([...items])
+  }
+  let current = items.map((item) =>
+    activeIds.has(item.id) ? item : trimSessionRefFields(item, 'strip-verbose'),
+  )
+  if (Buffer.byteLength(JSON.stringify(current), 'utf8') <= maxBytes) {
+    return Object.freeze(current)
+  }
+  current = current.map((item) =>
+    activeIds.has(item.id)
+      ? trimSessionRefFields(item, 'strip-verbose')
+      : trimSessionRefFields(item, 'minimal'),
+  )
+  if (Buffer.byteLength(JSON.stringify(current), 'utf8') <= maxBytes) {
+    return Object.freeze(current)
+  }
+  current = current.map((item) => trimSessionRefFields(item, 'minimal'))
+  while (current.length > 1 && Buffer.byteLength(JSON.stringify(current), 'utf8') > maxBytes) {
+    current.pop()
+  }
+  return Object.freeze(current)
 }
 
 function findBestCanonicalSessionLog(dirPath: string): string | undefined {
@@ -390,6 +504,8 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 interface PendingApproval {
   readonly callId: string
   readonly sessionId: string
+  readonly toolName: string
+  readonly reason?: string | undefined
   resolve(outcome: 'allowed-once' | 'rejected' | 'cancelled' | 'unavailable'): void
   cleanup(): void
 }
@@ -428,6 +544,24 @@ export class OfficialHostCordisBridge {
   private readonly sessionTitleOverrides = new Map<string, string>()
   private readonly pendingApprovals = new Map<string, PendingApproval>()
   private readonly pendingQuestions = new Map<string, PendingQuestion>()
+  private readonly transcriptCache = new Map<
+    string,
+    { readonly mtimeMs: number; readonly decoded: DecodedOfficialSessionTranscript; readonly eventCount: number }
+  >()
+  private transcriptCacheEvents = 0
+  private readonly liveLogCache = new Map<
+    string,
+    {
+      readonly logRef: readonly unknown[]
+      readonly rawLength: number
+      readonly lastItemRef: unknown
+      readonly filteredLog: readonly unknown[]
+      readonly normalizedEvents: readonly NormalizedTranscriptEvent[]
+      readonly folded: FoldedSessionEventsSummary
+    }
+  >()
+  private readonly workspaceUploads = new WorkspaceUploadManager()
+  private readonly bridgedStatusBySession = new Map<string, 'running' | 'idle'>()
   private readonly rootUnsubscribes: Array<() => void> = []
   private readonly seenEvents = { ingested: 0, approvals: 0, questions: 0, followups: 0 }
   private started = false
@@ -489,6 +623,17 @@ export class OfficialHostCordisBridge {
       abortTurn: (sessionId, options) => this.abortTurn(sessionId, options),
       listModels: (sessionId) => this.listModels(sessionId),
       selectModel: (sessionId, selection) => this.selectModel(sessionId, selection),
+      getSessionLiveState: (sessionId) => this.getSessionLiveState(sessionId),
+      getSessionHistory: (params) => this.getSessionHistory(params),
+      forkSession: (params) => this.forkSession(params),
+      searchSessions: (params) => this.searchSessions(params),
+      listCommands: (sessionId) => this.listCommands(sessionId),
+      executeCommand: (sessionId, command) => this.executeCommand(sessionId, command),
+      listSkills: (sessionId) => this.listSkills(sessionId),
+      openWorkspaceUpload: (deviceId, params) => this.openWorkspaceUpload(deviceId, params),
+      appendWorkspaceUploadChunk: (deviceId, params) => this.appendWorkspaceUploadChunk(deviceId, params),
+      commitWorkspaceUpload: (deviceId, params) => this.commitWorkspaceUpload(deviceId, params),
+      abortWorkspaceUpload: (deviceId, params) => this.abortWorkspaceUpload(deviceId, params),
     }
 
     this.runtime = new RemoteHostRuntime({
@@ -565,6 +710,8 @@ export class OfficialHostCordisBridge {
           this.pendingApprovals.set(callId, {
             callId,
             sessionId: agentId,
+            toolName,
+            ...(reason !== undefined ? { reason } : {}),
             resolve,
             cleanup: () => {
               if (signal && typeof signal.removeEventListener === 'function') {
@@ -677,17 +824,26 @@ export class OfficialHostCordisBridge {
     }
   }
 
-  private emitNormalizedEvent(sessionId: string, type: string, data?: unknown): void {
+  private emitNormalizedEvent(
+    sessionId: string,
+    type: string,
+    data?: unknown,
+    options?: { readonly broadcast?: boolean | undefined },
+  ): void {
     const entry = this.bridgedSessions.get(sessionId)
     if (!entry) return
     entry.nextNormalizedSeq += 1
     const seq = entry.nextNormalizedSeq
     const item = data !== undefined ? { seq, type, data } : { seq, type }
-    this.runtime.ingestSessionEventBatch(sessionId, { log: [item] })
+    this.runtime.ingestSessionEventBatch(sessionId, { log: [item] }, options)
     this.seenEvents.ingested += 1
   }
 
-  private ingestOfficialEvent(sessionId: string, raw: unknown): void {
+  private ingestOfficialEvent(
+    sessionId: string,
+    raw: unknown,
+    options?: { readonly broadcast?: boolean | undefined },
+  ): void {
     const entry = this.bridgedSessions.get(sessionId)
     const event = asRecord(raw)
     if (!entry || !event || typeof event.type !== 'string' || event.type.length === 0) return
@@ -709,7 +865,18 @@ export class OfficialHostCordisBridge {
       if (hasExtra) payloadData = rest
     }
 
-    this.emitNormalizedEvent(sessionId, event.type, payloadData)
+    if (event.type === 'turn/start') {
+      this.bridgedStatusBySession.set(sessionId, 'running')
+    } else if (event.type === 'turn/end') {
+      this.bridgedStatusBySession.set(sessionId, 'idle')
+    } else if (event.type === 'agent/status') {
+      const rec = asRecord(payloadData)
+      if (rec?.status === 'running' || rec?.status === 'idle') {
+        this.bridgedStatusBySession.set(sessionId, rec.status)
+      }
+    }
+
+    this.emitNormalizedEvent(sessionId, event.type, payloadData, options)
   }
 
   private attachAgentListeners(
@@ -739,7 +906,15 @@ export class OfficialHostCordisBridge {
 
     if (Array.isArray(agent.session?.log)) {
       for (const item of agent.session.log) {
-        this.ingestOfficialEvent(sessionId, item)
+        this.ingestOfficialEvent(sessionId, item, { broadcast: false })
+      }
+    }
+    if (state.nextNormalizedSeq === 0) {
+      const diskTranscript = this.readCachedTranscript(sessionId)
+      if (diskTranscript) {
+        for (const item of diskTranscript.rawEvents) {
+          this.ingestOfficialEvent(sessionId, item, { broadcast: false })
+        }
       }
     }
 
@@ -788,6 +963,7 @@ export class OfficialHostCordisBridge {
       const rec = asRecord(payload)
       const status = typeof rec?.status === 'string' ? rec.status : undefined
       if (status === 'idle' || status === 'running') {
+        this.setBoundedSessionEntry(this.bridgedStatusBySession, sessionId, status)
         this.emitNormalizedEvent(sessionId, 'agent/status', { status })
       }
     })
@@ -796,11 +972,33 @@ export class OfficialHostCordisBridge {
     return state
   }
 
+  private setBoundedSessionEntry<V>(map: Map<string, V>, sessionId: string, value: V): void {
+    map.delete(sessionId)
+    map.set(sessionId, value)
+    while (map.size > MAX_SESSION_METADATA_CACHE) {
+      let evictKey: string | undefined
+      for (const candidateKey of map.keys()) {
+        if (!this.bridgedSessions.has(candidateKey)) {
+          evictKey = candidateKey
+          break
+        }
+      }
+      if (evictKey === undefined) {
+        evictKey = map.keys().next().value
+      }
+      if (evictKey === undefined) break
+      map.delete(evictKey)
+    }
+  }
+
   async createSession(options?: {
     readonly sessionId?: string | undefined
     readonly cwd?: string | undefined
     readonly title?: string | undefined
   }): Promise<SessionRef> {
+    if (options?.sessionId !== undefined && !isSafeSessionId(options.sessionId)) {
+      throw new RemoteProtocolError('INVALID_REQUEST', 'sessionId contains invalid path segments or characters')
+    }
     const sessionId = options?.sessionId ?? `session-${randomUUID()}`
     const cwd = options?.cwd ?? this.cwd
     const handle = await this.ctx.agents.create({
@@ -830,7 +1028,7 @@ export class OfficialHostCordisBridge {
       } else {
         title = options.title
       }
-      this.sessionTitleOverrides.set(sessionId, title)
+      this.setBoundedSessionEntry(this.sessionTitleOverrides, sessionId, title)
     }
     return { id: sessionId, title }
   }
@@ -866,7 +1064,7 @@ export class OfficialHostCordisBridge {
         // Fallback to local override when test stub session log does not support append.
       }
     }
-    this.sessionTitleOverrides.set(sessionId, resolvedTitle)
+    this.setBoundedSessionEntry(this.sessionTitleOverrides, sessionId, resolvedTitle)
     this.emitNormalizedEvent(sessionId, 'session/title', {
       sessionId,
       title: resolvedTitle,
@@ -937,8 +1135,196 @@ export class OfficialHostCordisBridge {
     return this.sessionTitleOverrides.get(agent.id)
   }
 
+  private readCachedTranscript(sessionId: string): DecodedOfficialSessionTranscript | undefined {
+    if (!isSafeSessionId(sessionId)) return undefined
+    const filePath = findOfficialSessionTranscriptPath(this.sessionRoot, sessionId)
+    if (!filePath) return undefined
+    let mtimeMs = 0
+    try {
+      mtimeMs = statSync(filePath).mtimeMs
+    } catch {
+      return undefined
+    }
+    const cached = this.transcriptCache.get(filePath)
+    if (cached && cached.mtimeMs === mtimeMs) {
+      this.transcriptCache.delete(filePath)
+      this.transcriptCache.set(filePath, cached)
+      return cached.decoded
+    }
+    if (cached) {
+      this.transcriptCache.delete(filePath)
+      this.transcriptCacheEvents = Math.max(0, this.transcriptCacheEvents - cached.eventCount)
+    }
+    const decoded = readDecodedOfficialTranscript(filePath, mtimeMs)
+    if (!decoded) return undefined
+    const eventCount = decoded.normalizedEvents.length
+    while (
+      this.transcriptCache.size >= 128 ||
+      (this.transcriptCache.size > 0 && this.transcriptCacheEvents + eventCount > 250_000)
+    ) {
+      const oldestKey = this.transcriptCache.keys().next().value
+      if (oldestKey === undefined) break
+      const evicted = this.transcriptCache.get(oldestKey)
+      this.transcriptCache.delete(oldestKey)
+      if (evicted) {
+        this.transcriptCacheEvents = Math.max(0, this.transcriptCacheEvents - evicted.eventCount)
+      }
+    }
+    this.transcriptCache.set(filePath, { mtimeMs, decoded, eventCount })
+    this.transcriptCacheEvents += eventCount
+    return decoded
+  }
+
+  private getMemoizedLiveSnapshot(
+    sessionId: string,
+    rawLog: readonly unknown[],
+  ): {
+    readonly filteredLog: readonly unknown[]
+    readonly normalizedEvents: readonly NormalizedTranscriptEvent[]
+    readonly folded: FoldedSessionEventsSummary
+  } {
+    const rawLength = rawLog.length
+    const lastItemRef = rawLength > 0 ? rawLog[rawLength - 1] : undefined
+    const existing = this.liveLogCache.get(sessionId)
+    if (
+      existing &&
+      existing.logRef === rawLog &&
+      existing.rawLength === rawLength &&
+      existing.lastItemRef === lastItemRef
+    ) {
+      this.liveLogCache.delete(sessionId)
+      this.liveLogCache.set(sessionId, existing)
+      return existing
+    }
+    const filteredLog = rawLog.filter((item) => {
+      const rec = asRecord(item)
+      return rec?.type !== 'assistant/chunk'
+    })
+    const normalizedEvents = this.normalizeLogEvents(filteredLog)
+    const folded = foldNormalizedSessionEvents(normalizedEvents)
+    const entry = {
+      logRef: rawLog,
+      rawLength,
+      lastItemRef,
+      filteredLog,
+      normalizedEvents,
+      folded,
+    }
+    if (this.liveLogCache.size >= 64) {
+      const oldest = this.liveLogCache.keys().next().value
+      if (oldest !== undefined) this.liveLogCache.delete(oldest)
+    }
+    this.liveLogCache.set(sessionId, entry)
+    return entry
+  }
+
+  private normalizeLogEvents(
+    rawLog: readonly unknown[],
+  ): readonly NormalizedTranscriptEvent[] {
+    const out: NormalizedTranscriptEvent[] = []
+    for (let i = 0; i < rawLog.length; i += 1) {
+      const rec = asRecord(rawLog[i])
+      if (!rec || typeof rec.type !== 'string' || rec.type.length === 0) continue
+      let payloadData: unknown = rec.data
+      if (payloadData === undefined) {
+        const rest: Record<string, unknown> = {}
+        let hasExtra = false
+        for (const [k, v] of Object.entries(rec)) {
+          if (k === 'seq' || k === 'type' || k === 'time') continue
+          rest[k] = v
+          hasExtra = true
+        }
+        if (hasExtra) payloadData = rest
+      }
+      const eventTime = typeof rec.time === 'number' && Number.isFinite(rec.time) ? rec.time : undefined
+      out.push({
+        seq: out.length + 1,
+        type: rec.type,
+        ...(eventTime !== undefined ? { time: eventTime } : {}),
+        ...(payloadData !== undefined ? { data: payloadData } : {}),
+      })
+    }
+    return out
+  }
+
+  private collectPendingSnapshots(sessionId: string): {
+    readonly approvals: readonly PendingApprovalSnapshot[]
+    readonly questions: readonly PendingQuestionSnapshot[]
+  } {
+    const approvals: PendingApprovalSnapshot[] = []
+    for (const pending of this.pendingApprovals.values()) {
+      if (pending.sessionId !== sessionId) continue
+      approvals.push({
+        callId: pending.callId,
+        toolName: pending.toolName,
+        ...(pending.reason !== undefined ? { reason: pending.reason } : {}),
+        sessionId: pending.sessionId,
+      })
+    }
+    const questions: PendingQuestionSnapshot[] = []
+    for (const pending of this.pendingQuestions.values()) {
+      if (pending.sessionId !== sessionId) continue
+      const firstQ = pending.questions[0]
+      const prompt =
+        typeof firstQ?.question === 'string'
+          ? firstQ.question
+          : typeof firstQ?.prompt === 'string'
+            ? firstQ.prompt
+            : `Question (${pending.questions.length || 1})`
+      questions.push({
+        questionId: pending.questionId,
+        prompt,
+        questions: pending.questions,
+        sessionId: pending.sessionId,
+      })
+    }
+    return { approvals, questions }
+  }
+
+  private enrichSessionRef(base: SessionRef, agent?: OfficialAgentLike, allowDiskRead = false): SessionRef {
+    const overrideTitle = this.sessionTitleOverrides.get(base.id)
+    const liveTitle = agent ? this.readLiveAgentTitle(agent) : undefined
+    const decoded =
+      allowDiskRead || (agent && (!Array.isArray(agent.session?.log) || agent.session.log.length === 0))
+        ? this.readCachedTranscript(base.id)
+        : undefined
+    const liveSnapshot =
+      Array.isArray(agent?.session?.log) && agent.session.log.length > 0
+        ? this.getMemoizedLiveSnapshot(base.id, agent.session.log)
+        : undefined
+    const liveLog = liveSnapshot?.normalizedEvents ?? decoded?.normalizedEvents ?? []
+    const folded = liveSnapshot
+      ? liveSnapshot.folded
+      : liveLog.length > 0
+        ? foldNormalizedSessionEvents(liveLog)
+        : undefined
+    const { approvals, questions } = this.collectPendingSnapshots(base.id)
+    const liveModel = agent?.model?.current?.() ?? folded?.model
+    const status =
+      agent !== undefined || this.bridgedSessions.has(base.id)
+        ? (this.bridgedStatusBySession.get(base.id) ??
+          (agent?.status === 'running' ? 'running' : (folded?.status ?? 'idle')))
+        : undefined
+    const resolvedTitle = overrideTitle ?? liveTitle ?? folded?.title ?? base.title ?? decoded?.cwd
+    const preview = folded?.preview ?? decoded?.preview
+    const cwd = decoded?.cwd
+    const updatedAtMs = decoded?.mtimeMs && decoded.mtimeMs > 0 ? decoded.mtimeMs : base.updatedAtMs
+    return {
+      id: base.id,
+      ...(resolvedTitle !== undefined ? { title: resolvedTitle } : {}),
+      ...(updatedAtMs !== undefined ? { updatedAtMs } : {}),
+      ...(cwd !== undefined ? { cwd } : {}),
+      ...(status !== undefined ? { status } : {}),
+      ...(preview !== undefined ? { preview } : {}),
+      ...(liveModel !== undefined ? { model: liveModel } : {}),
+      ...(approvals.length > 0 ? { pendingApprovals: approvals.length } : {}),
+      ...(questions.length > 0 ? { pendingQuestions: questions.length } : {}),
+    }
+  }
+
   async listSessions(): Promise<readonly SessionRef[]> {
     const merged = new Map<string, SessionRef>()
+    const activeIds = new Set<string>()
     const persisted = await this.listPersistedRefs()
     const persistedTitleById = new Map<string, string>()
     for (const ref of persisted) {
@@ -947,35 +1333,542 @@ export class OfficialHostCordisBridge {
       }
     }
     for (const agent of this.ctx.agents.list()) {
+      activeIds.add(agent.id)
       const title =
         this.sessionTitleOverrides.get(agent.id) ??
         this.readLiveAgentTitle(agent) ??
         persistedTitleById.get(agent.id)
-      merged.set(agent.id, title !== undefined ? { id: agent.id, title } : { id: agent.id })
+      merged.set(agent.id, this.enrichSessionRef(title !== undefined ? { id: agent.id, title } : { id: agent.id }, agent, true))
     }
     for (const state of this.bridgedSessions.values()) {
+      activeIds.add(state.id)
       if (!merged.has(state.id)) {
         const title =
           this.sessionTitleOverrides.get(state.id) ??
           this.readLiveAgentTitle(state.agent) ??
           persistedTitleById.get(state.id)
-        merged.set(state.id, title !== undefined ? { id: state.id, title } : { id: state.id })
+        merged.set(state.id, this.enrichSessionRef(title !== undefined ? { id: state.id, title } : { id: state.id }, state.agent, true))
       }
     }
+    let diskEnriched = 0
     for (const ref of persisted) {
       if (!merged.has(ref.id)) {
         const override = this.sessionTitleOverrides.get(ref.id)
-        merged.set(
-          ref.id,
-          override !== undefined ? { ...ref, title: override } : ref,
-        )
+        const baseRef = override !== undefined ? { ...ref, title: override } : ref
+        const allowDiskRead = diskEnriched < 25
+        if (allowDiskRead) diskEnriched += 1
+        merged.set(ref.id, this.enrichSessionRef(baseRef, undefined, allowDiskRead))
       }
     }
-    return Object.freeze([...merged.values()])
+    return boundSessionListPayload([...merged.values()], activeIds)
   }
 
   async assertSession(sessionId: string): Promise<void> {
+    if (!isSafeSessionId(sessionId)) {
+      throw new RemoteProtocolError('INVALID_REQUEST', `invalid sessionId: ${sessionId}`)
+    }
     await this.ensureLiveAgent(sessionId)
+  }
+
+  private getSessionEventCollection(sessionId: string): {
+    readonly source: 'live' | 'disk'
+    readonly rawEvents: readonly unknown[]
+    readonly normalizedEvents: readonly NormalizedTranscriptEvent[]
+    readonly title?: string | undefined
+    readonly cwd?: string | undefined
+    readonly agent?: OfficialAgentLike | undefined
+  } | undefined {
+    const live = this.bridgedSessions.get(sessionId)?.agent ?? this.ctx.agents.get(sessionId)
+    const disk = this.readCachedTranscript(sessionId)
+    if (live && Array.isArray(live.session?.log) && live.session.log.length > 0) {
+      const memo = this.getMemoizedLiveSnapshot(sessionId, live.session.log)
+      return {
+        source: 'live',
+        rawEvents: memo.filteredLog,
+        normalizedEvents: memo.normalizedEvents,
+        title: this.sessionTitleOverrides.get(sessionId) ?? this.readLiveAgentTitle(live) ?? disk?.title,
+        cwd: disk?.cwd,
+        agent: live,
+      }
+    }
+    if (disk) {
+      return {
+        source: 'disk',
+        rawEvents: disk.rawEvents,
+        normalizedEvents: disk.normalizedEvents.filter((e) => e.type !== 'assistant/chunk'),
+        title: this.sessionTitleOverrides.get(sessionId) ?? disk.title,
+        cwd: disk.cwd,
+        agent: live,
+      }
+    }
+    if (live) {
+      return {
+        source: 'live',
+        rawEvents: [],
+        normalizedEvents: [],
+        title: this.sessionTitleOverrides.get(sessionId) ?? this.readLiveAgentTitle(live),
+        agent: live,
+      }
+    }
+    return undefined
+  }
+
+  async getSessionLiveState(sessionId: string): Promise<SessionLiveStateSnapshot | undefined> {
+    const collection = this.getSessionEventCollection(sessionId)
+    const agent = collection?.agent ?? this.bridgedSessions.get(sessionId)?.agent ?? this.ctx.agents.get(sessionId)
+    if (!collection && !agent) return undefined
+
+    const events = collection?.normalizedEvents ?? []
+    const folded = foldNormalizedSessionEvents(events)
+    const liveStatus =
+      this.bridgedStatusBySession.get(sessionId) ??
+      (agent?.status === 'running' ? 'running' : agent ? folded.status : undefined)
+    const liveModel = agent?.model?.current?.()
+    const windowInfo = this.runtime.getReplayWindowInfo(sessionId)
+    const { approvals, questions } = this.collectPendingSnapshots(sessionId)
+    const oldestSeq = windowInfo?.oldestSeq ?? events[0]?.seq ?? null
+    const latestSeq = windowInfo?.latestSeq ?? events[events.length - 1]?.seq ?? null
+    const hasMoreHistory =
+      (oldestSeq !== null && oldestSeq > 1) ||
+      (windowInfo !== undefined && events.length > windowInfo.size)
+
+    return buildAttachLiveStateSnapshot({
+      folded,
+      liveStatus,
+      liveModel,
+      title: collection?.title,
+      pendingApprovals: approvals,
+      pendingQuestions: questions,
+      oldestSeq,
+      latestSeq,
+      hasMoreHistory,
+    })
+  }
+
+  async getSessionHistory(params: SessionHistoryParams): Promise<SessionHistoryResult> {
+    const collection = this.getSessionEventCollection(params.sessionId)
+    if (!collection) {
+      const ref = await this.findSessionRef(params.sessionId)
+      if (!ref) {
+        throw new RemoteProtocolError('INVALID_REQUEST', `session not found: ${params.sessionId}`)
+      }
+      return {
+        sessionId: params.sessionId,
+        events: [],
+        hasMore: false,
+        oldestSeq: null,
+        latestSeq: null,
+        source: 'disk',
+      }
+    }
+
+    const page = paginateNormalizedTranscriptEvents(collection.normalizedEvents, {
+      beforeSeq: params.beforeSeq,
+      limit: params.limit,
+      minTurns: params.minTurns,
+      maxBytes: 44 * 1024,
+    })
+    return {
+      sessionId: params.sessionId,
+      events: page.events,
+      hasMore: page.hasMore,
+      oldestSeq: page.oldestSeq,
+      latestSeq: page.latestSeq,
+      source: collection.source,
+    }
+  }
+
+  private async buildSeededForkEvents(
+    rawEvents: readonly unknown[],
+    inheritedCount: number,
+  ): Promise<{ readonly seed: readonly unknown[]; readonly inheritedEventCount: number }> {
+    const clampedCount = Math.max(0, Math.min(rawEvents.length, inheritedCount))
+    if (clampedCount === 0) {
+      return { seed: [], inheritedEventCount: 0 }
+    }
+    const prefix = rawEvents.slice(0, clampedCount)
+    const contiguousZeroBased = prefix.every((ev, idx) => asRecord(ev)?.seq === idx)
+    if (contiguousZeroBased) {
+      const modName = '@deepseek-ai/dsh-session'
+      const candidates: string[] = [modName]
+      if (typeof process.argv[1] === 'string' && process.argv[1].length > 0) {
+        try {
+          const hostReq = createRequire(resolve(process.argv[1]))
+          candidates.push(pathToFileURL(hostReq.resolve(modName)).href)
+        } catch {
+          // Ignore if argv[1] cannot resolve official peer packages.
+        }
+      }
+      for (const specifier of candidates) {
+        try {
+          const mod = (await import(specifier)) as {
+            buildForkSeed?: (events: readonly unknown[], boundary: number) => readonly unknown[]
+          }
+          if (typeof mod?.buildForkSeed === 'function') {
+            return {
+              seed: mod.buildForkSeed(rawEvents, clampedCount - 1),
+              inheritedEventCount: clampedCount,
+            }
+          }
+        } catch {
+          // Optional official package when running in isolated adapter tests or external bundle.
+        }
+      }
+    }
+    return { seed: prefix, inheritedEventCount: prefix.length }
+  }
+
+  async forkSession(params: SessionForkParams): Promise<SessionRef> {
+    if (!isSafeSessionId(params.sessionId)) {
+      throw new RemoteProtocolError('INVALID_REQUEST', `invalid sessionId: ${params.sessionId}`)
+    }
+    const collection = this.getSessionEventCollection(params.sessionId)
+    if (!collection) {
+      const ref = await this.findSessionRef(params.sessionId)
+      if (!ref) {
+        throw new RemoteProtocolError('INVALID_REQUEST', `session not found: ${params.sessionId}`)
+      }
+    }
+    const rawEvents = collection?.rawEvents ?? []
+    const normalizedEvents = collection?.normalizedEvents ?? []
+    let inheritedCount = rawEvents.length
+    if (params.atSeq !== undefined) {
+      let count = 0
+      for (const ev of normalizedEvents) {
+        if (ev.seq <= params.atSeq) count += 1
+        else break
+      }
+      inheritedCount = Math.min(rawEvents.length, count)
+    }
+    const { seed, inheritedEventCount } = await this.buildSeededForkEvents(rawEvents, inheritedCount)
+    const newSessionId = `session-${randomUUID()}`
+    const cwd = collection?.cwd ?? this.cwd
+    const parentTitle = collection?.title ?? (await this.findSessionRef(params.sessionId))?.title
+    const resolvedTitle =
+      params.title?.trim() && params.title.trim().length > 0
+        ? params.title.trim()
+        : parentTitle
+          ? truncateByCodePoints(`Fork of ${parentTitle}`, 120)
+          : undefined
+
+    const handle = await this.ctx.agents.create({
+      sessionId: newSessionId,
+      meta: {
+        cwd,
+        parentSession: params.sessionId,
+        isSeeded: true,
+      },
+      seed,
+      inheritedEventCount,
+      agentOptions: this.defaultAgentOptions(),
+      setup: (_agentCtx, agent) => {
+        if (agent) {
+          this.attachAgentListeners(newSessionId, agent)
+        }
+      },
+    })
+    await handle.agent.whenIdle?.()
+    this.ownedHandles.set(newSessionId, handle)
+    this.attachAgentListeners(newSessionId, handle.agent, handle)
+
+    if (resolvedTitle) {
+      const titleSvc = readOptionalService<{
+        rename?(session: unknown, title: string): { title?: string } | string
+      }>(this.ctx, 'sessionTitle')
+      let finalTitle = resolvedTitle
+      if (titleSvc?.rename && handle.agent.session) {
+        try {
+          const renamed = titleSvc.rename(handle.agent.session, resolvedTitle)
+          if (typeof renamed === 'string' && renamed.trim().length > 0) finalTitle = renamed.trim()
+          else if (renamed && typeof renamed === 'object' && typeof renamed.title === 'string' && renamed.title.trim().length > 0) {
+            finalTitle = renamed.title.trim()
+          }
+        } catch {
+          // Keep resolvedTitle if rename hook rejects stub session.
+        }
+      }
+      this.setBoundedSessionEntry(this.sessionTitleOverrides, newSessionId, finalTitle)
+      this.emitNormalizedEvent(newSessionId, 'session/title', {
+        sessionId: newSessionId,
+        title: finalTitle,
+        source: 'user',
+      })
+      return { id: newSessionId, title: finalTitle }
+    }
+    return { id: newSessionId }
+  }
+
+  async searchSessions(params: SessionSearchParams): Promise<SessionSearchResult> {
+    const query = params.query.trim()
+    if (query.length === 0) {
+      return { query: params.query, hits: [], hasMore: false }
+    }
+    const sources: Array<{
+      readonly sessionId: string
+      readonly title?: string | undefined
+      readonly updatedAt?: string | undefined
+      readonly events: readonly NormalizedTranscriptEvent[]
+    }> = []
+
+    if (params.sessionId !== undefined) {
+      const col = this.getSessionEventCollection(params.sessionId)
+      if (!col) {
+        throw new RemoteProtocolError('INVALID_REQUEST', `session not found: ${params.sessionId}`)
+      }
+      sources.push({
+        sessionId: params.sessionId,
+        title: col.title,
+        events: col.normalizedEvents,
+      })
+    } else {
+      const all = await this.listSessions()
+      for (const ref of all.slice(0, 100)) {
+        const col = this.getSessionEventCollection(ref.id)
+        if (!col || col.normalizedEvents.length === 0) continue
+        sources.push({
+          sessionId: ref.id,
+          title: ref.title ?? col.title,
+          ...(ref.updatedAtMs !== undefined ? { updatedAt: new Date(ref.updatedAtMs).toISOString() } : {}),
+          events: col.normalizedEvents,
+        })
+      }
+    }
+
+    const matched = searchSessionCollections({
+      query,
+      limit: params.limit,
+      sessionId: params.sessionId,
+      sources,
+    })
+    return {
+      query,
+      hits: matched.hits,
+      hasMore: matched.hasMore,
+    }
+  }
+
+  async listCommands(sessionId?: string): Promise<readonly RemoteCommandDescriptor[]> {
+    const commandsSvc = readOptionalService<{
+      list?(agent: OfficialAgentLike): readonly {
+        readonly name?: unknown
+        readonly description?: unknown
+        readonly input?: {
+          readonly hint?: unknown
+          readonly attachments?: unknown
+        }
+        readonly inputHint?: unknown
+        readonly acceptsAttachments?: unknown
+      }[]
+    }>(this.ctx, 'commands')
+    if (!commandsSvc?.list) return []
+
+    const agent =
+      sessionId !== undefined
+        ? await this.ensureLiveAgent(sessionId)
+        : (this.bridgedSessions.values().next().value?.agent ?? this.ctx.agents.list()[0])
+    if (!agent) return []
+
+    const rawList = commandsSvc.list(agent)
+    const out: RemoteCommandDescriptor[] = []
+    for (const item of rawList) {
+      if (typeof item?.name !== 'string' || item.name.length === 0) continue
+      const inputHint =
+        typeof item.input?.hint === 'string' && item.input.hint.length > 0
+          ? item.input.hint
+          : typeof item.inputHint === 'string' && item.inputHint.length > 0
+            ? item.inputHint
+            : undefined
+      const acceptsAttachments =
+        typeof item.input?.attachments === 'boolean'
+          ? item.input.attachments
+          : typeof item.acceptsAttachments === 'boolean'
+            ? item.acceptsAttachments
+            : undefined
+      out.push({
+        name: item.name,
+        description: typeof item.description === 'string' ? item.description : '',
+        ...(inputHint !== undefined ? { inputHint } : {}),
+        ...(acceptsAttachments !== undefined ? { acceptsAttachments } : {}),
+      })
+    }
+    return out
+  }
+
+  async executeCommand(
+    sessionId: string,
+    command: string,
+  ): Promise<{
+    readonly ok: boolean
+    readonly commandId?: string | undefined
+    readonly output?: string | undefined
+    readonly error?: string | undefined
+  }> {
+    const trimmed = command.trim()
+    if (!trimmed.startsWith('/') || trimmed.length < 2) {
+      throw new RemoteProtocolError('INVALID_REQUEST', 'command must start with "/"')
+    }
+    const agent = await this.ensureLiveAgent(sessionId)
+    const commandsSvc = readOptionalService<{
+      find?(agent: OfficialAgentLike, name: string): unknown
+      execute?(
+        agent: OfficialAgentLike,
+        line: string,
+        submittedAttachments?: readonly unknown[],
+        signal?: AbortSignal,
+      ): Promise<unknown>
+    }>(this.ctx, 'commands')
+    if (!commandsSvc?.execute) {
+      throw new RemoteProtocolError('INVALID_REQUEST', 'official commands service unavailable')
+    }
+
+    const commandId = trimmed.slice(1).split(/\s+/u, 1)[0] ?? trimmed.slice(1)
+    if (commandsSvc.find && !commandsSvc.find(agent, commandId)) {
+      return {
+        ok: false,
+        commandId,
+        error: `unknown command: /${commandId}`,
+      }
+    }
+
+    const rawResult = await commandsSvc.execute(
+      agent,
+      trimmed,
+      [],
+      new AbortController().signal,
+    )
+    if (rawResult === undefined) {
+      return {
+        ok: false,
+        commandId,
+        error: `unknown command: /${commandId}`,
+      }
+    }
+    if (typeof rawResult === 'boolean') {
+      return { ok: rawResult, commandId }
+    }
+    const rec = asRecord(rawResult)
+    if (rec) {
+      const nestedResult = asRecord(rec.result)
+      const resolvedId = typeof rec.commandId === 'string' ? rec.commandId : commandId
+      if (nestedResult && typeof nestedResult.kind === 'string') {
+        const text = typeof nestedResult.text === 'string' ? nestedResult.text : undefined
+        if (nestedResult.kind === 'error') {
+          return {
+            ok: false,
+            commandId: resolvedId,
+            error: text ?? `command /${commandId} failed`,
+          }
+        }
+        return {
+          ok: true,
+          commandId: resolvedId,
+          ...(text !== undefined ? { output: text } : {}),
+        }
+      }
+      return {
+        ok: typeof rec.ok === 'boolean' ? rec.ok : typeof rec.handled === 'boolean' ? rec.handled : true,
+        commandId: resolvedId,
+        ...(typeof rec.output === 'string' ? { output: rec.output } : {}),
+        ...(typeof rec.error === 'string' ? { error: rec.error } : {}),
+      }
+    }
+    return { ok: true, commandId }
+  }
+
+  async listSkills(sessionId?: string): Promise<readonly RemoteSkillSummary[]> {
+    let cwd = this.cwd
+    let scope: unknown
+    if (sessionId !== undefined) {
+      await this.assertSession(sessionId)
+      const collection = this.getSessionEventCollection(sessionId)
+      if (collection?.cwd) cwd = collection.cwd
+      scope = collection?.agent?.ctx
+    }
+    const skillsSvc = readOptionalService<{
+      list?(options?: {
+        readonly scope?: unknown
+        readonly cwd?: string
+        readonly signal?: AbortSignal
+      }): unknown
+    }>(this.ctx, 'skills')
+    if (!skillsSvc?.list) return []
+
+    const rawValue = await Promise.resolve(
+      skillsSvc.list({
+        ...(scope !== undefined ? { scope } : {}),
+        ...(cwd ? { cwd } : {}),
+        signal: new AbortController().signal,
+      }),
+    )
+    const raw = Array.isArray(rawValue)
+      ? rawValue
+      : Array.isArray(asRecord(rawValue)?.skills)
+        ? (asRecord(rawValue)!.skills as unknown[])
+        : []
+    const out: RemoteSkillSummary[] = []
+    for (const item of raw) {
+      const rec = asRecord(item)
+      if (!rec || typeof rec.name !== 'string' || rec.name.length === 0) continue
+      out.push({
+        name: rec.name,
+        description: typeof rec.description === 'string' ? rec.description : '',
+        ...(typeof rec.whenToUse === 'string' && rec.whenToUse.length > 0 ? { whenToUse: rec.whenToUse } : {}),
+        ...(typeof rec.source === 'string' && rec.source.length > 0 ? { source: rec.source } : {}),
+      })
+    }
+    return out
+  }
+
+  async openWorkspaceUpload(
+    deviceId: string,
+    params: WorkspaceUploadOpenParams,
+  ): Promise<WorkspaceUploadOpenResult> {
+    await this.assertSession(params.sessionId)
+    const collection = this.getSessionEventCollection(params.sessionId)
+    const workspaceRoot = collection?.cwd ?? this.cwd
+    return this.workspaceUploads.open({
+      deviceId,
+      sessionId: params.sessionId,
+      workspaceRoot,
+      filename: params.filename,
+      sizeBytes: params.sizeBytes,
+      ...(params.chunkBytes !== undefined ? { chunkBytes: params.chunkBytes } : {}),
+      ...(params.sha256 !== undefined ? { sha256: params.sha256 } : {}),
+      ...(params.conflictPolicy !== undefined ? { conflictPolicy: params.conflictPolicy } : {}),
+    })
+  }
+
+  async appendWorkspaceUploadChunk(
+    deviceId: string,
+    params: WorkspaceUploadChunkParams,
+  ): Promise<WorkspaceUploadChunkResult> {
+    return this.workspaceUploads.appendChunk({
+      deviceId,
+      uploadId: params.uploadId,
+      offset: params.offset,
+      dataBase64: params.dataBase64,
+    })
+  }
+
+  async commitWorkspaceUpload(
+    deviceId: string,
+    params: WorkspaceUploadCommitParams,
+  ): Promise<WorkspaceUploadCommitResult> {
+    return this.workspaceUploads.commit({
+      deviceId,
+      uploadId: params.uploadId,
+      ...(params.sha256 !== undefined ? { sha256: params.sha256 } : {}),
+    })
+  }
+
+  async abortWorkspaceUpload(
+    deviceId: string,
+    params: WorkspaceUploadAbortParams,
+  ): Promise<WorkspaceUploadAbortResult> {
+    return this.workspaceUploads.abort({
+      deviceId,
+      uploadId: params.uploadId,
+    })
   }
 
   private async buildPromptContentParts(
@@ -1263,6 +2156,26 @@ export class OfficialHostCordisBridge {
     if (!pending) {
       throw new RemoteProtocolError('INVALID_REQUEST', `no pending question for '${questionId}'`)
     }
+    const obj = asRecord(answer)
+    const isCancel =
+      obj !== undefined &&
+      !Array.isArray(obj.answers) &&
+      (obj.cancelled === true || obj.rejected === true || obj.declined === true)
+    if (isCancel) {
+      this.pendingQuestions.delete(questionId)
+      pending.cleanup()
+      this.seenEvents.questions += 1
+      pending.reject(
+        Object.assign(new Error('The user declined to answer this question. (ASK_CANCELLED)'), {
+          code: 'ASK_CANCELLED',
+        }),
+      )
+      this.emitNormalizedEvent(pending.sessionId, 'question.resolved', {
+        questionId,
+        cancelled: true,
+      })
+      return { questionId, accepted: true }
+    }
     const normalized = normalizeQuestionAnswer(pending.questions, answer)
     this.pendingQuestions.delete(questionId)
     pending.cleanup()
@@ -1326,6 +2239,7 @@ export class OfficialHostCordisBridge {
   }
 
   async revokeDevice(deviceId: string): Promise<boolean> {
+    this.workspaceUploads.revokeDevice(deviceId)
     return this.stores.trustStore.revoke(deviceId)
   }
 
@@ -1402,6 +2316,12 @@ export class OfficialHostCordisBridge {
       for (const unsub of state.unsubscribes) unsub()
     }
     this.bridgedSessions.clear()
+    this.bridgedStatusBySession.clear()
+    this.sessionTitleOverrides.clear()
+    this.transcriptCache.clear()
+    this.transcriptCacheEvents = 0
+    this.liveLogCache.clear()
+    this.workspaceUploads.disposeAll()
     for (const unsub of this.rootUnsubscribes) {
       unsub()
     }
@@ -1433,7 +2353,8 @@ function readOptionalService<T>(
   key: string,
 ): T | undefined {
   if (typeof ctx.get === 'function') {
-    return ctx.get(key) as T | undefined
+    const resolved = ctx.get(key) as T | undefined
+    if (resolved !== undefined) return resolved
   }
   return (ctx as unknown as Record<string, unknown>)[key] as T | undefined
 }

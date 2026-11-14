@@ -12,6 +12,7 @@ on:
       - 'package.json'
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
+      - 'scripts/linux-appimage-gui-smoke.mjs'
   workflow_dispatch:
 
 permissions:
@@ -105,3 +106,20 @@ jobs:
           test -n "$remote_plugin"
           node --input-type=module -e "import { pathToFileURL } from 'node:url'; import { resolve } from 'node:path'; const m = await import(pathToFileURL(resolve(process.argv[1])).href); if (m.name !== 'dsh-community-remote' || typeof m.apply !== 'function') process.exit(1);" "$remote_plugin"
           echo "AppImage extract OK: $app_asar ($host_tar, $remote_plugin)"
+
+      - name: Boot extracted AppImage GUI & exercise Remote Host / QR flow under Xvfb
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v xvfb-run >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y xvfb
+          fi
+          work="$RUNNER_TEMP/appimage-extract"
+          app_bin=$(find "$work/squashfs-root" -maxdepth 2 -type f -name 'dsh-community' -perm -111 -print -quit)
+          test -n "$app_bin"
+          app_run="$work/squashfs-root/AppRun"
+          test -x "$app_run"
+          echo "Booting extracted AppImage ($app_run -> $app_bin) under Xvfb..."
+          xvfb-run -a -s "-screen 0 1280x800x24" \
+            node scripts/linux-appimage-gui-smoke.mjs --executable "$app_run" --timeout-ms 90000

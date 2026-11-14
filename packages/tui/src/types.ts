@@ -42,6 +42,9 @@ export interface AgentLike {
   readonly id: string
   readonly options: { readonly model?: string }
   readonly status: string
+  readonly session?: {
+    readonly log?: readonly unknown[]
+  }
   whenIdle(): Promise<void>
   readonly ctx: {
     on(event: 'session/event', listener: (event: Record<string, unknown>) => void): void
@@ -82,8 +85,24 @@ export interface ModelSelectionLike {
   readonly model: string
 }
 
+export interface CommandRuntimeLike {
+  list?(agent: AgentLike): readonly {
+    readonly name: string
+    readonly description: string
+    readonly inputHint?: string
+  }[]
+  find?(agent: AgentLike, name: string): unknown
+  execute?(
+    agent: AgentLike,
+    line: string,
+    submittedAttachments?: readonly unknown[],
+    signal?: AbortSignal,
+  ): Promise<unknown>
+}
+
 export interface CordisContext {
   get(name: 'loader'): { await(): Promise<void> } | undefined
+  get(name: 'commands'): CommandRuntimeLike | undefined
   get(name: string): unknown
   readonly attachments: AttachmentStoreLike
   readonly agentDefaultModel: {
@@ -102,11 +121,15 @@ export interface CordisContext {
       readonly setup?: (agentCtx: unknown) => void
     }): Promise<AgentHandleLike>
   }
-  readonly userQuestions: {
-    registerProvider(provider: { ask(request: UserQuestionRequest): Promise<UserQuestionAnswer> }): () => void
+  readonly userQuestions?: {
+    registerProvider?(provider: { ask(request: UserQuestionRequest): Promise<UserQuestionAnswer> }): () => void
   }
   on(
     event: 'approval/request',
     listener: (request: unknown, next: () => Promise<string>) => Promise<string>,
-  ): void
+  ): () => void
+  on(
+    event: 'user-questions/request',
+    listener: (request: unknown, next: () => Promise<UserQuestionAnswer>) => Promise<UserQuestionAnswer>,
+  ): () => void
 }

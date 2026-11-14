@@ -1,5 +1,8 @@
-import type { OfficialSessionRef } from '@dsh-community/dsh-bridge'
-import { formatOfficialSessionMtime } from '@dsh-community/dsh-bridge'
+import {
+  formatOfficialSessionMtime,
+  peekOfficialSessionSummary,
+  type OfficialSessionRef,
+} from '@dsh-community/dsh-bridge'
 
 export function newestOfficialSession(
   sessions: readonly OfficialSessionRef[],
@@ -69,9 +72,14 @@ export function formatHumanSessions(
   ]
   sessions.forEach((session, index) => {
     const mark = index === 0 ? '  ← 最近' : ''
+    const summary = index < 30 ? peekOfficialSessionSummary(session.transcript) : undefined
+    const label = summary?.title ? `  [${summary.title}]` : ''
     lines.push(
-      `  ${String(index + 1).padStart(2, ' ')}  ${session.id}  ${session.projectKey}  ${formatOfficialSessionMtime(session.mtimeMs)}${mark}`,
+      `  ${String(index + 1).padStart(2, ' ')}  ${session.id}${label}  ${session.projectKey}  ${formatOfficialSessionMtime(session.mtimeMs)}${mark}`,
     )
+    if (summary?.preview) {
+      lines.push(`      摘要: ${summary.preview}`)
+    }
   })
   lines.push('')
   lines.push('恢复最近一条：')

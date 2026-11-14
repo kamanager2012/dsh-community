@@ -12,6 +12,9 @@ import {
   composeRemoteHostPatchYaml,
   detectLanIpv4Candidates,
   formatPairingQrBlock,
+  parseRemoteReplLine,
+  REMOTE_REPL_COMMAND_SUMMARY,
+  resolveRemoteCordisPluginUrl,
   runRemoteCommand,
 } from '../src/remote.js'
 
@@ -473,5 +476,104 @@ async function spawnCliUntilReadyJson<T>(
     } finally {
       await new Promise<void>((r) => server.close(() => r()))
     }
+  })
+
+  it('prints help and exits 0 for remote subcommand --help/-h without throwing 未知参数', async () => {
+    for (const argv of [
+      ['start', '--help'],
+      ['start', '-h'],
+      ['relay', '--help'],
+      ['signaling', '-h'],
+      ['devices', '--help'],
+      ['status', '--help'],
+      ['revoke', '--help'],
+    ]) {
+      const io = captureOutputs()
+      const code = await runRemoteCommand(argv, {})
+      expect(code, argv.join(' ')).toBe(0)
+      expect(io.stdout(), argv.join(' ')).toBe(COMMUNITY_REMOTE_HELP)
+      expect(io.stderr(), argv.join(' ')).toBe('')
+    }
+
+    const badIo = captureOutputs()
+    const badCode = await runRemoteCommand(['start', '--unknown-option'], {})
+    expect(badCode).toBe(2)
+    expect(badIo.stderr()).toContain('未知参数: --unknown-option')
+  })
+
+  it('resolves @dsh-community/remote-adapter/cordis-plugin via ESM exports without ERR_PACKAGE_PATH_NOT_EXPORTED', () => {
+    const pluginUrl = resolveRemoteCordisPluginUrl()
+    expect(pluginUrl.startsWith('file://')).toBe(true)
+    expect(existsSync(new URL(pluginUrl))).toBe(true)
+  })
+
+  it('rejects unknown flags on remote status, devices, and revoke instead of exiting 0 silently', async () => {
+    const root = makeTempDir('dsh-remote-cli-flags-')
+    const env: NodeJS.ProcessEnv = {
+      DSH_HOME: join(root, 'dsh'),
+      DSH_REMOTE_CONFIG_DIR: join(root, 'cfg'),
+    }
+    for (const argv of [
+      ['status', '--bogus'],
+      ['devices', '--bogus'],
+      ['revoke', 'dev-1', '--bogus'],
+    ]) {
+      const io = captureOutputs()
+      const code = await runRemoteCommand(argv, env, join(root, 'dsh'))
+      expect(code, argv.join(' ')).toBe(2)
+      expect(io.stderr(), argv.join(' ')).toContain('未知参数: --bogus')
+      vi.restoreAllMocks()
+    }
+  })
+
+  it('fails closed when live control server returns a non-404 error on revoke', async () => {
+    const root = makeTempDir('dsh-remote-cli-revoke-err-')
+    const dshHome = join(root, 'dsh')
+    const configDir = join(root, 'cfg')
+    const stores = openPersistentRemoteStores({ configDir, dshHome })
+    const hostPub = await stores.hostIdentityStore.getPublicIdentity()
+    const record = stores.trustStore.trustSync({
+      staticPublicKey: new Uint8Array(32).fill(15),
+      displayName: 'AuthErr Phone',
+      grantedCapabilities: ['observe'],
+      trustDomainId: hostPub.trustDomainId,
+    })
+
+    const server = createServer((_req, res) => {
+      res.writeHead(401, { 'content-type': 'text/plain' })
+      res.end('invalid control token')
+    })
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()))
+    try {
+      const addr = server.address() as { port: number }
+      const controlPath = join(stores.configDir, '.control.json')
+      writeFileSync(
+        controlPath,
+        JSON.stringify({ pid: process.pid, controlUrl: `http://127.0.0.1:${addr.port}`, controlToken: 'bad' }),
+        { mode: 0o600 },
+      )
+      const io = captureOutputs()
+      const code = await runRemoteCommand(['revoke', record.deviceId], { DSH_HOME: dshHome, DSH_REMOTE_CONFIG_DIR: configDir }, dshHome)
+      expect(code).toBe(1)
+      expect(io.stderr()).toContain('401')
+      // Durable store must remain unrevoked so host state stays honest
+      const stillActive = (await stores.trustStore.list()).find((d) => d.deviceId === record.deviceId)
+      expect(stillActive?.revokedAt).toBeUndefined()
+    } finally {
+      await new Promise<void>((r) => server.close(() => r()))
+    }
+  })
+
+  it('parses interactive remote start REPL commands with explicit usage and unknown feedback', () => {
+    expect(REMOTE_REPL_COMMAND_SUMMARY).toContain('help')
+    expect(REMOTE_REPL_COMMAND_SUMMARY).toContain('status')
+    expect(parseRemoteReplLine('')).toEqual({ kind: 'empty' })
+    expect(parseRemoteReplLine('confirm')).toEqual({ kind: 'usage', usage: '用法: confirm <candidateId>' })
+    expect(parseRemoteReplLine('confirm cand-42')).toEqual({ kind: 'confirm', candidateId: 'cand-42' })
+    expect(parseRemoteReplLine('revoke')).toEqual({ kind: 'usage', usage: '用法: revoke <deviceId>' })
+    expect(parseRemoteReplLine('revoke dev-9')).toEqual({ kind: 'revoke', deviceId: 'dev-9' })
+    expect(parseRemoteReplLine('foobar')).toEqual({ kind: 'unknown', command: 'foobar' })
+    expect(parseRemoteReplLine('help')).toEqual({ kind: 'help' })
+    expect(parseRemoteReplLine('exit')).toEqual({ kind: 'quit' })
   })
 })

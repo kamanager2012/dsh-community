@@ -174,8 +174,15 @@ const builderArgs = ['--linux', targetFlag === 'appimage' ? 'AppImage' : 'dir', 
 
 await rm(releaseDir, { recursive: true, force: true })
 phase(`electron-builder ${builderArgs.join(' ')}`)
-runCommand(process.execPath, [builderCli, ...builderArgs], { cwd: packRoot })
-phase('electron-builder finished')
+try {
+  runCommand(process.execPath, [builderCli, ...builderArgs], { cwd: packRoot })
+  phase('electron-builder finished')
+} finally {
+  if (process.env.DSH_KEEP_PACK_ROOT !== '1') {
+    await rm(packRoot, { recursive: true, force: true })
+    phase('pruned .pack-root')
+  }
+}
 
 if (targetFlag === 'appimage') {
   const images = (await readdir(releaseDir)).filter((name) => name.endsWith('.AppImage'))
