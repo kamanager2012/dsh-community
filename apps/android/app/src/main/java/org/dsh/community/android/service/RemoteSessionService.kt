@@ -161,6 +161,46 @@ class RemoteSessionService : Service() {
         const val ACTION_DISCONNECT = "org.dsh.community.android.ACTION_DISCONNECT"
         const val EXTRA_CALL_ID = "extra_call_id"
         const val EXTRA_IDEMPOTENCY_KEY = "extra_idempotency_key"
+
+        internal fun syncStatusInSessionList(
+            sessions: List<SessionRef>,
+            sessionId: String,
+            status: String,
+        ): List<SessionRef> {
+            if (sessions.none { it.id == sessionId && it.status != status }) return sessions
+            return sessions.map { ref ->
+                if (ref.id == sessionId) ref.copy(status = status) else ref
+            }
+        }
+
+        internal fun upsertSessionTitleInList(
+            sessions: List<SessionRef>,
+            sessionId: String,
+            title: String,
+            liveStatus: String?,
+            fallback: SessionRef? = null,
+        ): Pair<List<SessionRef>, SessionRef> {
+            val idx = sessions.indexOfFirst { it.id == sessionId }
+            val updatedRef = if (idx >= 0) {
+                val existing = sessions[idx]
+                existing.copy(
+                    title = title,
+                    status = liveStatus ?: existing.status,
+                )
+            } else {
+                val base = fallback ?: SessionRef(id = sessionId, title = title)
+                base.copy(
+                    title = title,
+                    status = liveStatus ?: base.status,
+                )
+            }
+            val updatedList = if (idx >= 0) {
+                sessions.toMutableList().apply { set(idx, updatedRef) }
+            } else {
+                listOf(updatedRef) + sessions
+            }
+            return updatedList to updatedRef
+        }
     }
 
     private val binder = LocalBinder()
@@ -182,6 +222,7 @@ class RemoteSessionService : Service() {
     private val ackScheduled = ConcurrentHashMap<String, AtomicBoolean>()
     private val highestEpochByHost = ConcurrentHashMap<String, Int>()
     private val reconnectLock = Any()
+    private val sessionsLock = Any()
     private val replayLock = Any()
     private val recentEvents = ArrayDeque<Pair<String, OfficialSessionEvent>>()
 
@@ -541,7 +582,7 @@ class RemoteSessionService : Service() {
                     // Older single-engine DSH hosts may not implement engine.list yet.
                 }
                 val list = session.listSessions()
-                lastSessions = list
+                storeHostSessionsSnapshot(list)
                 uiObservers.forEach { it.onSessionsUpdated(list) }
             } catch (t: Throwable) {
                 updateStatus(session.phase, session.activeCarrier, session.currentEpoch, "session.list error: ${sanitizeErr(t)}")
@@ -574,9 +615,11 @@ class RemoteSessionService : Service() {
                 val refreshed = try {
                     session.listSessions()
                 } catch (_: Throwable) {
-                    listOf(created) + lastSessions.filterNot { it.id == created.id }
+                    synchronized(sessionsLock) {
+                        listOf(created) + lastSessions.filterNot { it.id == created.id }
+                    }
                 }
-                lastSessions = refreshed
+                storeHostSessionsSnapshot(refreshed)
                 uiObservers.forEach { it.onSessionsUpdated(refreshed) }
                 uiObservers.forEach { it.onSessionCreated(created) }
                 uiObservers.forEach { it.onActionSucceeded("session.create", created.id) }
@@ -646,17 +689,13 @@ class RemoteSessionService : Service() {
             val opKey = session.newOperationKey("session-rename")
             try {
                 val renamed = session.renameSession(sessionId, cleanTitle, opKey)
-                val updatedList = lastSessions.let { existing ->
-                    if (existing.any { it.id == renamed.id }) {
-                        existing.map { if (it.id == renamed.id) it.copy(title = renamed.title ?: cleanTitle) else it }
-                    } else {
-                        listOf(renamed) + existing
-                    }
-                }
-                lastSessions = updatedList
-                uiObservers.forEach { it.onSessionsUpdated(updatedList) }
-                uiObservers.forEach { it.onSessionRenamed(renamed) }
-                uiObservers.forEach { it.onActionSucceeded("session.rename", renamed.id) }
+                val updatedRef = updateCachedSessionTitle(
+                    sessionId = renamed.id,
+                    title = renamed.title ?: cleanTitle,
+                    fallback = renamed,
+                )
+                uiObservers.forEach { it.onSessionRenamed(updatedRef) }
+                uiObservers.forEach { it.onActionSucceeded("session.rename", updatedRef.id) }
             } catch (t: Throwable) {
                 val reason = sanitizeErr(t)
                 updateStatus(session.phase, session.activeCarrier, session.currentEpoch, "session.rename failed: $reason")
@@ -916,9 +955,11 @@ class RemoteSessionService : Service() {
                 val refreshed = try {
                     session.listSessions()
                 } catch (_: Throwable) {
-                    listOf(forked) + lastSessions.filterNot { it.id == forked.id }
+                    synchronized(sessionsLock) {
+                        listOf(forked) + lastSessions.filterNot { it.id == forked.id }
+                    }
                 }
-                lastSessions = refreshed
+                storeHostSessionsSnapshot(refreshed)
                 uiObservers.forEach { it.onSessionsUpdated(refreshed) }
                 uiObservers.forEach { it.onSessionForked(forked) }
                 uiObservers.forEach { it.onActionSucceeded("session.fork", forked.id) }
@@ -1027,7 +1068,7 @@ class RemoteSessionService : Service() {
                 startHeartbeat(session)
                 try {
                     val sessions = session.listSessions()
-                    lastSessions = sessions
+                    storeHostSessionsSnapshot(sessions)
                     uiObservers.forEach { it.onSessionsUpdated(sessions) }
                 } catch (_: Throwable) {
                     // Best-effort refresh; stream replay already resumed.
@@ -1144,6 +1185,7 @@ class RemoteSessionService : Service() {
                 override fun onStreamReset(sessionId: String, reason: String) {
                     clearReplayEvents(sessionId)
                     agentStatusBySession.remove(sessionId)
+                    syncCachedSessionStatus(sessionId, "idle")
                     uiObservers.forEach { it.onAgentStatusChanged(sessionId, "idle") }
                     for (item in pendingInteractions.listApprovals()) {
                         if (item.sessionId == sessionId) {
@@ -1217,7 +1259,7 @@ class RemoteSessionService : Service() {
                 }
                 notifyTrustedHosts()
                 val sessions = session.listSessions()
-                lastSessions = sessions
+                storeHostSessionsSnapshot(sessions)
                 startHeartbeat(session)
                 updateStatus(
                     phase,
@@ -1318,32 +1360,59 @@ class RemoteSessionService : Service() {
         }
     }
 
+    private fun storeHostSessionsSnapshot(sessions: List<SessionRef>) {
+        synchronized(sessionsLock) {
+            lastSessions = sessions
+            for (ref in sessions) {
+                val st = ref.status?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }
+                if (st != null) {
+                    agentStatusBySession[ref.id] = st
+                }
+            }
+        }
+    }
+
+    private fun syncCachedSessionStatus(sessionId: String, status: String) {
+        synchronized(sessionsLock) {
+            lastSessions = syncStatusInSessionList(lastSessions, sessionId, status)
+        }
+    }
+
+    private fun updateCachedSessionTitle(
+        sessionId: String,
+        title: String,
+        fallback: SessionRef? = null,
+    ): SessionRef = synchronized(sessionsLock) {
+        val (updatedList, updatedRef) = upsertSessionTitleInList(
+            sessions = lastSessions,
+            sessionId = sessionId,
+            title = title,
+            liveStatus = agentStatusBySession[sessionId],
+            fallback = fallback,
+        )
+        lastSessions = updatedList
+        updatedRef
+    }
+
     private fun dispatchEventToObservers(sessionId: String, event: OfficialSessionEvent) {
         uiObservers.forEach { it.onEventReceived(sessionId, event) }
         val dataObj = event.data as? JsonObject ?: return
         if (event.type == "agent/status") {
             val status = dataObj.str("status")?.trim()?.lowercase()?.ifBlank { "idle" } ?: "idle"
             agentStatusBySession[sessionId] = status
+            syncCachedSessionStatus(sessionId, status)
             uiObservers.forEach { it.onAgentStatusChanged(sessionId, status) }
             return
         }
         if (event.type == "turn/end") {
             agentStatusBySession[sessionId] = "idle"
+            syncCachedSessionStatus(sessionId, "idle")
             uiObservers.forEach { it.onAgentStatusChanged(sessionId, "idle") }
             return
         }
         if (event.type == "session/title") {
             val title = dataObj.str("title")?.trim()?.takeIf { it.isNotEmpty() } ?: return
-            val existingList = lastSessions
-            val idx = existingList.indexOfFirst { it.id == sessionId }
-            val updatedRef = if (idx >= 0) existingList[idx].copy(title = title) else SessionRef(id = sessionId, title = title)
-            val updatedList = if (idx >= 0) {
-                existingList.toMutableList().apply { set(idx, updatedRef) }
-            } else {
-                listOf(updatedRef) + existingList
-            }
-            lastSessions = updatedList
-            uiObservers.forEach { it.onSessionsUpdated(updatedList) }
+            val updatedRef = updateCachedSessionTitle(sessionId, title)
             uiObservers.forEach { it.onSessionRenamed(updatedRef) }
             return
         }

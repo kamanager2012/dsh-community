@@ -11,7 +11,9 @@ import org.dsh.community.android.protocol.OfficialSessionEvent
 import org.dsh.community.android.protocol.PromptImageAttachment
 import org.dsh.community.android.protocol.RemoteFrameCodec
 import org.dsh.community.android.protocol.RemoteProtocol
+import org.dsh.community.android.protocol.SessionRef
 import org.dsh.community.android.qr.QrImageDecoder
+import org.dsh.community.android.service.RemoteSessionService
 import org.dsh.community.android.ui.AssistantTurnItem
 import org.dsh.community.android.ui.ChatMarkdownFormatter
 import org.dsh.community.android.ui.ChatTimelineStore
@@ -871,5 +873,35 @@ class ChatAndQrUnitTest {
         assertEquals(2, extracted.size)
         assertEquals("kotlin" to "val first = 1", extracted[0])
         assertEquals("bash" to "git status", extracted[1])
+    }
+
+    @Test
+    fun syncsLiveSessionStatusAcrossTitleUpdatesAndResets() {
+        val initial = listOf(
+            SessionRef(id = "s-1", title = "Initial", status = "idle"),
+            SessionRef(id = "s-2", title = "Other", status = "running"),
+        )
+        val runningList = RemoteSessionService.syncStatusInSessionList(initial, "s-1", "running")
+        assertEquals("running", runningList.first { it.id == "s-1" }.status)
+
+        val (afterTitleWhileRunning, renamedRunning) = RemoteSessionService.upsertSessionTitleInList(
+            sessions = runningList,
+            sessionId = "s-1",
+            title = "Auth Fix",
+            liveStatus = "running",
+        )
+        assertEquals("Auth Fix", renamedRunning.title)
+        assertEquals("running", renamedRunning.status)
+        assertEquals("running", afterTitleWhileRunning.first { it.id == "s-1" }.status)
+
+        val completedList = RemoteSessionService.syncStatusInSessionList(afterTitleWhileRunning, "s-1", "idle")
+        val (_, renamedAfterCompletion) = RemoteSessionService.upsertSessionTitleInList(
+            sessions = completedList,
+            sessionId = "s-1",
+            title = "Auth Fix Done",
+            liveStatus = "idle",
+        )
+        assertEquals("idle", renamedAfterCompletion.status)
+        assertEquals("running", completedList.first { it.id == "s-2" }.status)
     }
 }

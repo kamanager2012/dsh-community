@@ -844,8 +844,17 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
     override fun onSessionRenamed(session: SessionRef) {
         runOnUiThread {
             val cleanTitle = DisplayTextSanitizer.sanitizeSingleLine(session.title).ifBlank { session.id }
+            val idx = lastSessions.indexOfFirst { it.id == session.id }
+            lastSessions = if (idx >= 0) {
+                lastSessions.toMutableList().apply {
+                    set(idx, get(idx).copy(title = session.title ?: cleanTitle))
+                }
+            } else {
+                listOf(session) + lastSessions
+            }
             appendLog("Session renamed: $cleanTitle")
             renderSessionChips(lastSessions)
+            onSessionsRefreshedInDialog?.invoke()
         }
     }
 
