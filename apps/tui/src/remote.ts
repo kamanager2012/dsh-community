@@ -1,12 +1,10 @@
 import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { createRequire } from 'node:module'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { StringDecoder } from 'node:string_decoder'
-import { pathToFileURL } from 'node:url'
 import {
   buildLoopbackPairingWarning,
   composeRemoteHostPatchYaml,
@@ -295,6 +293,10 @@ async function fetchControl(url: string, init?: RequestInit): Promise<Response> 
   })
 }
 
+export function resolveRemoteCordisPluginUrl(): string {
+  return import.meta.resolve('@dsh-community/remote-adapter/cordis-plugin')
+}
+
 export async function runRemoteCommand(
   args: readonly string[],
   env: NodeJS.ProcessEnv = process.env,
@@ -472,9 +474,7 @@ export async function runRemoteCommand(
       return 2
     }
 
-    const req = createRequire(import.meta.url)
-    const pluginEntry = req.resolve('@dsh-community/remote-adapter/cordis-plugin')
-    const pluginUrl = pathToFileURL(pluginEntry).href
+    const pluginUrl = resolveRemoteCordisPluginUrl()
     const install = resolveOfficialDsh({ from: import.meta.url })
     const tmpDir = mkdtempSync(join(tmpdir(), 'dsh-community-remote-'))
     const patchFile = join(tmpDir, 'remote-host.patch.yml')

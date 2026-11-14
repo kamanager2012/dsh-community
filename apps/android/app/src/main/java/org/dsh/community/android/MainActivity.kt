@@ -16,6 +16,7 @@ import android.provider.Settings
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.View
+import android.view.inputmethod.EditorInfo
 import android.widget.Button
 import android.widget.EditText
 import android.widget.HorizontalScrollView
@@ -325,11 +326,13 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
 
         findViewById<Button>(R.id.btn_connect).setOnClickListener {
             val raw = pairingInput.text.toString().trim()
-            if (raw.isNotEmpty()) {
-                stickyStatusError = null
-                userPinnedConnectionDrawer = null
-                service?.connectWithPairingInput(raw)
+            if (raw.isEmpty()) {
+                pairingInput.requestFocus()
+                showUiFailure("Paste pairing JSON / dsh-remote:// URI or tap Scan QR first", isWarning = true)
+                return@setOnClickListener
             }
+            val payload = PairingInputHelper.extractPairingPayload(raw) ?: raw
+            acceptPairingPayload(payload, sourceLabel = "Manual")
         }
 
         findViewById<Button>(R.id.btn_scan_lan).setOnClickListener {
@@ -384,6 +387,9 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
             val sid = sessionIdInput.text.toString().trim()
             if (sid.isNotEmpty()) {
                 selectAndAttachSession(sid)
+            } else {
+                service?.refreshSessionsAsync()
+                showSessionBrowserDialog()
             }
         }
 
@@ -441,6 +447,29 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
         btnAnswerQuestion.setOnClickListener {
             val qid = pendingQuestionId ?: return@setOnClickListener
             submitQuestionResponse(qid)
+        }
+
+        sessionIdInput.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_GO || actionId == EditorInfo.IME_ACTION_DONE) {
+                findViewById<Button>(R.id.btn_attach).performClick()
+                true
+            } else {
+                false
+            }
+        }
+
+        answerInput.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_SEND || actionId == EditorInfo.IME_ACTION_DONE) {
+                val qid = pendingQuestionId
+                if (qid != null) {
+                    submitQuestionResponse(qid)
+                    true
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
         }
 
         updateSteerButtonUi()
@@ -1882,6 +1911,7 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
                 pendingCard.visibility = View.VISIBLE
                 btnApprove.visibility = View.VISIBLE
                 btnReject.visibility = View.VISIBLE
+                etAnswerVisibility(visible = false)
                 questionOptionsScroll.visibility = View.GONE
             } else {
                 renderApprovalBanner()
@@ -1898,6 +1928,7 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
                 pendingCard.visibility = View.VISIBLE
                 btnApprove.visibility = View.GONE
                 btnReject.visibility = View.GONE
+                etAnswerVisibility(visible = true)
                 questionOptionsScroll.visibility = View.GONE
             } else {
                 renderApprovalBanner()
@@ -2045,7 +2076,9 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
         }
         if (ansText.isNotEmpty()) {
             service?.respondQuestionAsync(questionId, ansText)
+            return
         }
+        Toast.makeText(this, "Select an option or type a reply first", Toast.LENGTH_SHORT).show()
     }
 
     private fun markEventSeen(key: String): Boolean {

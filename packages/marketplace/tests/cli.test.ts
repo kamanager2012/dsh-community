@@ -72,6 +72,22 @@ describe('marketplace cli', () => {
     assert.match(result.out, /plugin-a/)
   })
 
+  it('supports help / --help / -h immediately without fetching the remote catalog', async () => {
+    let fetchCalls = 0
+    const trackedFetch = (async () => {
+      fetchCalls += 1
+      return new Response('{}', { status: 500 })
+    }) as unknown as typeof fetch
+
+    for (const args of [['--help'], ['-h'], ['help'], ['--', '--help']]) {
+      const result = await captureStdout(() => runMarketplaceCli({ args, fetchImpl: trackedFetch }))
+      assert.equal(result.code, 0)
+      assert.match(result.out, /用法:/)
+      assert.match(result.out, /marketplace list/)
+    }
+    assert.equal(fetchCalls, 0)
+  })
+
   it('rejects unknown commands and missing arguments', async () => {
     const code = await runMarketplaceCli({ args: ['bogus'], fetchImpl: okFetchOf(catalogWith([])) })
     assert.equal(code, 1)

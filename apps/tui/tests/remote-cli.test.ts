@@ -12,6 +12,7 @@ import {
   composeRemoteHostPatchYaml,
   detectLanIpv4Candidates,
   formatPairingQrBlock,
+  resolveRemoteCordisPluginUrl,
   runRemoteCommand,
 } from '../src/remote.js'
 
@@ -496,5 +497,11 @@ async function spawnCliUntilReadyJson<T>(
     const badCode = await runRemoteCommand(['start', '--unknown-option'], {})
     expect(badCode).toBe(2)
     expect(badIo.stderr()).toContain('未知参数: --unknown-option')
+  })
+
+  it('resolves @dsh-community/remote-adapter/cordis-plugin via ESM exports without ERR_PACKAGE_PATH_NOT_EXPORTED', () => {
+    const pluginUrl = resolveRemoteCordisPluginUrl()
+    expect(pluginUrl.startsWith('file://')).toBe(true)
+    expect(existsSync(new URL(pluginUrl))).toBe(true)
   })
 })

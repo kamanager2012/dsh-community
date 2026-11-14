@@ -69,9 +69,35 @@ export interface MarketplaceCliOptions {
   confirm?: (prompt: string) => Promise<boolean> | boolean
 }
 
+const MARKETPLACE_HELP = `社区插件市场 CLI (dsh-community marketplace)
+
+用法:
+  marketplace list                                      列出可用社区插件
+  marketplace search <关键词>                            按名称或描述搜索插件
+  marketplace info <plugin-name>                        查看插件版本、摘要与安全审查
+  marketplace audit <plugin-name>                       审计插件安全声明与风险
+  marketplace install [--yes] <plugin-name>[@version]   核验 digest 并安装到当前 profile
+  marketplace mcp-wrap <name> <command> [args...]       生成只读/可控 MCP DSH 适配模板
+  marketplace --help                                    显示本帮助`
+
 export async function runMarketplaceCli(options: MarketplaceCliOptions): Promise<number> {
   const [command, ...rest] = options.args.filter((arg) => arg !== '--')
   const commandName = command ?? 'list'
+  if (
+    commandName === 'help'
+    || commandName === '--help'
+    || commandName === '-h'
+    || rest.includes('--help')
+    || rest.includes('-h')
+  ) {
+    console.log(MARKETPLACE_HELP)
+    return 0
+  }
+  const knownCommands = new Set(['list', 'search', 'info', 'audit', 'mcp-wrap', 'install'])
+  if (!knownCommands.has(commandName)) {
+    console.error(`未知命令 ${commandName};可用: list / search <词> / info <name> / audit <name> / mcp-wrap <name> <cmd> / install [--yes] <name>[@version]`)
+    return 1
+  }
   const fetchImpl = options.fetchImpl ?? fetch
   const homeDir = options.homeDir ?? homedir()
   const { catalog, source } = await fetchCatalog({
