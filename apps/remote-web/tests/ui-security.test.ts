@@ -504,5 +504,53 @@ describe('remote-web pairing security, safe Markdown/Diff DOM, and CSP hygiene',
     expect(mainSrc).toContain('maxBytes: SAFE_GIT_DIFF_MAX_BYTES')
     expect(mainSrc).toContain('syncComposerStatusControlsIfNeeded()')
     expect(mainSrc).toContain('questionCustomDrafts')
+    expect(mainSrc).toContain('gitReviewGeneration')
+    expect(mainSrc).not.toContain('state.draftBySession.set(sid, activeEl.value)')
+  })
+
+  it('preserves full streamed assistant text across >4,000 chunks when prependHistory rebuilds the timeline', () => {
+    const tl = new SessionTimelineState('claude--long')
+    tl.applyEvent({ seq: 5, type: 'turn/start', data: {} })
+    const expectedParts: string[] = []
+    for (let i = 0; i < 4_005; i += 1) {
+      const token = i === 0 ? 'HEAD_TOKEN_' : i === 4_004 ? '_TAIL_TOKEN' : 'x'
+      expectedParts.push(token)
+      tl.applyEvent({
+        seq: 10 + i,
+        type: 'assistant/chunk',
+        data: { text: token, chunk: { type: 'text-delta', text: token } },
+      })
+    }
+
+    tl.prependHistory(
+      [{ seq: 1, type: 'user/message', data: { message: { role: 'user', content: 'Earlier prompt' } } }],
+      false,
+      1,
+    )
+
+    expect(tl.items.map((it) => it.kind)).toEqual(['user', 'assistant'])
+    const msg = tl.items[1] as Extract<(typeof tl.items)[number], { kind: 'assistant' }>
+    expect(msg.markdownText).toBe(expectedParts.join(''))
+    expect(msg.markdownText.startsWith('HEAD_TOKEN_')).toBe(true)
+    expect(msg.markdownText.endsWith('_TAIL_TOKEN')).toBe(true)
+
+    // Also verify non-chunk marathon sessions (>4,005 discrete messages) keep compacted baseline intact across prependHistory
+    const big = new SessionTimelineState('claude--nonchunk')
+    for (let i = 0; i < 4_005; i += 1) {
+      big.applyEvent({
+        seq: 10 + i,
+        type: 'assistant/message',
+        data: { message: { role: 'assistant', content: `msg-${i}` } },
+      })
+    }
+    big.prependHistory(
+      [{ seq: 2, type: 'user/message', data: { message: { role: 'user', content: 'Very old prompt' } } }],
+      false,
+      2,
+    )
+    expect(big.items.length).toBe(4_006)
+    expect((big.items[0] as Extract<(typeof big.items)[number], { kind: 'user' }>).text).toBe('Very old prompt')
+    expect((big.items[1] as Extract<(typeof big.items)[number], { kind: 'assistant' }>).markdownText).toBe('msg-0')
+    expect((big.items[4_005] as Extract<(typeof big.items)[number], { kind: 'assistant' }>).markdownText).toBe('msg-4004')
   })
 })

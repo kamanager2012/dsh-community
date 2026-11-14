@@ -208,6 +208,42 @@ export class RemoteWebClient {
     return gen === this.connectGeneration && !this.manualDisconnect && !this.revoked
   }
 
+  private async finalizeConnectedProfile(
+    effectiveProfile: TrustedHostProfile,
+    kind: TransportKind,
+    epoch: number,
+    allowReset: boolean,
+    gen: number,
+  ): Promise<TrustedHostProfile> {
+    const storedEpochUpdated = await this.keyStore.updateHostEpoch(effectiveProfile.hostFingerprint, epoch, {
+      allowReset,
+    })
+    if (!this.isConnectGenerationActive(gen)) {
+      throw new RemoteRpcError('CANCELLED', 'Connection attempt superseded')
+    }
+    // Preserve refreshed connection details from effectiveProfile while keeping monotonic epoch
+    const saved: TrustedHostProfile = {
+      ...(storedEpochUpdated ?? effectiveProfile),
+      ...effectiveProfile,
+      lastEpoch: storedEpochUpdated?.lastEpoch ?? epoch,
+      preferredTransport: kind,
+      lastConnectedAt: Date.now(),
+    }
+    await this.keyStore.saveTrustedHost(saved)
+    if (!this.isConnectGenerationActive(gen)) {
+      throw new RemoteRpcError('CANCELLED', 'Connection attempt superseded')
+    }
+    this.activeHost = saved
+    this.activeTransportKind = kind
+    this.emitStatus({
+      status: 'active',
+      transport: kind,
+      host: saved,
+      epoch,
+    })
+    return saved
+  }
+
   private cleanupTransportOnly(): void {
     if (this.ackFlushTimer) {
       clearTimeout(this.ackFlushTimer)
@@ -381,36 +417,13 @@ export class RemoteWebClient {
 
       if (handshakeOutcome.state === 'ACTIVE') {
         bootstrapToken = undefined
-        const storedEpochUpdated =
-          (await this.keyStore.updateHostEpoch(effectiveProfile.hostFingerprint, handshakeOutcome.epoch, {
-            allowReset: options.allowEpochReset,
-          })) ?? {
-            ...effectiveProfile,
-            lastEpoch: handshakeOutcome.epoch,
-            lastConnectedAt: Date.now(),
-            preferredTransport: handshakeOutcome.kind,
-          }
-        if (!this.isConnectGenerationActive(gen)) {
-          throw new RemoteRpcError('CANCELLED', 'Connection attempt superseded')
-        }
-        const saved: TrustedHostProfile = {
-          ...storedEpochUpdated,
-          preferredTransport: handshakeOutcome.kind,
-          lastConnectedAt: Date.now(),
-        }
-        await this.keyStore.saveTrustedHost(saved)
-        if (!this.isConnectGenerationActive(gen)) {
-          throw new RemoteRpcError('CANCELLED', 'Connection attempt superseded')
-        }
-        this.activeHost = saved
-        this.activeTransportKind = handshakeOutcome.kind
-        this.emitStatus({
-          status: 'active',
-          transport: handshakeOutcome.kind,
-          host: saved,
-          epoch: handshakeOutcome.epoch,
-        })
-        return saved
+        return this.finalizeConnectedProfile(
+          effectiveProfile,
+          handshakeOutcome.kind,
+          handshakeOutcome.epoch,
+          options.allowEpochReset === true,
+          gen,
+        )
       }
 
       // PAIRING_PENDING branch
@@ -479,29 +492,13 @@ export class RemoteWebClient {
             throw new RemoteRpcError('CANCELLED', 'Connection attempt superseded')
           }
           if (recheck.state === 'ACTIVE') {
-            const saved: TrustedHostProfile = {
-              ...(await this.keyStore.updateHostEpoch(effectiveProfile.hostFingerprint, recheck.epoch, {
-                allowReset: options.allowEpochReset === true,
-              })) ?? effectiveProfile,
-              preferredTransport: recheck.kind,
-              lastConnectedAt: Date.now(),
-            }
-            if (!this.isConnectGenerationActive(gen)) {
-              throw new RemoteRpcError('CANCELLED', 'Connection attempt superseded')
-            }
-            await this.keyStore.saveTrustedHost(saved)
-            if (!this.isConnectGenerationActive(gen)) {
-              throw new RemoteRpcError('CANCELLED', 'Connection attempt superseded')
-            }
-            this.activeHost = saved
-            this.activeTransportKind = recheck.kind
-            this.emitStatus({
-              status: 'active',
-              transport: recheck.kind,
-              host: saved,
-              epoch: recheck.epoch,
-            })
-            return saved
+            return this.finalizeConnectedProfile(
+              effectiveProfile,
+              recheck.kind,
+              recheck.epoch,
+              options.allowEpochReset === true,
+              gen,
+            )
           }
           // Still PAIRING_PENDING — close cleanly and wait next poll
           this.cleanupTransportOnly()

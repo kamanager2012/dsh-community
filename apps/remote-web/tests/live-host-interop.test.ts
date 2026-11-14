@@ -311,9 +311,22 @@ describe('remote-web live E2EE host interoperability', () => {
       savedProfile.lastEpoch + 500,
     )
 
-    // Explicit user confirmation of epoch reset succeeds cleanly
-    await client.connectWithPairing(reissuedLower.descriptor, { allowEpochReset: true })
+    // Explicit user confirmation of epoch reset succeeds cleanly AND persists refreshed endpoints
+    const refreshedEndpoint = `${reissuedLower.descriptor.endpointUrl}/?repaired=1`
+    const savedAfterRepair = await client.connectWithPairing(
+      {
+        ...reissuedLower.descriptor,
+        endpointUrl: refreshedEndpoint,
+        relayUrl: 'ws://127.0.0.1:9998',
+      },
+      { allowEpochReset: true },
+    )
     expect(client.getStatus()).toBe('active')
+    expect(savedAfterRepair.endpointUrl).toBe(refreshedEndpoint)
+    expect(savedAfterRepair.relayUrl).toBe('ws://127.0.0.1:9998')
+    const persistedAfterRepair = await keyStore.getTrustedHost(savedProfile.hostFingerprint)
+    expect(persistedAfterRepair?.endpointUrl).toBe(refreshedEndpoint)
+    expect(persistedAfterRepair?.relayUrl).toBe('ws://127.0.0.1:9998')
 
     // Host revocation fails closed and delivers peer.revoked notification
     const identity = await keyStore.getOrCreateClientKeyPair()

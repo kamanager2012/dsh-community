@@ -177,6 +177,8 @@ export class SessionTimelineState implements SessionStoreState {
   private rawEvents = new Map<string, OfficialSessionEvent>()
   private itemCounter = 0
   private unmergedStreamedAssistantId: string | undefined = undefined
+  private compactedBaseline: SessionTimelineState | undefined = undefined
+  private compactedMinSeq: number | null = null
 
   constructor(readonly sessionId: string) {}
 
@@ -185,18 +187,82 @@ export class SessionTimelineState implements SessionStoreState {
     return `${prefix}-${this.itemCounter}`
   }
 
+  private coalesceContiguousChunksInRawEvents(): void {
+    const sorted = [...this.rawEvents.entries()].sort((a, b) => a[1].seq - b[1].seq)
+    const next = new Map<string, OfficialSessionEvent>()
+    let textBuf: string[] = []
+    let lastTextEntry: { key: string; seq: number } | undefined = undefined
+    let thinkingBuf: string[] = []
+    let lastThinkingEntry: { key: string; seq: number } | undefined = undefined
+
+    const flushChunks = (): void => {
+      if (thinkingBuf.length > 0 && lastThinkingEntry) {
+        const merged = thinkingBuf.join('')
+        next.set(lastThinkingEntry.key, {
+          seq: lastThinkingEntry.seq,
+          type: 'thinking/delta',
+          data: { text: merged, chunk: { type: 'reasoning-delta', text: merged } },
+        })
+      }
+      if (textBuf.length > 0 && lastTextEntry) {
+        const merged = textBuf.join('')
+        next.set(lastTextEntry.key, {
+          seq: lastTextEntry.seq,
+          type: 'assistant/chunk',
+          data: { text: merged, chunk: { type: 'text-delta', text: merged } },
+        })
+      }
+      textBuf = []
+      lastTextEntry = undefined
+      thinkingBuf = []
+      lastThinkingEntry = undefined
+    }
+
+    for (const [k, ev] of sorted) {
+      const evtType = ev.type.trim().toLowerCase()
+      if (isChunkEventType(evtType) && isRecord(ev.data)) {
+        const unwrapped = unwrapAssistantChunk(evtType, ev.data)
+        if (unwrapped) {
+          if (unwrapped.isThinking) {
+            thinkingBuf.push(unwrapped.delta)
+            lastThinkingEntry = { key: k, seq: ev.seq }
+          } else {
+            textBuf.push(unwrapped.delta)
+            lastTextEntry = { key: k, seq: ev.seq }
+          }
+          continue
+        }
+      }
+      flushChunks()
+      next.set(k, ev)
+    }
+    flushChunks()
+    this.rawEvents = next
+  }
+
   private rememberRawEvent(key: string, event: OfficialSessionEvent): void {
     this.rawEvents.set(key, event)
     if (this.rawEvents.size <= MAX_RETAINED_RAW_EVENTS) return
-    for (const [k, ev] of this.rawEvents.entries()) {
-      if (this.rawEvents.size <= MAX_RETAINED_RAW_EVENTS) break
-      if (isChunkEventType(ev.type)) {
-        this.rawEvents.delete(k)
-      }
+
+    this.coalesceContiguousChunksInRawEvents()
+    if (this.rawEvents.size <= MAX_RETAINED_RAW_EVENTS) return
+
+    const sorted = [...this.rawEvents.entries()].sort((a, b) => a[1].seq - b[1].seq)
+    const overflow = sorted.length - MAX_RETAINED_RAW_EVENTS
+    if (overflow <= 0) return
+
+    if (!this.compactedBaseline) {
+      this.compactedBaseline = new SessionTimelineState(this.sessionId)
     }
-    for (const k of this.rawEvents.keys()) {
-      if (this.rawEvents.size <= MAX_RETAINED_RAW_EVENTS) break
-      this.rawEvents.delete(k)
+    for (let i = 0; i < overflow; i += 1) {
+      const [evKey, ev] = sorted[i]!
+      this.compactedBaseline.applyEvent(ev, { markUnread: false, skipRawStore: true })
+      if (typeof ev.seq === 'number' && ev.seq > 0) {
+        if (this.compactedMinSeq === null || ev.seq < this.compactedMinSeq) {
+          this.compactedMinSeq = ev.seq
+        }
+      }
+      this.rawEvents.delete(evKey)
     }
   }
 
@@ -263,11 +329,21 @@ export class SessionTimelineState implements SessionStoreState {
     const savedHasMore = this.hasMoreHistory
     const savedOldest = this.oldestSeq
 
-    this.items = []
-    this.seenKeys = new Set()
-    this.highestSeq = 0
-    this.oldestSeq = null
-    this.unmergedStreamedAssistantId = undefined
+    const base = this.compactedBaseline
+    this.items = base ? base.items.map((it) => ({ ...it })) : []
+    this.seenKeys = base ? new Set(base.seenKeys) : new Set()
+    this.highestSeq = base ? base.highestSeq : 0
+    this.oldestSeq = base ? base.oldestSeq : null
+    this.unmergedStreamedAssistantId = base?.unmergedStreamedAssistantId
+    if (base) {
+      this.status = base.status
+      this.title = base.title
+      this.model = base.model
+      this.todos = [...base.todos]
+      this.usage = base.usage
+      this.pendingApprovals = [...base.pendingApprovals]
+      this.pendingQuestions = [...base.pendingQuestions]
+    }
 
     let crossedThreshold = false
     for (const ev of sorted) {
@@ -310,11 +386,39 @@ export class SessionTimelineState implements SessionStoreState {
 
   prependHistory(events: readonly OfficialSessionEvent[], hasMore: boolean, oldestSeq: number | null): void {
     let added = false
+    const preCompacted: OfficialSessionEvent[] = []
     for (const ev of events) {
       const k = `${ev.seq}:${ev.type}`
-      if (!this.rawEvents.has(k)) {
+      if (this.compactedBaseline && this.compactedMinSeq !== null && ev.seq < this.compactedMinSeq) {
+        if (!this.seenKeys.has(k)) {
+          preCompacted.push(ev)
+          this.seenKeys.add(k)
+          added = true
+        }
+        continue
+      }
+      if (!this.rawEvents.has(k) && !(this.compactedBaseline && this.seenKeys.has(k))) {
         this.rememberRawEvent(k, ev)
         added = true
+      }
+    }
+    if (preCompacted.length > 0 && this.compactedBaseline) {
+      const prefix = new SessionTimelineState(this.sessionId)
+      const sortedPrefix = [...preCompacted].sort((a, b) => a.seq - b.seq)
+      for (const ev of sortedPrefix) {
+        prefix.applyEvent(ev, { markUnread: false, skipRawStore: true })
+        if (typeof ev.seq === 'number' && ev.seq > 0 && (this.compactedMinSeq === null || ev.seq < this.compactedMinSeq)) {
+          this.compactedMinSeq = ev.seq
+        }
+      }
+      finalizeOpenAssistants(prefix.items)
+      const prevBase = this.compactedBaseline
+      prevBase.items = [...prefix.items, ...prevBase.items]
+      for (const sk of prefix.seenKeys) {
+        prevBase.seenKeys.add(sk)
+      }
+      if (prefix.oldestSeq !== null && (prevBase.oldestSeq === null || prefix.oldestSeq < prevBase.oldestSeq)) {
+        prevBase.oldestSeq = prefix.oldestSeq
       }
     }
     if (added) {

@@ -124,6 +124,7 @@ let activeCameraScanner: CameraQrScannerSession | undefined = undefined
 let timelineRefreshTimer: ReturnType<typeof setTimeout> | undefined = undefined
 let toastTimer: ReturnType<typeof setTimeout> | undefined = undefined
 let lastComposerRenderKey = ''
+let gitReviewGeneration = 0
 
 function shortFp(fp: string | undefined): string {
   if (!fp) return 'unknown'
@@ -164,6 +165,7 @@ function resetHostScopedState(nextHostFingerprint?: string): void {
   state.questionCustomDrafts.clear()
   state.submittingPrompt = false
   lastComposerRenderKey = ''
+  gitReviewGeneration += 1
 }
 
 function getOrCreateTimeline(sessionId: string): SessionTimelineState {
@@ -341,6 +343,15 @@ async function loadOlderHistory(): Promise<void> {
 
 async function loadGitReview(sessionId: string): Promise<void> {
   if (client.getStatus() !== 'active') return
+  const gen = ++gitReviewGeneration
+  const requestedStaged = state.gitStaged
+  const requestedPath = state.gitSelectedPath
+  const isCurrentRequest = (): boolean =>
+    gen === gitReviewGeneration &&
+    state.activeSessionId === sessionId &&
+    state.gitStaged === requestedStaged &&
+    state.gitSelectedPath === requestedPath
+
   state.gitLoading = true
   state.gitError = undefined
   renderMainBody()
@@ -348,20 +359,22 @@ async function loadGitReview(sessionId: string): Promise<void> {
     const [status, diff] = await Promise.all([
       client.getWorkspaceGitStatus(sessionId),
       client.getWorkspaceGitDiff(sessionId, {
-        staged: state.gitStaged,
-        ...(state.gitSelectedPath ? { path: state.gitSelectedPath } : {}),
+        staged: requestedStaged,
+        ...(requestedPath ? { path: requestedPath } : {}),
         maxBytes: SAFE_GIT_DIFF_MAX_BYTES,
       }),
     ])
-    if (state.activeSessionId === sessionId) {
-      state.gitStatus = status
-      state.gitDiff = diff
-    }
+    if (!isCurrentRequest()) return
+    state.gitStatus = status
+    state.gitDiff = diff
   } catch (err) {
+    if (!isCurrentRequest()) return
     state.gitError = err instanceof Error ? err.message : String(err)
   } finally {
-    state.gitLoading = false
-    renderMainBody()
+    if (gen === gitReviewGeneration) {
+      state.gitLoading = false
+      renderMainBody()
+    }
   }
 }
 
@@ -1374,9 +1387,6 @@ function renderComposer(): void {
   const savedSelDir = isComposerTextarea ? activeEl.selectionDirection : null
 
   const sid = state.activeSessionId
-  if (isComposerTextarea && sid) {
-    state.draftBySession.set(sid, activeEl.value)
-  }
   const tl = sid ? getOrCreateTimeline(sid) : undefined
   lastComposerRenderKey = `${state.activeTab}:${sid ?? ''}:${tl?.status ?? ''}:${client.getStatus()}`
 
@@ -1494,7 +1504,12 @@ function renderComposer(): void {
   if (isComposerTextarea) {
     textarea.focus({ preventScroll: true })
     if (savedSelStart !== null && savedSelEnd !== null) {
-      textarea.setSelectionRange(savedSelStart, savedSelEnd, savedSelDir ?? undefined)
+      const maxLen = textarea.value.length
+      textarea.setSelectionRange(
+        Math.min(savedSelStart, maxLen),
+        Math.min(savedSelEnd, maxLen),
+        savedSelDir ?? undefined,
+      )
     }
   }
 }
