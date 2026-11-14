@@ -267,9 +267,31 @@ export function boundSessionListPayload(
   if (Buffer.byteLength(JSON.stringify(current), 'utf8') <= maxBytes) {
     return Object.freeze(current)
   }
-  current = current.map((item) => trimSessionRefFields(item, 'minimal'))
-  while (current.length > 1 && Buffer.byteLength(JSON.stringify(current), 'utf8') > maxBytes) {
-    current.pop()
+  const minimal = current.map((item) => trimSessionRefFields(item, 'minimal'))
+  const itemByteLengths = minimal.map((item) => Buffer.byteLength(JSON.stringify(item), 'utf8'))
+  let totalBytes = 2 + itemByteLengths.reduce((sum, n) => sum + n, 0) + Math.max(0, minimal.length - 1)
+  if (totalBytes <= maxBytes) {
+    return Object.freeze(minimal)
   }
-  return Object.freeze(current)
+
+  const dropped = new Array<boolean>(minimal.length).fill(false)
+  let kept = minimal.length
+
+  // Shed rightmost inactive sessions first so active (running / awaiting approval/question) entries survive truncation.
+  for (let i = minimal.length - 1; i >= 0 && kept > 1 && totalBytes > maxBytes; i -= 1) {
+    const item = minimal[i]!
+    if (activeIds.has(item.id)) continue
+    dropped[i] = true
+    kept -= 1
+    totalBytes -= itemByteLengths[i]! + 1
+  }
+
+  for (let i = minimal.length - 1; i >= 0 && kept > 1 && totalBytes > maxBytes; i -= 1) {
+    if (dropped[i]) continue
+    dropped[i] = true
+    kept -= 1
+    totalBytes -= itemByteLengths[i]! + 1
+  }
+
+  return Object.freeze(minimal.filter((_, i) => !dropped[i]))
 }

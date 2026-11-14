@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
+  boundSessionListPayload,
   enrichSessionsWithWorkspaceSummaries,
   inspectSessionWorkspaceSummary,
   inspectWorkspaceGitDiff,
@@ -205,5 +206,26 @@ describe('scoped read-only git review helpers', () => {
     expect(enriched[1]?.workspace?.commonRepoRoot).toBe(enriched[0]?.workspace?.commonRepoRoot)
     expect(enriched[2]?.workspace).toBeUndefined()
     expect(enriched[3]).toEqual({ id: 's-bare', title: 'No CWD' })
+  })
+
+  it('preserves oldest active sessions when bounding oversized session list payloads', () => {
+    const longTitle = 'T'.repeat(240)
+    const sessions = Array.from({ length: 150 }, (_, idx) => {
+      const isOldest = idx === 149
+      return {
+        id: `codex:sess-${String(idx).padStart(3, '0')}`,
+        engine: 'codex' as const,
+        title: `${idx}-${longTitle}`,
+        updatedAtMs: 1000 - idx,
+        status: isOldest ? ('running' as const) : ('idle' as const),
+        ...(isOldest ? { pendingApprovals: 1 } : {}),
+      }
+    })
+    const activeIds = new Set(['codex:sess-149'])
+    const bounded = boundSessionListPayload(sessions, activeIds)
+    expect(Buffer.byteLength(JSON.stringify(bounded), 'utf8')).toBeLessThanOrEqual(44 * 1024)
+    expect(bounded.some((s) => s.id === 'codex:sess-149')).toBe(true)
+    expect(bounded.length).toBeLessThan(150)
+    expect(bounded.length).toBeGreaterThan(100)
   })
 })
