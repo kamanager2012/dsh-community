@@ -1,4 +1,6 @@
+import { Console } from 'node:console'
 import { describe, expect, it } from 'vitest'
+import { apply, inject, name } from '../src/index.js'
 import { handleKey } from '../src/keys.js'
 import { createStore } from '../src/store.js'
 
@@ -325,5 +327,208 @@ describe('store interaction flows', () => {
     expect(store.state.items.filter((i) => i.kind === 'help').map((i) => i.text).join('\n')).toContain('Run check')
     expect(store.state.items.filter((i) => i.kind === 'help').map((i) => i.text).join('\n')).toContain('/compact')
     expect(store.state.items.filter((i) => i.kind === 'help').map((i) => i.text).join('\n')).toContain('输入 80 / 输出 20')
+  })
+
+  it('supports multi-question progression, Esc cancellation, approval Y/N/Esc, /quit, Ctrl+C, and fatal exit', async () => {
+    const store = createStore()
+    let exits = 0
+    const d = {
+      store,
+      onSend: () => {},
+      onCancel: () => {},
+      onExit: () => {
+        exits += 1
+      },
+      showHelp: () => {},
+      toggleThinking: () => {},
+    }
+
+    // Multi-question progression via option digits / keys
+    const ac1 = new AbortController()
+    const multiPromise = store.askQuestions({
+      questions: [
+        {
+          id: 'q1',
+          header: 'Framework',
+          question: 'Pick framework',
+          options: [{ label: 'Vitest' }, { label: 'Node test' }],
+        },
+        {
+          id: 'q2',
+          header: 'Scope',
+          question: 'Pick scope',
+          options: [{ label: 'Unit' }, { label: 'E2E' }],
+        },
+      ],
+      signal: ac1.signal,
+    })
+    expect(store.state.questions?.currentIndex).toBe(0)
+    handleKey(d, '1', {})
+    expect(store.state.questions?.currentIndex).toBe(1)
+    handleKey(d, '2', {})
+    await expect(multiPromise).resolves.toEqual({
+      answers: [
+        { id: 'q1', selected: ['Vitest'] },
+        { id: 'q2', selected: ['E2E'] },
+      ],
+    })
+    expect(store.state.questions).toBeUndefined()
+
+    // Esc cancels active question modal cleanly
+    const ac2 = new AbortController()
+    const cancelPromise = store.askQuestions({
+      questions: [{ id: 'q3', header: 'Cancel', question: 'Confirm?', options: [{ label: 'Yes' }] }],
+      signal: ac2.signal,
+    })
+    handleKey(d, '', { escape: true })
+    await expect(cancelPromise).rejects.toThrow(/取消|cancel|abort/i)
+    expect(store.state.questions).toBeUndefined()
+
+    // Approval modal: 'x' stays ignored, 'y'/'n'/Esc resolve cleanly
+    const ap1 = store.askApproval({ toolName: 'bash', callId: 'a1' }, new AbortController().signal)
+    handleKey(d, 'x', {})
+    expect(store.state.approval).toBeDefined()
+    handleKey(d, 'y', {})
+    await expect(ap1).resolves.toBe('allowed-once')
+
+    const ap2 = store.askApproval({ toolName: 'bash', callId: 'a2' }, new AbortController().signal)
+    handleKey(d, 'N', {})
+    await expect(ap2).resolves.toBe('rejected')
+
+    const ap3 = store.askApproval({ toolName: 'bash', callId: 'a3' }, new AbortController().signal)
+    handleKey(d, '', { escape: true })
+    await expect(ap3).resolves.toBe('rejected')
+
+    // /quit and Ctrl+C trigger onExit
+    handleKey(d, '/quit', {})
+    handleKey(d, '', { return: true })
+    expect(exits).toBe(1)
+
+    handleKey(d, 'c', { ctrl: true })
+    expect(exits).toBe(2)
+
+    // Fatal screen exits on keypress
+    store.setFatal('boot failed')
+    handleKey(d, '', { return: true })
+    expect(exits).toBe(3)
+  })
+
+  it('apply(ctx) registers waterfall listeners, never calls registerProvider, and reads commands via ctx.get', async () => {
+    expect(name).toBe('dsh-community-tui')
+    expect(inject).toEqual(['agents', 'userQuestions', 'agentDefaultModel', 'attachments'])
+
+    const registeredHandlers = new Map<string, (req: unknown, next: () => Promise<unknown>) => Promise<unknown>>()
+    let listCalled = 0
+    let disposed = 0
+
+    const mockCommands = {
+      list: () => {
+        listCalled += 1
+        return [{ name: 'compact', description: '压缩会话' }]
+      },
+    }
+
+    const mockCtx = {
+      get: (serviceName: string) => {
+        if (serviceName === 'loader') return { await: async () => {} }
+        if (serviceName === 'commands') return mockCommands
+        return undefined
+      },
+      get commands() {
+        throw new Error('cannot get property "commands" without inject')
+      },
+      userQuestions: {},
+      attachments: {
+        imageLimits: {
+          maxImageBytes: 1024,
+          maxImagesPerMessage: 4,
+          maxMessageImageBytes: 4096,
+          maxImagePixels: 10000,
+          maxImageDimension: 1000,
+          mediaTypes: ['image/png'],
+        },
+        saveImages: async () => [],
+      },
+      agentDefaultModel: {
+        currentSelection: () => ({ provider: 'deepseek', model: 'deepseek-chat' }),
+      },
+      agents: {
+        create: async () => ({
+          agent: {
+            id: 'agent-1',
+            options: { model: 'deepseek-chat' },
+            status: 'idle',
+            whenIdle: async () => {},
+            ctx: { on: () => {} },
+            followup: () => {},
+            cancel: () => {},
+          },
+          dispose: async () => {
+            disposed += 1
+          },
+        }),
+        resume: async () => {
+          throw new Error('unexpected resume')
+        },
+      },
+      on: (event: string, listener: (req: unknown, next: () => Promise<unknown>) => Promise<unknown>) => {
+        registeredHandlers.set(event, listener)
+        return () => {
+          registeredHandlers.delete(event)
+        }
+      },
+    }
+
+    const prevOutIsTTY = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY')
+    const prevInIsTTY = Object.getOwnPropertyDescriptor(process.stdin, 'isTTY')
+    const prevSetRawMode = Object.getOwnPropertyDescriptor(process.stdin, 'setRawMode')
+    const prevStdoutWrite = process.stdout.write.bind(process.stdout)
+    const prevConsoleCtor = (console as unknown as { Console?: unknown }).Console
+    Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true })
+    Object.defineProperty(process.stdin, 'isTTY', { value: true, configurable: true })
+    Object.defineProperty(process.stdin, 'setRawMode', { value: () => process.stdin, configurable: true })
+    process.stdout.write = (() => true) as typeof process.stdout.write
+    if (typeof prevConsoleCtor !== 'function') {
+      ;(console as unknown as { Console?: unknown }).Console = Console
+    }
+    let cleanup: (() => void) | void
+    try {
+      cleanup = apply(mockCtx as never)
+      await new Promise((resolve) => setTimeout(resolve, 30))
+
+      expect(registeredHandlers.has('user-questions/request')).toBe(true)
+      expect(registeredHandlers.has('approval/request')).toBe(true)
+      expect(listCalled).toBe(1)
+
+      // Different agent's user-question falls through to next()
+      let nextCalled = 0
+      const uqHandler = registeredHandlers.get('user-questions/request')!
+      await expect(
+        uqHandler({ agent: { id: 'other-agent' }, questions: [] }, async () => {
+          nextCalled += 1
+          return { answers: [] }
+        }),
+      ).resolves.toEqual({ answers: [] })
+      expect(nextCalled).toBe(1)
+    } finally {
+      cleanup?.()
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      process.stdout.write = prevStdoutWrite
+      if (prevConsoleCtor !== undefined) {
+        ;(console as unknown as { Console?: unknown }).Console = prevConsoleCtor
+      } else {
+        delete (console as unknown as { Console?: unknown }).Console
+      }
+      if (prevInIsTTY) Object.defineProperty(process.stdin, 'isTTY', prevInIsTTY)
+      else delete (process.stdin as { isTTY?: boolean }).isTTY
+      if (prevSetRawMode) Object.defineProperty(process.stdin, 'setRawMode', prevSetRawMode)
+      else delete (process.stdin as { setRawMode?: unknown }).setRawMode
+      if (prevOutIsTTY) {
+        Object.defineProperty(process.stdout, 'isTTY', prevOutIsTTY)
+      } else {
+        delete (process.stdout as { isTTY?: boolean }).isTTY
+      }
+    }
+    expect(disposed).toBe(1)
   })
 })

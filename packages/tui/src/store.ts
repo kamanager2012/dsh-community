@@ -34,8 +34,12 @@ export interface ApprovalPrompt {
   readonly reason?: string
 }
 
+export type UserQuestionAnswerItem = UserQuestionAnswer['answers'][number]
+
 export interface QuestionPrompt {
   readonly request: UserQuestionRequest
+  readonly currentIndex: number
+  readonly collectedAnswers: readonly UserQuestionAnswerItem[]
 }
 
 export interface UiState {
@@ -228,6 +232,8 @@ export interface UiStore {
   askApproval(prompt: ApprovalPrompt, signal?: AbortSignal): Promise<string>
   resolveApproval(outcome: string): void
   askQuestions(request: UserQuestionRequest): Promise<UserQuestionAnswer>
+  submitCurrentQuestionAnswer(item: UserQuestionAnswerItem): void
+  cancelQuestions(reason?: string): void
   resolveQuestions(answer: UserQuestionAnswer): void
 }
 
@@ -529,7 +535,7 @@ export function createStore(): UiStore {
       if (request.signal?.aborted) {
         return Promise.reject(new Error('question request aborted'))
       }
-      set({ questions: { request } })
+      set({ questions: { request, currentIndex: 0, collectedAnswers: [] } })
       return new Promise<UserQuestionAnswer>((resolve, reject) => {
         questionWaiter = { resolve, reject }
         const signal = request.signal
@@ -545,6 +551,32 @@ export function createStore(): UiStore {
           cleanupQuestionAbort = () => signal.removeEventListener('abort', onAbort)
         }
       })
+    },
+    submitCurrentQuestionAnswer(item) {
+      const current = state.questions
+      if (current === undefined) return
+      const nextAnswers = [...current.collectedAnswers, item]
+      const nextIndex = current.currentIndex + 1
+      if (nextIndex < current.request.questions.length) {
+        set({
+          questions: {
+            ...current,
+            currentIndex: nextIndex,
+            collectedAnswers: nextAnswers,
+          },
+          draft: '',
+        })
+        return
+      }
+      this.resolveQuestions({ answers: nextAnswers })
+    },
+    cancelQuestions(reason = '已取消提问') {
+      cleanupQuestionAbort?.()
+      cleanupQuestionAbort = undefined
+      const waiter = questionWaiter
+      questionWaiter = undefined
+      set({ questions: undefined, draft: '' })
+      waiter?.reject(new Error(reason))
     },
     resolveQuestions(answer) {
       cleanupQuestionAbort?.()

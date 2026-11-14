@@ -41,7 +41,9 @@ export function handleKey(deps: KeyHandlerDeps, raw: string, key: KeyEvent = {})
       ? ['\x7f']
       : (raw === '' && (key.upArrow || key.downArrow))
         ? ['']
-        : [...raw].map((ch) => ch === '\n' ? '\r' : ch)
+        : (raw === '' && key.escape)
+          ? ['\x1b']
+          : [...raw].map((ch) => ch === '\n' ? '\r' : ch)
   for (const ch of list) {
     applyChar(deps, ch, key)
   }
@@ -51,28 +53,46 @@ function applyChar(deps: KeyHandlerDeps, ch: string, key: KeyEvent): void {
   const { store } = deps
   const state = store.state
 
+  if (ch === '\x03' || (key.ctrl && (ch === 'c' || ch === 'C' || ch === 'q' || ch === 'Q'))) {
+    deps.onExit()
+    return
+  }
+
+  if (state.fatal !== undefined) {
+    if (ch === '\r' || ch === '\x1b' || key.escape || ch === 'q' || ch === 'Q') {
+      deps.onExit()
+    }
+    return
+  }
+
   if (state.approval !== undefined) {
-    if (ch === 'y') store.resolveApproval('allowed-once')
-    else if (ch === 'n') store.resolveApproval('rejected')
+    if (ch === 'y' || ch === 'Y') store.resolveApproval('allowed-once')
+    else if (ch === 'n' || ch === 'N' || ch === '\x1b' || key.escape) store.resolveApproval('rejected')
     return
   }
 
   if (state.questions !== undefined) {
-    const question = state.questions.request.questions[0]
+    if (ch === '\x1b' || key.escape) {
+      store.cancelQuestions()
+      return
+    }
+    const question = state.questions.request.questions[state.questions.currentIndex]
     if (question === undefined) return
     const options = question.options ?? []
     if (options.length > 0) {
       const index = Number(ch) - 1
       if (Number.isInteger(index) && index >= 0 && index < options.length) {
-        store.resolveQuestions({ answers: [{ id: question.id, selected: [options[index]!.label] }] })
+        store.submitCurrentQuestionAnswer({ id: question.id, selected: [options[index]!.label] })
       }
       return
     }
     if (ch === '\r') {
       const answer = state.draft.trim()
       store.setDraft('')
-      store.resolveQuestions({
-        answers: [{ id: question.id, selected: [], ...(answer === '' ? {} : { custom: answer }) }],
+      store.submitCurrentQuestionAnswer({
+        id: question.id,
+        selected: [],
+        ...(answer === '' ? {} : { custom: answer }),
       })
       return
     }
@@ -87,7 +107,7 @@ function applyChar(deps: KeyHandlerDeps, ch: string, key: KeyEvent): void {
   if (ch === '\r') {
     const trimmed = state.draft.trim()
     store.setDraft('')
-    if (trimmed === '/exit') deps.onExit()
+    if (trimmed === '/exit' || trimmed === '/quit') deps.onExit()
     else if (trimmed === '/help') deps.showHelp()
     else if (trimmed === '/todos') {
       const lines = state.todos.length === 0
@@ -130,10 +150,6 @@ function applyChar(deps: KeyHandlerDeps, ch: string, key: KeyEvent): void {
   }
   if (ch === '\x1b' || key.escape) {
     deps.onCancel()
-    return
-  }
-  if (ch === 'q' && key.ctrl) {
-    deps.onExit()
     return
   }
   if (ch >= ' ' && ch !== '\x7f') store.setDraft(state.draft + ch)

@@ -56,27 +56,46 @@ function peelLauncher(argv: readonly string[]): string[] {
   return args
 }
 
+function hasHelpFlag(args: readonly string[]): boolean {
+  return args.some((arg) => arg === '--help' || arg === '-h')
+}
+
 export function parseCommunityLaunch(argv: readonly string[]): CommunityLaunch {
   const args = peelLauncher(argv)
   const head = args[0]
   if (head === undefined || head === 'chat') return { kind: 'default' }
-  if (head === '--new' || head === 'new') return { kind: 'new', rest: args.slice(1) }
   if (head === '--help' || head === '-h' || head === 'help') return { kind: 'help' }
-  if (head === '--version' || head === '-v' || head === 'version') return { kind: 'version' }
-  if (head === '--doctor' || head === 'doctor') return { kind: 'doctor' }
-  if (head === '--desktop' || head === 'desktop') return { kind: 'desktop' }
+  if (head === '--new' || head === 'new') {
+    if (args.length === 2 && hasHelpFlag(args.slice(1))) return { kind: 'help' }
+    return { kind: 'new', rest: args.slice(1) }
+  }
+  if (head === '--version' || head === '-v' || head === 'version') {
+    return hasHelpFlag(args.slice(1)) ? { kind: 'help' } : { kind: 'version' }
+  }
+  if (head === '--doctor' || head === 'doctor') {
+    return hasHelpFlag(args.slice(1)) ? { kind: 'help' } : { kind: 'doctor' }
+  }
+  if (head === '--desktop' || head === 'desktop') {
+    return hasHelpFlag(args.slice(1)) ? { kind: 'help' } : { kind: 'desktop' }
+  }
   if (head === '--remote' || head === 'remote') return { kind: 'remote', rest: args.slice(1) }
   if (head === '--plugins' || head === 'plugins') {
+    if (hasHelpFlag(args.slice(1))) return { kind: 'help' }
     return { kind: 'plugins', porcelain: args.includes('--porcelain') }
   }
   if (
     head === '--list-sessions' || head === '-l' || head === 'sessions' || head === 'list'
   ) {
+    if (hasHelpFlag(args.slice(1))) return { kind: 'help' }
     return { kind: 'list', porcelain: args.includes('--porcelain') }
   }
   if (head === '--resume' || head === 'resume') {
     const id = args[1]
-    if (id === undefined || id.length === 0 || id.startsWith('-')) return { kind: 'pick' }
+    if (id === '--help' || id === '-h') return { kind: 'help' }
+    if (id === undefined || id.length === 0) return { kind: 'pick' }
+    if (id.startsWith('-')) {
+      return { kind: 'error', message: `未知选项: ${id}。运行 --help 查看可用参数。` }
+    }
     return { kind: 'resume', id, rest: args.slice(2) }
   }
   if (head?.startsWith('-')) {

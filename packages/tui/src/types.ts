@@ -96,6 +96,7 @@ export interface CommandRuntimeLike {
     agent: AgentLike,
     line: string,
     submittedAttachments?: readonly unknown[],
+    signal?: AbortSignal,
   ): Promise<unknown>
 }
 
@@ -104,7 +105,6 @@ export interface CordisContext {
   get(name: 'commands'): CommandRuntimeLike | undefined
   get(name: string): unknown
   readonly attachments: AttachmentStoreLike
-  readonly commands?: CommandRuntimeLike | undefined
   readonly agentDefaultModel: {
     currentSelection(): ModelSelectionLike
   }
@@ -121,11 +121,15 @@ export interface CordisContext {
       readonly setup?: (agentCtx: unknown) => void
     }): Promise<AgentHandleLike>
   }
-  readonly userQuestions: {
-    registerProvider(provider: { ask(request: UserQuestionRequest): Promise<UserQuestionAnswer> }): () => void
+  readonly userQuestions?: {
+    registerProvider?(provider: { ask(request: UserQuestionRequest): Promise<UserQuestionAnswer> }): () => void
   }
   on(
     event: 'approval/request',
     listener: (request: unknown, next: () => Promise<string>) => Promise<string>,
-  ): void
+  ): () => void
+  on(
+    event: 'user-questions/request',
+    listener: (request: unknown, next: () => Promise<UserQuestionAnswer>) => Promise<UserQuestionAnswer>,
+  ): () => void
 }

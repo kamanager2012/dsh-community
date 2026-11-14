@@ -131,5 +131,16 @@ describe('our TUI profile', () => {
       kind: 'error',
       message: '未知选项: -x。运行 --help 查看可用参数。',
     })
+    expect(parseCommunityLaunch(['resume', '--bogus'])).toMatchObject({
+      kind: 'error',
+      message: expect.stringContaining('--bogus'),
+    })
+  })
+
+  it('supports --help and -h across subcommands', () => {
+    for (const sub of ['version', 'doctor', 'desktop', 'plugins', 'sessions', 'list', 'resume', 'new']) {
+      expect(parseCommunityLaunch([sub, '--help'])).toEqual({ kind: 'help' })
+      expect(parseCommunityLaunch([sub, '-h'])).toEqual({ kind: 'help' })
+    }
   })
 })

@@ -20,6 +20,8 @@ import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import org.dsh.community.android.R
 import org.dsh.community.android.transport.PairingQrParser
 import java.util.concurrent.Executors
@@ -66,6 +68,34 @@ class QrScanActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_qr_scan)
+
+        val topBar = findViewById<android.view.View>(R.id.ll_qr_top_bar)
+        val hintView = findViewById<android.view.View>(R.id.tv_scan_hint)
+        val barTargets = listOf(
+            Triple(topBar, true, false) to intArrayOf(
+                topBar.paddingLeft, topBar.paddingTop, topBar.paddingRight, topBar.paddingBottom
+            ),
+            Triple(hintView, false, true) to intArrayOf(
+                hintView.paddingLeft, hintView.paddingTop, hintView.paddingRight, hintView.paddingBottom
+            )
+        )
+        val scanRoot = topBar.parent as android.view.View
+        ViewCompat.setOnApplyWindowInsetsListener(scanRoot) { _, windowInsets ->
+            val insets = windowInsets.getInsets(
+                WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
+            )
+            for ((target, base) in barTargets) {
+                val (view, padTop, padBottom) = target
+                view.setPadding(
+                    base[0] + insets.left,
+                    base[1] + if (padTop) insets.top else 0,
+                    base[2] + insets.right,
+                    base[3] + if (padBottom) insets.bottom else 0
+                )
+            }
+            windowInsets
+        }
+        ViewCompat.requestApplyInsets(scanRoot)
 
         previewView = findViewById(R.id.preview_view)
         tvHint = findViewById(R.id.tv_scan_hint)

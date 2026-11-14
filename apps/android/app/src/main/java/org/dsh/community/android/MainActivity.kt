@@ -27,6 +27,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import org.dsh.community.android.crypto.DeviceIdentity
@@ -205,6 +207,27 @@ class MainActivity : AppCompatActivity(), RemoteSessionService.UiObserver {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+        val rootView = findViewById<android.view.View>(R.id.root_main)
+        val baseLeft = rootView.paddingLeft
+        val baseTop = rootView.paddingTop
+        val baseRight = rootView.paddingRight
+        val baseBottom = rootView.paddingBottom
+        ViewCompat.setOnApplyWindowInsetsListener(rootView) { view, windowInsets ->
+            val insets = windowInsets.getInsets(
+                WindowInsetsCompat.Type.systemBars() or
+                    WindowInsetsCompat.Type.displayCutout() or
+                    WindowInsetsCompat.Type.ime()
+            )
+            view.setPadding(
+                baseLeft + insets.left,
+                baseTop + insets.top,
+                baseRight + insets.right,
+                baseBottom + insets.bottom
+            )
+            windowInsets
+        }
+        ViewCompat.requestApplyInsets(rootView)
 
         statusView = findViewById(R.id.tv_status)
         agentStatusView = findViewById(R.id.tv_agent_status)

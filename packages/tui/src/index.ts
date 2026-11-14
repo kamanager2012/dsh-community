@@ -5,8 +5,8 @@
  *   ctx.agents.create/resume + agent.followup  → official Agent
  *   ctx.attachments.saveImages                 → official durable image refs
  *   session/event                              → official durable log
- *   ctx.userQuestions.registerProvider         → official ask_user_question
- *   approval/request waterfall                 → official sandbox approval
+ *   'user-questions/request' waterfall         → official ask_user_question
+ *   'approval/request' waterfall               → official sandbox approval
  *
  * Official types are consumed structurally — no third-party harness products
  * are imported, mounted, or patched.
@@ -22,7 +22,13 @@ import { randomUUID } from 'node:crypto'
 import { App } from './ui.js'
 import { buildUserContent } from './image-input.js'
 import { createStore, type UiStore } from './store.js'
-import type { AgentHandleLike, CordisContext, UserQuestionRequest } from './types.js'
+import type {
+  AgentHandleLike,
+  CommandRuntimeLike,
+  CordisContext,
+  UserQuestionAnswer,
+  UserQuestionRequest,
+} from './types.js'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 
 /** Resume contract shared with the community launcher. */
@@ -60,12 +66,27 @@ export function apply(ctx: CordisContext): (() => void) | void {
   const resumeId = resumeEnv === undefined || resumeEnv === '' ? undefined : resumeEnv
 
   let current: AgentHandleLike | undefined
+  let commandsSvc: CommandRuntimeLike | undefined
   let unmount: (() => void) | undefined
+  let exiting = false
 
-  ctx.userQuestions.registerProvider({
-    ask(request: UserQuestionRequest) {
-      return store.askQuestions(request)
-    },
+  let resolveReady!: () => void
+  let rejectReady!: (error: unknown) => void
+  const readyPromise = new Promise<void>((resolve, reject) => {
+    resolveReady = resolve
+    rejectReady = reject
+  })
+  readyPromise.catch(() => {})
+
+  ctx.on('user-questions/request', async (request: unknown, next: () => Promise<UserQuestionAnswer>) => {
+    const req = request as UserQuestionRequest & { readonly agent?: { readonly id?: string } }
+    if (req.agent !== undefined && (current === undefined || req.agent.id !== current.agent.id)) {
+      return next()
+    }
+    if (req.signal?.aborted) {
+      throw new Error('ask_user_question was aborted before the user answered')
+    }
+    return store.askQuestions(req)
   })
 
   ctx.on('approval/request', async (request: unknown, next: () => Promise<string>) => {
@@ -81,6 +102,87 @@ export function apply(ctx: CordisContext): (() => void) | void {
       approval.signal,
     )
   })
+
+  let sendChain = Promise.resolve()
+  const enqueueUserInput = (text: string): void => {
+    sendChain = sendChain.then(async () => {
+      try {
+        await readyPromise
+        const active = current
+        if (active === undefined) return
+        const agent = active.agent
+        if (text.startsWith('/') && !text.startsWith('/image')) {
+          const headToken = text.slice(1).split(/\s+/u, 1)[0] ?? ''
+          const cmdSvc = commandsSvc ?? ctx.get('commands')
+          if (
+            headToken !== ''
+            && !headToken.includes('/')
+            && cmdSvc?.execute
+            && (!cmdSvc.find || cmdSvc.find(agent, headToken))
+          ) {
+            const exec = await cmdSvc.execute(agent, text, [], new AbortController().signal)
+            if (exec !== undefined && exec !== false) {
+              const res = typeof exec === 'object' && exec !== null && 'result' in exec
+                ? (exec as { result?: { kind?: string; text?: string } }).result
+                : undefined
+              if (res?.kind === 'error') {
+                store.showNotice(res.text ?? `官方命令 /${headToken} 执行失败`, 'error')
+              } else {
+                store.showNotice(
+                  res?.text ? res.text : `已执行官方命令：/${headToken}`,
+                )
+              }
+              return
+            }
+          }
+          if (/^[a-zA-Z][a-zA-Z0-9_-]*$/u.test(headToken)) {
+            store.showNotice(
+              `未知命令：/${headToken}（输入 /help 查看本地命令或 /commands 查看官方命令）`,
+              'warn',
+            )
+            return
+          }
+        }
+        const { content } = await buildUserContent(text, ctx.attachments)
+        agent.followup(createUserMessage({
+          content,
+          source: { kind: 'user' },
+        }))
+      } catch (error) {
+        if (store.state.fatal !== undefined) return
+        store.showNotice(`发送失败：${errorMessage(error)}`, 'error')
+        if (store.state.draft === '') store.setDraft(text)
+      }
+    })
+  }
+
+  const handleExit = (): void => {
+    if (exiting) return
+    exiting = true
+    unmount?.()
+    const disposePromise = current !== undefined ? current.dispose() : Promise.resolve()
+    const exitCode = store.state.fatal !== undefined ? 1 : 0
+    void disposePromise.catch(() => {}).finally(() => {
+      process.exit(exitCode)
+    })
+  }
+
+  store.setStatus('booting')
+  const ui = render(
+    createElement(App, {
+      store,
+      dualBadge: formatDualBadge(),
+      onSend: enqueueUserInput,
+      onCancel: () => {
+        if (current?.agent.status === 'running') {
+          current.agent.cancel('user-interrupt')
+        }
+      },
+      onExit: handleExit,
+    }),
+    { exitOnCtrlC: false },
+  )
+  unmount = () => ui.unmount()
 
   const run = async (): Promise<void> => {
     const loader = ctx.get('loader')
@@ -121,7 +223,7 @@ export function apply(ctx: CordisContext): (() => void) | void {
       store.applySessionEvent({ log: existingLog })
     }
 
-    const commandsSvc = ctx.commands ?? ctx.get('commands')
+    commandsSvc = ctx.get('commands')
     if (commandsSvc?.list) {
       try {
         const listed = commandsSvc.list(agent)
@@ -139,57 +241,18 @@ export function apply(ctx: CordisContext): (() => void) | void {
       store.applySessionEvent(event)
     })
 
-    let sendChain = Promise.resolve()
-    const enqueueUserInput = (text: string): void => {
-      sendChain = sendChain.then(async () => {
-        try {
-          if (text.startsWith('/') && !text.startsWith('/image')) {
-            const cmdName = text.slice(1).split(/\s+/u, 1)[0] ?? ''
-            if (cmdName !== '' && commandsSvc?.execute && (!commandsSvc.find || commandsSvc.find(agent, cmdName))) {
-              const handled = await commandsSvc.execute(agent, text, [])
-              if (handled !== false) {
-                store.showNotice(`已执行官方命令：/${cmdName}`)
-                return
-              }
-            }
-          }
-          const { content } = await buildUserContent(text, ctx.attachments)
-          agent.followup(createUserMessage({
-            content,
-            source: { kind: 'user' },
-          }))
-        } catch (error) {
-          store.showHelp(`发送失败：${errorMessage(error)}`)
-        }
-      })
-    }
-
-    if (firstPrompt !== undefined && firstPrompt !== '') {
-      enqueueUserInput(firstPrompt)
-    }
     agent.ctx.on('agent/status', (payload: { status?: string }) => {
       store.setStatus(payload.status ?? 'idle')
     })
 
-    let exiting = false
-    const ui = render(createElement(App, {
-      store,
-      dualBadge: formatDualBadge(),
-      onSend: enqueueUserInput,
-      onCancel: () => agent.cancel('user-interrupt'),
-      onExit: () => {
-        if (exiting) return
-        exiting = true
-        unmount?.()
-        void handle.dispose().catch(() => {}).finally(() => {
-          process.exit(0)
-        })
-      },
-    }))
-    unmount = () => ui.unmount()
+    resolveReady()
+    if (firstPrompt !== undefined && firstPrompt !== '') {
+      enqueueUserInput(firstPrompt)
+    }
   }
 
   void run().catch((error: unknown) => {
+    rejectReady(error)
     store.setFatal(errorMessage(error))
   })
 

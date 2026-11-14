@@ -60,13 +60,18 @@ function renderItem(item: UiItem, thinkingOpen: boolean): ReturnType<typeof crea
 const Transcript: FC<{ store: UiStore; thinkingOpen: boolean }> = ({ store, thinkingOpen }) => {
   const state = useSyncExternalStore(store.subscribe, () => store.state)
   if (state.fatal !== undefined) {
-    return createElement(Text, { color: 'red' }, `启动失败：${state.fatal}`)
+    return createElement(Box, { flexDirection: 'column', marginBottom: 1 },
+      createElement(Text, { color: 'red', wrap: 'wrap' }, `启动失败：${state.fatal}`),
+      createElement(Text, { color: MUTED, wrap: 'wrap' }, '按 Enter / Esc / Ctrl+C 退出'),
+    )
   }
   return createElement(Box, { flexDirection: 'column' },
     ...state.items.map((item) => renderItem(item, thinkingOpen)),
-    state.status === 'running'
-      ? createElement(Text, { color: MUTED }, '…')
-      : null,
+    state.status === 'booting'
+      ? createElement(Text, { color: MUTED }, '正在初始化官方运行时…')
+      : state.status === 'running'
+        ? createElement(Text, { color: MUTED }, '…')
+        : null,
   )
 }
 
@@ -75,11 +80,11 @@ const HELP_TEXT = `dsh-community-tui 帮助
   /commands 查看官方斜杠命令
   /todos    查看当前任务清单
   /usage    查看会话状态与 Token 用量
-  /exit     退出
+  /exit     退出（同 /quit 或 Ctrl+C / Ctrl+Q）
   /image "图1.png" ["图2.webp"] -- 可选提示词
             图片先交给官方 attachment store 校验/规范化/持久化
   ↑/↓       浏览历史输入
-  Esc       打断当前回答
+  Esc       打断回答 / 拒绝审批 / 取消提问
   Tab       展开/折叠思考过程
   y/n       审批弹窗:允许一次/拒绝
   数字键    提问弹窗:选择选项`
@@ -105,11 +110,11 @@ const TodosPanel: FC<{ store: UiStore }> = ({ store }) => {
 const InputBar: FC<{ store: UiStore }> = ({ store }) => {
   const draft = useSyncExternalStore(store.subscribe, () => store.state.draft)
   const state = useSyncExternalStore(store.subscribe, () => store.state)
-  if (state.approval !== undefined || state.questions !== undefined) return null
+  if (state.fatal !== undefined || state.approval !== undefined || state.questions !== undefined) return null
   if (draft === '') {
-    return createElement(Text, { color: MUTED }, '输入任务，回车发送（/help /commands /todos /usage /image /exit）')
+    return createElement(Text, { color: MUTED, wrap: 'wrap' }, '输入任务，回车发送（/help /commands /todos /usage /image /exit）')
   }
-  return createElement(Text, null, '> ', draft, createElement(Text, { color: MUTED }, '█'))
+  return createElement(Text, { wrap: 'wrap' }, '> ', draft, createElement(Text, { color: MUTED }, '█'))
 }
 
 const StatusBar: FC<{ store: UiStore; dualBadge: string }> = ({ store, dualBadge }) => {
@@ -133,11 +138,11 @@ const ApprovalView: FC<{ store: UiStore }> = ({ store }) => {
   const approval = state.approval
   if (approval === undefined) return null
   return createElement(Box, { borderStyle: 'round', borderColor: 'yellow', flexDirection: 'column', padding: 1 },
-    createElement(Text, { bold: true, color: 'yellow' }, `审批：${approval.toolName}`),
+    createElement(Text, { bold: true, color: 'yellow', wrap: 'wrap' }, `审批：${approval.toolName}`),
     approval.reason !== undefined && approval.reason !== ''
-      ? createElement(Text, { color: MUTED }, approval.reason)
+      ? createElement(Text, { color: MUTED, wrap: 'wrap' }, approval.reason)
       : null,
-    createElement(Text, null, 'y=允许一次  n=拒绝'),
+    createElement(Text, { wrap: 'wrap' }, 'y=允许一次  n/Esc=拒绝'),
   )
 }
 
@@ -146,16 +151,22 @@ const QuestionsView: FC<{ store: UiStore }> = ({ store }) => {
   const draft = state.draft
   const questions = state.questions
   if (questions === undefined) return null
-  const question = questions.request.questions[0]
+  const total = questions.request.questions.length
+  const currentIndex = questions.currentIndex
+  const question = questions.request.questions[currentIndex]
   if (question === undefined) return null
   const options = question.options ?? []
+  const progress = total > 1 ? ` (${String(currentIndex + 1)}/${String(total)})` : ''
   return createElement(Box, { borderStyle: 'round', borderColor: ACCENT, flexDirection: 'column', padding: 1 },
-    createElement(Text, { bold: true, color: ACCENT }, `提问：${question.header ?? question.question}`),
+    createElement(Text, { bold: true, color: ACCENT, wrap: 'wrap' }, `提问${progress}：${question.header ?? question.question}`),
+    question.header !== undefined && question.header !== '' && question.header !== question.question
+      ? createElement(Text, { color: MUTED, wrap: 'wrap' }, question.question)
+      : null,
     options.length > 0
-      ? createElement(Text, null, options.map((option, index) => `${String(index + 1)}. ${option.label}`).join('  '))
-      : createElement(Text, null, draft === '' ? '输入答案后回车' : `> ${draft}█`),
+      ? createElement(Text, { wrap: 'wrap' }, options.map((option, index) => `${String(index + 1)}. ${option.label}${option.description ? ` (${option.description})` : ''}`).join('  '))
+      : createElement(Text, { wrap: 'wrap' }, draft === '' ? '输入答案后回车 · Esc 取消' : `> ${draft}█`),
     options.length > 0
-      ? createElement(Text, null, '输入编号回车')
+      ? createElement(Text, { color: MUTED, wrap: 'wrap' }, '输入编号选择 · Esc 取消')
       : null,
   )
 }
