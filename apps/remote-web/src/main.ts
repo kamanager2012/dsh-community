@@ -365,7 +365,7 @@ async function loadGitReview(sessionId: string): Promise<void> {
   }
 }
 
-async function handleConnectPairing(rawInput: string): Promise<void> {
+async function handleConnectPairing(rawInput: string, allowEpochReset = false): Promise<void> {
   state.pairingError = undefined
   try {
     const descriptor = await parsePairingInput(rawInput)
@@ -378,6 +378,7 @@ async function handleConnectPairing(rawInput: string): Promise<void> {
     renderApp()
     await client.connectWithPairing(descriptor, {
       displayName: buildDeviceDisplayName(),
+      allowEpochReset,
     })
     state.pairingInput = ''
     state.parsedPreview = undefined
@@ -758,7 +759,15 @@ function renderBannerAndToast(): void {
       acceptBtn.type = 'button'
       const host = st.host
       acceptBtn.addEventListener('click', () => {
-        void handleConnectSavedHost(host, true)
+        if (
+          state.parsedPreview &&
+          state.parsedPreview.hostFingerprint === host.hostFingerprint &&
+          state.pairingInput.trim().length > 0
+        ) {
+          void handleConnectPairing(state.pairingInput, true)
+        } else {
+          void handleConnectSavedHost(host, true)
+        }
       })
       box.appendChild(acceptBtn)
       bannerSlot.appendChild(box)

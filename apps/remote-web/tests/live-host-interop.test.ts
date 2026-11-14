@@ -284,7 +284,7 @@ describe('remote-web live E2EE host interoperability', () => {
     const created = await client.createSession({ engine: 'claude', title: 'Browser Spawned' })
     expect(created.title).toBe('Browser Spawned')
 
-    // Test Epoch Rollback Protection on stale epoch
+    // Test Epoch Rollback Protection on BOTH saved host profile AND crafted pairing link
     client.disconnect()
     await keyStore.updateHostEpoch(savedProfile.hostFingerprint, savedProfile.lastEpoch + 500)
     const elevatedProfile = (await keyStore.getTrustedHost(savedProfile.hostFingerprint))!
@@ -292,8 +292,27 @@ describe('remote-web live E2EE host interoperability', () => {
       code: 'EPOCH_DOWNGRADE',
     })
 
-    // Confirming explicit reset succeeds cleanly
-    await client.connectToProfile(elevatedProfile, { allowEpochReset: true })
+    // Crafted pairing link for already-trusted fingerprint when host returns ACTIVE at lower epoch MUST fail closed
+    const reissuedLower = await host.issuePairingDescriptor()
+    await expect(
+      client.connectWithPairing({
+        ...reissuedLower.descriptor,
+        endpointUrl: 'ws://127.0.0.1:1',
+      }),
+    ).rejects.toThrow()
+    const unchangedHost = (await keyStore.getTrustedHost(savedProfile.hostFingerprint))!
+    expect(unchangedHost.lastEpoch).toBe(savedProfile.lastEpoch + 500)
+    expect(unchangedHost.endpointUrl).toBe(elevatedProfile.endpointUrl)
+
+    await expect(client.connectWithPairing(reissuedLower.descriptor)).rejects.toMatchObject({
+      code: 'EPOCH_DOWNGRADE',
+    })
+    expect((await keyStore.getTrustedHost(savedProfile.hostFingerprint))?.lastEpoch).toBe(
+      savedProfile.lastEpoch + 500,
+    )
+
+    // Explicit user confirmation of epoch reset succeeds cleanly
+    await client.connectWithPairing(reissuedLower.descriptor, { allowEpochReset: true })
     expect(client.getStatus()).toBe('active')
 
     // Host revocation fails closed and delivers peer.revoked notification

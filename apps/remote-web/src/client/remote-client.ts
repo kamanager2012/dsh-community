@@ -252,9 +252,12 @@ export class RemoteWebClient {
       throw new RemoteRpcError('CANCELLED', 'Connection attempt superseded')
     }
     const profile = descriptorToTrustedProfile(descriptor, existing)
-    await this.keyStore.saveTrustedHost(profile)
-    if (gen !== this.connectGeneration) {
-      throw new RemoteRpcError('CANCELLED', 'Connection attempt superseded')
+    // Only persist new profile eagerly; for an already trusted host, wait until epoch & handshake verify
+    if (!existing) {
+      await this.keyStore.saveTrustedHost(profile)
+      if (gen !== this.connectGeneration) {
+        throw new RemoteRpcError('CANCELLED', 'Connection attempt superseded')
+      }
     }
 
     return this.connectToProfileInternal(
@@ -262,7 +265,7 @@ export class RemoteWebClient {
       {
         ...options,
         bootstrapToken: descriptor.bootstrapToken,
-        allowEpochReset: options.allowEpochReset ?? true,
+        allowEpochReset: options.allowEpochReset === true,
       },
       gen,
     )
@@ -468,7 +471,7 @@ export class RemoteWebClient {
             hostPubBytes,
             {
               ...options,
-              allowEpochReset: true,
+              allowEpochReset: options.allowEpochReset === true,
             },
             gen,
           )
@@ -478,7 +481,7 @@ export class RemoteWebClient {
           if (recheck.state === 'ACTIVE') {
             const saved: TrustedHostProfile = {
               ...(await this.keyStore.updateHostEpoch(effectiveProfile.hostFingerprint, recheck.epoch, {
-                allowReset: true,
+                allowReset: options.allowEpochReset === true,
               })) ?? effectiveProfile,
               preferredTransport: recheck.kind,
               lastConnectedAt: Date.now(),
