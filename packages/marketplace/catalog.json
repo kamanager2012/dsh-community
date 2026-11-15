@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-08-28T16:00:00Z",
+  "updatedAt": "2026-11-15T06:00:00Z",
   "plugins": [
     {
       "name": "@deepseek-harness-tui/dsh-tui",
@@ -28,7 +28,12 @@
             "lastReviewedAt": "2026-08-28"
           }
         }
-      ]
+      ],
+      "version": "0.20.1",
+      "testedDsh": "0.2.2-rc.3",
+      "integrity": "sha512-agtlvmZM8xUnpitwOB/fPb/410IDzY58qIn5WSk3qAKqnGy6WxRbIzomB7M+CsfK7jbqvoA15Zhel8rkKYK6LA==",
+      "lastReviewedAt": "2026-11-15",
+      "notes": "Official TUI plugin package. Verified dsh plugin add + --dump-config compose on @deepseek-ai/dsh@0.2.2-rc.3."
     },
     {
       "name": "dsh-compressor",
@@ -84,7 +89,12 @@
             "lastReviewedAt": "2026-08-28"
           }
         }
-      ]
+      ],
+      "version": "0.84.1",
+      "testedDsh": "0.2.2-rc.3",
+      "integrity": "sha512-LK+4+cDgQ3Y1CuaOA2/86cy+8KMnKlnOTFnf1QK8TW7RXbzRq+8y4fiQodp4FG9yRahKbh6iuJX/+aO8Z6q6sw==",
+      "lastReviewedAt": "2026-11-15",
+      "notes": "Verified dsh plugin add + --dump-config compose on @deepseek-ai/dsh@0.2.2-rc.3."
     },
     {
       "name": "dsh-lan-access",
@@ -112,7 +122,12 @@
             "lastReviewedAt": "2026-08-28"
           }
         }
-      ]
+      ],
+      "version": "0.1.3",
+      "testedDsh": "0.2.2-rc.3",
+      "integrity": "sha512-QmHWQ4HGuPbdTovSmG5Tpe50aJKrTFY7bbAQdqPXTvJER7wfQTyzaBDaqVrUI6NXz0Ud2hlVPHicLin6p9rQSQ==",
+      "lastReviewedAt": "2026-11-15",
+      "notes": "LAN HTTP/WebSocket bridge plugin; requires network, filesystem, and child_process capabilities. Verified dsh plugin add + --dump-config compose on @deepseek-ai/dsh@0.2.2-rc.3."
     },
     {
       "name": "dsh-memory-vault",
@@ -196,7 +211,12 @@
             "lastReviewedAt": "2026-08-28"
           }
         }
-      ]
+      ],
+      "version": "0.1.0",
+      "testedDsh": "0.2.2-rc.3",
+      "integrity": "sha512-AF4mWnVSXjIQrsdMISWinKUGrDCXiy+vI40+GjTSchYwgzzN96TGj5twE3WMWwdl5VSDrYSOukA9sHy8qFKgWA==",
+      "lastReviewedAt": "2026-11-15",
+      "notes": "Verified dsh plugin add + --dump-config compose on @deepseek-ai/dsh@0.2.2-rc.3."
     },
     {
       "name": "dsh-voice",
@@ -224,7 +244,12 @@
             "lastReviewedAt": "2026-08-28"
           }
         }
-      ]
+      ],
+      "version": "0.5.7",
+      "testedDsh": "0.2.2-rc.3",
+      "integrity": "sha512-/xrNEFnZoTu1Z3ijx/Ddv6G7CW0N/CpFMJQ/AM4SVAGIqVsuc4ApMudqc/Rtd/OVdtNnuhnRf0F1I6GyZAoXUw==",
+      "lastReviewedAt": "2026-11-15",
+      "notes": "Voice input plugin; requires child_process, filesystem, and network capabilities. Verified dsh plugin add + --dump-config compose on @deepseek-ai/dsh@0.2.2-rc.3."
     },
     {
       "name": "dsh-working-activity",
@@ -252,7 +277,12 @@
             "lastReviewedAt": "2026-08-28"
           }
         }
-      ]
+      ],
+      "version": "0.6.0",
+      "testedDsh": "0.2.2-rc.3",
+      "integrity": "sha512-PiuCrUWZ0UaJ0nwF+ut+qeQaGV43g4x/h2KIFYSPnFdZZV62LIGNBYedULfRjCaYTn6h5o8Ebhm5jDWinsqx3A==",
+      "lastReviewedAt": "2026-11-15",
+      "notes": "Verified dsh plugin add + --dump-config compose on @deepseek-ai/dsh@0.2.2-rc.3."
     }
   ]
 }

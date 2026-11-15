@@ -9,7 +9,7 @@ import java.util.Arrays
  * `@dsh-community/remote-adapter`'s `NoiseResponderSession` (`noise-handshake` v4.2.0).
  */
 class NoiseIkClient(
-    private val localStaticKeyPair: Curve25519.KeyPair,
+    localStaticKeyPair: Curve25519.KeyPair,
     remoteHostStaticPublicKey: ByteArray,
     prologue: ByteArray = ByteArray(0),
     private val random: SecureRandom = SecureRandom(),
@@ -28,6 +28,8 @@ class NoiseIkClient(
         const val MAX_NOISE_MESSAGE_BYTES = 65535
     }
 
+    private val lsPublicKey: ByteArray = localStaticKeyPair.publicKey.copyOf()
+    private val lsSecretKey: ByteArray = localStaticKeyPair.secretKey.copyOf()
     private val rs: ByteArray = remoteHostStaticPublicKey.copyOf()
     private val digest: ByteArray = ByteArray(Blake2b.HASH_LEN)
     private var chainingKey: ByteArray = ByteArray(Blake2b.HASH_LEN)
@@ -47,10 +49,10 @@ class NoiseIkClient(
         private set
 
     init {
-        require(localStaticKeyPair.publicKey.size == Curve25519.KEY_BYTES) {
+        require(lsPublicKey.size == Curve25519.KEY_BYTES) {
             "local static publicKey must be 32 bytes"
         }
-        require(localStaticKeyPair.secretKey.size == Curve25519.KEY_BYTES) {
+        require(lsSecretKey.size == Curve25519.KEY_BYTES) {
             "local static secretKey must be 32 bytes"
         }
         require(rs.size == Curve25519.KEY_BYTES) {
@@ -84,25 +86,33 @@ class NoiseIkClient(
     fun writeMessage1(payload: ByteArray = ByteArray(0)): ByteArray {
         check(state == State.NEW) { "cannot write message 1 in state $state" }
 
-        // IK Msg 1 tokens: [e, es, s, ss] + encrypted payload
-        val e = Curve25519.generateKeyPair(random)
-        ephemeralKeyPair = e
+        return try {
+            // IK Msg 1 tokens: [e, es, s, ss] + encrypted payload
+            val e = Curve25519.generateKeyPair(random)
+            ephemeralKeyPair = e
 
-        mixHash(e.publicKey)
-        mixKey(remotePublicKey = rs, localSecretKey = e.secretKey)
+            mixHash(e.publicKey)
+            mixKey(remotePublicKey = rs, localSecretKey = e.secretKey)
 
-        val encryptedStatic = encryptAndHash(localStaticKeyPair.publicKey)
-        mixKey(remotePublicKey = rs, localSecretKey = localStaticKeyPair.secretKey)
+            val encryptedStatic = encryptAndHash(lsPublicKey)
+            mixKey(remotePublicKey = rs, localSecretKey = lsSecretKey)
 
-        val encryptedPayload = encryptAndHash(payload)
+            val encryptedPayload = encryptAndHash(payload)
 
-        state = State.HANDSHAKING
-        val msg1 = ByteArray(e.publicKey.size + encryptedStatic.size + encryptedPayload.size)
-        var off = 0
-        System.arraycopy(e.publicKey, 0, msg1, off, e.publicKey.size); off += e.publicKey.size
-        System.arraycopy(encryptedStatic, 0, msg1, off, encryptedStatic.size); off += encryptedStatic.size
-        System.arraycopy(encryptedPayload, 0, msg1, off, encryptedPayload.size)
-        return msg1
+            val msg1 = ByteArray(e.publicKey.size + encryptedStatic.size + encryptedPayload.size)
+            if (msg1.size > MAX_NOISE_MESSAGE_BYTES) {
+                throw IllegalArgumentException("Noise handshake message 1 exceeds max message size")
+            }
+            var off = 0
+            System.arraycopy(e.publicKey, 0, msg1, off, e.publicKey.size); off += e.publicKey.size
+            System.arraycopy(encryptedStatic, 0, msg1, off, encryptedStatic.size); off += encryptedStatic.size
+            System.arraycopy(encryptedPayload, 0, msg1, off, encryptedPayload.size)
+            state = State.HANDSHAKING
+            msg1
+        } catch (t: Throwable) {
+            close()
+            throw t
+        }
     }
 
     @Synchronized
@@ -122,7 +132,7 @@ class NoiseIkClient(
             mixHash(re)
 
             mixKey(remotePublicKey = re, localSecretKey = e.secretKey)
-            mixKey(remotePublicKey = re, localSecretKey = localStaticKeyPair.secretKey)
+            mixKey(remotePublicKey = re, localSecretKey = lsSecretKey)
 
             val encryptedPayload = message2.copyOfRange(Curve25519.KEY_BYTES, message2.size)
             val payload = decryptAndHash(encryptedPayload)
@@ -263,6 +273,8 @@ class NoiseIkClient(
         Arrays.fill(digest, 0.toByte())
         CryptoUtils.zeroize(chainingKey)
         CryptoUtils.zeroize(cipherKey)
+        CryptoUtils.zeroize(lsPublicKey)
+        CryptoUtils.zeroize(lsSecretKey)
         cipherKey = null
         ephemeralKeyPair?.zeroize()
         ephemeralKeyPair?.let { CryptoUtils.zeroize(it.publicKey) }
