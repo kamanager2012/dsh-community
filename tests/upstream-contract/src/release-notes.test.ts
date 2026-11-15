@@ -80,8 +80,11 @@ describe('release-notes generator', () => {
       'DeepSeek Harness Community v0.2.2-rc.3 [Official Core: @deepseek-ai/dsh@0.2.2-rc.3]',
     )
     expect(result.stdout).toContain('dsh-community-0.2.2-rc.3.AppImage')
+    expect(result.stdout).toContain('dsh-community-0.2.2-rc.3-android-arm64-v8a.apk')
     expect(result.stdout).toContain('dsh-community-0.2.2-rc.3-official-runtime.cdx.json')
-    expect(result.stdout).toContain('sha256sum -c dsh-community-0.2.2-rc.3.AppImage.sha256')
+    expect(result.stdout).toContain(
+      'sha256sum -c dsh-community-0.2.2-rc.3.AppImage.sha256 dsh-community-0.2.2-rc.3-android-arm64-v8a.apk.sha256',
+    )
     expect(result.stdout).toContain(
       'https://github.com/kamanager2012/dsh-community/.github/workflows/release.yml@refs/tags/v0.2.2-rc.3',
     )

@@ -54,13 +54,14 @@ function assertReleaseTag(tag, label) {
 }
 
 const REQUIRED_PRIMARY_ASSET_KEYS = ['linuxAppImage']
-const OPTIONAL_LEGACY_ASSET_KEYS = ['macosDmg', 'windowsSetup']
+const OPTIONAL_LEGACY_ASSET_KEYS = ['androidApk', 'macosDmg', 'windowsSetup']
 const ALL_PRIMARY_ASSET_KEYS = [...REQUIRED_PRIMARY_ASSET_KEYS, ...OPTIONAL_LEGACY_ASSET_KEYS]
 const ALLOWED_ASSET_FIELDS = new Set([...ALL_PRIMARY_ASSET_KEYS, 'note'])
 
 function expectedPublishedAssets(version) {
   return {
     linuxAppImage: 'dsh-community-' + version + '.AppImage',
+    androidApk: 'dsh-community-' + version + '-android-arm64-v8a.apk',
     macosDmg: 'dsh-community-' + version + '.dmg',
     windowsSetup: 'DSH.Community.Setup.' + version + '.exe',
   }

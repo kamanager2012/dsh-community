@@ -38,6 +38,7 @@ describe('release publish verification boundary', () => {
   it('downloads only payload artifacts into dist-artifacts and keeps signed bundles in dist-signed', () => {
     const publish = release.slice(release.indexOf('  publish:'), release.length)
     expect(publish).toContain('name: linux\n          path: dist-artifacts/linux')
+    expect(publish).toContain('name: android\n          path: dist-artifacts/android')
     expect(publish).toContain('name: sbom\n          path: dist-artifacts/sbom')
     expect(publish).toContain('name: signed\n          path: dist-signed')
     expect(publish).not.toContain('merge-multiple: false')

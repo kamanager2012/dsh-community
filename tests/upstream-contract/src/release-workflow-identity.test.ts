@@ -7,9 +7,10 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '../../..')
 const release = readFileSync(join(repoRoot, '.github/workflows/release.yml'), 'utf8')
 
 describe('release workflow identity gate', () => {
-  it('validates a tag before build jobs can start and builds Linux only', () => {
+  it('validates a tag before build jobs can start and builds Linux and Android only', () => {
     expect(release).toMatch(/release-identity:\n[\s\S]*?validate-release-tag\.mjs "\$GITHUB_REF_NAME"/u)
     expect(release).toMatch(/  build-linux:\n    needs: release-identity/u)
+    expect(release).toMatch(/  build-android:\n    needs: release-identity/u)
     expect(release).not.toContain('  build-windows:')
     expect(release).not.toContain('  build-macos:')
   })

@@ -22,7 +22,7 @@ function expectedPrimaryAssets(facts) {
   const expected = {
     linuxAppImage: source.linuxAppImage,
   }
-  for (const key of ['macosDmg', 'windowsSetup']) {
+  for (const key of ['androidApk', 'macosDmg', 'windowsSetup']) {
     if (source[key] !== undefined) expected[key] = source[key]
   }
   return expected

@@ -172,6 +172,37 @@ jobs:
           test -s squashfs-root/resources/host/official-dsh.tar
           echo "linux AppImage extract OK on $TAG"
 
+  android-apk:
+    needs: resolve
+    if: ${{ github.event_name != 'pull_request' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      TAG: ${{ needs.resolve.outputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Download the exact Android arm64-v8a APK + sha256 and verify signature & purity
+        run: |
+          set -euo pipefail
+          VER="${TAG#v}"
+          URL="https://github.com/kamanager2012/dsh-community/releases/download/${TAG}/dsh-community-${VER}-android-arm64-v8a.apk"
+          echo "GET $URL"
+          curl -fSL -o app.apk "$URL"
+          curl -fSL -o app.apk.sha256 "${URL}.sha256"
+          expected=$(cut -d' ' -f1 app.apk.sha256 | tr '[:upper:]' '[:lower:]')
+          actual=$(sha256sum app.apk | cut -d' ' -f1)
+          [ "$expected" = "$actual" ] || { echo "sha256 mismatch: $actual vs $expected"; exit 1; }
+          echo "sha256 OK ($(wc -c < app.apk) bytes)"
+          if unzip -l app.apk | grep -Eiq "libnode\.so|nodejs-mobile|nodejs-project|@deepseek-ai/dsh|deepseek-ai|webkit"; then
+            echo "ERROR: Forbidden embedded Node/DSH/WebView entries found in release APK" >&2
+            exit 1
+          fi
+          unzip -l app.apk | grep -q "lib/arm64-v8a/libjingle_peerconnection_so.so"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -n 1)"
+          test -n "$APKSIGNER"
+          "$APKSIGNER" verify --verbose app.apk
+          echo "android arm64-v8a APK smoke OK on $TAG"
+
   linux-terminal:
     needs: resolve
     if: ${{ github.event_name != 'pull_request' }}
