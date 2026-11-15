@@ -7,7 +7,7 @@ Do not invent a compatibility shim in Desktop IPC.
 
 - surface: package / runtime-closure / pin (non-breaking web surface)
 - what moved:
-  - Candidate Source AND Community Product Version are synced 1:1 at `0.2.2-rc.3` (`@deepseek-ai/dsh@0.2.2-rc.3`, `next` dist-tag, published `2026-11-13T08:05:45.455Z`; upstream tag `dsh-v0.2.2-rc.3`, release commit `4c1cf20cb1fa6dd021a6988454df1df853209f63`, merge commit `38a65c965aa99ab525161efb7cc5cf1fe62fced`). `engines.node` remains `>=24.9.0`.
+  - Candidate Source AND Community Product Version are synced 1:1 at `0.2.2-rc.3` (`@deepseek-ai/dsh@0.2.2-rc.3`, `next` dist-tag, published `2026-11-13T08:05:45.455Z`; upstream tag `dsh-v0.2.2-rc.3`, release commit `4c1cf20cb1fa6dd021a6988454df1df853209f63`, merge commit `38a6a5c965aa99ab525161efb7cc5cf1fe62fced`). `engines.node` remains `>=24.9.0`.
   - Official Web default config snapshot (`202` rows), published package snapshot (`198` entries), `exports`, and `cli` surfaces are unchanged in shape from `0.2.2-rc.2`.
   - `@deepseek-ai/dsh@0.2.2-rc.3` adds experimental dependency `@deepseek-ai/dsh-deepseek-chat-import@0.2.2-rc.3` plus Windows installer `restart-status` fixes upstream; `packages/util/ripgrep/src/index.ts` (blob `e9ca71e63618acc75b8cd3308d38c42e423354f8`), `packages/bundle/web-app/src/index.ts` (blob `b93b559620fe9a064b6ff24e0b2ed3bf22b3f6dd`), `apps/cli/src/args.ts` (blob `41d4ebeaa832473b25952af1b185e02a7c182844`), and `apps/cli/reference/README.md` (blob `dc84a267d8bd1f59758ca02b1fde0fee4d0ef825`) remain unchanged.
   - Community `apps/desktop/runtime-lock` grows **327 → 328** `@deepseek-ai/dsh*` packages pinned cleanly to `0.2.2-rc.3`, retaining `zod@4.6.7` and `undici@^8.12.2` security overrides.

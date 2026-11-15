@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '../../..')
 
 describe('frozen upstream candidate target', () => {
-  it('advances explicitly from accepted 0.2.2-rc.1 to frozen 0.2.2-rc.2 with measured source evidence', () => {
+  it('advances explicitly from accepted 0.2.2-rc.2 to frozen 0.2.2-rc.3 with measured source evidence', () => {
     const watch = JSON.parse(
       readFileSync(
         join(repoRoot, 'contracts/compatibility/upstream-candidate-watch.json'),
@@ -62,17 +62,17 @@ describe('frozen upstream candidate target', () => {
 
     expect(watch.schemaVersion).toBe(2)
     expect(watch.previousAccepted.package).toBe('@deepseek-ai/dsh')
-    expect(watch.previousAccepted.version).toBe('0.2.2-rc.1')
+    expect(watch.previousAccepted.version).toBe('0.2.2-rc.2')
     expect(watch.previousAccepted.disposition).toBe('PREVIOUS_ACCEPTED_BASELINE')
     expect(watch.previousAccepted.acceptedCommunityMain)
-      .toBe('d66c3f0fd9c936d7aaad3da6b31181f410bd922e')
+      .toBe('4419bd1a14d011253174e304383ba95a4b818f4d')
 
     expect(watch.frozenTarget.package).toBe('@deepseek-ai/dsh')
-    expect(watch.frozenTarget.version).toBe('0.2.2-rc.2')
+    expect(watch.frozenTarget.version).toBe('0.2.2-rc.3')
     expect(watch.frozenTarget.registryGate.status).toBe('PASS')
     expect(watch.frozenTarget.registryGate.command)
-      .toBe('npm view @deepseek-ai/dsh@0.2.2-rc.2 version --registry=https://registry.npmjs.org/')
-    expect(watch.frozenTarget.registryGate.runId).toBe(43334043848)
+      .toBe('npm view @deepseek-ai/dsh@0.2.2-rc.3 version --registry=https://registry.npmjs.org/')
+    expect(watch.frozenTarget.registryGate.runId).toBe(43661345685)
     expect(watch.policy.candidateAdvancement).toBe('EXPLICIT_ONLY')
 
     for (const sha of [
@@ -90,8 +90,8 @@ describe('frozen upstream candidate target', () => {
     )
 
     const comparison = watch.frozenTarget.comparisonFromPrevious
-    expect(comparison.commitsBetweenReleaseMerges).toBe(1568)
-    expect(comparison.changedFiles).toBe(4645)
+    expect(comparison.commitsBetweenReleaseMerges).toBe(6)
+    expect(comparison.changedFiles).toBe(300)
 
     expect(comparison.readinessImplementation.verdict).toBe('UNCHANGED')
     expect(comparison.readinessImplementation.previousBlob)
@@ -101,8 +101,8 @@ describe('frozen upstream candidate target', () => {
     expect(comparison.cliArgsImplementation.previousBlob)
       .toBe(comparison.cliArgsImplementation.targetBlob)
 
-    expect(comparison.cliReference.verdict).toBe('CHANGED')
+    expect(comparison.cliReference.verdict).toBe('UNCHANGED')
     expect(comparison.cliReference.previousBlob)
-      .not.toBe(comparison.cliReference.targetBlob)
+      .toBe(comparison.cliReference.targetBlob)
   })
 })
