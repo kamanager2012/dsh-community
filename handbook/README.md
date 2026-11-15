@@ -63,7 +63,7 @@ python3 scripts/validate_ai_catalog.py
 
 ### 环境
 
-建议使用 Node.js 22.19+ 或 24+。在终端运行：
+建议使用 Node.js 24.9 或更新版本（官方包声明 `engines.node >=24.9.0`）。在终端运行：
 
 ```bash
 npx @deepseek-ai/dsh web

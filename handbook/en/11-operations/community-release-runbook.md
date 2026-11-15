@@ -1,16 +1,16 @@
 # Community release runbook
 
-> Evidence status: `v0.2.2-rc.3` exact-artifact smoke passed on real runners `[PARTIAL]` ([Run 43663270841](https://github.com/kamanager2012/dsh-community/actions/runs/43663270841)); this page does not treat launch/signature smoke as the full user loop, and README prose is not runtime evidence.
+> Evidence status: `v0.2.2-rc.3` 12-asset exact-artifact smoke passed on real runners ([Run 43696414193](https://github.com/kamanager2012/dsh-community/actions/runs/43696414193)) and WSL/Linux user-loop evidence passed ([Run 43688556931](https://github.com/kamanager2012/dsh-community/actions/runs/43688556931)); this page still separates launch/signature smoke, live user loop, and physical `arm64-v8a` handset telemetry, and README prose is not runtime evidence.
 
 Links: [Current release status](community-release-status.md) · [Release checklist](../../content/11-operations/release-checklist.md) · [Ecosystem map](../00-overview/community-ecosystem.md) · [dsh-community Release](https://github.com/kamanager2012/dsh-community/releases/latest)
 
 ## Current fact boundary
 
-- Published Latest is `v0.2.2-rc.3`, shipping **8 signed files**: `dsh-community-0.2.2-rc.3.AppImage`, `dsh-community-0.2.2-rc.3-official-runtime.cdx.json`, and their `.sha256` and `.sigstore.json` keyless cosign bundles.
+- Published Latest is `v0.2.2-rc.3`, shipping **12 signed files**: `dsh-community-0.2.2-rc.3.AppImage`, `dsh-community-0.2.2-rc.3-android-arm64-v8a.apk`, `dsh-community-0.2.2-rc.3-official-runtime.cdx.json`, and their `.sha256` and `.sigstore.json` keyless cosign bundles.
 - Official kernel is `@deepseek-ai/dsh@0.2.2-rc.3`, mirrored 1:1 by Candidate Source. Historical independent numbers `v0.1.2`–`v0.1.6` and retired Win/macOS Desktop installers (`v0.1.1-rc.2` and earlier) are not current user downloads.
 - Desktop/TUI must show: `DeepSeek Harness Community v0.2.2-rc.3 [Official Core: @deepseek-ai/dsh@0.2.2-rc.3]`.
-- The three Complementary Community endpoints are WSL/Linux Terminal, Linux AppImage, and Android Remote Client (`apps/android`, `[UNVERIFIED]`, not in Latest). Official Web and Win/macOS Desktop belong upstream.
-- [Run 43663270841](https://github.com/kamanager2012/dsh-community/actions/runs/43663270841) passed `resolve`, `linux-appimage`, `linux-terminal`, and `verify-signatures` `[PARTIAL]`. The full billable user loop remains `[UNVERIFIED]`.
+- The three Complementary Community endpoints are WSL/Linux Terminal, Linux AppImage, and Android Remote Client (signed `arm64-v8a` APK shipped in Latest; CI `x86_64` emulator E2EE verified, physical handset telemetry `[UNVERIFIED]`). Official Web and Win/macOS Desktop belong upstream.
+- [Run 43696414193](https://github.com/kamanager2012/dsh-community/actions/runs/43696414193) passed `resolve`, `linux-appimage`, `android-apk`, `linux-terminal`, and `verify-signatures` across all 12 assets, and [Run 43688556931](https://github.com/kamanager2012/dsh-community/actions/runs/43688556931) passed the WSL/Linux live model user loop (`[REAL]`); physical `arm64-v8a` handset telemetry remains `[UNVERIFIED]`.
 - If an installer ships with missing Runtime dependencies, halt promotion immediately and roll Latest back before cutting a fresh tag; never move or overwrite a published tag.
 
 ## 1. Freeze before release
@@ -49,6 +49,7 @@ Stop on any failure. Do not use `--force`, move a tag, or overwrite a published 
 | `release-identity` | Validate immutable candidate release identity and current Published Latest facts |
 | `runtime-sbom` | Generate official-runtime CycloneDX SBOM (`.cdx.json`) and `.sha256` sidecar |
 | `build-linux` | `typecheck`, full `pnpm test`, Linux AppImage, `asar-purity` vendor=0 guard, `.sha256` |
+| `build-android` | `verify-android-release-ready.mjs --allow-emulator-verified`, signed `arm64-v8a` APK, zero embedded Node/DSH check, `apksigner verify`, `.sha256` |
 | `sign` | Keyless Sigstore OIDC signing (`cosign sign-blob --yes --bundle`) for every asset and `.sha256` |
 | `publish` | Verify bundles, render changelog notes, and create GitHub Release (refuses to overwrite existing tag releases) |
 
@@ -77,13 +78,13 @@ gh workflow run artifact-smoke.yml --repo kamanager2012/dsh-community --field ta
 gh run list --repo kamanager2012/dsh-community --workflow artifact-smoke.yml --limit 1
 ```
 
-On `v0.2.2-rc.3`, [Run 43663270841](https://github.com/kamanager2012/dsh-community/actions/runs/43663270841) passed `resolve`, `linux-appimage`, `linux-terminal`, and `verify-signatures` (`[PARTIAL]`). Full live user acceptance remains gated separately (`user-loop-evidence.yml` + manual cross-surface `~/.dsh` resume, plugin restart, offline/upgrade recovery).
+On `v0.2.2-rc.3`, [Run 43696414193](https://github.com/kamanager2012/dsh-community/actions/runs/43696414193) passed `resolve`, `linux-appimage`, `android-apk`, `linux-terminal`, and `verify-signatures` across all 12 assets, and `user-loop-evidence.yml` passed in [Run 43688556931](https://github.com/kamanager2012/dsh-community/actions/runs/43688556931).
 
 ## 6. Latest promotion and rollback
 
 ### Promotion
 
-After the release publishes all 8 signed assets and `artifact-smoke` succeeds, update `docs/current-release.json` and `docs/current-release.md` so Published Latest mirrors the live release without blurring Candidate Source vs Published Latest.
+After the release publishes all 12 signed assets and `artifact-smoke` succeeds, update `docs/current-release.json` and `docs/current-release.md` so Published Latest mirrors the live release without blurring Candidate Source vs Published Latest.
 
 ### Rollback
 

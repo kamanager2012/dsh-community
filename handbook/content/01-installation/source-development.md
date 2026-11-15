@@ -41,7 +41,7 @@ git diff --stat
 
 官方仓库大致分成：
 
-- apps：CLI 和 Web 应用；
+- apps：`cli`（`dsh` 启动器，不带终端界面）、`web`、`desktop`（包裹 Web 的 Electron 壳）等应用；
 - packages：核心服务、插件、工具和组合包；
 - docs：架构、子系统、配置和用户指南；
 - examples：可运行示例；

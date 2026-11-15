@@ -4,7 +4,7 @@ Python SDK 用来在程序中管理 Harness 的 workspace、session、Agent 组�
 
 ## 前置条件和安装
 
-官方指南要求 Python 3.10+、Git，以及 Linux x64、Linux arm64 或 macOS 14+ arm64。还需要一个兼容的模型端点、凭据和可隔离的 workspace。
+官方指南要求 Python 3.10+、Git，以及 Linux x64、Linux arm64、macOS 14+ arm64 或 Windows x64。还需要一个兼容的模型端点、凭据和可隔离的 workspace。
 
 在独立虚拟环境中安装：
 

@@ -8,9 +8,9 @@ DeepSeek Harness 仍处于 Developer Preview，命令、配置字段和插件接
 
 ## 运行时要求
 
-- Web UI 和 CLI：Node.js 22.19+ 或 24+。
+- Web UI 和 CLI：Node.js 24.9 或更新版本（官方包声明 `engines.node >=24.9.0`；CI 覆盖 24.9、最新 24 与 26）。
 - Python SDK：Python 3.10+、Git，以及隔离的 workspace。
-- Python SDK 官方支持的主要平台：Linux x64、Linux arm64 和 macOS 14+ arm64。
+- Python SDK 官方支持的主要平台：Linux x64、Linux arm64、macOS 14+ arm64 和 Windows x64。
 - 已发布的 Python SDK runtime 不要求系统 Node.js；从源码构建时另按源码仓库的开发要求操作。
 
 ## 使用前检查

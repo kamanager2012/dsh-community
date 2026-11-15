@@ -21,13 +21,13 @@
 - 社区层**不 patch** 官方 UI 表面；升级 = 契约重验，不是重写补丁。
 - 官方 Web 与 Windows / macOS Desktop 归官方上游（`deepseek-ai/deepseek-harness`）所有；历史版本 `v0.1.1-rc.2` 之后社区不再双份构建 Win/macOS 安装包。
 
-三个互补社区端（当前 2 个已随 Published Latest / 源码发行）：
+三个互补社区端（全部已发行；Android 物理真机遥测保持 `[UNVERIFIED]`）：
 
 | 端 | 面向 | 入口 |
 |---|---|---|
 | WSL / Linux Terminal | 开发者、CLI 用户、WSL2 用户 | `dsh-community` 命令（`pnpm start` / `pnpm tui`） |
 | Linux AppImage | Linux 图形桌面 | `dsh-community-0.2.2-rc.3.AppImage`（以 Release 页为准） |
-| Android Remote Client | 轻量移动远程客户端 | `apps/android` + `packages/remote-adapter`，保持 `[UNVERIFIED]`，不在 Latest 下载清单 |
+| Android Remote Client | 轻量移动远程客户端 | `dsh-community-0.2.2-rc.3-android-arm64-v8a.apk`（以 Release 页为准；CI `x86_64` 模拟器 E2EE 已验收，物理真机遥测 `[UNVERIFIED]`） |
 
 ## 下载与校验
 
@@ -35,7 +35,7 @@
 https://github.com/kamanager2012/dsh-community/releases/latest
 ```
 
-- **Latest** 指向 `releases/latest`；当前为 **v0.2.2-rc.3**（Linux AppImage + 官方运行时 CycloneDX SBOM，共 8 个带签名文件；历史 `v0.1.2`–`v0.1.6` 与 `v0.1.1-rc.2` 均不是当前下载）。
+- **Latest** 指向 `releases/latest`；当前为 **v0.2.2-rc.3**（Linux AppImage + 已签名 Android `arm64-v8a` APK + 官方运行时 CycloneDX SBOM，共 12 个带签名文件；历史 `v0.1.2`–`v0.1.6` 与 `v0.1.1-rc.2` 均不是当前下载）。
 - 每个资产同时附带 `.sha256` 摘要侧车与 `.sigstore.json` keyless cosign bundle；安装前务必使用 `sha256sum -c` 与 `cosign verify-blob --bundle` 核对。
 
 ## 同一套 Session：官方 Web / Win·macOS ↔ Terminal ↔ Linux AppImage
@@ -65,7 +65,7 @@ dsh-community desktop          # 打开桌面壳
 dsh-community remote start --qr # 启动 E2EE 多 Agent 远程控制面
 ```
 
-需要 Node.js 22.15+、pnpm、`DEEPSEEK_API_KEY`（DSH 模式）或本地对应 Agent CLI；没密钥不会闷头进 Ink，`doctor` 会明确提示。
+需要 Node.js 24.9+（官方包声明 `engines.node >=24.9.0`；本仓工作区最低 22.15）、pnpm、`DEEPSEEK_API_KEY`（DSH 模式）或本地对应 Agent CLI；没密钥不会闷头进 Ink，`doctor` 会明确提示。
 
 ## 插件：验证层，不是最大目录
 
@@ -100,9 +100,9 @@ dsh-marketplace install <name>
 → 官方 Runtime 就绪 → 缺 key / 无 TTY 失败路径 → 退出无残留
 ```
 
-- 自动门禁：`artifact-smoke` 工作流（下载 exact release `.AppImage` + sidecars 校验并跑 Linux AppImage 与 TUI smoke）。
+- 自动门禁：`artifact-smoke` 工作流（下载 exact release `.AppImage`、Android `.apk` + sidecars 校验并跑 Linux AppImage、Android APK 与 TUI smoke）。
 - 状态标注规则：只允许 `[REAL] / [PARTIAL] / [UNVERIFIED] / [NOT_IMPLEMENTED]` 等明确标签，禁止 `production-ready` 一类说法。
-- 2026-11-15 记录：`v0.2.2-rc.3` 真实资产在 [Run 43663270841](https://github.com/kamanager2012/dsh-community/actions/runs/43663270841) 通过 `resolve`、`linux-appimage`、`linux-terminal` 与 `verify-signatures`（cosign keyless 8 文件全通过）`[PARTIAL]`；完整用户闭环仍待实机人工验收（`[UNVERIFIED]`）。
+- 2026-11-15 记录：`v0.2.2-rc.3` 真实资产在 [Run 43696414193](https://github.com/kamanager2012/dsh-community/actions/runs/43696414193) 通过 `resolve`、`linux-appimage`、`android-apk`、`linux-terminal` 与 `verify-signatures`（cosign keyless 12 文件全通过）；WSL/Linux 真实模型新建与恢复会话已通过 [`user-loop-evidence.yml`](https://github.com/kamanager2012/dsh-community/actions/runs/43688556931) 验收 `[REAL]`，物理 `arm64-v8a` Android 真机遥测仍为 `[UNVERIFIED]`。
 
 ## 相关仓库
 
