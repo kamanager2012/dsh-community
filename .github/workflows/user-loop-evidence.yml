@@ -96,16 +96,38 @@ jobs:
           grep -q '@deepseek-ai/dsh' runtime-version.txt
           echo "release commit: $commit"
 
+      - name: Download and extract published Linux AppImage runtime archive
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          VER="${TAG#v}"
+          work="${RUNNER_TEMP}/user-loop-appimage"
+          rm -rf "$work"
+          mkdir -p "$work"
+          URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/dsh-community-${VER}.AppImage"
+          curl -fSL --retry 3 -o "$work/app.AppImage" "$URL"
+          curl -fSL --retry 3 -o "$work/app.AppImage.sha256" "${URL}.sha256"
+          expected=$(cut -d' ' -f1 "$work/app.AppImage.sha256" | tr '[:upper:]' '[:lower:]')
+          actual=$(sha256sum "$work/app.AppImage" | cut -d' ' -f1)
+          [ "$expected" = "$actual" ] || { echo "sha256 mismatch: $actual vs $expected"; exit 1; }
+          chmod +x "$work/app.AppImage"
+          (cd "$work" && ./app.AppImage --appimage-extract >/dev/null)
+          test -s "$work/squashfs-root/resources/host/official-dsh.tar"
+          echo "appimage runtime archive extracted: $work/squashfs-root/resources/host/official-dsh.tar"
+
       - name: Run real new -> answer -> resume -> answer loop
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           DSH_HOME: ${{ runner.temp }}/user-loop-dsh-home
           EVIDENCE_TAG: ${{ steps.release.outputs.tag }}
           EVIDENCE_COMMIT: ${{ steps.identity.outputs.commit }}
+          APPIMAGE_ARCHIVE: ${{ runner.temp }}/user-loop-appimage/squashfs-root/resources/host/official-dsh.tar
         run: |
           set -euo pipefail
           python3 "${GITHUB_WORKSPACE}/scripts/e2e/user-loop.py" \
             --launcher release-src/apps/tui/dist/bin.js \
+            --appimage-archive "$APPIMAGE_ARCHIVE" \
             --tag "$EVIDENCE_TAG" \
             --commit "$EVIDENCE_COMMIT" \
             --timeout-seconds "${{ github.event.inputs.timeout_seconds }}" \

@@ -11,7 +11,7 @@ not run on pushes or pull requests.
 
 ## Scope
 
-The current workflow covers the **WSL/Linux Terminal (`dsh-community`) ↔ Official `dsh --profile headless` cross-surface Session roundtrip**. A passing Linux run is real evidence for Terminal and cross-surface `DSH_HOME` Session handoff; it is not evidence that the packaged GUI Desktop user loop has passed.
+The current workflow covers the **WSL/Linux Terminal (`dsh-community`) ↔ Official `dsh --profile headless` ↔ Linux AppImage bundled runtime (`official-dsh.tar`) cross-surface Session roundtrip** plus automated **Lifecycle recovery** checks. A passing Linux run is real evidence for Terminal, AppImage bundled runtime extraction/recovery, and cross-surface `DSH_HOME` Session handoff; it is not evidence that the packaged GUI Electron window interactive user loop has passed.
 
 The evidence runner:
 
@@ -20,25 +20,34 @@ The evidence runner:
    the resulting full 40-character Git commit SHA as the immutable tested
    source identity;
 3. installs the exact tag with the frozen lockfile and builds the Terminal endpoint;
-4. uses an isolated temporary `DSH_HOME`;
-5. starts `dsh-community new` in a real pseudo-terminal;
-6. sends a randomized, non-tool prompt through `DSH_TUI_FIRST_PROMPT`;
-7. waits for the real model to return the computed ACK marker;
-8. exits cleanly;
-9. proves exactly one official Session exists and that the launcher lists the
-   same Session ID;
-10. resumes that exact Session ID in `dsh-community`, sends a second randomized
+4. downloads the exact release Linux `.AppImage` + `.sha256`, verifies SHA-256,
+   and extracts `resources/host/official-dsh.tar` without FUSE;
+5. uses an isolated temporary `DSH_HOME`;
+6. verifies missing-`DEEPSEEK_API_KEY` refusal leaves zero orphan sessions before
+   recovering with `DEEPSEEK_API_KEY` set;
+7. starts `dsh-community new` in a real pseudo-terminal;
+8. sends a randomized, non-tool prompt through `DSH_TUI_FIRST_PROMPT`;
+9. waits for the real model to return the computed ACK marker;
+10. exits cleanly;
+11. proves exactly one official Session exists and that the launcher lists the
+    same Session ID;
+12. resumes that exact Session ID in `dsh-community`, sends a second randomized
     prompt, receives a second real model ACK, and exits;
-11. proves resume did not create a second Session and that the official
+13. proves resume did not create a second Session and that the official
     transcript advanced;
-12. invokes the official `dsh --profile headless --session-id <id>` entrypoint
+14. invokes the official `dsh --profile headless --session-id <id>` entrypoint
     against the same `DSH_HOME`, sends a third randomized prompt, receives a
     third real model ACK, and proves the official headless surface appended to
     the same Session without creating a second Session;
-13. resumes that exact Session ID again in `dsh-community`, sends a fourth
-    randomized prompt, receives a fourth real model ACK, and proves two-way
-    cross-surface Session roundtrip (`dsh-community-tui` ↔ `official-dsh-headless`);
-14. publishes a sanitized JSON evidence artifact.
+15. simulates an interrupted AppImage runtime extraction (partial temp file,
+    missing `.dsh-host-ready`), verifies clean wipe-and-re-extract recovery from
+    `official-dsh.tar`, and invokes that recovered runtime against the same
+    Session ID (`appimageBundledRuntimeHandoff`) to receive a fourth real model ACK;
+16. resumes that exact Session ID again in `dsh-community`, sends a fifth
+    randomized prompt, receives a fifth real model ACK, and proves cross-surface
+    Session roundtrip across `dsh-community-tui`, `official-dsh-headless`, and
+    `linux-appimage-bundled-runtime`;
+17. publishes a sanitized JSON evidence artifact.
 
 The artifact contains the release tag and exact tested Git commit SHA, plus a
 SHA-256 of the Session ID rather than the Session ID itself. It does not export
