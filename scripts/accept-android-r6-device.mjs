@@ -596,7 +596,9 @@ async function main() {
     logStep('Starting OfficialHostCordisBridge + SelfHostedSignaling/STUN + BlindRelayServer')
     await bridge.start()
     const sess = await bridge.createSession({ sessionId: 'r6-accept-session', cwd: ROOT })
-    const pairing = await bridge.issuePairingDescriptor()
+    const pairing = await bridge.issuePairingDescriptor({
+      allowedCapabilities: ['observe', 'prompt', 'session.manage', 'approve', 'answer-question'],
+    })
     controlServer = await createBridgeControlServer(bridge, { port: 0 })
 
     const lanPort = new URL(pairing.descriptor.endpointUrl).port

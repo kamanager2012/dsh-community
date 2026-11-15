@@ -13,7 +13,12 @@ import { createRequire } from 'node:module'
 import type { AddressInfo } from 'node:net'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import type { DeviceRecord } from './crypto/device-trust.js'
+import {
+  DEFAULT_GRANTED_CAPABILITIES,
+  validateCapabilities,
+  type CapabilityDelta,
+  type DeviceRecord,
+} from './crypto/device-trust.js'
 import { RemoteCryptoError } from './crypto/errors.js'
 import { PairingCoordinator, type PairingConfirmationParams, type PairingResult } from './crypto/pairing-coordinator.js'
 import {
@@ -110,12 +115,7 @@ import type { HostRelayCarrierOptions } from './carrier/relay-host.js'
 import type { HostWebRtcCarrierOptions } from './carrier/webrtc-host.js'
 
 const CANONICAL_SESSION_LOG_RE = /^session(?:\.v([1-9][0-9]*))?\.jsonl(?:\.zstd)?$/u
-const DEFAULT_GRANTED_CAPABILITIES: readonly Capability[] = Object.freeze([
-  'observe',
-  'prompt',
-  'approve',
-  'answer-question',
-])
+// DEFAULT_GRANTED_CAPABILITIES imported from ./crypto/device-trust.js (least-privilege ['observe', 'prompt'])
 
 export interface OfficialAgentContextLike {
   on(event: string, listener: (...args: any[]) => unknown, options?: { prepend?: boolean }): () => void
@@ -238,6 +238,8 @@ export interface RemoteControlBridgeLike {
   }): Promise<PairingIssueResult>
   listTrustedDevices(): Promise<readonly DeviceRecord[]>
   revokeDevice(deviceId: string): Promise<boolean>
+  updateDeviceCapabilities?(deviceId: string, grantedCapabilities: readonly Capability[]): Promise<DeviceRecord>
+  updateDeviceCapabilitiesDelta?(deviceId: string, delta: CapabilityDelta): Promise<DeviceRecord>
   stop(): Promise<void>
 }
 
@@ -270,6 +272,7 @@ export interface OfficialHostCordisBridgeOptions {
   readonly relayUrlHint?: string | undefined
   readonly relayRoomIdHint?: string | undefined
   readonly onPairingCandidate?: ((candidate: PairingCandidateView) => void) | undefined
+  readonly defaultAllowedCapabilities?: readonly Capability[] | undefined
   readonly autoConfirmCapabilities?: readonly Capability[] | undefined
   readonly clock?: (() => number) | undefined
 }
@@ -2258,7 +2261,12 @@ export class OfficialHostCordisBridge {
       trustDomainId: identity.identity.trustDomainId,
       hostGeneration: identity.identity.generation,
       ttlMs: options?.ttlMs ?? this.options.pairingTtlMs ?? MAX_PAIRING_TTL_MS,
-      allowedCapabilities: options?.allowedCapabilities ?? DEFAULT_GRANTED_CAPABILITIES,
+      allowedCapabilities: validateCapabilities(
+        options?.allowedCapabilities ??
+          this.options.defaultAllowedCapabilities ??
+          DEFAULT_GRANTED_CAPABILITIES,
+        'allowedCapabilities',
+      ),
     })
 
     const relayUrl = this.options.relay?.relayUrl ?? this.options.relayUrlHint
@@ -2297,6 +2305,27 @@ export class OfficialHostCordisBridge {
     this.workspaceUploads.revokeDevice(deviceId)
     this.router.revokeDeviceUploads(deviceId)
     return this.stores.trustStore.revoke(deviceId)
+  }
+
+  private finalizeCapabilityUpdate(deviceId: string, updated: DeviceRecord): DeviceRecord {
+    if (!updated.grantedCapabilities.has('workspace.write')) {
+      this.workspaceUploads.revokeDevice(deviceId)
+      this.router.revokeDeviceUploads(deviceId)
+    }
+    return updated
+  }
+
+  async updateDeviceCapabilities(
+    deviceId: string,
+    grantedCapabilities: readonly Capability[],
+  ): Promise<DeviceRecord> {
+    const updated = await this.stores.trustStore.updateCapabilities(deviceId, grantedCapabilities)
+    return this.finalizeCapabilityUpdate(deviceId, updated)
+  }
+
+  async updateDeviceCapabilitiesDelta(deviceId: string, delta: CapabilityDelta): Promise<DeviceRecord> {
+    const updated = await this.stores.trustStore.updateCapabilitiesDelta(deviceId, delta)
+    return this.finalizeCapabilityUpdate(deviceId, updated)
   }
 
   /**
@@ -2536,6 +2565,25 @@ export async function createBridgeControlServer(
   },
 ): Promise<BridgeControlServerHandle> {
   const controlToken = options?.controlToken ?? randomBytes(24).toString('hex')
+  const deviceCapabilityQueues = new Map<string, Promise<unknown>>()
+  const enqueueDeviceCapabilityUpdate = <T>(deviceId: string, task: () => Promise<T>): Promise<T> => {
+    const prev = deviceCapabilityQueues.get(deviceId) ?? Promise.resolve()
+    const next = prev.then(task, task)
+    const cleanup = next.then(
+      () => {
+        if (deviceCapabilityQueues.get(deviceId) === cleanup) {
+          deviceCapabilityQueues.delete(deviceId)
+        }
+      },
+      () => {
+        if (deviceCapabilityQueues.get(deviceId) === cleanup) {
+          deviceCapabilityQueues.delete(deviceId)
+        }
+      },
+    )
+    deviceCapabilityQueues.set(deviceId, cleanup)
+    return next
+  }
 
   const server: Server = createServer(async (req, res) => {
     try {
@@ -2641,9 +2689,14 @@ export async function createBridgeControlServer(
       }
       if (req.method === 'POST' && reqUrl.pathname === '/pairing-token') {
         const body = await readJsonBody(req)
-        const caps = Array.isArray(body.allowedCapabilities)
-          ? (body.allowedCapabilities as Capability[])
-          : undefined
+        let caps: readonly Capability[] | undefined
+        if (body.allowedCapabilities !== undefined) {
+          if (!Array.isArray(body.allowedCapabilities)) {
+            sendJson(res, 400, { error: 'allowedCapabilities must be an array' })
+            return
+          }
+          caps = validateCapabilities(body.allowedCapabilities, 'allowedCapabilities')
+        }
         const issued = await bridge.issuePairingDescriptor({
           ...(typeof body.ttlMs === 'number' ? { ttlMs: body.ttlMs } : {}),
           ...(caps ? { allowedCapabilities: caps } : {}),
@@ -2670,9 +2723,28 @@ export async function createBridgeControlServer(
           sendJson(res, 400, { error: 'candidateId is required' })
           return
         }
-        const grantedCapabilities = Array.isArray(body.grantedCapabilities)
-          ? (body.grantedCapabilities as Capability[])
-          : DEFAULT_GRANTED_CAPABILITIES
+        let grantedCapabilities: readonly Capability[]
+        if (body.grantedCapabilities !== undefined) {
+          if (!Array.isArray(body.grantedCapabilities)) {
+            sendJson(res, 400, { error: 'grantedCapabilities must be an array' })
+            return
+          }
+          try {
+            grantedCapabilities = validateCapabilities(body.grantedCapabilities, 'grantedCapabilities')
+          } catch (err) {
+            sendJson(res, 400, { error: err instanceof Error ? err.message : String(err) })
+            return
+          }
+        } else {
+          const candidate = bridge.pairingCoordinator.listPendingCandidates().find((c) => c.candidateId === body.candidateId)
+          if (candidate) {
+            const maxSet = new Set(candidate.maxAllowedCapabilities)
+            const defaults = DEFAULT_GRANTED_CAPABILITIES.filter((cap) => maxSet.has(cap))
+            grantedCapabilities = defaults.length > 0 ? defaults : candidate.maxAllowedCapabilities.slice(0, 1)
+          } else {
+            grantedCapabilities = DEFAULT_GRANTED_CAPABILITIES
+          }
+        }
         const confirmed = await bridge.pairingCoordinator.confirmPairing({
           candidateId: body.candidateId,
           grantedCapabilities,
@@ -2681,6 +2753,7 @@ export async function createBridgeControlServer(
           ok: true,
           deviceId: confirmed.device.deviceId,
           displayName: confirmed.device.displayName,
+          capabilities: [...confirmed.device.grantedCapabilities],
         })
         return
       }
@@ -2695,6 +2768,72 @@ export async function createBridgeControlServer(
             lastSeenAt: d.lastSeenAt,
             ...(d.revokedAt !== undefined ? { revokedAt: d.revokedAt } : {}),
           })),
+        })
+        return
+      }
+      if (req.method === 'POST' && reqUrl.pathname === '/devices/capabilities') {
+        const body = await readJsonBody(req)
+        if (typeof body.deviceId !== 'string' || body.deviceId.length === 0) {
+          sendJson(res, 400, { error: 'deviceId is required' })
+          return
+        }
+        const targetDeviceId = body.deviceId
+        if (typeof bridge.updateDeviceCapabilities !== 'function') {
+          sendJson(res, 501, { error: 'updateDeviceCapabilities is not supported by this bridge' })
+          return
+        }
+        let updated: DeviceRecord
+        if (body.grantedCapabilities !== undefined) {
+          if (!Array.isArray(body.grantedCapabilities)) {
+            sendJson(res, 400, { error: 'grantedCapabilities must be an array' })
+            return
+          }
+          const nextCapabilities = validateCapabilities(body.grantedCapabilities, 'grantedCapabilities')
+          updated = await enqueueDeviceCapabilityUpdate(targetDeviceId, () =>
+            bridge.updateDeviceCapabilities!(targetDeviceId, nextCapabilities),
+          )
+        } else if (body.grant !== undefined || body.revoke !== undefined) {
+          if (
+            (body.grant !== undefined && !Array.isArray(body.grant)) ||
+            (body.revoke !== undefined && !Array.isArray(body.revoke))
+          ) {
+            sendJson(res, 400, { error: 'grant and revoke must be arrays' })
+            return
+          }
+          const grantList = validateCapabilities((body.grant as unknown[]) ?? [], 'grant')
+          const revokeList = validateCapabilities((body.revoke as unknown[]) ?? [], 'revoke')
+          updated = await enqueueDeviceCapabilityUpdate(targetDeviceId, async () => {
+            if (typeof bridge.updateDeviceCapabilitiesDelta === 'function') {
+              return bridge.updateDeviceCapabilitiesDelta(targetDeviceId, {
+                grant: grantList,
+                revoke: revokeList,
+              })
+            }
+            const revokeSet = new Set<Capability>(revokeList)
+            const existing = (await bridge.listTrustedDevices()).find((d) => d.deviceId === targetDeviceId)
+            if (!existing) {
+              throw new RemoteCryptoError('DEVICE_NOT_TRUSTED', `device does not exist: ${targetDeviceId}`)
+            }
+            if (existing.revokedAt !== undefined) {
+              throw new RemoteCryptoError(
+                'DEVICE_REVOKED',
+                `cannot update capabilities for revoked device: ${targetDeviceId}`,
+              )
+            }
+            const merged = new Set<Capability>(existing.grantedCapabilities)
+            for (const cap of grantList) merged.add(cap)
+            for (const cap of revokeSet) merged.delete(cap)
+            return bridge.updateDeviceCapabilities!(targetDeviceId, Array.from(merged))
+          })
+        } else {
+          sendJson(res, 400, { error: 'grantedCapabilities or grant/revoke array is required' })
+          return
+        }
+        sendJson(res, 200, {
+          ok: true,
+          deviceId: updated.deviceId,
+          displayName: updated.displayName,
+          capabilities: [...updated.grantedCapabilities],
         })
         return
       }

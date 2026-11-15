@@ -39,6 +39,7 @@ import {
   shouldAllowIceCandidate,
   truncateByCodePoints,
   validateSafeUploadFilename,
+  type Capability,
   type OfficialAgentContextLike,
   type OfficialAgentLike,
   type OfficialCordisContextLike,
@@ -134,7 +135,7 @@ function makeMockAgent(id: string, initialLog: Array<Record<string, unknown>> = 
 async function pairClientToBridge(
   bridge: OfficialHostCordisBridge,
   displayName: string,
-  requestedCapabilities?: readonly ('observe' | 'prompt' | 'approve' | 'answer-question')[],
+  requestedCapabilities?: readonly Capability[],
 ): Promise<FailoverRemoteClient> {
   const issued = await bridge.issuePairingDescriptor(
     requestedCapabilities ? { allowedCapabilities: requestedCapabilities } : undefined,
@@ -478,14 +479,16 @@ describe('P10 hardening, Unicode safety, workspace uploads, and failover resilie
       dshHome,
       cwd: work,
       carrier: { enabled: true, host: '127.0.0.1', port: 0 },
-      autoConfirmCapabilities: ['observe', 'prompt'],
+      autoConfirmCapabilities: ['observe', 'prompt', 'workspace.write'],
     })
     await bridge.start()
 
-    let clientPrompt: FailoverRemoteClient | undefined
+    let clientWorkspace: FailoverRemoteClient | undefined
+    let clientPromptOnly: FailoverRemoteClient | undefined
     let clientObserveOnly: FailoverRemoteClient | undefined
     try {
-      clientPrompt = await pairClientToBridge(bridge, 'Prompt Upload Phone', ['observe', 'prompt'])
+      clientWorkspace = await pairClientToBridge(bridge, 'Workspace Upload Phone', ['observe', 'workspace.write'])
+      clientPromptOnly = await pairClientToBridge(bridge, 'Prompt Only Phone', ['observe', 'prompt'])
       clientObserveOnly = await pairClientToBridge(bridge, 'Readonly Tablet', ['observe'])
 
       // 110 KiB payload (exceeds 64 KiB Noise frame ceiling; must chunk smoothly at 32 KiB).
@@ -496,7 +499,7 @@ describe('P10 hardening, Unicode safety, workspace uploads, and failover resilie
       const expectedSha = createHash('sha256').update(bigBytes).digest('hex')
       const progressEvents: number[] = []
 
-      const committed = await clientPrompt.uploadWorkspaceFile({
+      const committed = await clientWorkspace.uploadWorkspaceFile({
         sessionId: 'sess-up',
         filename: 'trace-dump.bin',
         bytes: bigBytes,
@@ -513,6 +516,15 @@ describe('P10 hardening, Unicode safety, workspace uploads, and failover resilie
       expect(lstatSync(writtenPath).isFile()).toBe(true)
       expect(readFileSync(writtenPath)).toEqual(bigBytes)
 
+      // 'prompt'-only device without 'workspace.write' cannot invoke workspace.upload.open.
+      await expect(
+        clientPromptOnly.uploadWorkspaceFile({
+          sessionId: 'sess-up',
+          filename: 'prompt-only-denied.txt',
+          bytes: Buffer.from('nope'),
+        }),
+      ).rejects.toThrow(/CAPABILITY_DENIED/)
+
       // Read-only observe device cannot invoke workspace.upload.open.
       await expect(
         clientObserveOnly.uploadWorkspaceFile({
@@ -522,7 +534,8 @@ describe('P10 hardening, Unicode safety, workspace uploads, and failover resilie
         }),
       ).rejects.toThrow(/CAPABILITY_DENIED/)
     } finally {
-      clientPrompt?.close()
+      clientWorkspace?.close()
+      clientPromptOnly?.close()
       clientObserveOnly?.close()
       await bridge.stop()
     }

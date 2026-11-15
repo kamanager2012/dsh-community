@@ -56,6 +56,105 @@ export function isLanOrLocalAddress(ip: string): boolean {
   return false
 }
 
+function expandIPv6Words(raw: string): number[] | undefined {
+  const zoneIdx = raw.indexOf('%')
+  const ip = zoneIdx >= 0 ? raw.slice(0, zoneIdx) : raw
+  if (isIP(ip) !== 6) return undefined
+
+  const halves = ip.toLowerCase().split('::')
+  if (halves.length > 2) return undefined
+
+  const parseSegment = (seg: string): number[] | undefined => {
+    if (seg === '') return []
+    const parts = seg.split(':')
+    const out: number[] = []
+    for (let i = 0; i < parts.length; i += 1) {
+      const part = parts[i]!
+      if (part.includes('.')) {
+        if (i !== parts.length - 1 || isIP(part) !== 4) return undefined
+        const octets = part.split('.').map((o) => Number.parseInt(o, 10))
+        if (octets.length !== 4 || octets.some((o) => Number.isNaN(o) || o < 0 || o > 255)) {
+          return undefined
+        }
+        out.push(((octets[0]! << 8) | octets[1]!) >>> 0, ((octets[2]! << 8) | octets[3]!) >>> 0)
+      } else {
+        if (!/^[0-9a-f]{1,4}$/u.test(part)) return undefined
+        out.push(Number.parseInt(part, 16))
+      }
+    }
+    return out
+  }
+
+  const head = parseSegment(halves[0] ?? '')
+  const tail = halves.length === 2 ? parseSegment(halves[1] ?? '') : []
+  if (!head || !tail) return undefined
+
+  if (halves.length === 1) {
+    return head.length === 8 ? head : undefined
+  }
+  const missing = 8 - (head.length + tail.length)
+  if (missing < 1) return undefined
+  return [...head, ...Array<number>(missing).fill(0), ...tail]
+}
+
+export function isWildcardBindAddress(host: string): boolean {
+  const trimmed = host.trim()
+  if (trimmed === '0.0.0.0') return true
+  const words = expandIPv6Words(trimmed)
+  return words !== undefined && words.every((w) => w === 0)
+}
+
+export function isLoopbackBindAddress(host: string): boolean {
+  const trimmed = host.trim()
+  const version = isIP(trimmed)
+  if (version === 4) {
+    return Number.parseInt(trimmed.split('.')[0] ?? '', 10) === 127
+  }
+  if (version === 6) {
+    const words = expandIPv6Words(trimmed)
+    if (!words) return false
+    const isNativeLoopback =
+      words[0] === 0 &&
+      words[1] === 0 &&
+      words[2] === 0 &&
+      words[3] === 0 &&
+      words[4] === 0 &&
+      words[5] === 0 &&
+      words[6] === 0 &&
+      words[7] === 1
+    if (isNativeLoopback) return true
+
+    // IPv4-mapped IPv6 loopback (::ffff:127.0.0.0/8)
+    const isV4Mapped =
+      words[0] === 0 &&
+      words[1] === 0 &&
+      words[2] === 0 &&
+      words[3] === 0 &&
+      words[4] === 0 &&
+      words[5] === 0xffff
+    if (isV4Mapped && ((words[6]! >> 8) & 0xff) === 127) {
+      return true
+    }
+  }
+  return false
+}
+
+export function assertCarrierAuthForBindHost(
+  bindHost: string,
+  hostAuthSecret: string | undefined,
+  serviceName: string,
+): void {
+  if (isLoopbackBindAddress(bindHost)) {
+    return
+  }
+  if (typeof hostAuthSecret !== 'string' || hostAuthSecret.trim().length === 0) {
+    throw new RemoteCryptoError(
+      'HANDSHAKE_FAILED',
+      `${serviceName} requires non-empty hostAuthSecret when binding to non-loopback or wildcard address '${bindHost}'`,
+    )
+  }
+}
+
 export function getLocalInterfaceAddresses(): Set<string> {
   const addrs = new Set<string>()
   const interfaces = networkInterfaces()

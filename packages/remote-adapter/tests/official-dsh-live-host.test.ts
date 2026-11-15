@@ -261,6 +261,7 @@ describe('Real Official @deepseek-ai/dsh Live Subprocess Host Acceptance (R6)', 
           DSH_REMOTE_CONTROL_PORT: '0',
           DSH_REMOTE_READY_FILE: readyFile,
           DSH_REMOTE_ISSUE_PAIRING: '1',
+          DSH_REMOTE_ALLOWED_CAPS: 'observe,prompt,session.manage,command.execute,approve,answer-question',
           DSH_REMOTE_INITIAL_SESSION_ID: 'session-r6-live-e2e',
         },
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -337,7 +338,10 @@ describe('Real Official @deepseek-ai/dsh Live Subprocess Host Acceptance (R6)', 
         'content-type': 'application/json',
         authorization: `Bearer ${ready.controlToken}`,
       },
-      body: JSON.stringify({ candidateId: candidate.candidateId }),
+      body: JSON.stringify({
+        candidateId: candidate.candidateId,
+        grantedCapabilities: ['observe', 'prompt', 'session.manage', 'command.execute', 'approve', 'answer-question'],
+      }),
     })
     expect(confirmRes.status).toBe(200)
     client.close()

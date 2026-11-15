@@ -2,6 +2,7 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import { createServer, type IncomingMessage, type Server } from 'node:http'
 import { isIP, type AddressInfo, type Socket } from 'node:net'
 import { RemoteCryptoError } from '../crypto/errors.js'
+import { assertCarrierAuthForBindHost, isWildcardBindAddress } from './address-validator.js'
 import { ProxyAwareHttpConnectionGuard } from './ip-cap.js'
 import {
   encodeCloseFrame,
@@ -198,7 +199,7 @@ export class SelfHostedSignalingServer {
       },
     })
     this.hostAuthDigest =
-      options.hostAuthSecret !== undefined && options.hostAuthSecret.length > 0
+      options.hostAuthSecret !== undefined && options.hostAuthSecret.trim().length > 0
         ? sha256Digest(options.hostAuthSecret)
         : undefined
   }
@@ -250,7 +251,7 @@ export class SelfHostedSignalingServer {
       )
     }
     if (
-      (bindHost === '0.0.0.0' || bindHost === '::') &&
+      isWildcardBindAddress(bindHost) &&
       this.options.allowWildcardHost !== true
     ) {
       throw new RemoteCryptoError(
@@ -258,6 +259,7 @@ export class SelfHostedSignalingServer {
         'wildcard binding is disabled unless allowWildcardHost is true',
       )
     }
+    assertCarrierAuthForBindHost(bindHost, this.options.hostAuthSecret, 'self-hosted signaling server')
 
     const bindPort = this.options.port ?? 0
     if (!Number.isInteger(bindPort) || bindPort < 0 || bindPort > 65535) {

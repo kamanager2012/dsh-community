@@ -266,7 +266,16 @@ export class RemoteServerChannel {
   }
 
   sendEvent(event: unknown): void {
-    if (this.state !== 'ACTIVE') return
+    if (this.state !== 'ACTIVE' || !this.peer) return
+    let record: ReturnType<DeviceTrustStore['getSync']>
+    try {
+      record = this.ctx.trustStore.getSync(this.peer.deviceId)
+    } catch {
+      return
+    }
+    if (!record || record.revokedAt !== undefined || !record.grantedCapabilities.has('observe')) {
+      return
+    }
     const raw = textEncoder.encode(JSON.stringify(event))
     this.sendEncrypted(raw)
   }

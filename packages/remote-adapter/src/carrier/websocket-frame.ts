@@ -62,7 +62,10 @@ export class WebSocketFrameParser {
   }
 
   private drain(): void {
-    while (this.buffer.length > 0) {
+    while (
+      this.buffer.length > 0 ||
+      (this.state === ParserState.PAYLOAD && this.payloadLength === 0)
+    ) {
       switch (this.state) {
         case ParserState.HEADER: {
           if (this.buffer.length < 2) return

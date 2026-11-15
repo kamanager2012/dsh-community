@@ -570,8 +570,26 @@ function rejectHttp429(res: ServerResponse, errorMessage: string, closeConnectio
 }
 
 function rejectSocketWithStatus(socket: Socket, statusLine: string): false {
-  socket.write(`${statusLine}\r\n\r\n`)
-  socket.destroy()
+  const response = `${statusLine}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`
+  const forceTimer = setTimeout(() => {
+    try {
+      if (!socket.destroyed) socket.destroy()
+    } catch {}
+  }, 50)
+  forceTimer.unref?.()
+  try {
+    if (socket.writable && !socket.destroyed) {
+      socket.end(response, () => {
+        clearTimeout(forceTimer)
+        if (!socket.destroyed) socket.destroy()
+      })
+      return false
+    }
+  } catch {}
+  clearTimeout(forceTimer)
+  if (!socket.destroyed) {
+    socket.destroy()
+  }
   return false
 }
 

@@ -251,17 +251,30 @@ export class RemoteWebClient {
       if (err instanceof RemoteRpcError && err.code === 'CANCELLED') {
         throw err
       }
+      if (this.isConnectGenerationActive(gen)) {
+        this.cleanupTransportOnly()
+        this.activeTransportKind = undefined
+      }
       const msg = sanitizeDiagnosticMessage(err instanceof Error ? err.message : String(err))
       if (msg.includes('Epoch rollback blocked')) {
-        this.cleanupTransportOnly()
         const latestHost =
-          (await this.keyStore.getTrustedHost(effectiveProfile.hostFingerprint)) ?? effectiveProfile
+          (await this.keyStore.getTrustedHost(effectiveProfile.hostFingerprint).catch(() => undefined)) ??
+          effectiveProfile
+        if (this.isConnectGenerationActive(gen)) {
+          this.emitStatus({
+            status: 'epoch_mismatch',
+            host: latestHost,
+            detail: msg,
+          })
+        }
+        throw new RemoteRpcError('EPOCH_DOWNGRADE', msg)
+      }
+      if (this.isConnectGenerationActive(gen)) {
         this.emitStatus({
-          status: 'epoch_mismatch',
-          host: latestHost,
+          status: 'error',
+          host: effectiveProfile,
           detail: msg,
         })
-        throw new RemoteRpcError('EPOCH_DOWNGRADE', msg)
       }
       throw err
     }
@@ -288,12 +301,14 @@ export class RemoteWebClient {
       pending.reject(err)
       this.pendingRpcs.delete(id)
     }
-    try {
-      this.transport?.close()
-    } catch {}
+    const transport = this.transport
+    const noise = this.noise
     this.transport = undefined
-    this.noise?.close()
     this.noise = undefined
+    try {
+      transport?.close()
+    } catch {}
+    noise?.close()
   }
 
   disconnect(): void {

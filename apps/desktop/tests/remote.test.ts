@@ -16,6 +16,7 @@ import {
   parseDesktopRemoteSettings,
   parseRemoteGitInspectInput,
   parseRevokeDeviceInput,
+  parseSetCapabilitiesInput,
   resolveDesktopRemoteConfigDir,
   resolveDesktopRemoteEnvDefaults,
   resolveDesktopRemotePluginPath,
@@ -33,6 +34,9 @@ async function startMockControlServer(): Promise<{
 }> {
   const requests: { method: string; url: string; body: unknown; auth: string }[] = []
   let issuedCount = 0
+  const deviceCaps = new Map<string, Set<string>>([
+    ['dev-trusted', new Set(['observe', 'prompt'])],
+  ])
 
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     const chunks: Buffer[] = []
@@ -133,6 +137,29 @@ async function startMockControlServer(): Promise<{
       }
       if (reqUrl === '/pairing/confirm') {
         res.end(JSON.stringify({ ok: true, displayName: 'Test Phone', deviceId: 'dev-1' }))
+        return
+      }
+      if (reqUrl === '/devices/capabilities') {
+        const rec = parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {}
+        const devId = typeof rec.deviceId === 'string' ? rec.deviceId : 'unknown'
+        let nextSet: Set<string>
+        if (Array.isArray(rec.grantedCapabilities)) {
+          nextSet = new Set(rec.grantedCapabilities.filter((c): c is string => typeof c === 'string'))
+        } else {
+          nextSet = new Set(deviceCaps.get(devId) ?? ['observe', 'prompt'])
+          if (Array.isArray(rec.grant)) {
+            for (const c of rec.grant) {
+              if (typeof c === 'string') nextSet.add(c)
+            }
+          }
+          if (Array.isArray(rec.revoke)) {
+            for (const c of rec.revoke) {
+              if (typeof c === 'string') nextSet.delete(c)
+            }
+          }
+        }
+        deviceCaps.set(devId, nextSet)
+        res.end(JSON.stringify({ ok: true, deviceId: devId, capabilities: Array.from(nextSet) }))
         return
       }
       if (reqUrl === '/devices/revoke') {
@@ -266,7 +293,58 @@ describe('desktop remote controller & validators', () => {
       candidateId: 'cand_1-a',
       allowApprove: false,
     })
+    expect(
+      parseConfirmPairingInput({
+        candidateId: 'cand_1-a',
+        grantedCapabilities: ['observe', 'session.manage', 'observe'],
+      }),
+    ).toEqual({
+      candidateId: 'cand_1-a',
+      allowApprove: false,
+      grantedCapabilities: ['observe', 'session.manage'],
+    })
+    expect(
+      parseConfirmPairingInput({
+        candidateId: 'cand_1-a',
+        grantedCapabilities: ['observe', 'bogus-cap'],
+      }),
+    ).toBeUndefined()
     expect(parseConfirmPairingInput({ candidateId: '../evil' })).toBeUndefined()
+
+    expect(
+      parseSetCapabilitiesInput({ deviceId: ' dev-1 ', grantedCapabilities: ['observe', 'prompt'] }),
+    ).toEqual({
+      deviceId: 'dev-1',
+      grantedCapabilities: ['observe', 'prompt'],
+    })
+    expect(
+      parseSetCapabilitiesInput({ deviceId: ' dev-1 ', grant: ['approve'] }),
+    ).toEqual({
+      deviceId: 'dev-1',
+      grant: ['approve'],
+    })
+    expect(
+      parseSetCapabilitiesInput({ deviceId: ' dev-1 ', revoke: ['prompt'], grant: ['observe'] }),
+    ).toEqual({
+      deviceId: 'dev-1',
+      grant: ['observe'],
+      revoke: ['prompt'],
+    })
+    expect(parseSetCapabilitiesInput({ deviceId: 'dev-1' })).toBeUndefined()
+    expect(parseSetCapabilitiesInput({ deviceId: 'dev-1', grant: [] })).toBeUndefined()
+    expect(
+      parseSetCapabilitiesInput({
+        deviceId: 'dev-1',
+        grantedCapabilities: ['observe'],
+        grant: ['prompt'],
+      }),
+    ).toBeUndefined()
+    expect(
+      parseSetCapabilitiesInput({ deviceId: 'dev-1', grantedCapabilities: ['superadmin'] }),
+    ).toBeUndefined()
+    expect(
+      parseSetCapabilitiesInput({ deviceId: 'dev-1', grant: ['superadmin'] }),
+    ).toBeUndefined()
 
     expect(parseRevokeDeviceInput(' dev-123 ')).toBe('dev-123')
     expect(parseRevokeDeviceInput('   ')).toBeUndefined()
@@ -362,8 +440,37 @@ describe('desktop remote controller & validators', () => {
       expect(confirmReq?.auth).toBe('Bearer ctrl-secret-123')
       expect(confirmReq?.body).toEqual({
         candidateId: 'cand-abc',
-        grantedCapabilities: ['observe', 'prompt', 'answer-question'],
+        grantedCapabilities: ['observe', 'prompt'],
       })
+
+      await controller.confirmPairing('cand-abc', ['observe', 'session.manage', 'approve'])
+      const granularConfirmReqs = mock.requests.filter((r) => r.url === '/pairing/confirm')
+      expect(granularConfirmReqs[1]?.body).toEqual({
+        candidateId: 'cand-abc',
+        grantedCapabilities: ['observe', 'session.manage', 'approve'],
+      })
+
+      await controller.setDeviceCapabilities('dev-trusted', ['observe'])
+      await controller.setDeviceCapabilities('dev-trusted', { grant: ['prompt', 'approve'] })
+      const snapAfterGrant = await controller.snapshot({ refreshLive: false })
+      expect(snapAfterGrant.notice).toContain('approve')
+      await controller.setDeviceCapabilities('dev-trusted', { revoke: ['approve'] })
+      const capReqs = mock.requests.filter((r) => r.url === '/devices/capabilities')
+      expect(capReqs[0]?.auth).toBe('Bearer ctrl-secret-123')
+      expect(capReqs.map((r) => r.body)).toEqual([
+        {
+          deviceId: 'dev-trusted',
+          grantedCapabilities: ['observe'],
+        },
+        {
+          deviceId: 'dev-trusted',
+          grant: ['prompt', 'approve'],
+        },
+        {
+          deviceId: 'dev-trusted',
+          revoke: ['approve'],
+        },
+      ])
 
       await controller.revokeDevice('dev-trusted')
       expect(mock.requests.some((r) => r.url === '/devices/revoke')).toBe(true)
@@ -677,6 +784,45 @@ describe('desktop remote controller & validators', () => {
       expect(errSnap.error).toContain('turn:')
     } finally {
       await mock.close()
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('applies offline capability grant/revoke deltas without overwriting concurrent grants', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'dsh-desktop-remote-delta-offline-'))
+    try {
+      const ctx = makeTestContext(dir, { env: {} })
+      const configDir = resolveDesktopRemoteConfigDir(ctx)
+      const stores = openPersistentRemoteStores({ configDir, dshHome: ctx.dshHome })
+      const trusted = await stores.trustStore.trust({
+        staticPublicKey: randomBytes(32),
+        displayName: 'Delta Phone',
+        grantedCapabilities: ['observe', 'prompt'],
+        trustDomainId: 'domain-delta',
+      })
+
+      const controller = new DesktopRemoteController({ getContext: () => ctx })
+      await controller.setDeviceCapabilities(trusted.deviceId, { grant: ['approve'] })
+      await controller.setDeviceCapabilities(trusted.deviceId, { revoke: ['prompt'] })
+      await Promise.all([
+        controller.setDeviceCapabilities(trusted.deviceId, { grant: ['session.manage'] }),
+        controller.setDeviceCapabilities(trusted.deviceId, { grant: ['command.execute'] }),
+      ])
+
+      const latest = await openPersistentRemoteStores({ configDir, dshHome: ctx.dshHome }).trustStore.get(
+        trusted.deviceId,
+      )
+      expect(Array.from(latest?.grantedCapabilities ?? []).sort()).toEqual([
+        'approve',
+        'command.execute',
+        'observe',
+        'session.manage',
+      ])
+
+      await controller.setDeviceCapabilities(trusted.deviceId, { grant: [] })
+      const errSnap = await controller.snapshot({ refreshLive: false })
+      expect(errSnap.error).toContain('更新设备权限失败')
+    } finally {
       rmSync(dir, { recursive: true, force: true })
     }
   })

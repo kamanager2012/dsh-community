@@ -3,6 +3,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { isIP, type AddressInfo, type Socket } from 'node:net'
 import { extname, resolve, sep } from 'node:path'
 import { RemoteCryptoError } from '../crypto/errors.js'
+import { assertCarrierAuthForBindHost, isWildcardBindAddress } from './address-validator.js'
 import { ProxyAwareHttpConnectionGuard } from './ip-cap.js'
 import {
   BlindRelayServer,
@@ -397,7 +398,7 @@ export class BlindGatewayServer {
       )
     }
     if (
-      (bindHost === '0.0.0.0' || bindHost === '::') &&
+      isWildcardBindAddress(bindHost) &&
       this.options.allowWildcardHost !== true
     ) {
       throw new RemoteCryptoError(
@@ -405,6 +406,10 @@ export class BlindGatewayServer {
         'wildcard binding is disabled unless allowWildcardHost is true',
       )
     }
+    const relaySecret = this.options.relayHostSecret ?? this.options.hostAuthSecret
+    const signalingSecret = this.options.signalingHostSecret ?? this.options.hostAuthSecret
+    assertCarrierAuthForBindHost(bindHost, relaySecret, 'blind gateway relay')
+    assertCarrierAuthForBindHost(bindHost, signalingSecret, 'blind gateway signaling')
 
     const bindPort = this.options.port ?? 0
     if (!Number.isInteger(bindPort) || bindPort < 0 || bindPort > 65535) {

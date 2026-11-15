@@ -22,6 +22,8 @@ import {
   type AgentEngineId,
   BlindGatewayServer,
   BlindRelayServer,
+  type Capability,
+  DEFAULT_GRANTED_CAPABILITIES,
   defaultRemoteConfigDir,
   defaultRemoteDshHome,
   encodePairingWebUrl,
@@ -33,6 +35,7 @@ import {
   resolveRemoteDefaultTransportEnv,
   SelfHostedSignalingServer,
   SelfHostedStunServer,
+  VALID_CAPABILITIES,
   validatePairingWebUrl,
 } from '@dsh-community/remote-adapter'
 
@@ -55,6 +58,7 @@ export const COMMUNITY_REMOTE_HELP = `dsh-community remote — 多引擎 E2EE �
     --stun <stun:host:port[,...]>       可选自建 STUN URL（仅 stun:；或设 DSH_REMOTE_DEFAULT_STUN_URLS）
     --session <id>                      恢复或新建指定会话 ID
     --new                               启动时新建一条会话
+    --allow-caps <caps>                 配对令牌上限能力列表（逗号分隔；默认 observe,prompt）
     --cwd <dir>                         工作目录（默认当前目录）
     --json                              输出单行 JSON 就绪信息
 
@@ -62,7 +66,7 @@ export const COMMUNITY_REMOTE_HELP = `dsh-community remote — 多引擎 E2EE �
     --host <ip>                         绑定 IP 地址（默认 127.0.0.1）
     --port <n>                          TCP/WS 端口（默认 8787；0 为系统分配）
     --allow-wildcard                    显式允许 0.0.0.0 / :: 通配地址监听
-    --host-secret <secret>              可选宿主注册鉴权密钥（或设 DSH_REMOTE_RELAY_HOST_SECRET）
+    --host-secret <secret>              宿主注册鉴权密钥（非 loopback / 通配监听必填；或设 DSH_REMOTE_RELAY_HOST_SECRET）
     --trusted-proxies <cidrs>           可选可信反向代理 IP/CIDR 列表（逗号分隔；或设 DSH_REMOTE_RELAY_TRUSTED_PROXIES）
     --max-rooms <n>                     最大房间数（默认 64）
     --max-frame-bytes <n>               单帧密文上限字节（默认 65536）
@@ -75,7 +79,7 @@ export const COMMUNITY_REMOTE_HELP = `dsh-community remote — 多引擎 E2EE �
     --stun-host <ip>                    可选 STUN UDP 绑定 IP（默认复用 --host）
     --stun-port <n>                     可选同时拉起自建 STUN Server（UDP 端口，0 为自动分配）
     --allow-wildcard                    显式允许 0.0.0.0 / :: 通配地址监听
-    --host-secret <secret>              可选宿主注册鉴权密钥（或设 DSH_REMOTE_SIGNALING_HOST_SECRET）
+    --host-secret <secret>              宿主注册鉴权密钥（非 loopback / 通配监听必填；或设 DSH_REMOTE_SIGNALING_HOST_SECRET）
     --trusted-proxies <cidrs>           可选可信反向代理 IP/CIDR 列表（逗号分隔；或设 DSH_REMOTE_SIGNALING_TRUSTED_PROXIES）
     --max-rooms <n>                     最大房间数（默认 64）
     --json                              输出单行 JSON 就绪信息（不含任何密钥）
@@ -84,7 +88,7 @@ export const COMMUNITY_REMOTE_HELP = `dsh-community remote — 多引擎 E2EE �
     --host <ip>                         绑定 IP 地址（默认 127.0.0.1）
     --port <n>                          HTTP/WS 端口（默认 8787；0 为系统分配）
     --allow-wildcard                    显式允许 0.0.0.0 / :: 通配地址监听
-    --host-secret <secret>              可选宿主注册鉴权密钥（或设 DSH_REMOTE_GATEWAY_HOST_SECRET）
+    --host-secret <secret>              宿主注册鉴权密钥（非 loopback / 通配监听必填；或设 DSH_REMOTE_GATEWAY_HOST_SECRET）
     --trusted-proxies <cidrs>           可选可信反向代理 IP/CIDR 列表（逗号分隔；或设 DSH_REMOTE_GATEWAY_TRUSTED_PROXIES）
     --stun-host <ip>                    可选 STUN UDP 绑定 IP（默认复用 --host）
     --stun-port <n>                     可选同时拉起自建 STUN Server（UDP 端口，0 为自动分配）
@@ -96,7 +100,8 @@ export const COMMUNITY_REMOTE_HELP = `dsh-community remote — 多引擎 E2EE �
     --json                              输出单行 JSON 就绪信息（不含任何密钥）
 
   dsh-community remote devices [--json] 列出已配对/已吊销设备
-  dsh-community remote revoke <id>      吊销指定设备信任关系
+  dsh-community remote grant <id> <caps> 独立授予设备指定能力（逗号分隔）
+  dsh-community remote revoke <id> [--cap <caps>] 吊销设备全部信任关系，或仅独立撤回指定能力
   dsh-community remote status [--json]  查看远程宿主身份指纹与持久存储状态
 `
 
@@ -123,8 +128,31 @@ interface StartFlags {
   readonly signalingRoom?: string | undefined
   readonly stunUrl?: string | undefined
   readonly sessionId?: string | undefined
+  readonly allowCaps?: readonly Capability[] | undefined
   readonly cwd: string
   readonly json: boolean
+}
+
+const VALID_CAPABILITY_SET: ReadonlySet<string> = new Set<string>(VALID_CAPABILITIES)
+
+function parseCapabilityTokens(tokens: readonly string[]): readonly Capability[] {
+  const out: Capability[] = []
+  for (const token of tokens) {
+    for (const piece of token.split(',')) {
+      const cap = piece.trim()
+      if (!cap) continue
+      if (!VALID_CAPABILITY_SET.has(cap)) {
+        throw new Error(
+          `未知能力: ${cap}（允许: ${VALID_CAPABILITIES.join(', ')}；默认: ${DEFAULT_GRANTED_CAPABILITIES.join(', ')}）`,
+        )
+      }
+      if (!out.includes(cap as Capability)) out.push(cap as Capability)
+    }
+  }
+  if (out.length === 0) {
+    throw new Error(`能力列表不能为空（允许: ${VALID_CAPABILITIES.join(', ')}）`)
+  }
+  return out
 }
 
 function takeFlagValue(args: readonly string[], index: number, flag: string): { value: string; nextIndex: number } {
@@ -165,6 +193,7 @@ function parseStartFlags(args: readonly string[], defaultCwd: string): StartFlag
   let signalingRoom: string | undefined
   let stunUrl: string | undefined
   let sessionId: string | undefined
+  let allowCaps: readonly Capability[] | undefined
   let cwd = defaultCwd
   let json = false
 
@@ -189,6 +218,7 @@ function parseStartFlags(args: readonly string[], defaultCwd: string): StartFlag
     else if (arg === '--stun') stunUrl = readVal()
     else if (arg === '--session') sessionId = readVal()
     else if (arg === '--new') sessionId = 'auto'
+    else if (arg === '--allow-caps') allowCaps = parseCapabilityTokens([readVal()])
     else if (arg === '--cwd') cwd = readVal()
     else if (arg === '--json') json = true
     else handleUnknownRemoteFlag(arg)
@@ -208,6 +238,7 @@ function parseStartFlags(args: readonly string[], defaultCwd: string): StartFlag
     signalingRoom,
     stunUrl,
     sessionId,
+    ...(allowCaps !== undefined ? { allowCaps } : {}),
     cwd,
     json,
   }
@@ -469,7 +500,7 @@ async function fetchControl(url: string, init?: RequestInit): Promise<Response> 
 }
 
 export const REMOTE_REPL_COMMAND_SUMMARY =
-  'status | engines | sessions | git <sessionId> | diff <sessionId> [path] [--staged] | devices | confirm <id> | revoke <deviceId> | qr | help | quit'
+  'status | engines | sessions | git <sessionId> | diff <sessionId> [path] [--staged] | devices | confirm <id> [cap,...] | grant <deviceId> <cap,...> | revoke-cap <deviceId> <cap,...> | revoke <deviceId> | qr | help | quit'
 
 export type RemoteReplAction =
   | { readonly kind: 'empty' }
@@ -482,7 +513,9 @@ export type RemoteReplAction =
   | { readonly kind: 'qr' }
   | { readonly kind: 'help' }
   | { readonly kind: 'quit' }
-  | { readonly kind: 'confirm'; readonly candidateId: string }
+  | { readonly kind: 'confirm'; readonly candidateId: string; readonly capabilities?: readonly Capability[] | undefined }
+  | { readonly kind: 'grant'; readonly deviceId: string; readonly capabilities: readonly Capability[] }
+  | { readonly kind: 'revoke-cap'; readonly deviceId: string; readonly capabilities: readonly Capability[] }
   | { readonly kind: 'revoke'; readonly deviceId: string }
   | { readonly kind: 'usage'; readonly usage: string }
   | { readonly kind: 'unknown'; readonly command: string }
@@ -581,8 +614,31 @@ export function parseRemoteReplLine(line: string): RemoteReplAction {
   const cmd = parts[0] ?? ''
   const arg = parts[1]
   switch (cmd) {
-    case 'confirm':
-      return arg ? { kind: 'confirm', candidateId: arg } : { kind: 'usage', usage: '用法: confirm <candidateId>' }
+    case 'confirm': {
+      if (!arg) return { kind: 'usage', usage: '用法: confirm <candidateId> [cap1,cap2,...]' }
+      if (parts.length <= 2) return { kind: 'confirm', candidateId: arg }
+      try {
+        return { kind: 'confirm', candidateId: arg, capabilities: parseCapabilityTokens(parts.slice(2)) }
+      } catch (err) {
+        return { kind: 'usage', usage: err instanceof Error ? err.message : String(err) }
+      }
+    }
+    case 'grant': {
+      if (!arg || parts.length < 3) return { kind: 'usage', usage: '用法: grant <deviceId> <cap1,cap2,...>' }
+      try {
+        return { kind: 'grant', deviceId: arg, capabilities: parseCapabilityTokens(parts.slice(2)) }
+      } catch (err) {
+        return { kind: 'usage', usage: err instanceof Error ? err.message : String(err) }
+      }
+    }
+    case 'revoke-cap': {
+      if (!arg || parts.length < 3) return { kind: 'usage', usage: '用法: revoke-cap <deviceId> <cap1,cap2,...>' }
+      try {
+        return { kind: 'revoke-cap', deviceId: arg, capabilities: parseCapabilityTokens(parts.slice(2)) }
+      } catch (err) {
+        return { kind: 'usage', usage: err instanceof Error ? err.message : String(err) }
+      }
+    }
     case 'revoke':
       return arg ? { kind: 'revoke', deviceId: arg } : { kind: 'usage', usage: '用法: revoke <deviceId>' }
     case 'git':
@@ -642,7 +698,7 @@ export async function runRemoteCommand(
     sub === '-h' ||
     sub === '--help' ||
     sub === 'help' ||
-    ((sub === 'devices' || sub === 'revoke' || sub === 'status') &&
+    ((sub === 'devices' || sub === 'grant' || sub === 'revoke' || sub === 'status') &&
       args.slice(1).some((arg) => arg === '-h' || arg === '--help'))
   ) {
     process.stdout.write(COMMUNITY_REMOTE_HELP)
@@ -684,15 +740,172 @@ export async function runRemoteCommand(
     return 0
   }
 
+  if (sub === 'grant') {
+    const targetId = args[1]
+    if (!targetId || targetId.startsWith('-')) {
+      process.stderr.write('用法：dsh-community remote grant <deviceId> <cap,...>\n')
+      return 2
+    }
+    const rawCapTokens: string[] = []
+    for (let i = 2; i < args.length; i += 1) {
+      const arg = args[i]!
+      if (arg === '--cap') {
+        try {
+          const next = takeFlagValue(args, i, arg)
+          i = next.nextIndex
+          rawCapTokens.push(next.value)
+        } catch (err) {
+          process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`)
+          return 2
+        }
+      } else if (arg.startsWith('--cap=')) {
+        rawCapTokens.push(arg.slice('--cap='.length))
+      } else if (arg.startsWith('-')) {
+        process.stderr.write(`未知参数: ${arg}\n`)
+        return 2
+      } else {
+        rawCapTokens.push(arg)
+      }
+    }
+    let grantCaps: readonly Capability[]
+    try {
+      grantCaps = parseCapabilityTokens(rawCapTokens)
+    } catch (err) {
+      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`)
+      return 2
+    }
+    const stores = openPersistentRemoteStores({ configDir, dshHome })
+    const live = readLiveControlEndpoint(stores.configDir)
+    if (live) {
+      try {
+        const res = await fetchControl(`${live.controlUrl}/devices/capabilities`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            authorization: `Bearer ${live.controlToken}`,
+          },
+          body: JSON.stringify({ deviceId: targetId, grant: grantCaps }),
+        })
+        if (res.ok) {
+          const body = (await res.json()) as { capabilities?: readonly string[] }
+          process.stdout.write(
+            `已为设备 ${targetId} 授予能力 [${grantCaps.join(', ')}]，当前权限: [${(body.capabilities ?? []).join(', ')}]\n`,
+          )
+          return 0
+        }
+        const text = (await res.text().catch(() => '')).trim()
+        process.stderr.write(
+          `检测到在线 Remote Host (pid=${String(live.pid)})，在线控制接口授权失败 (${String(res.status)})${text ? `: ${text}` : ''}；已拒绝回退至离线写入以免状态不一致。\n`,
+        )
+        return 1
+      } catch (err) {
+        process.stderr.write(
+          `检测到在线 Remote Host (pid=${String(live.pid)})，连接控制接口失败 (${err instanceof Error ? err.message : String(err)})；请先确认 host 状态或停止 host 后再执行。\n`,
+        )
+        return 1
+      }
+    }
+    try {
+      const existing = (await stores.trustStore.list()).find((d) => d.deviceId === targetId)
+      if (!existing) {
+        process.stderr.write(`未找到设备：${targetId}\n`)
+        return 1
+      }
+      const updated = await stores.trustStore.updateCapabilities(targetId, [
+        ...existing.grantedCapabilities,
+        ...grantCaps,
+      ])
+      process.stdout.write(
+        `已为设备 ${targetId} 授予能力 [${grantCaps.join(', ')}]，当前权限: [${[...updated.grantedCapabilities].join(', ')}]\n`,
+      )
+      return 0
+    } catch (err) {
+      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`)
+      return 1
+    }
+  }
+
   if (sub === 'revoke') {
     const targetId = args[1]
     if (!targetId || targetId.startsWith('-')) {
-      process.stderr.write('用法：dsh-community remote revoke <deviceId>\n')
+      process.stderr.write('用法：dsh-community remote revoke <deviceId> [--cap <cap,...>]\n')
       return 2
     }
-    if (args.length > 2) {
-      process.stderr.write(`未知参数: ${args[2]}\n`)
-      return 2
+    const rawRevokeCaps: string[] = []
+    for (let i = 2; i < args.length; i += 1) {
+      const arg = args[i]!
+      if (arg === '--cap') {
+        try {
+          const next = takeFlagValue(args, i, arg)
+          i = next.nextIndex
+          rawRevokeCaps.push(next.value)
+        } catch (err) {
+          process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`)
+          return 2
+        }
+      } else if (arg.startsWith('--cap=')) {
+        rawRevokeCaps.push(arg.slice('--cap='.length))
+      } else {
+        process.stderr.write(`未知参数: ${arg}\n`)
+        return 2
+      }
+    }
+    if (rawRevokeCaps.length > 0) {
+      let revokeCaps: readonly Capability[]
+      try {
+        revokeCaps = parseCapabilityTokens(rawRevokeCaps)
+      } catch (err) {
+        process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`)
+        return 2
+      }
+      const revokeSet = new Set<Capability>(revokeCaps)
+      const stores = openPersistentRemoteStores({ configDir, dshHome })
+      const live = readLiveControlEndpoint(stores.configDir)
+      if (live) {
+        try {
+          const res = await fetchControl(`${live.controlUrl}/devices/capabilities`, {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              authorization: `Bearer ${live.controlToken}`,
+            },
+            body: JSON.stringify({ deviceId: targetId, revoke: revokeCaps }),
+          })
+          if (res.ok) {
+            const body = (await res.json()) as { capabilities?: readonly string[] }
+            process.stdout.write(
+              `已独立撤回设备 ${targetId} 能力 [${revokeCaps.join(', ')}]，当前权限: [${(body.capabilities ?? []).join(', ')}]\n`,
+            )
+            return 0
+          }
+          const text = (await res.text().catch(() => '')).trim()
+          process.stderr.write(
+            `检测到在线 Remote Host (pid=${String(live.pid)})，在线控制接口撤权失败 (${String(res.status)})${text ? `: ${text}` : ''}；已拒绝回退至离线写入以免已连接设备继续接收事件。\n`,
+          )
+          return 1
+        } catch (err) {
+          process.stderr.write(
+            `检测到在线 Remote Host (pid=${String(live.pid)})，连接控制接口失败 (${err instanceof Error ? err.message : String(err)})；请先确认 host 状态或停止 host 后再执行。\n`,
+          )
+          return 1
+        }
+      }
+      try {
+        const existing = (await stores.trustStore.list()).find((d) => d.deviceId === targetId)
+        if (!existing) {
+          process.stderr.write(`未找到设备：${targetId}\n`)
+          return 1
+        }
+        const remaining = Array.from(existing.grantedCapabilities).filter((c) => !revokeSet.has(c))
+        const updated = await stores.trustStore.updateCapabilities(targetId, remaining)
+        process.stdout.write(
+          `已独立撤回设备 ${targetId} 能力 [${revokeCaps.join(', ')}]，当前权限: [${[...updated.grantedCapabilities].join(', ')}]\n`,
+        )
+        return 0
+      } catch (err) {
+        process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`)
+        return 1
+      }
     }
     const stores = openPersistentRemoteStores({ configDir, dshHome })
     const live = readLiveControlEndpoint(stores.configDir)
@@ -715,13 +928,16 @@ export async function runRemoteCommand(
           process.stdout.write(`已吊销设备：${targetId}（在线会话已断开）\n`)
           return 0
         }
-        if (res.status !== 404) {
-          const text = (await res.text().catch(() => '')).trim()
-          process.stderr.write(`在线控制接口吊销失败 (${String(res.status)})${text ? `: ${text}` : ''}\n`)
-          return 1
-        }
-      } catch {
-        // Fallback to offline durable trust store below when live control is unreachable
+        const text = (await res.text().catch(() => '')).trim()
+        process.stderr.write(
+          `检测到在线 Remote Host (pid=${String(live.pid)})，在线控制接口吊销失败 (${String(res.status)})${text ? `: ${text}` : ''}；已拒绝回退至离线写入以免在线会话继续保留。\n`,
+        )
+        return 1
+      } catch (err) {
+        process.stderr.write(
+          `检测到在线 Remote Host (pid=${String(live.pid)})，连接控制接口失败 (${err instanceof Error ? err.message : String(err)})；请先确认 host 状态或停止 host 后再执行。\n`,
+        )
+        return 1
       }
     }
     const revoked = await stores.trustStore.revoke(targetId)
@@ -925,6 +1141,7 @@ export async function runRemoteCommand(
           ...(flags.signalingRoom ? { DSH_REMOTE_SIGNALING_ROOM_ID: flags.signalingRoom } : {}),
           ...(stunUrls ? { DSH_REMOTE_STUN_URLS: stunUrls } : {}),
           ...(flags.sessionId ? { DSH_REMOTE_INITIAL_SESSION_ID: flags.sessionId } : {}),
+          ...(flags.allowCaps ? { DSH_REMOTE_ALLOWED_CAPS: flags.allowCaps.join(',') } : {}),
           DSH_REMOTE_CONTROL_PORT: '0',
           DSH_REMOTE_CONTROL_TOKEN: controlToken,
           DSH_REMOTE_READY_FILE: readyFile,
@@ -1066,7 +1283,36 @@ export async function runRemoteCommand(
                   'content-type': 'application/json',
                   authorization: `Bearer ${controlToken}`,
                 },
-                body: JSON.stringify({ candidateId: action.candidateId }),
+                body: JSON.stringify({
+                  candidateId: action.candidateId,
+                  ...(action.capabilities !== undefined
+                    ? { grantedCapabilities: action.capabilities }
+                    : {}),
+                }),
+              })
+              process.stdout.write(`${await res.text()}\n`)
+              return
+            }
+            case 'grant': {
+              const res = await fetchControl(`${controlUrl}/devices/capabilities`, {
+                method: 'POST',
+                headers: {
+                  'content-type': 'application/json',
+                  authorization: `Bearer ${controlToken}`,
+                },
+                body: JSON.stringify({ deviceId: action.deviceId, grant: action.capabilities }),
+              })
+              process.stdout.write(`${await res.text()}\n`)
+              return
+            }
+            case 'revoke-cap': {
+              const res = await fetchControl(`${controlUrl}/devices/capabilities`, {
+                method: 'POST',
+                headers: {
+                  'content-type': 'application/json',
+                  authorization: `Bearer ${controlToken}`,
+                },
+                body: JSON.stringify({ deviceId: action.deviceId, revoke: action.capabilities }),
               })
               process.stdout.write(`${await res.text()}\n`)
               return
@@ -1238,7 +1484,7 @@ export async function runRemoteCommand(
           port: bound?.port ?? flags.port,
           endpointUrl,
           healthzUrl,
-          authRequired: flags.hostSecret !== undefined && flags.hostSecret.length > 0,
+          authRequired: flags.hostSecret !== undefined && flags.hostSecret.trim().length > 0,
           ...(flags.trustedProxies !== undefined ? { trustedProxies: flags.trustedProxies } : {}),
         })}\n`,
       )
@@ -1308,7 +1554,7 @@ export async function runRemoteCommand(
           port: bound?.port ?? flags.port,
           endpointUrl,
           healthzUrl,
-          authRequired: flags.hostSecret !== undefined && flags.hostSecret.length > 0,
+          authRequired: flags.hostSecret !== undefined && flags.hostSecret.trim().length > 0,
           ...(flags.trustedProxies !== undefined ? { trustedProxies: flags.trustedProxies } : {}),
           ...(stunUrl !== undefined ? { stunUrl } : {}),
         })}\n`,
@@ -1399,7 +1645,7 @@ export async function runRemoteCommand(
           healthzUrl,
           ...(webAppUrl !== undefined ? { webAppUrl } : {}),
           ...(stunUrl !== undefined ? { stunUrl } : {}),
-          authRequired: flags.hostSecret !== undefined && flags.hostSecret.length > 0,
+          authRequired: flags.hostSecret !== undefined && flags.hostSecret.trim().length > 0,
           ...(flags.trustedProxies !== undefined ? { trustedProxies: flags.trustedProxies } : {}),
         })}\n`,
       )

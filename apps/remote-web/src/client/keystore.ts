@@ -91,6 +91,16 @@ function checkEpochAdvance(
   return undefined
 }
 
+function formatIdbError(action: string, error?: unknown): Error {
+  if (error instanceof Error) {
+    return new Error(`${action}: ${error.message}`)
+  }
+  if (typeof error === 'object' && error !== null && 'message' in error) {
+    return new Error(`${action}: ${String((error as { message?: unknown }).message)}`)
+  }
+  return new Error(`${action}${error !== undefined ? `: ${String(error)}` : ''}`)
+}
+
 export class RemoteWebKeyStore {
   private memoryIdentity: ClientDeviceIdentity | undefined = undefined
   private readonly memoryHosts = new Map<string, TrustedHostProfile>()
@@ -107,7 +117,7 @@ export class RemoteWebKeyStore {
     if (this.dbPromise) {
       return this.dbPromise
     }
-    this.dbPromise = new Promise<IDBDatabase | undefined>((resolve) => {
+    const pending = new Promise<IDBDatabase>((resolve, reject) => {
       try {
         const req = globalThis.indexedDB.open(DB_NAME, DB_VERSION)
         req.onupgradeneeded = () => {
@@ -119,73 +129,131 @@ export class RemoteWebKeyStore {
             db.createObjectStore(STORE_HOSTS, { keyPath: 'hostFingerprint' })
           }
         }
-        req.onsuccess = () => resolve(req.result)
-        req.onerror = () => resolve(undefined)
-      } catch {
-        resolve(undefined)
+        req.onsuccess = () => {
+          const db = req.result
+          db.onversionchange = () => {
+            if (this.dbPromise === pending) {
+              this.dbPromise = undefined
+            }
+            try {
+              db.close?.()
+            } catch {}
+          }
+          resolve(db)
+        }
+        req.onerror = () => {
+          if (this.dbPromise === pending) {
+            this.dbPromise = undefined
+          }
+          reject(formatIdbError('IndexedDB open failed', req.error))
+        }
+        req.onblocked = () => {
+          if (this.dbPromise === pending) {
+            this.dbPromise = undefined
+          }
+          reject(new Error('IndexedDB open blocked by another connection'))
+        }
+      } catch (err) {
+        if (this.dbPromise === pending) {
+          this.dbPromise = undefined
+        }
+        reject(formatIdbError('IndexedDB open failed', err))
       }
     })
-    return this.dbPromise
+    this.dbPromise = pending
+    return pending
+  }
+
+  private async runReadTx<T>(
+    storeName: string,
+    action: string,
+    createReq: (store: IDBObjectStore) => IDBRequest<T>,
+  ): Promise<T | undefined> {
+    const db = await this.openDb()
+    if (!db) return undefined
+    return new Promise<T | undefined>((resolve, reject) => {
+      let settled = false
+      const settleOk = (val: T | undefined): void => {
+        if (settled) return
+        settled = true
+        resolve(val)
+      }
+      const settleErr = (err: Error): void => {
+        if (settled) return
+        settled = true
+        reject(err)
+      }
+      try {
+        const tx = db.transaction(storeName, 'readonly')
+        const req = createReq(tx.objectStore(storeName))
+        tx.onerror = () => settleErr(formatIdbError(action, tx.error))
+        tx.onabort = () => settleErr(formatIdbError(`${action} (aborted)`, tx.error))
+        req.onsuccess = () => settleOk(req.result)
+        req.onerror = () => settleErr(formatIdbError(action, req.error ?? tx.error))
+      } catch (err) {
+        settleErr(formatIdbError(action, err))
+      }
+    })
+  }
+
+  private async runWriteTx<T = unknown>(
+    storeName: string,
+    action: string,
+    exec: (store: IDBObjectStore) => IDBRequest<T> | void,
+  ): Promise<void> {
+    const db = await this.openDb()
+    if (!db) return
+    await new Promise<void>((resolve, reject) => {
+      let settled = false
+      const settleOk = (): void => {
+        if (settled) return
+        settled = true
+        resolve()
+      }
+      const settleErr = (err: Error): void => {
+        if (settled) return
+        settled = true
+        reject(err)
+      }
+      try {
+        const tx = db.transaction(storeName, 'readwrite')
+        tx.oncomplete = () => settleOk()
+        tx.onerror = () => settleErr(formatIdbError(action, tx.error))
+        tx.onabort = () => settleErr(formatIdbError(`${action} (aborted)`, tx.error))
+        const req = exec(tx.objectStore(storeName))
+        if (req && typeof req === 'object') {
+          req.onerror = () => settleErr(formatIdbError(action, req.error ?? tx.error))
+        }
+      } catch (err) {
+        settleErr(formatIdbError(action, err))
+      }
+    })
   }
 
   private async readFromDb<T>(storeName: string, key: IDBValidKey): Promise<T | undefined> {
-    const db = await this.openDb()
-    if (!db) return undefined
-    return new Promise<T | undefined>((resolve) => {
-      try {
-        const tx = db.transaction(storeName, 'readonly')
-        const req = tx.objectStore(storeName).get(key)
-        req.onsuccess = () => resolve(req.result as T | undefined)
-        req.onerror = () => resolve(undefined)
-      } catch {
-        resolve(undefined)
-      }
-    })
+    return this.runReadTx<T | undefined>(storeName, `IndexedDB read failed (${storeName})`, (store) =>
+      store.get(key),
+    )
   }
 
   private async readAllHostsFromDb(): Promise<TrustedHostProfile[] | undefined> {
-    const db = await this.openDb()
-    if (!db) return undefined
-    return new Promise<TrustedHostProfile[] | undefined>((resolve) => {
-      try {
-        const tx = db.transaction(STORE_HOSTS, 'readonly')
-        const req = tx.objectStore(STORE_HOSTS).getAll()
-        req.onsuccess = () => resolve((req.result as TrustedHostProfile[] | undefined) ?? [])
-        req.onerror = () => resolve(undefined)
-      } catch {
-        resolve(undefined)
-      }
-    })
+    const res = await this.runReadTx<TrustedHostProfile[]>(
+      STORE_HOSTS,
+      'IndexedDB readAll failed (hosts)',
+      (store) => store.getAll(),
+    )
+    if (res === undefined && (!this.useIndexedDb || typeof globalThis.indexedDB === 'undefined')) {
+      return undefined
+    }
+    return res ?? []
   }
 
   private async putInDb(storeName: string, value: unknown): Promise<void> {
-    const db = await this.openDb()
-    if (!db) return
-    await new Promise<void>((resolve) => {
-      try {
-        const tx = db.transaction(storeName, 'readwrite')
-        tx.objectStore(storeName).put(value)
-        tx.oncomplete = () => resolve()
-        tx.onerror = () => resolve()
-      } catch {
-        resolve()
-      }
-    })
+    await this.runWriteTx(storeName, `IndexedDB write failed (${storeName})`, (store) => store.put(value))
   }
 
   private async deleteFromDb(storeName: string, key: IDBValidKey): Promise<void> {
-    const db = await this.openDb()
-    if (!db) return
-    await new Promise<void>((resolve) => {
-      try {
-        const tx = db.transaction(storeName, 'readwrite')
-        tx.objectStore(storeName).delete(key)
-        tx.oncomplete = () => resolve()
-        tx.onerror = () => resolve()
-      } catch {
-        resolve()
-      }
-    })
+    await this.runWriteTx(storeName, `IndexedDB delete failed (${storeName})`, (store) => store.delete(key))
   }
 
   private async generateIdentity(): Promise<ClientDeviceIdentity> {
@@ -209,12 +277,17 @@ export class RemoteWebKeyStore {
       fingerprint: candidate.fingerprint,
       createdAt: candidate.createdAt,
     }
-    return new Promise<ClientDeviceIdentity>((resolve) => {
+    return new Promise<ClientDeviceIdentity>((resolve, reject) => {
       let settled = false
-      const finish = (identity: ClientDeviceIdentity): void => {
+      const settleOk = (identity: ClientDeviceIdentity): void => {
         if (settled) return
         settled = true
         resolve(identity)
+      }
+      const settleErr = (err: Error): void => {
+        if (settled) return
+        settled = true
+        reject(err)
       }
       try {
         // Perform the existence check and conditional insert synchronously inside a single
@@ -224,6 +297,7 @@ export class RemoteWebKeyStore {
         const store = tx.objectStore(STORE_IDENTITY)
         const req = store.get(IDENTITY_RECORD_KEY)
         let chosen: ClientDeviceIdentity = candidate
+        let writeAttempted = false
         req.onsuccess = () => {
           const existing = req.result
           if (isValidStoredIdentity(existing)) {
@@ -231,20 +305,40 @@ export class RemoteWebKeyStore {
             return
           }
           chosen = candidate
+          writeAttempted = true
           try {
-            store.put(candidateRow)
-          } catch {
-            // Let tx error/abort handler resolve safely.
+            const putReq = store.put(candidateRow)
+            if (putReq && typeof putReq === 'object') {
+              putReq.onerror = () =>
+                settleErr(formatIdbError('IndexedDB identity persist failed', putReq.error ?? tx.error))
+            }
+          } catch (err) {
+            try {
+              tx.abort?.()
+            } catch {}
+            settleErr(formatIdbError('IndexedDB identity persist failed', err))
           }
         }
         req.onerror = () => {
-          // Wait for tx completion or abort.
+          settleErr(formatIdbError('IndexedDB identity read failed', req.error ?? tx.error))
         }
-        tx.oncomplete = () => finish(chosen)
-        tx.onerror = () => finish(chosen)
-        tx.onabort = () => finish(chosen)
-      } catch {
-        finish(candidate)
+        tx.oncomplete = () => settleOk(chosen)
+        tx.onerror = () =>
+          settleErr(
+            formatIdbError(
+              writeAttempted ? 'IndexedDB identity persist failed' : 'IndexedDB identity transaction failed',
+              tx.error,
+            ),
+          )
+        tx.onabort = () =>
+          settleErr(
+            formatIdbError(
+              writeAttempted ? 'IndexedDB identity persist aborted' : 'IndexedDB identity transaction aborted',
+              tx.error,
+            ),
+          )
+      } catch (err) {
+        settleErr(formatIdbError('IndexedDB identity transaction failed', err))
       }
     })
   }
@@ -288,9 +382,6 @@ export class RemoteWebKeyStore {
     const rotationGeneration = ++this.identityGeneration
     this.pendingIdentityPromise = undefined
     const created = await this.generateIdentity()
-    if (this.identityGeneration === rotationGeneration) {
-      this.memoryIdentity = cloneIdentity(created)
-    }
     await this.putInDb(STORE_IDENTITY, {
       id: IDENTITY_RECORD_KEY,
       publicKey: new Uint8Array(created.publicKey),
@@ -298,6 +389,9 @@ export class RemoteWebKeyStore {
       fingerprint: created.fingerprint,
       createdAt: created.createdAt,
     } satisfies StoredIdentityRow)
+    if (this.identityGeneration === rotationGeneration) {
+      this.memoryIdentity = cloneIdentity(created)
+    }
     return cloneIdentity(created)
   }
 
@@ -363,27 +457,39 @@ export class RemoteWebKeyStore {
         const store = tx.objectStore(STORE_HOSTS)
         const req = store.get(sanitized.hostFingerprint)
         let rollbackError: Error | undefined
+        let committedExisting: TrustedHostProfile | undefined
         req.onsuccess = () => {
           const existing = req.result as TrustedHostProfile | undefined
           const err = existing
             ? checkEpochAdvance(sanitized.lastEpoch, existing.lastEpoch, options?.allowEpochReset)
             : undefined
           if (existing && err) {
-            this.memoryHosts.set(sanitized.hostFingerprint, existing)
+            committedExisting = existing
             rollbackError = err
             return
           }
           try {
-            store.put(sanitized)
-          } catch {
-            // Fall through to tx completion/error.
+            const putReq = store.put(sanitized)
+            if (putReq && typeof putReq === 'object') {
+              putReq.onerror = () =>
+                settleErr(formatIdbError('IndexedDB trusted host save failed', putReq.error ?? tx.error))
+            }
+          } catch (putErr) {
+            rollbackError = formatIdbError('IndexedDB trusted host save failed', putErr)
+            try {
+              tx.abort?.()
+            } catch {}
+            settleErr(rollbackError)
           }
         }
         req.onerror = () => {
-          // Wait for tx completion/error.
+          settleErr(formatIdbError('IndexedDB trusted host read failed', req.error ?? tx.error))
         }
         tx.oncomplete = () => {
           if (rollbackError) {
+            if (committedExisting) {
+              this.memoryHosts.set(sanitized.hostFingerprint, committedExisting)
+            }
             settleErr(rollbackError)
             return
           }
@@ -391,24 +497,13 @@ export class RemoteWebKeyStore {
           settleOk()
         }
         tx.onerror = () => {
-          if (rollbackError) {
-            settleErr(rollbackError)
-            return
-          }
-          this.memoryHosts.set(sanitized.hostFingerprint, sanitized)
-          settleOk()
+          settleErr(rollbackError ?? formatIdbError('IndexedDB trusted host save failed', tx.error))
         }
         tx.onabort = () => {
-          if (rollbackError) {
-            settleErr(rollbackError)
-            return
-          }
-          this.memoryHosts.set(sanitized.hostFingerprint, sanitized)
-          settleOk()
+          settleErr(rollbackError ?? formatIdbError('IndexedDB trusted host save aborted', tx.error))
         }
-      } catch {
-        this.memoryHosts.set(sanitized.hostFingerprint, sanitized)
-        settleOk()
+      } catch (err) {
+        settleErr(formatIdbError('IndexedDB trusted host save failed', err))
       }
     })
   }
@@ -463,6 +558,7 @@ export class RemoteWebKeyStore {
         const store = tx.objectStore(STORE_HOSTS)
         const req = store.get(key)
         let rollbackError: Error | undefined
+        let committedExisting: TrustedHostProfile | undefined
         let updated: TrustedHostProfile | undefined
         req.onsuccess = () => {
           const existing = req.result as TrustedHostProfile | undefined
@@ -472,22 +568,33 @@ export class RemoteWebKeyStore {
           }
           const err = checkEpochAdvance(epoch, existing.lastEpoch, options?.allowReset)
           if (err) {
-            this.memoryHosts.set(key, existing)
+            committedExisting = existing
             rollbackError = err
             return
           }
           updated = buildUpdated(existing)
           try {
-            store.put(updated)
-          } catch {
-            // Handled cleanly on tx completion/error.
+            const putReq = store.put(updated)
+            if (putReq && typeof putReq === 'object') {
+              putReq.onerror = () =>
+                settleErr(formatIdbError('IndexedDB epoch update failed', putReq.error ?? tx.error))
+            }
+          } catch (putErr) {
+            rollbackError = formatIdbError('IndexedDB epoch update failed', putErr)
+            try {
+              tx.abort?.()
+            } catch {}
+            settleErr(rollbackError)
           }
         }
         req.onerror = () => {
-          // Wait for tx completion/error.
+          settleErr(formatIdbError('IndexedDB host epoch read failed', req.error ?? tx.error))
         }
         tx.oncomplete = () => {
           if (rollbackError) {
+            if (committedExisting) {
+              this.memoryHosts.set(key, committedExisting)
+            }
             settleErr(rollbackError)
             return
           }
@@ -497,46 +604,20 @@ export class RemoteWebKeyStore {
           settleOk(updated)
         }
         tx.onerror = () => {
-          if (rollbackError) {
-            settleErr(rollbackError)
-            return
-          }
-          if (updated) {
-            this.memoryHosts.set(key, updated)
-          }
-          settleOk(updated)
+          settleErr(rollbackError ?? formatIdbError('IndexedDB epoch update failed', tx.error))
         }
         tx.onabort = () => {
-          if (rollbackError) {
-            settleErr(rollbackError)
-            return
-          }
-          if (updated) {
-            this.memoryHosts.set(key, updated)
-          }
-          settleOk(updated)
+          settleErr(rollbackError ?? formatIdbError('IndexedDB epoch update aborted', tx.error))
         }
-      } catch {
-        const mem = this.memoryHosts.get(key)
-        if (!mem) {
-          settleOk(undefined)
-          return
-        }
-        const err = checkEpochAdvance(epoch, mem.lastEpoch, options?.allowReset)
-        if (err) {
-          settleErr(err)
-          return
-        }
-        const fallbackUpdated = buildUpdated(mem)
-        this.memoryHosts.set(key, fallbackUpdated)
-        settleOk(fallbackUpdated)
+      } catch (err) {
+        settleErr(formatIdbError('IndexedDB epoch update failed', err))
       }
     })
   }
 
   async forgetHost(hostFingerprint: string): Promise<void> {
     const key = hostFingerprint.toLowerCase()
-    this.memoryHosts.delete(key)
     await this.deleteFromDb(STORE_HOSTS, key)
+    this.memoryHosts.delete(key)
   }
 }

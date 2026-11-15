@@ -55,4 +55,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 
 USER node
 
-CMD ["sh", "-c", "exec node /app/apps/tui/dist/bin.js remote gateway --host \"${DSH_REMOTE_GATEWAY_HOST}\" --port \"${DSH_REMOTE_GATEWAY_PORT}\" --allow-wildcard --serve-web"]
+CMD ["sh", "-c", "SECRET=\"${DSH_REMOTE_GATEWAY_HOST_SECRET:-${DSH_REMOTE_RELAY_HOST_SECRET:-}}\"; TRIMMED=$(printf '%s' \"${SECRET}\" | tr -d '[:space:]'); if [ -z \"${TRIMMED}\" ] && [ \"${DSH_REMOTE_GATEWAY_HOST}\" != \"127.0.0.1\" ] && [ \"${DSH_REMOTE_GATEWAY_HOST}\" != \"::1\" ]; then echo 'ERROR: DSH_REMOTE_GATEWAY_HOST_SECRET (or DSH_REMOTE_RELAY_HOST_SECRET) must be non-empty when binding dsh-community gateway to non-loopback/wildcard address.' >&2; exit 1; fi; exec node /app/apps/tui/dist/bin.js remote gateway --host \"${DSH_REMOTE_GATEWAY_HOST}\" --port \"${DSH_REMOTE_GATEWAY_PORT}\" --allow-wildcard --serve-web"]

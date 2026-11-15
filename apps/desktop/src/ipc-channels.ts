@@ -31,6 +31,7 @@ export const DESKTOP_IPC = {
   remoteRefresh: 'dsh:desktop:remote-refresh',
   remoteNewPairing: 'dsh:desktop:remote-new-pairing',
   remoteConfirmPairing: 'dsh:desktop:remote-confirm-pairing',
+  remoteSetCapabilities: 'dsh:desktop:remote-set-capabilities',
   remoteRevokeDevice: 'dsh:desktop:remote-revoke-device',
   remoteGitInspect: 'dsh:desktop:remote-git-inspect',
 } as const
@@ -61,6 +62,7 @@ export const DESKTOP_IPC_KEYS = [
   'dsh:desktop:remote-refresh',
   'dsh:desktop:remote-new-pairing',
   'dsh:desktop:remote-confirm-pairing',
+  'dsh:desktop:remote-set-capabilities',
   'dsh:desktop:remote-revoke-device',
   'dsh:desktop:remote-git-inspect',
 ] as const

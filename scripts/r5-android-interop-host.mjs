@@ -402,7 +402,15 @@ if (!lanUrl) {
 }
 const bootstrap = tokenRegistry.createToken({
   ttlMs: 120_000,
-  allowedCapabilities: ['observe', 'prompt', 'approve', 'answer-question'],
+  allowedCapabilities: [
+    'observe',
+    'prompt',
+    'session.manage',
+    'command.execute',
+    'workspace.write',
+    'approve',
+    'answer-question',
+  ],
   hostGeneration: hostKeyPair.identity.generation,
   trustDomainId: hostKeyPair.identity.trustDomainId,
 })
@@ -471,7 +479,15 @@ const controlServer = createServer(async (req, res) => {
       const body = await readJsonBody(req)
       const confirmed = await pairingCoordinator.confirmPairing({
         candidateId: body.candidateId,
-        grantedCapabilities: ['observe', 'prompt', 'approve', 'answer-question'],
+        grantedCapabilities: [
+          'observe',
+          'prompt',
+          'session.manage',
+          'command.execute',
+          'workspace.write',
+          'approve',
+          'answer-question',
+        ],
       })
       res.writeHead(200, { 'content-type': 'application/json' })
       res.end(JSON.stringify({ ok: true, deviceId: confirmed.device.deviceId }))

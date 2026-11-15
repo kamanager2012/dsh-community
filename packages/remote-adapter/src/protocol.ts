@@ -5,6 +5,9 @@ export const REMOTE_PROTOCOL_VERSION = 1 as const
 export type Capability =
   | 'observe'
   | 'prompt'
+  | 'session.manage'
+  | 'command.execute'
+  | 'workspace.write'
   | 'approve'
   | 'answer-question'
 

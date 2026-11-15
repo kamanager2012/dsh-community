@@ -12,24 +12,58 @@ const AUTHORITATIVE_REQUIRED_CAPABILITIES: Readonly<Partial<Record<RemoteMethod,
   'workspace.git.status': 'observe',
   'workspace.git.diff': 'observe',
   'workspace.files': 'observe',
-  'session.create': 'prompt',
-  'session.rename': 'prompt',
-  'session.fork': 'prompt',
+  'session.create': 'session.manage',
+  'session.rename': 'session.manage',
+  'session.fork': 'session.manage',
   'prompt.submit': 'prompt',
   'turn.abort': 'prompt',
   'approval.respond': 'approve',
   'question.respond': 'answer-question',
   'model.list': 'observe',
-  'model.select': 'prompt',
+  'model.select': 'session.manage',
   'command.list': 'observe',
-  'command.execute': 'prompt',
+  'command.execute': 'command.execute',
   'skill.list': 'observe',
-  'workspace.upload.open': 'prompt',
-  'workspace.upload.chunk': 'prompt',
-  'workspace.upload.commit': 'prompt',
-  'workspace.upload.abort': 'prompt',
+  'workspace.upload.open': 'workspace.write',
+  'workspace.upload.chunk': 'workspace.write',
+  'workspace.upload.commit': 'workspace.write',
+  'workspace.upload.abort': 'workspace.write',
   'stream.ack': 'observe',
 })
+
+export const VALID_CAPABILITIES: readonly Capability[] = Object.freeze([
+  'observe',
+  'prompt',
+  'session.manage',
+  'command.execute',
+  'workspace.write',
+  'approve',
+  'answer-question',
+])
+
+export const DEFAULT_GRANTED_CAPABILITIES: readonly Capability[] = Object.freeze([
+  'observe',
+  'prompt',
+])
+
+const VALID_CAPABILITY_SET: ReadonlySet<string> = new Set<string>(VALID_CAPABILITIES)
+
+/** Validates and deduplicates a capability list against the authoritative Capability taxonomy. */
+export function validateCapabilities(caps: readonly unknown[], context = 'capabilities'): readonly Capability[] {
+  const out: Capability[] = []
+  const seen = new Set<Capability>()
+  for (const raw of caps) {
+    if (typeof raw !== 'string' || !VALID_CAPABILITY_SET.has(raw)) {
+      throw new RemoteCryptoError('PAIRING_FAILED', `unsupported capability in ${context}: ${String(raw)}`)
+    }
+    const cap = raw as Capability
+    if (!seen.has(cap)) {
+      seen.add(cap)
+      out.push(cap)
+    }
+  }
+  return Object.freeze(out)
+}
 
 export const requiredCapability: Readonly<Partial<Record<RemoteMethod, Capability>>> = Object.freeze({
   ...AUTHORITATIVE_REQUIRED_CAPABILITIES,
@@ -84,6 +118,11 @@ export interface DeviceRevocationEvent {
 
 export type DeviceRevocationListener = (event: DeviceRevocationEvent) => void
 
+export interface CapabilityDelta {
+  readonly grant?: readonly Capability[] | undefined
+  readonly revoke?: readonly Capability[] | undefined
+}
+
 export interface DeviceTrustStore {
   get(deviceId: string): Promise<DeviceRecord | undefined>
   findByPublicKey(staticPublicKey: Uint8Array): Promise<DeviceRecord | undefined>
@@ -94,6 +133,12 @@ export interface DeviceTrustStore {
     trustDomainId: string
   }): Promise<DeviceRecord>
   revoke(deviceId: string): Promise<boolean>
+  updateCapabilitiesSync(deviceId: string, grantedCapabilities: readonly Capability[]): DeviceRecord
+  updateCapabilities(deviceId: string, grantedCapabilities: readonly Capability[]): Promise<DeviceRecord>
+  updateCapabilitiesDeltaSync(deviceId: string, delta: CapabilityDelta): DeviceRecord
+  updateCapabilitiesDelta(deviceId: string, delta: CapabilityDelta): Promise<DeviceRecord>
+  grantCapability(deviceId: string, capability: Capability): Promise<DeviceRecord>
+  revokeCapability(deviceId: string, capability: Capability): Promise<DeviceRecord>
   adminReEnroll(params: {
     deviceId: string
     displayName?: string
@@ -269,6 +314,53 @@ export class InMemoryDeviceTrustStore implements DeviceTrustStore {
     return this.revokeSync(deviceId)
   }
 
+  updateCapabilitiesSync(deviceId: string, grantedCapabilities: readonly Capability[]): DeviceRecord {
+    const record = this.devices.get(deviceId)
+    if (!record) {
+      throw new RemoteCryptoError('DEVICE_NOT_TRUSTED', `device does not exist: ${deviceId}`)
+    }
+    if (record.revokedAt !== undefined) {
+      throw new RemoteCryptoError('DEVICE_REVOKED', `cannot update capabilities for revoked device: ${deviceId}`)
+    }
+    const validated = validateCapabilities(grantedCapabilities, 'grantedCapabilities')
+    record.grantedCapabilities = new Set(validated)
+    return toDeviceRecordSnapshot(record)
+  }
+
+  async updateCapabilities(deviceId: string, grantedCapabilities: readonly Capability[]): Promise<DeviceRecord> {
+    return this.updateCapabilitiesSync(deviceId, grantedCapabilities)
+  }
+
+  updateCapabilitiesDeltaSync(deviceId: string, delta: CapabilityDelta): DeviceRecord {
+    const record = this.devices.get(deviceId)
+    if (!record) {
+      throw new RemoteCryptoError('DEVICE_NOT_TRUSTED', `device does not exist: ${deviceId}`)
+    }
+    if (record.revokedAt !== undefined) {
+      throw new RemoteCryptoError('DEVICE_REVOKED', `cannot update capabilities for revoked device: ${deviceId}`)
+    }
+    const grantList = validateCapabilities(delta.grant ?? [], 'grant')
+    const revokeSet = new Set<Capability>(validateCapabilities(delta.revoke ?? [], 'revoke'))
+    const merged = new Set<Capability>(record.grantedCapabilities)
+    for (const cap of grantList) merged.add(cap)
+    for (const cap of revokeSet) merged.delete(cap)
+    return this.updateCapabilitiesSync(deviceId, Array.from(merged))
+  }
+
+  async updateCapabilitiesDelta(deviceId: string, delta: CapabilityDelta): Promise<DeviceRecord> {
+    return this.updateCapabilitiesDeltaSync(deviceId, delta)
+  }
+
+  async grantCapability(deviceId: string, capability: Capability): Promise<DeviceRecord> {
+    const [validCap] = validateCapabilities([capability], 'capability')
+    return this.updateCapabilitiesDelta(deviceId, { grant: [validCap!] })
+  }
+
+  async revokeCapability(deviceId: string, capability: Capability): Promise<DeviceRecord> {
+    const [validCap] = validateCapabilities([capability], 'capability')
+    return this.updateCapabilitiesDelta(deviceId, { revoke: [validCap!] })
+  }
+
   async adminReEnroll(params: {
     deviceId: string
     displayName?: string
@@ -279,9 +371,10 @@ export class InMemoryDeviceTrustStore implements DeviceTrustStore {
     if (!record) {
       throw new RemoteCryptoError('DEVICE_NOT_TRUSTED', 'device does not exist for re-enrollment')
     }
+    const validated = validateCapabilities(params.grantedCapabilities, 'grantedCapabilities')
     const now = this.clock()
     record.displayName = params.displayName ?? record.displayName
-    record.grantedCapabilities = new Set(params.grantedCapabilities)
+    record.grantedCapabilities = new Set(validated)
     record.revokedAt = undefined
     record.lastSeenAt = now
     record.keyVersion += 1

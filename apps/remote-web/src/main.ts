@@ -2318,10 +2318,16 @@ function renderOnboardingView(root: HTMLElement): void {
       const forgetBtn = el('button', 'btn-ghost btn-sm', 'Forget')
       forgetBtn.type = 'button'
       forgetBtn.addEventListener('click', () => {
-        void keyStore.forgetHost(host.hostFingerprint).then(async () => {
-          state.savedHosts = await keyStore.listTrustedHosts()
-          renderApp()
-        })
+        void keyStore
+          .forgetHost(host.hostFingerprint)
+          .then(async () => {
+            state.savedHosts = await keyStore.listTrustedHosts()
+            renderApp()
+          })
+          .catch((err) => {
+            showToast(`Failed to remove host from browser storage: ${err instanceof Error ? err.message : String(err)}`)
+            renderApp()
+          })
       })
       acts.append(connBtn, forgetBtn)
       row.append(info, acts)
@@ -2371,14 +2377,20 @@ function renderModals(root: HTMLElement): void {
     const rotateBtn = el('button', 'btn-danger btn-sm', 'Rotate Client X25519 Key')
     rotateBtn.type = 'button'
     rotateBtn.addEventListener('click', () => {
-      client.disconnect()
-      resetHostScopedState(undefined)
-      void keyStore.rotateClientKeyPair().then(async (nextId) => {
-        state.identity = nextId
-        state.securityModalOpen = false
-        showToast('Rotated client X25519 identity. Pair again on host with new QR/link.')
-        renderApp()
-      })
+      void keyStore
+        .rotateClientKeyPair()
+        .then((nextId) => {
+          client.disconnect()
+          resetHostScopedState(undefined)
+          state.identity = nextId
+          state.securityModalOpen = false
+          showToast('Rotated client X25519 identity. Pair again on host with new QR/link.')
+          renderApp()
+        })
+        .catch((err) => {
+          showToast(`Failed to persist rotated identity: ${err instanceof Error ? err.message : String(err)}`)
+          renderApp()
+        })
     })
     const closeBtn = el('button', 'btn-primary btn-sm', 'Close')
     closeBtn.type = 'button'
@@ -2554,8 +2566,23 @@ async function bootstrap(): Promise<void> {
   const hashPairPayload =
     typeof window !== 'undefined' ? consumePairFragmentFromLocation(window) : undefined
 
-  state.identity = await keyStore.getOrCreateClientKeyPair()
-  state.savedHosts = await keyStore.listTrustedHosts()
+  try {
+    state.identity = await keyStore.getOrCreateClientKeyPair()
+    state.savedHosts = await keyStore.listTrustedHosts()
+  } catch (err) {
+    const appRoot = document.getElementById('app')
+    const msg = err instanceof Error ? err.message : String(err)
+    if (appRoot) {
+      appRoot.replaceChildren(
+        el(
+          'div',
+          'notice-card',
+          `Browser keystore persistence unavailable (${msg}). Unlock IndexedDB storage and reload.`,
+        ),
+      )
+    }
+    return
+  }
 
   client.onStatus((evt) => {
     const prevStatus = state.statusEvt.status

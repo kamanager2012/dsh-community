@@ -35,9 +35,12 @@ import {
   openPersistentRemoteStores,
 } from '@dsh-community/remote-adapter/stores'
 import {
+  DEFAULT_GRANTED_CAPABILITIES,
   normalizeStunUrlList,
   resolveRemoteDefaultTransportEnv,
+  VALID_CAPABILITIES,
   validateWsEndpointUrl,
+  type Capability,
 } from '@dsh-community/remote-adapter/remote-env'
 import { readJsonFile, writeJsonFile } from './json-file.ts'
 import { assertHostLaunchPaths, type HostLaunchPaths } from './paths.ts'
@@ -559,17 +562,116 @@ export function parseRemoteGitInspectInput(raw: unknown):
   }
 }
 
+const VALID_CAPABILITY_SET: ReadonlySet<string> = new Set<string>(VALID_CAPABILITIES)
+
+function normalizeCapabilityArray(raw: unknown): readonly Capability[] | undefined {
+  if (!Array.isArray(raw)) return undefined
+  const out: Capability[] = []
+  for (const item of raw) {
+    if (typeof item !== 'string' || !VALID_CAPABILITY_SET.has(item)) return undefined
+    const cap = item as Capability
+    if (!out.includes(cap)) out.push(cap)
+  }
+  return out
+}
+
 export function parseConfirmPairingInput(
   raw: unknown,
-): { readonly candidateId: string; readonly allowApprove: boolean } | undefined {
+):
+  | {
+      readonly candidateId: string
+      readonly allowApprove: boolean
+      readonly grantedCapabilities?: readonly Capability[] | undefined
+    }
+  | undefined {
   if (raw === null || typeof raw !== 'object') return undefined
   const rec = raw as Record<string, unknown>
   if (typeof rec.candidateId !== 'string' || !CANDIDATE_ID_RE.test(rec.candidateId)) {
     return undefined
   }
+  if (rec.grantedCapabilities !== undefined) {
+    const caps = normalizeCapabilityArray(rec.grantedCapabilities)
+    if (caps === undefined) return undefined
+    return {
+      candidateId: rec.candidateId,
+      allowApprove: caps.includes('approve'),
+      grantedCapabilities: caps,
+    }
+  }
   return {
     candidateId: rec.candidateId,
     allowApprove: rec.allowApprove !== false,
+  }
+}
+
+export type SetCapabilitiesDelta = {
+  readonly grant?: readonly Capability[] | undefined
+  readonly revoke?: readonly Capability[] | undefined
+}
+
+export type SetCapabilitiesInput =
+  | { readonly deviceId: string; readonly grantedCapabilities: readonly Capability[] }
+  | ({ readonly deviceId: string; readonly grantedCapabilities?: undefined } & SetCapabilitiesDelta)
+
+export type SetCapabilitiesUpdate =
+  | readonly string[]
+  | {
+      readonly grantedCapabilities?: readonly string[] | undefined
+      readonly grant?: readonly string[] | undefined
+      readonly revoke?: readonly string[] | undefined
+    }
+
+type NormalizedCapabilitiesPayload =
+  | { readonly kind: 'replace'; readonly grantedCapabilities: readonly Capability[] }
+  | {
+      readonly kind: 'delta'
+      readonly grant: readonly Capability[]
+      readonly revoke: readonly Capability[]
+    }
+
+function normalizeCapabilityFields(
+  grantedCapabilitiesRaw: unknown,
+  grantRaw: unknown,
+  revokeRaw: unknown,
+): NormalizedCapabilitiesPayload | undefined {
+  if (grantedCapabilitiesRaw !== undefined) {
+    if (grantRaw !== undefined || revokeRaw !== undefined) return undefined
+    const grantedCapabilities = normalizeCapabilityArray(grantedCapabilitiesRaw)
+    return grantedCapabilities === undefined ? undefined : { kind: 'replace', grantedCapabilities }
+  }
+  const grant = grantRaw !== undefined ? normalizeCapabilityArray(grantRaw) : []
+  const revoke = revokeRaw !== undefined ? normalizeCapabilityArray(revokeRaw) : []
+  if (grant === undefined || revoke === undefined) return undefined
+  if (grant.length === 0 && revoke.length === 0) return undefined
+  return { kind: 'delta', grant, revoke }
+}
+
+function normalizeCapabilitiesUpdate(update: SetCapabilitiesUpdate): NormalizedCapabilitiesPayload | undefined {
+  if (Array.isArray(update)) {
+    return normalizeCapabilityFields(update, undefined, undefined)
+  }
+  const rec = update as {
+    readonly grantedCapabilities?: readonly string[] | undefined
+    readonly grant?: readonly string[] | undefined
+    readonly revoke?: readonly string[] | undefined
+  }
+  return normalizeCapabilityFields(rec.grantedCapabilities, rec.grant, rec.revoke)
+}
+
+export function parseSetCapabilitiesInput(raw: unknown): SetCapabilitiesInput | undefined {
+  if (raw === null || typeof raw !== 'object') return undefined
+  const rec = raw as Record<string, unknown>
+  const deviceId = parseRevokeDeviceInput(rec.deviceId)
+  if (deviceId === undefined) return undefined
+  const payload = normalizeCapabilityFields(rec.grantedCapabilities, rec.grant, rec.revoke)
+  if (payload === undefined) return undefined
+  if (payload.kind === 'replace') {
+    return { deviceId, grantedCapabilities: payload.grantedCapabilities }
+  }
+  return {
+    deviceId,
+    ...(payload.grant.length > 0 ? { grant: payload.grant } : {}),
+    ...(payload.revoke.length > 0 ? { revoke: payload.revoke } : {}),
   }
 }
 
@@ -1383,7 +1485,10 @@ export class DesktopRemoteController {
     }
   }
 
-  async confirmPairing(candidateId: string, allowApprove: boolean): Promise<void> {
+  async confirmPairing(
+    candidateId: string,
+    allowApproveOrCaps: boolean | readonly string[],
+  ): Promise<void> {
     const control = this.activeControl()
     if (control === undefined) {
       this.lastError = 'Remote Host 未运行，无法确认配对请求。'
@@ -1393,10 +1498,22 @@ export class DesktopRemoteController {
     try {
       await this.refreshLiveInternal()
       const candidate = this.cachedPending.find((c) => c.candidateId === candidateId)
-      const baseCaps = candidate?.maxAllowedCapabilities ?? ['observe', 'prompt', 'approve', 'answer-question']
-      const grantedCapabilities = allowApprove
-        ? [...baseCaps]
-        : baseCaps.filter((c) => c !== 'approve')
+      const baseCaps = candidate?.maxAllowedCapabilities ?? DEFAULT_GRANTED_CAPABILITIES
+      let grantedCapabilities: readonly string[]
+      if (Array.isArray(allowApproveOrCaps)) {
+        const normalized = normalizeCapabilityArray(allowApproveOrCaps)
+        if (normalized === undefined) {
+          throw new Error('无效的权限集合')
+        }
+        grantedCapabilities = normalized
+      } else {
+        const maxSet = new Set(baseCaps)
+        const selected = DEFAULT_GRANTED_CAPABILITIES.filter((c) => maxSet.has(c))
+        if (allowApproveOrCaps === true && maxSet.has('approve') && !selected.includes('approve')) {
+          selected.push('approve')
+        }
+        grantedCapabilities = selected.length > 0 ? selected : baseCaps.slice(0, 1)
+      }
       const res = await this.controlFetch(control, '/pairing/confirm', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -1412,6 +1529,62 @@ export class DesktopRemoteController {
       this.emitChange()
     } catch (error) {
       this.lastError = `确认配对失败: ${error instanceof Error ? error.message : String(error)}`
+      this.emitChange()
+    }
+  }
+
+  async setDeviceCapabilities(deviceId: string, capabilities: SetCapabilitiesUpdate): Promise<void> {
+    const payload = normalizeCapabilitiesUpdate(capabilities)
+    if (payload === undefined) {
+      this.lastError = '更新设备权限失败: 包含未知能力名称或空权限变更'
+      this.emitChange()
+      return
+    }
+    const ctx = this.getContext()
+    const configDir = resolveDesktopRemoteConfigDir(ctx)
+    this.detectOrAttachExternal(configDir)
+    const control = this.activeControl()
+    try {
+      if (control !== undefined) {
+        const requestBody =
+          payload.kind === 'replace'
+            ? { deviceId, grantedCapabilities: payload.grantedCapabilities }
+            : {
+                deviceId,
+                ...(payload.grant.length > 0 ? { grant: payload.grant } : {}),
+                ...(payload.revoke.length > 0 ? { revoke: payload.revoke } : {}),
+              }
+        const res = await this.controlFetch(control, '/devices/capabilities', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(requestBody),
+        })
+        const body = (await res.json()) as { ok?: boolean; capabilities?: readonly string[]; error?: string }
+        if (!res.ok || !body.ok) {
+          throw new Error(body.error ?? `HTTP ${String(res.status)}`)
+        }
+        const summaryCaps =
+          body.capabilities ?? (payload.kind === 'replace' ? payload.grantedCapabilities : undefined)
+        this.notice =
+          summaryCaps !== undefined
+            ? `已更新设备 ${deviceId} 权限: ${summaryCaps.join(', ') || '无'}`
+            : `已更新设备 ${deviceId} 权限`
+      } else {
+        const stores = openPersistentRemoteStores({ configDir, dshHome: ctx.dshHome })
+        const updated =
+          payload.kind === 'replace'
+            ? await stores.trustStore.updateCapabilities(deviceId, payload.grantedCapabilities)
+            : await stores.trustStore.updateCapabilitiesDelta(deviceId, {
+                grant: payload.grant,
+                revoke: payload.revoke,
+              })
+        this.notice = `已离线更新设备 ${deviceId} 权限: ${[...updated.grantedCapabilities].join(', ') || '无'}`
+      }
+      this.lastError = undefined
+      await this.refreshLiveInternal()
+      this.emitChange()
+    } catch (error) {
+      this.lastError = `更新设备权限失败: ${error instanceof Error ? error.message : String(error)}`
       this.emitChange()
     }
   }

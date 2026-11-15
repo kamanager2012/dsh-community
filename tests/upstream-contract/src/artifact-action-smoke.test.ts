@@ -8,16 +8,41 @@ const release = readFileSync(join(repoRoot, '.github/workflows/release.yml'), 'u
 const userLoop = readFileSync(join(repoRoot, '.github/workflows/user-loop-evidence.yml'), 'utf8')
 const smoke = readFileSync(join(repoRoot, '.github/workflows/artifact-action-smoke.yml'), 'utf8')
 
-const UPLOAD = 'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a'
-const DOWNLOAD = 'actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c'
+const UPLOAD_RE = /actions\/upload-artifact@([0-9a-f]{40})\b/g
+const DOWNLOAD_RE = /actions\/download-artifact@([0-9a-f]{40})\b/g
+
+function extractSinglePinnedRef(content: string, actionName: string, pattern: RegExp, fileLabel: string): string {
+  const refs = new Set(Array.from(content.matchAll(pattern), (m) => `${actionName}@${m[1]}`))
+  expect(refs.size, `${fileLabel} must pin exactly one 40-char SHA for ${actionName}`).toBe(1)
+  return [...refs][0]!
+}
 
 describe('artifact action compatibility smoke', () => {
   it('tests the exact artifact action commits used by release flows', () => {
-    expect(release).toContain(UPLOAD)
-    expect(release).toContain(DOWNLOAD)
-    expect(userLoop).toContain(UPLOAD)
-    expect(smoke).toContain(UPLOAD)
-    expect(smoke).toContain(DOWNLOAD)
+    const releaseUpload = extractSinglePinnedRef(release, 'actions/upload-artifact', UPLOAD_RE, 'release.yml')
+    const releaseDownload = extractSinglePinnedRef(release, 'actions/download-artifact', DOWNLOAD_RE, 'release.yml')
+    const userLoopUpload = extractSinglePinnedRef(
+      userLoop,
+      'actions/upload-artifact',
+      UPLOAD_RE,
+      'user-loop-evidence.yml',
+    )
+    const smokeUpload = extractSinglePinnedRef(
+      smoke,
+      'actions/upload-artifact',
+      UPLOAD_RE,
+      'artifact-action-smoke.yml',
+    )
+    const smokeDownload = extractSinglePinnedRef(
+      smoke,
+      'actions/download-artifact',
+      DOWNLOAD_RE,
+      'artifact-action-smoke.yml',
+    )
+
+    expect(userLoopUpload).toBe(releaseUpload)
+    expect(smokeUpload).toBe(releaseUpload)
+    expect(smokeDownload).toBe(releaseDownload)
   })
 
   it('round-trips bytes and verifies sha256 instead of only testing action startup', () => {
