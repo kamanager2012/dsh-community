@@ -124,26 +124,31 @@ export class NoiseIkInitiator {
     if (this.state !== 'INIT') {
       throw new Error(`writeMessage1 invalid in state ${this.state}`)
     }
-    this.ephemeralKeyPair = generateX25519KeyPair()
-    this.mixHash(this.ephemeralKeyPair.publicKey)
+    try {
+      this.ephemeralKeyPair = generateX25519KeyPair()
+      this.mixHash(this.ephemeralKeyPair.publicKey)
 
-    const es = x25519SharedSecret(this.ephemeralKeyPair.secretKey, this.remoteStaticPublicKey)
-    this.mixKey(es)
-    es.fill(0)
+      const es = x25519SharedSecret(this.ephemeralKeyPair.secretKey, this.remoteStaticPublicKey)
+      this.mixKey(es)
+      es.fill(0)
 
-    const encStatic = this.encryptAndHash(this.clientKeyPair.publicKey)
+      const encStatic = this.encryptAndHash(this.clientKeyPair.publicKey)
 
-    const ss = x25519SharedSecret(this.clientKeyPair.secretKey, this.remoteStaticPublicKey)
-    this.mixKey(ss)
-    ss.fill(0)
+      const ss = x25519SharedSecret(this.clientKeyPair.secretKey, this.remoteStaticPublicKey)
+      this.mixKey(ss)
+      ss.fill(0)
 
-    const encPayload = this.encryptAndHash(payload)
-    const msg = concatBytes(this.ephemeralKeyPair.publicKey, encStatic, encPayload)
-    if (msg.byteLength > MAX_NOISE_MESSAGE_BYTES) {
-      throw new Error('Noise handshake message 1 exceeds max message size')
+      const encPayload = this.encryptAndHash(payload)
+      const msg = concatBytes(this.ephemeralKeyPair.publicKey, encStatic, encPayload)
+      if (msg.byteLength > MAX_NOISE_MESSAGE_BYTES) {
+        throw new Error('Noise handshake message 1 exceeds max message size')
+      }
+      this.state = 'SENT_MSG1'
+      return msg
+    } catch (err) {
+      this.close()
+      throw err
     }
-    this.state = 'SENT_MSG1'
-    return msg
   }
 
   /**
@@ -154,48 +159,53 @@ export class NoiseIkInitiator {
     if (this.state !== 'SENT_MSG1' || !this.ephemeralKeyPair) {
       throw new Error(`readMessage2 invalid in state ${this.state}`)
     }
-    if (message2.byteLength < DHLEN + 16 || message2.byteLength > MAX_NOISE_MESSAGE_BYTES) {
-      throw new Error(`Invalid Noise message 2 length (${message2.byteLength})`)
+    try {
+      if (message2.byteLength < DHLEN + 16 || message2.byteLength > MAX_NOISE_MESSAGE_BYTES) {
+        throw new Error(`Invalid Noise message 2 length (${message2.byteLength})`)
+      }
+
+      const remoteEphemeral = message2.subarray(0, DHLEN)
+      const encPayload = message2.subarray(DHLEN)
+
+      this.mixHash(remoteEphemeral)
+
+      const ee = x25519SharedSecret(this.ephemeralKeyPair.secretKey, remoteEphemeral)
+      this.mixKey(ee)
+      ee.fill(0)
+
+      const se = x25519SharedSecret(this.clientKeyPair.secretKey, remoteEphemeral)
+      this.mixKey(se)
+      se.fill(0)
+
+      const payload = this.decryptAndHash(encPayload)
+
+      // Split symmetric state -> (k1 send, k2 recv) for initiator
+      const splitKeys = hkdfBlake2b(this.chainingKey, new Uint8Array(0), new Uint8Array(0), 128)
+      this.sendKey = new Uint8Array(splitKeys.subarray(0, 32))
+      this.recvKey = new Uint8Array(splitKeys.subarray(64, 96))
+      splitKeys.fill(0)
+
+      this.sendNonce = 0
+      this.recvNonce = 0
+      this.handshakeHashBytes = new Uint8Array(this.digest)
+
+      // Scrub handshake-only secrets immediately
+      zeroize(
+        this.ephemeralKeyPair.secretKey,
+        this.ephemeralKeyPair.publicKey,
+        this.chainingKey,
+        this.cipherKey,
+        this.clientKeyPair.secretKey,
+      )
+      this.ephemeralKeyPair = undefined
+      this.cipherKey = undefined
+      this.state = 'READY'
+
+      return payload
+    } catch (err) {
+      this.close()
+      throw err
     }
-
-    const remoteEphemeral = message2.subarray(0, DHLEN)
-    const encPayload = message2.subarray(DHLEN)
-
-    this.mixHash(remoteEphemeral)
-
-    const ee = x25519SharedSecret(this.ephemeralKeyPair.secretKey, remoteEphemeral)
-    this.mixKey(ee)
-    ee.fill(0)
-
-    const se = x25519SharedSecret(this.clientKeyPair.secretKey, remoteEphemeral)
-    this.mixKey(se)
-    se.fill(0)
-
-    const payload = this.decryptAndHash(encPayload)
-
-    // Split symmetric state -> (k1 send, k2 recv) for initiator
-    const splitKeys = hkdfBlake2b(this.chainingKey, new Uint8Array(0), new Uint8Array(0), 128)
-    this.sendKey = new Uint8Array(splitKeys.subarray(0, 32))
-    this.recvKey = new Uint8Array(splitKeys.subarray(64, 96))
-    splitKeys.fill(0)
-
-    this.sendNonce = 0
-    this.recvNonce = 0
-    this.handshakeHashBytes = new Uint8Array(this.digest)
-
-    // Scrub handshake-only secrets immediately
-    zeroize(
-      this.ephemeralKeyPair.secretKey,
-      this.ephemeralKeyPair.publicKey,
-      this.chainingKey,
-      this.cipherKey,
-      this.clientKeyPair.secretKey,
-    )
-    this.ephemeralKeyPair = undefined
-    this.cipherKey = undefined
-    this.state = 'READY'
-
-    return payload
   }
 
   encrypt(plaintext: Uint8Array): Uint8Array {
@@ -203,6 +213,7 @@ export class NoiseIkInitiator {
       throw new Error('Noise session is not ready for encrypt')
     }
     if (this.sendNonce >= MAX_TRANSPORT_MESSAGES) {
+      this.close()
       throw new Error('Noise send nonce limit exceeded; reconnect required')
     }
     if (plaintext.byteLength + 16 > MAX_NOISE_MESSAGE_BYTES) {
@@ -217,15 +228,20 @@ export class NoiseIkInitiator {
     if (this.state !== 'READY' || !this.recvKey) {
       throw new Error('Noise session is not ready for decrypt')
     }
-    if (this.recvNonce >= MAX_TRANSPORT_MESSAGES) {
-      throw new Error('Noise receive nonce limit exceeded; reconnect required')
+    try {
+      if (this.recvNonce >= MAX_TRANSPORT_MESSAGES) {
+        throw new Error('Noise receive nonce limit exceeded; reconnect required')
+      }
+      if (ciphertext.byteLength < 16 || ciphertext.byteLength > MAX_NOISE_MESSAGE_BYTES) {
+        throw new Error(`Invalid Noise transport ciphertext length (${ciphertext.byteLength})`)
+      }
+      const nonce = buildNoiseNonce(this.recvNonce)
+      this.recvNonce += 1
+      return chacha20Poly1305Decrypt(this.recvKey, nonce, ciphertext)
+    } catch (err) {
+      this.close()
+      throw err
     }
-    if (ciphertext.byteLength < 16 || ciphertext.byteLength > MAX_NOISE_MESSAGE_BYTES) {
-      throw new Error(`Invalid Noise transport ciphertext length (${ciphertext.byteLength})`)
-    }
-    const nonce = buildNoiseNonce(this.recvNonce)
-    this.recvNonce += 1
-    return chacha20Poly1305Decrypt(this.recvKey, nonce, ciphertext)
   }
 
   close(): void {

@@ -12,7 +12,7 @@ import {
   chacha20Poly1305Decrypt,
   chacha20Poly1305Encrypt,
 } from '../src/crypto/chacha20poly1305.ts'
-import { NoiseIkInitiator } from '../src/crypto/noise-ik.ts'
+import { MAX_NOISE_MESSAGE_BYTES, NoiseIkInitiator } from '../src/crypto/noise-ik.ts'
 import {
   clampX25519Scalar,
   generateX25519KeyPair,
@@ -170,5 +170,159 @@ describe('remote-web pure-TS E2EE cryptography', () => {
     responder.close()
     expect(initiator.getState()).toBe('CLOSED')
     expect(() => initiator.encrypt(utf8Encode('after-close'))).toThrow(/not ready/i)
+  })
+
+  it('matches RFC 7748 section 5.2 second test vector and rejects all canonical Curve25519 small-order points', () => {
+    const scalar2 = hexToBytes('4b66e9d4d1b4673c5ad22691957d6af5c11b6421e0ea01d42ca4169e7918ba0d')
+    const uCoord2 = hexToBytes('e5210f12786811d3f4b7959d0538ae2c31dbe7106fc03c3efc4cd549c715a493')
+    const expected2 = '95cbde9476e8907d7aade45cb4b873f88b595a68799fa152e6f8f7647aac7957'
+    expect(bytesToHex(x25519SharedSecret(scalar2, uCoord2))).toBe(expected2)
+
+    const canonicalSmallOrderHexes = [
+      '0000000000000000000000000000000000000000000000000000000000000000', // 0
+      '0100000000000000000000000000000000000000000000000000000000000000', // 1
+      'e0eb7a7c3b41b8ae1656e3faf19fc46ada098deb9c32b1fd866205165f49b800', // order 8
+      '5f9c95bca3508c24b1d0b1559c83ef5b04445cc4581c8e86d8224eddd09f1157', // order 8
+      'ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f', // p - 1 (order 2 on twist)
+      'edffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f', // p (0 mod p)
+      'eeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f', // p + 1 (1 mod p)
+      '0000000000000000000000000000000000000000000000000000000000000080', // 0 with MSB set
+      '0100000000000000000000000000000000000000000000000000000000000080', // 1 with MSB set
+    ]
+    const kp = generateX25519KeyPair()
+    for (const hex of canonicalSmallOrderHexes) {
+      const pt = hexToBytes(hex)
+      expect(() => x25519SharedSecret(kp.secretKey, pt)).toThrow(/low-order/i)
+      expect(x25519ScalarMult(kp.secretKey, pt).every((b) => b === 0)).toBe(true)
+    }
+  })
+
+  it('passes deterministic 64-iteration differential fuzzing against Node native crypto primitives', () => {
+    let seed = 0x9e3779b9
+    const nextByte = (): number => {
+      seed ^= seed << 13
+      seed ^= seed >>> 17
+      seed ^= seed << 5
+      return (seed >>> 0) & 0xff
+    }
+    const randomBuf = (len: number): Uint8Array => {
+      const out = new Uint8Array(len)
+      for (let i = 0; i < len; i += 1) out[i] = nextByte()
+      return out
+    }
+
+    const pkcs8Prefix = hexToBytes('302e020100300506032b656e04220420')
+    const spkiPrefix = hexToBytes('302a300506032b656e032100')
+
+    for (let iter = 0; iter < 64; iter += 1) {
+      const payloadLen = (iter * 33) % 2049
+      const aadLen = (iter * 7) % 129
+      const payload = randomBuf(payloadLen)
+      const aad = randomBuf(aadLen)
+
+      // 1. BLAKE2b-512 differential check
+      const nodeBlake = createHash('blake2b512').update(payload).digest('hex')
+      expect(bytesToHex(blake2b64(payload))).toBe(nodeBlake)
+
+      // 2. ChaCha20-Poly1305 differential check
+      const key = randomBuf(32)
+      const nonce = buildNoiseNonce(iter * 1000 + 7)
+      const tsSealed = chacha20Poly1305Encrypt(key, nonce, payload, aad)
+      const cipher = createCipheriv('chacha20-poly1305', key, nonce, { authTagLength: 16 })
+      cipher.setAAD(aad, { plaintextLength: payload.byteLength })
+      const nodeSealed = Buffer.concat([cipher.update(payload), cipher.final(), cipher.getAuthTag()])
+      expect(bytesToHex(tsSealed)).toBe(nodeSealed.toString('hex'))
+      expect(bytesToHex(chacha20Poly1305Decrypt(key, nonce, tsSealed, aad))).toBe(bytesToHex(payload))
+
+      // 3. X25519 differential check
+      const rawPrivA = randomBuf(32)
+      const rawPrivB = randomBuf(32)
+      const pubB = x25519ScalarMultBase(rawPrivB)
+      const pkcs8A = new Uint8Array(pkcs8Prefix.byteLength + 32)
+      pkcs8A.set(pkcs8Prefix, 0)
+      pkcs8A.set(rawPrivA, pkcs8Prefix.byteLength)
+      const spkiB = new Uint8Array(spkiPrefix.byteLength + 32)
+      spkiB.set(spkiPrefix, 0)
+      spkiB.set(pubB, spkiPrefix.byteLength)
+
+      const nodeShared = new Uint8Array(
+        diffieHellman({
+          privateKey: createPrivateKey({ key: Buffer.from(pkcs8A), format: 'der', type: 'pkcs8' }),
+          publicKey: createPublicKey({ key: Buffer.from(spkiB), format: 'der', type: 'spki' }),
+        }),
+      )
+      expect(bytesToHex(x25519SharedSecret(rawPrivA, pubB))).toBe(bytesToHex(nodeShared))
+    }
+  })
+
+  it('enforces fail-closed session state transition to CLOSED on handshake and transport errors', async () => {
+    const hostIdentityStore = new InMemoryHostIdentityStore()
+    const hostKeyPair = await hostIdentityStore.loadOrCreate()
+    const clientKeys = generateX25519KeyPair()
+
+    const makeInitiator = (remoteStaticPublicKey: Uint8Array = hostKeyPair.identity.publicKey): NoiseIkInitiator =>
+      new NoiseIkInitiator({
+        clientKeyPair: {
+          publicKey: new Uint8Array(clientKeys.publicKey),
+          secretKey: new Uint8Array(clientKeys.secretKey),
+        },
+        remoteStaticPublicKey: new Uint8Array(remoteStaticPublicKey),
+      })
+
+    // 1. writeMessage1 with low-order remoteStaticPublicKey transitions to CLOSED
+    const lowOrderInit = makeInitiator(new Uint8Array(32))
+    expect(() => lowOrderInit.writeMessage1()).toThrow(/low-order/i)
+    expect(lowOrderInit.getState()).toBe('CLOSED')
+    expect(() => lowOrderInit.writeMessage1()).toThrow(/invalid in state CLOSED/i)
+
+    // 2. readMessage2 truncated / oversized / low-order ephemeral / tampered tag transitions to CLOSED
+    const badMsg2Cases: Uint8Array[] = [
+      new Uint8Array(0),
+      new Uint8Array(47),
+      new Uint8Array(MAX_NOISE_MESSAGE_BYTES + 1),
+      new Uint8Array(48), // 32-byte all-zero ephemeral key -> low-order
+    ]
+    for (const malformed of badMsg2Cases) {
+      const init = makeInitiator()
+      init.writeMessage1()
+      expect(() => init.readMessage2(malformed)).toThrow()
+      expect(init.getState()).toBe('CLOSED')
+    }
+
+    // Tampered msg2 authentication tag
+    {
+      const init = makeInitiator()
+      const responder = new NoiseResponderSession(hostKeyPair)
+      responder.readMessage1(init.writeMessage1())
+      const msg2 = responder.writeMessage2()
+      const tamperedMsg2 = new Uint8Array(msg2)
+      tamperedMsg2[tamperedMsg2.byteLength - 1]! ^= 0x80
+      expect(() => init.readMessage2(tamperedMsg2)).toThrow(/authentication failed/i)
+      expect(init.getState()).toBe('CLOSED')
+    }
+
+    // 3. Transport decrypt truncated or tampered frame transitions to CLOSED
+    for (const badFrame of [new Uint8Array(0), new Uint8Array(15)]) {
+      const init = makeInitiator()
+      const responder = new NoiseResponderSession(hostKeyPair)
+      responder.readMessage1(init.writeMessage1())
+      init.readMessage2(responder.writeMessage2())
+      expect(init.getState()).toBe('READY')
+      expect(() => init.decrypt(badFrame)).toThrow(/invalid noise transport ciphertext length/i)
+      expect(init.getState()).toBe('CLOSED')
+      expect(() => init.encrypt(utf8Encode('blocked'))).toThrow(/not ready/i)
+    }
+
+    {
+      const init = makeInitiator()
+      const responder = new NoiseResponderSession(hostKeyPair)
+      responder.readMessage1(init.writeMessage1())
+      init.readMessage2(responder.writeMessage2())
+      const validCt = responder.encrypt(utf8Encode('hello'))
+      const tamperedCt = new Uint8Array(validCt)
+      tamperedCt[0]! ^= 0x01
+      expect(() => init.decrypt(tamperedCt)).toThrow(/authentication failed/i)
+      expect(init.getState()).toBe('CLOSED')
+    }
   })
 })

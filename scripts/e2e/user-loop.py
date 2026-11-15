@@ -228,6 +228,32 @@ def main() -> int:
         print(f"refusing non-empty evidence DSH_HOME: {dsh_home}", file=sys.stderr)
         return 2
 
+    if api_key.startswith("oc_sk_") or os.environ.get("DSH_USER_LOOP_PROVIDER") == "opencode-go":
+        profile_dir = dsh_home / "profiles" / "dsh-community-tui"
+        profile_dir.mkdir(parents=True, exist_ok=True)
+        oc_model = os.environ.get("DSH_USER_LOOP_MODEL", "deepseek-v4.1-flash").strip() or "deepseek-v4.1-flash"
+        oc_base_url = os.environ.get("DSH_USER_LOOP_BASE_URL", "https://opencode.ai/zen/go/v1").strip()
+        oc_session = f"dsh-community-userloop-{secrets.token_hex(8)}"
+        (profile_dir / "cordis.patch.yml").write_text(
+            "# User layer for dsh-community-tui (OpenCode Go OpenAI-compatible route).\n"
+            "- id: llm-pi-ai\n"
+            "  config:\n"
+            "    providers:\n"
+            "      opencode-go:\n"
+            "        apiKeyEnv: DEEPSEEK_API_KEY\n"
+            "        api: openai-completions\n"
+            f"        baseURL: {oc_base_url}\n"
+            "        headers:\n"
+            f"          x-opencode-session: {oc_session}\n"
+            "        models:\n"
+            f"          - id: {oc_model}\n"
+            "- id: agent-default-model\n"
+            "  config:\n"
+            "    provider: opencode-go\n"
+            f"    model: {oc_model}\n",
+            encoding="utf-8",
+        )
+
     env = dict(os.environ)
     env["DSH_HOME"] = str(dsh_home)
     secrets_to_redact = [api_key]

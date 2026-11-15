@@ -4,8 +4,10 @@ import org.dsh.community.android.crypto.Blake2b
 import org.dsh.community.android.crypto.ChaCha20Poly1305
 import org.dsh.community.android.crypto.CryptoUtils
 import org.dsh.community.android.crypto.Curve25519
+import org.dsh.community.android.crypto.NoiseIkClient
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Test
 import java.nio.charset.StandardCharsets
@@ -92,5 +94,66 @@ class CryptoPrimitivesTest {
             "000000007856341200000000",
             CryptoUtils.toHex(ChaCha20Poly1305.noiseNonce(0x12345678L)),
         )
+    }
+
+    @Test
+    fun curve25519MatchesRfc7748SecondVectorAndRejectsAllCanonicalSmallOrderPoints() {
+        val scalar2 = CryptoUtils.fromHex("4b66e9d4d1b4673c5ad22691957d6af5c11b6421e0ea01d42ca4169e7918ba0d")
+        val uCoord2 = CryptoUtils.fromHex("e5210f12786811d3f4b7959d0538ae2c31dbe7106fc03c3efc4cd549c715a493")
+        val expected2 = "95cbde9476e8907d7aade45cb4b873f88b595a68799fa152e6f8f7647aac7957"
+        assertEquals(expected2, CryptoUtils.toHex(Curve25519.sharedSecret(scalar2, uCoord2)))
+
+        val canonicalSmallOrderHexes = listOf(
+            "0000000000000000000000000000000000000000000000000000000000000000",
+            "0100000000000000000000000000000000000000000000000000000000000000",
+            "e0eb7a7c3b41b8ae1656e3faf19fc46ada098deb9c32b1fd866205165f49b800",
+            "5f9c95bca3508c24b1d0b1559c83ef5b04445cc4581c8e86d8224eddd09f1157",
+            "ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+            "edffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+            "eeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+            "0000000000000000000000000000000000000000000000000000000000000080",
+            "0100000000000000000000000000000000000000000000000000000000000080",
+        )
+        val kp = Curve25519.generateKeyPair()
+        for (hex in canonicalSmallOrderHexes) {
+            val pt = CryptoUtils.fromHex(hex)
+            assertThrows(SecurityException::class.java) {
+                Curve25519.sharedSecret(kp.secretKey, pt)
+            }
+        }
+    }
+
+    @Test
+    fun noiseIkClientFailsClosedAndDefensivelyPreservesCallerStaticKeyPair() {
+        val localKp = Curve25519.generateKeyPair()
+        val callerSecretBackup = localKp.secretKey.copyOf()
+        val hostKp = Curve25519.generateKeyPair()
+
+        // 1. Low-order remoteHostStaticPublicKey fails closed during writeMessage1 and preserves caller secretKey
+        val lowOrderClient = NoiseIkClient(localKp, ByteArray(32))
+        assertThrows(SecurityException::class.java) {
+            lowOrderClient.writeMessage1()
+        }
+        assertEquals(NoiseIkClient.State.CLOSED, lowOrderClient.state)
+        assertArrayEquals(callerSecretBackup, localKp.secretKey)
+        assertFalse(localKp.secretKey.all { it == 0.toByte() })
+
+        // 2. Malformed readMessage2 inputs fail closed to State.CLOSED
+        val badMsg2Inputs = listOf(
+            ByteArray(0),
+            ByteArray(47),
+            ByteArray(NoiseIkClient.MAX_NOISE_MESSAGE_BYTES + 1),
+            ByteArray(48), // all-zero 32-byte ephemeral key -> low-order
+        )
+        for (malformed in badMsg2Inputs) {
+            val client = NoiseIkClient(localKp, hostKp.publicKey)
+            val msg1 = client.writeMessage1()
+            assertEquals(96, msg1.size)
+            assertThrows(RuntimeException::class.java) {
+                client.readMessage2(malformed)
+            }
+            assertEquals(NoiseIkClient.State.CLOSED, client.state)
+            assertArrayEquals(callerSecretBackup, localKp.secretKey)
+        }
     }
 }
