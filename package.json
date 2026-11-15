@@ -35,7 +35,7 @@
     "clean:artifacts": "node scripts/clean-build-artifacts.mjs"
   },
   "devDependencies": {
-    "@types/node": "^22.18.0",
+    "@types/node": "^22.20.5",
     "typescript": "^5.9.2",
     "vitest": "^4.1.12",
     "@dsh-community/tui-surface": "workspace:*"
