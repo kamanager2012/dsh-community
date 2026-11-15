@@ -21,9 +21,9 @@ There are **three Complementary Community endpoints**:
 
 1. WSL/Linux Terminal (`dsh-community` / `pnpm tui`)
 2. Linux AppImage (`apps/desktop` — Linux graphical desktop companion)
-3. Android (`apps/android` + `packages/remote-adapter` — Remote Client target)
+3. Android (`apps/android` + `packages/remote-adapter` — Remote Client `arm64-v8a` APK)
 
-WSL/Linux Terminal and Linux AppImage currently have published artifacts. Android source is active in `apps/android`, remains **[UNVERIFIED]**, and is not yet part of GitHub Latest.
+All three Complementary Community endpoints now have published artifacts on GitHub Latest (`dsh-community` CLI/TUI, `.AppImage`, and dual-signed `-android-arm64-v8a.apk`). Android passes CI `x86_64` emulator E2EE acceptance, while physical `arm64-v8a` handset telemetry remains **[UNVERIFIED]**.
 
 Official Web and official Windows/macOS Desktop (`win-x64`, `mac-arm64`, `mac-x64` in upstream `deepseek-ai/deepseek-harness`) are upstream surfaces, not Community-shipped endpoints. (Historical release `v0.1.1-rc.2` included Windows/macOS installers before upstream coverage and our Complementary Edition retirement.)
 
@@ -38,14 +38,14 @@ Official Web and official Windows/macOS Desktop (`win-x64`, `mac-arm64`, `mac-x6
     (community)               (community)           ├─ Official Web (upstream)
                                                     └─ Windows / macOS Desktop (upstream)
 
-  Android Remote Client: active source / [UNVERIFIED] / not yet published
+  Android Remote Client APK: published in Latest (CI x86_64 emulator E2EE PASS; physical arm64-v8a [UNVERIFIED])
 ```
 
 Preferred public wording:
 
-> **One Harness. Three complementary community endpoints. Two shipped today; Android active / UNVERIFIED.**
+> **One Harness. Three complementary community endpoints — all published in Latest; Android physical `arm64-v8a` handset telemetry remains `[UNVERIFIED]`.**
 
-Always distinguish product membership from publication evidence: Android is in the active product tree but is not yet a Published Latest artifact, and never duplicate Windows/macOS Desktop or Web owned upstream.
+Always distinguish emulator E2EE verification from physical handset telemetry: Android's signed `arm64-v8a` APK is published on Latest after CI `x86_64` emulator E2EE verification, while physical `arm64-v8a` handset telemetry remains `[UNVERIFIED]`; never duplicate Windows/macOS Desktop or Web owned upstream.
 
 ## What the official Runtime owns
 
@@ -210,9 +210,8 @@ See [SECURITY.md](SECURITY.md) for the security policy and
 Do not say:
 
 - “five shipped Community endpoints”
-- “three shipped Community endpoints” (only two are published; Android is `[UNVERIFIED]`)
+- “Android physical `arm64-v8a` hardware telemetry is verified” (CI `x86_64` emulator E2EE is verified and the signed APK is published, but physical handset telemetry remains `[UNVERIFIED]`)
 - “we ship Windows / macOS Desktop installers” (retired after `v0.1.1-rc.2`; use official `deepseek-harness`)
-- “Android is a current release endpoint”
 - “Official Web is our Web client”
 - “complete ecosystem”
 - “100% compatible”

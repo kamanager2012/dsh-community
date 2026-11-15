@@ -1,6 +1,6 @@
 # Architecture
 
-Official DeepSeek Harness is the kernel. `dsh-community` is the Complementary Edition built on that kernel: one runtime, one `~/.dsh`, and **three Complementary Community endpoints** that official `deepseek-ai/deepseek-harness` does not ship (WSL/Linux Terminal, Linux Desktop AppImage, and Android Remote Client). WSL/Linux Terminal and Linux AppImage are currently published; Android source is active in `apps/android` (`[LABS]` / `[UNVERIFIED]`, not in Published Latest). Official Web and Windows/macOS Desktop are upstream surfaces, not Community endpoints (historical `v0.1.1-rc.2` shipped Win/macOS installers before the Complementary Edition narrowing).
+Official DeepSeek Harness is the kernel. `dsh-community` is the Complementary Edition built on that kernel: one runtime, one `~/.dsh`, and **three Complementary Community endpoints** that official `deepseek-ai/deepseek-harness` does not ship (WSL/Linux Terminal, Linux Desktop AppImage, and Android Remote Client APK). All three are published on GitHub Latest (`dsh-community`, `dsh-community-*.AppImage`, and signed `dsh-community-*-android-arm64-v8a.apk`); Android passes CI `x86_64` emulator E2EE acceptance while physical `arm64-v8a` handset telemetry remains `[UNVERIFIED]`. Official Web and Windows/macOS Desktop are upstream surfaces, not Community endpoints (historical `v0.1.1-rc.2` shipped Win/macOS installers before the Complementary Edition narrowing).
 
 ```
                   DeepSeek Harness

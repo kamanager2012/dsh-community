@@ -17,7 +17,7 @@ Source can move to a reviewed candidate before GitHub Latest moves. These are se
 - `assets` / `publishedAssets` describe installers that actually exist for Published Latest; never synthesize filenames from an unpublished candidate.
 - plugin `testedDsh` and user-loop evidence are evidence states, not aliases for Candidate Source. They move only after their own verification.
 
-Candidate Source and Published Latest may coincide after publication, but they are not required to. On the current line, Candidate Source and Published Latest are both aligned to `0.2.2-rc.3` / `v0.2.2-rc.3` (synced directly to pinned official kernel `@deepseek-ai/dsh@0.2.2-rc.3`; Complementary Edition Linux AppImage + official-runtime CycloneDX SBOM + Cosign bundles).
+Candidate Source and Published Latest may coincide after publication, but they are not required to. On the current line, Candidate Source and Published Latest are both aligned to `0.2.2-rc.3` / `v0.2.2-rc.3` (synced directly to pinned official kernel `@deepseek-ai/dsh@0.2.2-rc.3`; Complementary Edition Linux AppImage + Android `arm64-v8a` APK + official-runtime CycloneDX SBOM + Cosign bundles, 12 signed assets total).
 
 ## Current line (2026-11-15)
 
@@ -46,12 +46,13 @@ Published `v0.2.2-rc.3` release-page primary binary assets (plus official-runtim
 
 ## Quick Download & Verification (`v0.2.2-rc.3`)
 
-Download from [`releases/latest`](https://github.com/kamanager2012/dsh-community/releases/latest) (all 8 files carry SHA-256 sidecars and keyless Cosign bundles):
+Download from [`releases/latest`](https://github.com/kamanager2012/dsh-community/releases/latest) (all 12 files carry SHA-256 sidecars and keyless Cosign bundles):
 
 ```sh
 TAG=v0.2.2-rc.3
 BASE="https://github.com/kamanager2012/dsh-community/releases/download/$TAG"
 
+# Linux Desktop AppImage
 curl -fLO "$BASE/dsh-community-0.2.2-rc.3.AppImage" \
      -O "$BASE/dsh-community-0.2.2-rc.3.AppImage.sha256" \
      -O "$BASE/dsh-community-0.2.2-rc.3.AppImage.sigstore.json"
@@ -65,6 +66,18 @@ cosign verify-blob \
 
 chmod +x dsh-community-0.2.2-rc.3.AppImage
 ./dsh-community-0.2.2-rc.3.AppImage
+
+# Android Remote Client APK (arm64-v8a)
+curl -fLO "$BASE/dsh-community-0.2.2-rc.3-android-arm64-v8a.apk" \
+     -O "$BASE/dsh-community-0.2.2-rc.3-android-arm64-v8a.apk.sha256" \
+     -O "$BASE/dsh-community-0.2.2-rc.3-android-arm64-v8a.apk.sigstore.json"
+
+sha256sum -c dsh-community-0.2.2-rc.3-android-arm64-v8a.apk.sha256
+cosign verify-blob \
+  --bundle dsh-community-0.2.2-rc.3-android-arm64-v8a.apk.sigstore.json \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity "https://github.com/kamanager2012/dsh-community/.github/workflows/release.yml@refs/tags/$TAG" \
+  dsh-community-0.2.2-rc.3-android-arm64-v8a.apk
 ```
 
 When the source pin changes, update Candidate Source fields in `current-release.json` in the same
