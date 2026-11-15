@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import errno
+import fcntl
 import hashlib
 import json
 import os
@@ -17,8 +18,10 @@ import re
 import secrets
 import select
 import signal
+import struct
 import subprocess
 import sys
+import termios
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -101,12 +104,21 @@ def run_turn(
     # (see apps/tui/src/launch.ts tuiLaunchEnv). Pass it as launcher args.
     child_env = dict(env)
     child_env.pop("DSH_TUI_FIRST_PROMPT", None)
+    # Ink suppresses all live PTY frame rendering until unmount when `is-in-ci`
+    # sees CI != 'false'/'0', which prevents interactive PTY drivers in GitHub
+    # Actions from observing the assistant reply before sending `/exit`.
+    child_env["CI"] = "false"
     args = [*args, prompt]
     child_env["TERM"] = child_env.get("TERM") or "xterm-256color"
 
     pid, fd = pty.fork()
     if pid == 0:
         os.execvpe(node_bin, [node_bin, str(launcher), *args], child_env)
+
+    try:
+        fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 40, 160, 0, 0))
+    except OSError:
+        pass
 
     started = time.monotonic()
     raw = bytearray()
