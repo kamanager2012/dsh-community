@@ -14,6 +14,10 @@ describe('dependency review gate', () => {
     expect(workflow).toContain("'**/package.json'")
   })
 
+  it('also covers the independent shipped runtime lockfile', () => {
+    expect(workflow).toContain("'apps/desktop/runtime-lock/package-lock.json'")
+  })
+
   it('fails on high or critical advisories without continue-on-error', () => {
     expect(workflow).toContain('fail-on-severity: high')
     expect(workflow).not.toContain('continue-on-error: true')

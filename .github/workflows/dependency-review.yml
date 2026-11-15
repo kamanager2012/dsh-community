@@ -6,6 +6,7 @@ on:
       - 'package.json'
       - '**/package.json'
       - 'pnpm-lock.yaml'
+      - 'apps/desktop/runtime-lock/package-lock.json'
       - '.github/workflows/**'
       - '.github/dependabot.yml'
 
