@@ -53,7 +53,7 @@ Observed for this snapshot:
 | Normal `dsh-community` CI | `[REAL]` | `pnpm typecheck` and Vitest pass on `main`, but main CI does not prove installer readiness |
 | Release assets & signing | `[REAL]` | `v0.2.2-rc.3` (`releaseId=445732060`) published 12 assets with SHA-256 and keyless cosign bundles |
 | `artifact-smoke` | `[REAL]` | [Run 43696414193](https://github.com/kamanager2012/dsh-community/actions/runs/43696414193) passed `resolve`, `linux-appimage`, `android-apk`, `linux-terminal`, and `verify-signatures` across all 12 assets |
-| Full user loop | `[REAL]` | [Run 43688556931](https://github.com/kamanager2012/dsh-community/actions/runs/43688556931) passed `.github/workflows/user-loop-evidence.yml` live model `new -> answer -> resume -> answer` |
+| Full user loop | `[PARTIAL]` | [Run 43688556931](https://github.com/kamanager2012/dsh-community/actions/runs/43688556931) passed `.github/workflows/user-loop-evidence.yml` WSL/Linux Terminal live model `new -> answer -> resume -> answer`; cross-surface GUI loop remains pending |
 
 ```text
 tag
@@ -75,7 +75,7 @@ Exact-release-artifact evidence:
 |---|---|---|
 | Linux AppImage + `dsh-community-0.2.2-rc.3.AppImage` | `[REAL]` | [Run 43696414193](https://github.com/kamanager2012/dsh-community/actions/runs/43696414193) verified SHA-256, extraction, headless launch checks, and keyless cosign signatures |
 | WSL/Linux host + `dsh-community` / `pnpm tui` | `[REAL]` | Same run checked Linux TUI help, version, missing-key doctor, sessions, and no-TTY refusal; [Run 43688556931](https://github.com/kamanager2012/dsh-community/actions/runs/43688556931) verified live model `new -> answer -> resume -> answer` |
-| Session loop | `[REAL]` | New, resume, Official Web / Win·macOS Desktop ↔ WSL/Linux TUI ↔ Linux AppImage sharing `~/.dsh` |
+| Session loop | `[PARTIAL]` | WSL/Linux Terminal new and resume verified in [Run 43688556931](https://github.com/kamanager2012/dsh-community/actions/runs/43688556931); cross-surface Official Web / Win·macOS Desktop ↔ WSL/Linux TUI ↔ Linux AppImage handoff remains `[待复核]` |
 | Plugin / restart | `[PARTIAL]` | 6/9 catalog plugins verified at `testedDsh` `0.2.2-rc.3` (`dsh plugin add` + `--dump-config`); 3 legacy plugins remain at `0.1.1-rc.2` |
 | Lifecycle recovery | `[待复核]` | Upgrade, offline handling, missing key, interrupted Runtime extract |
 | Android Remote Client | `[PARTIAL]` | Signed `dsh-community-0.2.2-rc.3-android-arm64-v8a.apk` shipped in Latest and verified in [Run 43696414193](https://github.com/kamanager2012/dsh-community/actions/runs/43696414193) plus CI `x86_64` emulator E2EE gate; physical `arm64-v8a` handset telemetry remains `[UNVERIFIED]` (`REAL_DEVICE_ACCEPTANCE_READY = false`) |

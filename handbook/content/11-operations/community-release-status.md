@@ -41,7 +41,7 @@ DeepSeek Harness Community v0.2.2-rc.3 [Official Core: @deepseek-ai/dsh@0.2.2-rc
 | 普通 `dsh-community` CI | `[REAL]` | 主线 typecheck（8 projects）与全量 Vitest 在 `main` 通过；但普通 CI 不替代发行包验收 |
 | Release assets & signing | `[REAL]` | `v0.2.2-rc.3`（`releaseId=445732060`）发布 12 个带 SHA-256 与 keyless cosign bundle 的资产 |
 | `artifact-smoke` | `[REAL]` | [Run 43696414193](https://github.com/kamanager2012/dsh-community/actions/runs/43696414193) 通过 `resolve`、`linux-appimage`、`android-apk`、`linux-terminal` 与 `verify-signatures`（cosign 12 文件全验） |
-| Full user loop | `[REAL]` | [Run 43688556931](https://github.com/kamanager2012/dsh-community/actions/runs/43688556931) 通过 `.github/workflows/user-loop-evidence.yml` 真实模型新建与恢复会话验收 |
+| Full user loop | `[PARTIAL]` | [Run 43688556931](https://github.com/kamanager2012/dsh-community/actions/runs/43688556931) 通过 `.github/workflows/user-loop-evidence.yml` WSL/Linux 终端真实模型新建与恢复会话验收；跨端桌面接续仍待复核 |
 
 目标链路是：
 
@@ -64,7 +64,7 @@ tag
 |---|---|---|
 | Linux AppImage + `dsh-community-0.2.2-rc.3.AppImage` | `[REAL]` | [Run 43696414193](https://github.com/kamanager2012/dsh-community/actions/runs/43696414193) 完成 SHA-256、解包、headless 检查与 keyless cosign 验签 |
 | WSL/Linux 终端 + `dsh-community` / `pnpm tui` | `[REAL]` | 同一 run 通过 help、version、缺 key doctor、sessions、无 TTY 拒绝路径；[Run 43688556931](https://github.com/kamanager2012/dsh-community/actions/runs/43688556931) 完成真实模型 `new -> answer -> resume -> answer` |
-| Session 闭环 | `[REAL]` | 新建、恢复、官方 Web / 官方 Win·macOS Desktop ↔ WSL/Linux TUI ↔ Linux AppImage 共享同一 `~/.dsh` Session |
+| Session 闭环 | `[PARTIAL]` | WSL/Linux 终端内新建与恢复已通过 [Run 43688556931](https://github.com/kamanager2012/dsh-community/actions/runs/43688556931) 验收；官方 Web / 官方 Win·macOS Desktop ↔ WSL/Linux TUI ↔ Linux AppImage 跨端接续仍为 `[待复核]` |
 | Plugin / restart | `[PARTIAL]` | 9 个目录插件中 6 个已完成 `0.2.2-rc.3`（`dsh plugin add` + `--dump-config`）合成验证；其余 3 个旧插件仍为 `0.1.1-rc.2` |
 | Lifecycle recovery | `[待复核]` | 升级、断网、缺少密钥、Runtime 解压中断后的恢复行为 |
 | Android Remote Client | `[PARTIAL]` | 已签名 `dsh-community-0.2.2-rc.3-android-arm64-v8a.apk` 在 Latest 发行并通过 [Run 43696414193](https://github.com/kamanager2012/dsh-community/actions/runs/43696414193) 验签及 CI `x86_64` 模拟器 E2EE 门禁；物理 `arm64-v8a` 真机遥测保持 `[UNVERIFIED]`（`REAL_DEVICE_ACCEPTANCE_READY = false`） |
