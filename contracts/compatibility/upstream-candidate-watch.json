@@ -2,48 +2,48 @@
   "schemaVersion": 2,
   "previousAccepted": {
     "package": "@deepseek-ai/dsh",
-    "version": "0.2.2-rc.1",
-    "upstreamReleaseCommit": "2f97f60455605e915b8176d9170cae337bfedcc6",
-    "upstreamMergeCommit": "66491b05e3f05ad35bcdd4f6cd7ed26041d9e3db",
-    "acceptedCommunityMain": "d66c3f0fd9c936d7aaad3da6b31181f410bd922e",
-    "disposition": "PREVIOUS_ACCEPTED_BASELINE",
-    "releasedAt": "2026-11-04T07:54:45Z"
-  },
-  "frozenTarget": {
-    "package": "@deepseek-ai/dsh",
     "version": "0.2.2-rc.2",
     "upstreamReleaseCommit": "91319233e1e6ee64da0cb769dd10c9b4c4f95768",
     "upstreamMergeCommit": "ddac96760b6edf8fa0fe17cbdcf0b512f4c12b2c",
-    "releasedAt": "2026-11-11T02:32:18Z",
+    "acceptedCommunityMain": "4419bd1a14d011253174e304383ba95a4b818f4d",
+    "disposition": "PREVIOUS_ACCEPTED_BASELINE",
+    "releasedAt": "2026-11-11T02:32:18Z"
+  },
+  "frozenTarget": {
+    "package": "@deepseek-ai/dsh",
+    "version": "0.2.2-rc.3",
+    "upstreamReleaseCommit": "4c1cf20cb1fa6dd021a6988454df1df853209f63",
+    "upstreamMergeCommit": "38a6a5c965aa99ab525161efb7cc5cf1fe62fced",
+    "releasedAt": "2026-11-13T05:26:07Z",
     "registryGate": {
       "status": "PASS",
-      "command": "npm view @deepseek-ai/dsh@0.2.2-rc.2 version --registry=https://registry.npmjs.org/",
-      "runId": 43334043848,
-      "note": "Local npm view returned 0.2.2-rc.2; CI runtime-lock-generate run 43334043848 resolved @deepseek-ai/dsh@0.2.2-rc.2 from npmjs on ubuntu-24.04 with exit 0."
+      "command": "npm view @deepseek-ai/dsh@0.2.2-rc.3 version --registry=https://registry.npmjs.org/",
+      "runId": 43661345685,
+      "note": "Local npm view returned 0.2.2-rc.3; CI runtime-lock-generate run 43661345685 resolved @deepseek-ai/dsh@0.2.2-rc.3 from npmjs on ubuntu-24.04 with exit 0."
     },
     "comparisonFromPrevious": {
-      "commitsBetweenReleaseMerges": 1568,
-      "changedFiles": 4645,
+      "commitsBetweenReleaseMerges": 6,
+      "changedFiles": 300,
       "readinessImplementation": {
         "path": "packages/bundle/web-app/src/index.ts",
         "previousBlob": "b93b559620fe9a064b6ff24e0b2ed3bf22b3f6dd",
         "targetBlob": "b93b559620fe9a064b6ff24e0b2ed3bf22b3f6dd",
         "verdict": "UNCHANGED",
-        "note": "Web bundle entry index.ts unchanged between 0.2.2-rc.1 and 0.2.2-rc.2; official-web.smoke.test.ts verifies dsh web: readiness and one-time ?token= bootstrap contract."
+        "note": "Web bundle entry index.ts unchanged between 0.2.2-rc.2 and 0.2.2-rc.3; official-web.smoke.test.ts verifies dsh web: readiness and one-time ?token= bootstrap contract."
       },
       "cliArgsImplementation": {
         "path": "apps/cli/src/args.ts",
         "previousBlob": "41d4ebeaa832473b25952af1b185e02a7c182844",
         "targetBlob": "41d4ebeaa832473b25952af1b185e02a7c182844",
         "verdict": "UNCHANGED",
-        "note": "CLI arg parser unchanged between 0.2.2-rc.1 and 0.2.2-rc.2; cli-surface.test.ts verifies web --host/--port/--no-open and --dump-config/--patch flags."
+        "note": "CLI arg parser unchanged between 0.2.2-rc.2 and 0.2.2-rc.3; cli-surface.test.ts verifies web --host/--port/--no-open and --dump-config/--patch flags."
       },
       "cliReference": {
         "path": "apps/cli/reference/README.md",
-        "previousBlob": "a37545004890b74ad2995c108c3a253e68bb6951",
+        "previousBlob": "dc84a267d8bd1f59758ca02b1fde0fee4d0ef825",
         "targetBlob": "dc84a267d8bd1f59758ca02b1fde0fee4d0ef825",
-        "verdict": "CHANGED",
-        "note": "Config/package surface expanded modestly in 0.2.2-rc.2 (config-rows 196 -> 202, packages 192 -> 198, agent-team/mcp-manager/office-kit, resolveRgPath extracted to dsh-util-ripgrep); engines.node remains >=24.9.0."
+        "verdict": "UNCHANGED",
+        "note": "Config/package web default dump unchanged between 0.2.2-rc.2 and 0.2.2-rc.3 (config-rows 202, packages 198, engines.node >=24.9.0); @deepseek-ai/dsh@0.2.2-rc.3 adds experimental @deepseek-ai/dsh-deepseek-chat-import dependency and runtime-lock grows 327 -> 328 DSH-family entries."
       }
     }
   },

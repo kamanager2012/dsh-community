@@ -7,7 +7,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '../../..')
 const read = (p: string) => readFileSync(join(root, p), 'utf8')
 
 describe('remote integration gate', () => {
-  it('keeps 0.2.2-rc.2 branch staging cheap and blocks PR fan-out until final acceptance', () => {
+  it('keeps 0.2.2-rc.3 branch staging cheap and blocks PR fan-out until final acceptance', () => {
     const gate = JSON.parse(
       read('contracts/compatibility/remote-integration-gate.json'),
     ) as {
@@ -37,19 +37,19 @@ describe('remote integration gate', () => {
     expect(gate.safeRemoteOperation.operation).toBe('push-to-non-main-branch')
     expect(gate.safeRemoteOperation.actionsExpected).toBe(0)
     expect(gate.acceptedBaseline.commit)
-      .toBe('d66c3f0fd9c936d7aaad3da6b31181f410bd922e')
-    expect(gate.acceptedBaseline.branch).toBe('upgrade/dsh-0.2.2-rc.2')
+      .toBe('8e0a596328555e83affa8866cdf6bf9ab033925b')
+    expect(gate.acceptedBaseline.branch).toBe('upgrade/dsh-0.2.2-rc.3')
     expect(gate.acceptedBaseline.origin).toBe('remote-generated-baseline')
-    expect(gate.acceptedBaseline.registryGateRunId).toBe(43334043848)
-    expect(gate.acceptedBaseline.lockContractGeneratorRunId).toBe(43334043848)
+    expect(gate.acceptedBaseline.registryGateRunId).toBe(43661345685)
+    expect(gate.acceptedBaseline.lockContractGeneratorRunId).toBe(43661345685)
     expect(['PENDING', 'PASS']).toContain(gate.finalAcceptance.status)
-    expect(gate.finalAcceptance.version).toBe('0.2.2-rc.2')
+    expect(gate.finalAcceptance.version).toBe('0.2.2-rc.3')
     if (gate.finalAcceptance.status === 'PASS') {
       expect(gate.finalAcceptance.runHeadCommit).toMatch(/^[0-9a-f]{40}$/u)
     } else {
       expect(gate.finalAcceptance.runHeadCommit).toBeNull()
     }
-    expect(gate.finalAcceptance.runtimeDshEntries).toBe(327)
+    expect(gate.finalAcceptance.runtimeDshEntries).toBe(328)
     expect(gate.finalAcceptance.providerCalls).toBe(0)
 
     const workflowFiles = new Map([

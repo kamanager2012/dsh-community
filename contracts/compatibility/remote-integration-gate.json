@@ -1,6 +1,6 @@
 {
   "schemaVersion": 3,
-  "purpose": "Prevent accidental GitHub Actions spend before the 0.2.2-rc.2 integration tree is final.",
+  "purpose": "Prevent accidental GitHub Actions spend before the 0.2.2-rc.3 integration tree is final.",
   "safeRemoteOperation": {
     "operation": "push-to-non-main-branch",
     "actionsExpected": 0,
@@ -8,7 +8,7 @@
   },
   "blockedUntilFinalAcceptance": {
     "operation": "open-pull-request",
-    "reason": "The 0.2.2-rc.2 integration diff fans out into multiple pull_request workflows; open the PR only after consolidated acceptance passes.",
+    "reason": "The 0.2.2-rc.3 integration diff fans out into multiple pull_request workflows; open the PR only after consolidated acceptance passes.",
     "workflows": [
       "ci",
       "dependency-audit",
@@ -26,23 +26,23 @@
     "release"
   ],
   "acceptedBaseline": {
-    "commit": "d66c3f0fd9c936d7aaad3da6b31181f410bd922e",
-    "branch": "upgrade/dsh-0.2.2-rc.2",
+    "commit": "8e0a596328555e83affa8866cdf6bf9ab033925b",
+    "branch": "upgrade/dsh-0.2.2-rc.3",
     "origin": "remote-generated-baseline",
-    "registryGateRunId": 43334043848,
-    "lockContractGeneratorRunId": 43334043848,
-    "note": "Exact 0.2.2-rc.2 Candidate Source on upgrade/dsh-0.2.2-rc.2 atop main (d66c3f0fd9c936d7aaad3da6b31181f410bd922e) with CI-generated Desktop npm runtime lock (run 43334043848), complete 327-package DSH-family overrides, reviewed lifecycle policy, and refreshed official contract snapshots."
+    "registryGateRunId": 43661345685,
+    "lockContractGeneratorRunId": 43661345685,
+    "note": "Exact 0.2.2-rc.3 Candidate Source on upgrade/dsh-0.2.2-rc.3 atop main (4419bd1a14d011253174e304383ba95a4b818f4d) with CI-generated Desktop npm runtime lock (run 43661345685), complete 328-package DSH-family overrides, reviewed lifecycle policy, and refreshed official contract snapshots."
   },
   "finalAcceptance": {
     "status": "PASS",
-    "version": "0.2.2-rc.2",
+    "version": "0.2.2-rc.3",
     "execution": "local-consolidated-acceptance",
-    "runHeadCommit": "750d8c5c94628746e6cc3fac08c563f56b62ba48",
-    "testFiles": "97 passed, 1 skipped (98)",
-    "tests": "469 passed, 1 skipped (470)",
-    "runtimeDshEntries": 327,
+    "runHeadCommit": "12e343a8931cebfac24ffb6dd9a1cbedd16505b7",
+    "testFiles": "118 passed (118)",
+    "tests": "636 passed (636)",
+    "runtimeDshEntries": 328,
     "marketplaceOffline": "9 plugins verified",
     "providerCalls": 0,
-    "disposition": "Consolidated 0.2.2-rc.2 acceptance passed on commit 750d8c5c94628746e6cc3fac08c563f56b62ba48; latest-tested advances to 0.2.2-rc.2 and Published Latest remains v0.1.1-rc.2."
+    "disposition": "Pre-promotion consolidated acceptance PASS on commit 12e343a8931cebfac24ffb6dd9a1cbedd16505b7; latest-tested promoted to 0.2.2-rc.3 while Published Latest remains v0.2.2-rc.2. Ready for clean push and PR workflow suite."
   }
 }

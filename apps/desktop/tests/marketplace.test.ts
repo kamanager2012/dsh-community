@@ -291,7 +291,7 @@ describe('marketplace page', () => {
         ...VALID_CATALOG.plugins[0]!,
         versions: [{
           version: '0.2.0',
-          testedDsh: '0.2.2-rc.2',
+          testedDsh: '0.2.2-rc.3',
           integrity: 'sha512-abc',
           provenance: true,
           security: {
@@ -310,7 +310,7 @@ describe('marketplace page', () => {
         }],
       }],
     })
-    expect(withSecurity?.plugins[0]?.versions[0]?.testedDsh).toBe('0.2.2-rc.2')
+    expect(withSecurity?.plugins[0]?.versions[0]?.testedDsh).toBe('0.2.2-rc.3')
     expect(withSecurity?.plugins[0]?.versions[0]?.security?.risk).toBe('high')
     expect(withSecurity?.plugins[0]?.versions[0]?.integrity).toBe('sha512-abc')
     expect(withSecurity?.plugins[0]?.versions[0]?.provenance).toBe(true)
@@ -328,7 +328,7 @@ describe('marketplace page', () => {
         ...VALID_CATALOG.plugins[0]!,
         versions: [{
           version: '0.2.0',
-          testedDsh: '0.2.2-rc.2',
+          testedDsh: '0.2.2-rc.3',
           security: {
             risk: 'high',
             requiresConfirmation: false,
