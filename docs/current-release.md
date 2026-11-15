@@ -27,7 +27,7 @@ Candidate Source and Published Latest may coincide after publication, but they a
 | Candidate community product | `0.2.2-rc.3` |
 | Candidate tag | `v0.2.2-rc.3` |
 | GitHub Latest | [`v0.2.2-rc.3`](https://github.com/kamanager2012/dsh-community/releases/latest) |
-| Published release evidence | GitHub release ID `445732060`; published `2026-11-15T01:26:39Z`; primary AppImage asset ID/digest pinned in `current-release.json` |
+| Published release evidence | GitHub release ID `445732060`; published `2026-11-15T08:39:25Z`; primary AppImage asset ID/digest pinned in `current-release.json` |
 | Candidate Dual-Badge | `DeepSeek Harness Community v0.2.2-rc.3 [Official Core: @deepseek-ai/dsh@0.2.2-rc.3]` |
 | Latest tested | `0.2.2-rc.3` — consolidated local acceptance PASS on commit `12e343a` and replay PASS on commit `69f647c` (runtime-lock attested by CI [run 43661345685](https://github.com/kamanager2012/dsh-community/actions/runs/43661345685)); published by `release` [run 43662849083](https://github.com/kamanager2012/dsh-community/actions/runs/43662849083) |
 | Active Complementary endpoints (2 shipped) | WSL/Linux Terminal, Linux AppImage (official `deepseek-harness` covers Win/macOS Desktop & Web) |
