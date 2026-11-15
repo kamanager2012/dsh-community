@@ -1322,6 +1322,74 @@ describe('OfficialHostCordisBridge & Persistent Community Storage', () => {
         ),
       ).resolves.toEqual({ id: 's-f02-created', title: 'Still Allowed' })
 
+      // 3. Revoking 'observe' suppresses outbound stream.event & stream.reset immediately and across reconnects
+      const observedEvents: Array<{ type?: string; event?: { data?: { chunk?: { text?: string } } } }> = []
+      defaultClient.onEvent((ev) => observedEvents.push(ev as any))
+      const f02Agent = ctx.agents.get('s-f02')! as FakeAgent
+      f02Agent.emitAssistantDelta('LIVE_OBSERVE_1')
+      await expect.poll(
+        () => observedEvents.some((f) => f?.type === 'stream.event' && f?.event?.data?.chunk?.text === 'LIVE_OBSERVE_1'),
+        { timeout: 2_000 },
+      ).toBe(true)
+
+      const revokeObserveRes = await fetch(`${control.url}/devices/capabilities`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${control.controlToken}`,
+        },
+        body: JSON.stringify({
+          deviceId: confirmBody.deviceId,
+          revoke: ['observe'],
+        }),
+      })
+      expect(revokeObserveRes.status).toBe(200)
+      expect(((await revokeObserveRes.json()) as { capabilities: string[] }).capabilities).toEqual([
+        'prompt',
+        'session.manage',
+      ])
+
+      f02Agent.emitAssistantDelta('HIDDEN_AFTER_OBSERVE_REVOKE')
+      bridge.resetSessionStream('s-f02', 'hidden-reset')
+      await new Promise((r) => setTimeout(r, 60))
+      expect(
+        observedEvents.some(
+          (f) =>
+            (f?.type === 'stream.event' && f?.event?.data?.chunk?.text === 'HIDDEN_AFTER_OBSERVE_REVOKE') ||
+            f?.type === 'stream.reset',
+        ),
+      ).toBe(false)
+
+      // Must remain suppressed after reconnecting without 'observe'
+      defaultClient.close()
+      await defaultClient.reconnectWithBackoff({ initialDelayMs: 5, maxDelayMs: 10, maxAttempts: 2 })
+      f02Agent.emitAssistantDelta('HIDDEN_AFTER_RECONNECT')
+      await new Promise((r) => setTimeout(r, 60))
+      expect(
+        observedEvents.some(
+          (f) => f?.type === 'stream.event' && f?.event?.data?.chunk?.text === 'HIDDEN_AFTER_RECONNECT',
+        ),
+      ).toBe(false)
+
+      // Re-granting 'observe' resumes outbound event delivery
+      const regrantObserveRes = await fetch(`${control.url}/devices/capabilities`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${control.controlToken}`,
+        },
+        body: JSON.stringify({
+          deviceId: confirmBody.deviceId,
+          grant: ['observe'],
+        }),
+      })
+      expect(regrantObserveRes.status).toBe(200)
+      f02Agent.emitAssistantDelta('VISIBLE_AFTER_REGRANT')
+      await expect.poll(
+        () => observedEvents.some((f) => f?.type === 'stream.event' && f?.event?.data?.chunk?.text === 'VISIBLE_AFTER_REGRANT'),
+        { timeout: 2_000 },
+      ).toBe(true)
+
       defaultClient.close()
     } finally {
       await control.close()

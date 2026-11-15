@@ -981,4 +981,103 @@ rl.on('line', (line) => {
     expect(coldLiveEnd.seq).toBeGreaterThan(4)
     expect(coldHist.events.some((e) => e.seq === coldLiveEnd.seq && e.type === 'turn/end')).toBe(true)
   })
+
+  it('stops outbound event streams on live and reconnected channels when MultiAgentRemoteHost revokes observe', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-ma-observe-'))
+    tempDirs.push(root)
+
+    const listeners = new Set<(sessionId: string, events: readonly any[]) => void>()
+    const stubBackend = {
+      engineId: 'claude' as const,
+      displayName: 'Stub Claude',
+      start: async () => {},
+      stop: async () => {},
+      listSessions: async () => [{ id: 's1', title: 'Stub Session' }],
+      assertSession: async () => {},
+      getSessionHistory: async ({ sessionId }: { sessionId: string }) => ({
+        sessionId,
+        events: [{ seq: 0, type: 'session/meta', data: { cwd: root } }],
+        totalEvents: 1,
+      }),
+      searchSessions: async () => [],
+      createSession: async () => ({ id: 's1', title: 'Stub Session' }),
+      followup: async () => ({ messageId: 'm1' }),
+      abort: async () => {},
+      respondApproval: async () => {},
+      respondQuestion: async () => {},
+      onEvent(listener: (sessionId: string, events: readonly any[]) => void) {
+        listeners.add(listener)
+        return () => listeners.delete(listener)
+      },
+    }
+
+    const host = new MultiAgentRemoteHost({
+      dshHome: join(root, 'dsh-home'),
+      configDir: join(root, 'remote-cfg'),
+      cwd: root,
+      backends: [stubBackend],
+      carrier: { enabled: true, host: '127.0.0.1', port: 0 },
+    })
+    await host.start()
+    activeClosers.push(() => host.stop())
+
+    const issued = await host.issuePairingDescriptor({
+      allowedCapabilities: ['observe', 'prompt'],
+    })
+    const parsed = parsePairingInput(issued.deepLink)
+    const kp = await new InMemoryHostIdentityStore().loadOrCreate()
+    const client = new FailoverRemoteClient({
+      clientKeyPair: { publicKey: kp.identity.publicKey, secretKey: kp.secretKey },
+      hostPublicKey: Uint8Array.from(Buffer.from(parsed.hostPublicKeyHex, 'hex')),
+      lan: { endpointUrl: parsed.endpointUrl },
+    })
+    activeClosers.push(() => client.close())
+    await client.connect()
+
+    const cand = await client.request('pairing.request', {
+      token: parsed.bootstrapToken,
+      displayName: 'Observer Check',
+      requestedCapabilities: ['observe', 'prompt'],
+    })
+    const confirmed = await host.pairingCoordinator.confirmPairing({
+      candidateId: cand.candidateId,
+      grantedCapabilities: ['observe', 'prompt'],
+    })
+    client.close()
+    await client.reconnectWithBackoff({ initialDelayMs: 5, maxDelayMs: 10, maxAttempts: 2 })
+
+    const seenTexts: string[] = []
+    client.onEvent((ev) => {
+      const f = ev as { type?: string; event?: { data?: { chunk?: { text?: string } } } }
+      const text = f?.event?.data?.chunk?.text
+      if (f?.type === 'stream.event' && typeof text === 'string') {
+        seenTexts.push(text)
+      }
+    })
+
+    await client.request('session.attach', { sessionId: 'claude--s1' })
+    const emitText = (seq: number, text: string) => {
+      for (const l of listeners) {
+        l('s1', [{ seq, type: 'assistant.delta', data: { chunk: { type: 'text-delta', text } } }])
+      }
+    }
+
+    emitText(1, 'MA_VISIBLE_1')
+    await expect.poll(() => seenTexts.includes('MA_VISIBLE_1'), { timeout: 2_000 }).toBe(true)
+
+    await host.updateDeviceCapabilities(confirmed.device.deviceId, ['prompt'])
+    emitText(2, 'MA_BLOCKED_LIVE')
+    await new Promise((r) => setTimeout(r, 60))
+    expect(seenTexts).not.toContain('MA_BLOCKED_LIVE')
+
+    client.close()
+    await client.reconnectWithBackoff({ initialDelayMs: 5, maxDelayMs: 10, maxAttempts: 2 })
+    emitText(3, 'MA_BLOCKED_RECONNECT')
+    await new Promise((r) => setTimeout(r, 60))
+    expect(seenTexts).not.toContain('MA_BLOCKED_RECONNECT')
+
+    await host.updateDeviceCapabilities(confirmed.device.deviceId, ['observe', 'prompt'])
+    emitText(4, 'MA_VISIBLE_REGRANT')
+    await expect.poll(() => seenTexts.includes('MA_VISIBLE_REGRANT'), { timeout: 2_000 }).toBe(true)
+  })
 })
