@@ -78,7 +78,7 @@ gh workflow run artifact-smoke.yml --repo kamanager2012/dsh-community --field ta
 gh run list --repo kamanager2012/dsh-community --workflow artifact-smoke.yml --limit 1
 ```
 
-On `v0.2.2-rc.3`, [Run 43696414193](https://github.com/kamanager2012/dsh-community/actions/runs/43696414193) passed `resolve`, `linux-appimage`, `android-apk`, `linux-terminal`, and `verify-signatures` across all 12 assets, and `user-loop-evidence.yml` verified the 5-turn `dsh-community` TUI ↔ official `dsh --profile headless` ↔ Linux AppImage bundled runtime (`official-dsh.tar`) cross-surface Session roundtrip plus missing-key refusal and interrupted Runtime extraction recovery in [Run 43711794686](https://github.com/kamanager2012/dsh-community/actions/runs/43711794686) (superseding 4-turn [Run 43709890408](https://github.com/kamanager2012/dsh-community/actions/runs/43709890408)).
+On `v0.2.2-rc.3`, [Run 43696414193](https://github.com/kamanager2012/dsh-community/actions/runs/43696414193) passed `resolve`, `linux-appimage`, `android-apk`, `linux-terminal`, and `verify-signatures` across all 12 assets, and `user-loop-evidence.yml` verified the 5-turn `dsh-community` TUI ↔ official `dsh --profile headless` ↔ Linux AppImage bundled runtime (`official-dsh.tar`) cross-surface Session roundtrip plus missing-key refusal and `ensureOfficialHostExtracted()` interrupted Runtime extraction recovery in [Run 43713641736](https://github.com/kamanager2012/dsh-community/actions/runs/43713641736) (superseding 4-turn [Run 43709890408](https://github.com/kamanager2012/dsh-community/actions/runs/43709890408)).
 
 ## 6. Latest promotion and rollback
 
