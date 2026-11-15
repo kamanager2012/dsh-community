@@ -1,188 +1,167 @@
 # DSH Community
 
-> **Start a task in official `dsh web` or official Win/macOS Desktop, and resume it seamlessly in Linux Terminal or Linux AppImage.**  
-> The unvendored complementary community edition for DeepSeek Harness — 100% shared `~/.dsh` session truth, zero duplicate official surfaces, zero second agent loop.
-
-**Complementary community distribution, compatibility, and security-validation infrastructure for DeepSeek Harness.**
-
-Official DeepSeek Harness remains the only execution kernel and owns Official Web plus Windows/macOS Desktop (`win-x64`, `mac-arm64`, `mac-x64`). This repository focuses exclusively on the **three Complementary Community endpoints** absent upstream — **WSL/Linux Terminal**, **Linux Desktop AppImage**, and **Android Remote Client** — plus exact upstream pin/contract tracking, a third-party plugin compatibility registry, and release/plugin security evidence.
-
-WSL/Linux Terminal and Linux AppImage currently have Published Latest artifacts. The existing Android source is active in `apps/android` with a lightweight Remote Client target (`packages/remote-adapter`); it remains **[UNVERIFIED]** and is not yet part of Published Latest. (Historical `v0.1.1-rc.2` included Windows/macOS installers prior to upstream Desktop coverage and our Complementary Edition retirement.) Shipped endpoints share the official Runtime, official plugin chain, and the same `~/.dsh` Session source of truth by default.
-
-A conversation you start in official Web or official Win/macOS Desktop is the same conversation you resume in `dsh-community` or Linux AppImage.
-
-> **One Harness. Three complementary community endpoints. Two shipped today; Android active / UNVERIFIED.**
-> Runtime, Session, plugin execution, Web, and Win/macOS Desktop remain owned by the official kernel; the
-> community layer builds only the missing complementary endpoints, UX, compatibility, and verification.
-
-The in-repo Compatibility Registry is not an awesome list: third-party entries
-carry an actual `testedDsh` line, package integrity evidence, and structured
-security metadata for network access, data egress, credentials, filesystem,
-process execution, and persistence. Installation still uses the official
-`dsh plugin add` chain.
-
 **English** | [简体中文](README.zh-CN.md)
 
 [![CI](https://github.com/kamanager2012/dsh-community/actions/workflows/ci.yml/badge.svg)](https://github.com/kamanager2012/dsh-community/actions/workflows/ci.yml)
+[![Published Latest](https://img.shields.io/github/v/release/kamanager2012/dsh-community?include_prereleases&label=Published%20Latest)](https://github.com/kamanager2012/dsh-community/releases/latest)
+[![Official Core](https://img.shields.io/badge/Official%20Core-%40deepseek--ai%2Fdsh-blue)](https://github.com/deepseek-ai/deepseek-harness)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-| State | Source of truth |
-|---|---|
-| **Published Latest** | [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest); exact tag, asset names, release ID, and asset evidence live in [`current-release.json`](docs/current-release.json) |
-| **Candidate Source** | `candidateTag`, official-core pin, workspace product version, and Dual-Badge live in [`current-release.json`](docs/current-release.json) |
-| **Historical / Pre-release** | [Releases](https://github.com/kamanager2012/dsh-community/releases) |
+> **Start a task in official `dsh web` or official Win/macOS Desktop, resume it seamlessly in Linux Terminal or Linux AppImage — or steer your sessions remotely over E2EE.**  
+> Unvendored complementary community edition for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`@deepseek-ai/dsh`, Official Source Ownership = 0): 100% shared `~/.dsh` session truth, zero duplicate official surfaces, zero second agent loop.
 
-**Candidate Source and Published Latest are independent states.** Source may move
-to a newer reviewed upstream candidate while GitHub Latest, published installers,
-plugin `testedDsh`, and real User-Loop evidence remain on the last version that
-actually passed those gates. Do not infer workspace version from
-`releases/latest`, and never synthesize installer names from an unpublished
-candidate.
+## Highlights
 
-Endpoint status, Candidate/Published identity, asset names, and evidence labels
-are centralized in [current-release](docs/current-release.md) /
-[`current-release.json`](docs/current-release.json). Published assets carry
-keyless cosign signatures; see [release docs](docs/release.md#artifact-signing-keyless).
+- **Shared `~/.dsh` Across Official & Community Surfaces** — Official `deepseek-ai/deepseek-harness` owns the execution kernel, Web UI, and Windows/macOS Desktop (`win-x64`, `mac-arm64`, `mac-x64`). `dsh-community` delivers the **three complementary community endpoints** absent upstream: **WSL/Linux Terminal**, **Linux Desktop AppImage**, and **Android Remote Client** (`apps/android`, active / `[UNVERIFIED]`, not in Published Latest).
+- **Multi-Agent E2EE Remote Control Plane** — Steer local **DSH, Claude Code, Codex CLI, and OpenCode ACP** sessions from a browser PWA or mobile screen (`dsh-community remote start --engines claude,codex,opencode --qr`) over Noise IK encryption, LAN mDNS, WebRTC P2P, or a self-hosted Blind Relay ([`deploy/relay/`](deploy/relay/)), with read-only scoped Git diff review.
+- **Supply-Chain Verified Releases & Plugin Catalog** — Linux AppImage releases publish with SHA-256 digests, Keyless Cosign `.sigstore.json` bundles, and official-runtime CycloneDX SBOMs. [`packages/marketplace/catalog.json`](packages/marketplace/catalog.json) records real `testedDsh`, package integrity digests, and permission disclosures (installation remains on the official `dsh plugin add` chain).
 
-[Official Runtime](https://github.com/deepseek-ai/deepseek-harness)
+---
 
-Read the locked endpoint definition in [Community endpoints](docs/community-endpoints.en.md).
+## Quick Start
 
-## What this repository is
+### 1. Download Linux AppImage (Recommended for Linux Desktop)
 
-`dsh-community` is the only download entry. It is based on the official
-kernel, not a second Harness: thin adapters and contracts around published
-`@deepseek-ai/dsh`, official source ownership = 0, no `patch-package` on official
-UI.
+Grab the latest `.AppImage`, verify SHA-256 + Keyless Cosign signature, and launch:
 
-Official Runtime still owns the Agent loop, model execution, tool execution,
-session persistence, official UI, and core lifecycle.
+```sh
+# See docs/current-release.json for exact filenames in Published Latest:
+# https://github.com/kamanager2012/dsh-community/releases/latest
+chmod +x dsh-community-*.AppImage
+sha256sum -c dsh-community-*.AppImage.sha256
+./dsh-community-*.AppImage
+```
 
-## Choose an entry
+Verification guide: [`docs/release.md#artifact-signing-keyless`](docs/release.md#artifact-signing-keyless) · Current release ledger: [`docs/current-release.md`](docs/current-release.md)
 
-| Goal | Use |
-|---|---|
-| Run the official Runtime / Win & macOS Desktop | [`deepseek-ai/deepseek-harness`](https://github.com/deepseek-ai/deepseek-harness) (`npx @deepseek-ai/dsh web`) |
-| Download Linux AppImage (or inspect historical `v0.1.1-rc.2`) | [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) — exact tag/file names: `docs/current-release.json`; cosign verification: [release docs](docs/release.md#artifact-signing-keyless) |
-| Use the WSL/Linux Terminal / TUI | `pnpm tui` or `dsh-community` after a source install |
-| LAN Remote Host access / Mobile foundation | In-repo `packages/remote-adapter` (Noise IK + LAN transport merged; Android Remote endpoint remains `[UNVERIFIED]`) |
-| Run or package Linux Desktop from source | `pnpm desktop` / `pnpm desktop:package -- --appimage` |
-| Read operational guidance | [DeepSeek Harness Handbook](https://kamanager2012.github.io/dsh-community/) |
-| Verified community plugins | Desktop marketplace page, in-repo `pnpm marketplace`, and [`packages/marketplace/catalog.json`](packages/marketplace/catalog.json) — not an awesome list |
+### 2. Run from Source (WSL / Linux Terminal, Desktop, or Multi-Agent Remote)
 
-Only this repository is the download entry. Suite, the standalone marketplace, the standalone plugins registry, and Edition were merged into this repository and their standalone repos were deleted on 2026-09-13; the handbook lives in [`handbook/`](handbook/) (formerly `deepseek-harness-handbook`) and the frozen Labs code in [`archive/`](archive/).
-
-## Source and publication status
-
-The workspace has one **Candidate Source** identity (community product + official
-core pin + Dual-Badge), while GitHub exposes a separate **Published Latest**
-identity backed by real release assets. They may be equal after a release, but
-the repository does not depend on that equality. Exact current values live only
-in `docs/current-release.json`.
-
-Earlier independent numbers `v0.1.2`–`v0.1.6` are historical only, and Windows/macOS Desktop installers are retired after historical `v0.1.1-rc.2` (use official `deepseek-ai/deepseek-harness` for Windows/macOS Desktop). Linux Desktop AppImage is shipped Complementary endpoint 2 alongside primary WSL/Linux Terminal (endpoint 1). Official Web and Win/macOS Desktop are upstream surfaces, not Community endpoints. Android stays `[UNVERIFIED]`, is not shipped in Latest, and its first-party source lives in this repository under `apps/android`. Its target is now a lightweight Remote Client; the Host retains the official DSH runtime, repository/toolchain, credentials, and durable Session truth. See `docs/remote-host-client.md`.
-
-## From source
-
-Requirements: Node.js 22.15+, pnpm, and a configured `DEEPSEEK_API_KEY`.
-Since official 0.1.0-rc.8, session JSONL uses `node:zlib` zstd APIs added in 22.15. Candidate Source pin comes from `packages/dsh-bridge/src/pin.ts` / `current-release.json`; `latest-tested.json` is compatibility evidence, not the pin source of truth.
-Sessions continue to use the official `~/.dsh` data source.
+Requirements: Node.js 22.15+, pnpm, and either a configured `DEEPSEEK_API_KEY` (for DSH / hybrid mode) or local **Claude Code / Codex CLI / OpenCode** binaries on `PATH` (for standalone Multi-Agent Remote Control Plane mode).  
+Since official `0.1.0-rc.8`, session JSONL uses `node:zlib` zstd APIs added in Node 22.15. Sessions continue to use the official `~/.dsh` data source.
 
 ```sh
 git clone https://github.com/kamanager2012/dsh-community.git
 cd dsh-community
 pnpm install
 export DEEPSEEK_API_KEY=...
+
+# WSL/Linux TUI (resume latest ~/.dsh conversation or start a new one)
 pnpm start
 pnpm new
-pnpm sessions           # list session history
-pnpm plugins            # list installed plugins
+pnpm sessions            # list official session history
+pnpm run doctor          # diagnostics (not bare `pnpm doctor` — that is pnpm's own command)
+
+# Linux Desktop shell (with built-in Marketplace & Remote QR tab)
 pnpm desktop
-pnpm run doctor         # not bare `pnpm doctor` — that is pnpm's own command
+
+# Multi-Agent E2EE Remote Control Plane:
+# 1) Build once, then serve the browser PWA + single-port blind gateway locally
+pnpm build
+pnpm start -- remote gateway --serve-web --port 8787 &
+# 2) Start the Host (same-machine browser PWA via --web-url; add --host <LAN-IP> --mdns for LAN/native discovery)
+pnpm start -- remote start --engines claude,codex,opencode \
+  --relay-url ws://127.0.0.1:8787/relay \
+  --signaling-url ws://127.0.0.1:8787/signal \
+  --web-url http://127.0.0.1:8787/app/ --qr
 ```
 
-Useful commands exposed by the source distribution include `sessions`, `resume`,
-`version`, and the read-only `plugins` catalog view. Plugin installation should
-remain on the official `dsh plugin add` chain or the Desktop marketplace flow.
+For cross-machine / mobile browser PWA pairing over HTTPS TLS, reverse-proxy `remote gateway` per [`deploy/relay/README.md`](deploy/relay/README.md) and see [`docs/remote-host-client.md`](docs/remote-host-client.md) (`--host 127.0.0.1` alone prints a `dsh-remote://pair` URI instead of an HTTP/HTTPS PWA URL).
 
-## Architectural boundary
+Useful CLI subcommands (`dsh-community` or `dsh-community-tui`): `new`, `resume last`, `sessions`, `doctor`, `version`, `plugins` (read-only catalog view; install stays on official `dsh plugin add` / Desktop marketplace), `desktop`, and `remote`.
+
+Package Linux Desktop locally (unsigned preview):
+
+```sh
+pnpm desktop:package
+./apps/desktop/release/linux-unpacked/dsh-community
+
+pnpm desktop:package -- --appimage
+```
+
+---
+
+## Endpoints & Source/Release State
+
+> **One Harness. Three complementary community endpoints. Two shipped today; Android active / UNVERIFIED.**  
+> Runtime, Session, plugin execution, Official Web, and Win/macOS Desktop belong to upstream `deepseek-ai/deepseek-harness`; historical Windows/macOS installers were retired after `v0.1.1-rc.2` (`--win` / `--mac` fail closed). Earlier independent numbers `v0.1.2`–`v0.1.6` are historical only.
+
+| Surface | Owner | Entry |
+|---|---|---|
+| Official Web & Win/macOS Desktop | Upstream [`deepseek-ai/deepseek-harness`](https://github.com/deepseek-ai/deepseek-harness) | `npx @deepseek-ai/dsh web` / upstream desktop releases |
+| WSL/Linux Terminal / TUI | **Complementary Endpoint 1 (Shipped)** | `dsh-community` / `pnpm start` / `pnpm tui` |
+| Linux Desktop AppImage | **Complementary Endpoint 2 (Shipped)** | [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) `.AppImage` |
+| Android Remote Client | **Complementary Endpoint 3 (`[UNVERIFIED]`, Not Shipped)** | `apps/android` + `packages/remote-adapter` ([architecture](docs/remote-host-client.md)) |
+| Multi-Agent E2EE Remote Control Plane | Community Control Plane (`packages/remote-adapter`) | `dsh-community remote start --qr` / Desktop "远程" tab |
+| Verified Community Plugins | Compatibility Catalog (Not Awesome List) | Desktop marketplace tab / `pnpm marketplace -- list` / [`catalog.json`](packages/marketplace/catalog.json) |
+| Engineering & Ops Handbook | Documentation & AI Retrieval Catalog | [Online Handbook](https://kamanager2012.github.io/dsh-community/) · [`handbook/`](handbook/) |
+
+**Candidate Source and Published Latest are independent states.**  
+Source may advance to a newer reviewed upstream `@deepseek-ai/dsh` candidate while GitHub Latest, published installers, plugin `testedDsh`, and real User-Loop evidence remain on the last version that actually passed those gates. Do not infer workspace version from `releases/latest`, and never synthesize installer names from an unpublished candidate.
+
+| State | Source of truth |
+|---|---|
+| **Published Latest** | [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) — exact tag, asset names, release ID, and asset evidence live in [`docs/current-release.json`](docs/current-release.json) |
+| **Candidate Source** | `candidateTag`, official-core pin (`packages/dsh-bridge/src/pin.ts`), workspace product version, and Dual-Badge live in [`docs/current-release.json`](docs/current-release.json) (`latest-tested.json` is compatibility evidence, not the pin source of truth) |
+| **Historical / Pre-release** | [Releases](https://github.com/kamanager2012/dsh-community/releases) |
+
+Read the locked endpoint definition in [Community endpoints](docs/community-endpoints.en.md) and start-to-finish onboarding in [Getting Started](docs/getting-started.en.md).
+
+---
+
+## Architectural Boundary & Success Criteria
+
+`dsh-community` must **not vendor** official `packages/*` (`Official Source Ownership = 0`), must **not** `patch-package` official UI, must **not** fork the official event vocabulary, and must **not** maintain a second equivalent Session source of truth.
 
 | Official Runtime owns | This repository owns |
 |---|---|
-| Agent loop and model execution | Desktop / TUI distribution and UX |
-| Tool execution and Runtime lifecycle | Lifecycle wrapping, diagnostics, and compatibility |
-| Official Session persistence and event surface | Session selection, resume UX, and adapters |
-| Official CLI, profiles, and plugin surface | Release packaging, safe integration, and ecosystem links |
-
-The community layer must not vendor `packages/*`, fork the official event vocabulary,
-or maintain a second equivalent Session source of truth. When an official capability
-exists, use it; add community code only where a verified gap remains.
-
-## Success criteria
+| Agent loop and model execution | Complementary Desktop AppImage / TUI distribution and UX |
+| Tool execution and Runtime lifecycle | Lifecycle wrapping, diagnostics, and upstream compatibility contracts |
+| Official Session persistence and event surface | Session selection, resume UX, and E2EE multi-agent adapters |
+| Official CLI, profiles, and plugin surface | Keyless release packaging, plugin security metadata, and ecosystem links |
 
 1. Official Source Ownership = 0 (zero vendored official code).
 2. TUI patch-surface on official Cordis rows drops toward zero.
 3. TUI/Desktop do not implement Agent loop, Session persistence, or Tool execution.
 4. One upstream rc bump requires zero business UI edits in principle.
-5. WSL/Linux TUI, Linux AppImage, and official Web/Desktop share the same session truth.
+5. WSL/Linux TUI, Linux AppImage, and official Web/Desktop share the same session truth (`~/.dsh`).
 6. Upstream regressions break in contract CI before user release.
 
-Currently: 1, 3, and 5 hold by design; 2 community overlay touches official rows without mounting third-party TUIs. Criterion 4 is verified against upstream releases.
+Currently: criteria 1, 3, and 5 hold by design; criterion 2 community overlay touches official rows without mounting third-party TUIs; criterion 4 is verified against upstream releases.
 
-## Repository map
+---
 
-| Repository | Role | User-facing status |
-|---|---|---|
-| [`dsh-community`](https://github.com/kamanager2012/dsh-community) | Canonical Product | **唯一正式下载入口 / only official community download** |
-| This repo [`archive/deepseek-harness-suite/`](archive/deepseek-harness-suite/) (formerly `deepseek-harness-suite`) | Archived Labs | Frozen; do not install |
-| This repo `handbook/` | Knowledge / Evidence | Documentation and operational evidence (merged from `deepseek-harness-handbook`) |
-| This repo `packages/marketplace` | Discovery / install CLI + catalog | `pnpm marketplace`; `catalog.json` lives in this package; install still goes through official `dsh plugin add` |
+## Repository Map & Layout
 
-The former standalone repositories `dsh-marketplace`, `dsh-community-plugins`,
-`dsh-community-edition`, and `deepseek-harness-suite` were merged into this
-repository and deleted on 2026-09-13.
-
-## Layout and further reading
+[`dsh-community`](https://github.com/kamanager2012/dsh-community) is the **only canonical community download entry**. The former standalone repositories `dsh-marketplace`, `dsh-community-plugins`, `dsh-community-edition`, and `deepseek-harness-suite` were merged into this repository and deleted on 2026-09-13.
 
 ```text
-contracts/              Official CLI and package surface snapshots
+contracts/              Official CLI and package surface snapshots + compatibility matrix
 packages/dsh-bridge     Runtime process and lifecycle boundary
-packages/marketplace    Plugin discovery CLI + catalog.json
-packages/remote-adapter Remote control adapter, Noise IK E2EE, LAN carrier & session stream projection
+packages/marketplace    Plugin discovery CLI + audited catalog.json
+packages/remote-adapter Multi-Agent E2EE control plane (DSH, Claude Code, Codex CLI, OpenCode ACP + scoped Git diff review) over Noise IK & LAN/WebRTC/Relay
 packages/tui            Community terminal UI library (@dsh-community/tui-surface, Ink-based)
 packages/tui-adapter    Community TUI adapter and patch surface
 packages/shared-types   Community-owned types, not an official event fork
-apps/desktop            Official `dsh web` shell and session entry
-apps/android            Android Remote Client ([LABS]/[UNVERIFIED]; migration target)
-apps/tui                Official profile / resume launcher
-tests/upstream-contract Compatibility and upstream contract checks
+apps/desktop            Official `dsh web` Electron shell + session list + Marketplace/Remote UI
+apps/remote-web         Browser PWA client for E2EE remote control
+apps/android            Android Remote Client ([LABS]/[UNVERIFIED]; not in Published Latest)
+apps/tui                Official profile / resume launcher (`dsh-community`)
+deploy/                 Self-hosted blind relay deployment configurations (`deploy/relay/`)
+handbook/               Bilingual engineering handbook (`mkdocs`) & AI retrieval catalog
+archive/                Frozen historical Labs (`archive/deepseek-harness-suite/`, excluded from build/CI)
+tests/upstream-contract Compatibility, vendor=0, security, and release-gate contract checks
 ```
 
-Start with the [Getting Started guide](docs/getting-started.en.md). Then read [ARCHITECTURE.md](ARCHITECTURE.md), the [release guide](docs/release.md),
-the [contract snapshots](contracts/README.md), and the [Handbook](https://kamanager2012.github.io/dsh-community/)
-before changing the runtime boundary.
+Further reading: [Getting Started](docs/getting-started.en.md) · [ARCHITECTURE.md](ARCHITECTURE.md) · [ECOSYSTEM.md](ECOSYSTEM.md) · [Release Guide](docs/release.md) · [Remote Host-Client](docs/remote-host-client.md) · [Contracts](contracts/README.md) · [Handbook](https://kamanager2012.github.io/dsh-community/).
 
-## Evidence language
+## Evidence Language & Security
 
-Use explicit status labels such as `[REAL]`, `[PARTIAL]`, `[LABS]`, `[PROBE]`,
-`[FAIL-CLOSED]`, `[BLOCKED_BY_UPSTREAM]`, and `[UNVERIFIED]`. A green unit test,
-a successful fallback, or a README statement is not by itself proof of a real
-Runtime E2E.
+Use explicit status labels (`[REAL]`, `[PARTIAL]`, `[LABS]`, `[PROBE]`, `[FAIL-CLOSED]`, `[BLOCKED_BY_UPSTREAM]`, `[UNVERIFIED]`). A green unit test, successful fallback, or README statement is not proof of a real Runtime E2E.
 
-## Security
+See [SECURITY.md](SECURITY.md) for Desktop Electron hardening (`contextIsolation`, default-deny permissions, allow-listed navigation), keyless cosign signature verification, `~/.dsh` session-sharing boundaries, and private vulnerability reporting.
 
-See [SECURITY.md](SECURITY.md) for the Desktop shell's Electron hardening
-(contextIsolation, default-deny permissions, allow-listed navigation), how to
-verify a release's cosign keyless signature, the `~/.dsh` session-sharing
-boundary, and how to report a security issue privately.
+## Community & License
 
-## Community
+[Contributing](CONTRIBUTING.md) · [Governance](GOVERNANCE.md) · [Code of Conduct](CODE_OF_CONDUCT.md) · [Support](SUPPORT.md) · [Security](SECURITY.md)
 
-Project collaboration and maintenance entry points:
-[Contributing](CONTRIBUTING.md) · [Governance](GOVERNANCE.md) ·
-[Community Conduct](CODE_OF_CONDUCT.md) · [Support](SUPPORT.md) ·
-[Security](SECURITY.md).
-
-## License
-
-MIT. Runtime and third-party notices are documented in [NOTICE](NOTICE) and the
-official package metadata.
+MIT. Official runtime and third-party notices are documented in [NOTICE](NOTICE) and upstream `@deepseek-ai/dsh` package metadata.

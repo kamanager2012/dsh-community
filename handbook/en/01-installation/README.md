@@ -54,10 +54,9 @@ The community distribution entry for normal users is
 [`dsh-community`](https://github.com/kamanager2012/dsh-community/releases/latest), not
 Suite, Edition, Marketplace, or Plugins.
 
-- Published downloadable version: `v0.1.1-rc.1`; see [current Community release status](../11-operations/community-release-status.md) for exact assets, SHA256, and gates.
-- Official kernel: `@deepseek-ai/dsh@0.1.1-rc.1`, 1:1 with the product number.
-- Historical independent numbers `v0.1.2`–`v0.1.6` are not a download entry.
-- Desktop and TUI should show: `DeepSeek Harness Community v0.1.1-rc.1 [Official Core: @deepseek-ai/dsh@0.1.1-rc.1]`.
+- Exact Published Latest version, Linux AppImage asset names, SHA-256 digests, keyless cosign bundles, and gate boundaries live in [`current-release.json`](https://github.com/kamanager2012/dsh-community/blob/main/docs/current-release.json) and [current Community release status](../11-operations/community-release-status.md) (current Latest: `v0.2.2-rc.3`, 1:1 with official kernel `@deepseek-ai/dsh@0.2.2-rc.3`).
+- Under Complementary Edition, Windows and macOS Desktop installers belong upstream in `deepseek-ai/deepseek-harness` (retired from Community after historical `v0.1.1-rc.2`). Historical independent numbers `v0.1.2`–`v0.1.6` are not a download entry.
+- Desktop and TUI display the Dual-Badge: `DeepSeek Harness Community v0.2.2-rc.3 [Official Core: @deepseek-ai/dsh@0.2.2-rc.3]`.
 
 ## Pin versions
 

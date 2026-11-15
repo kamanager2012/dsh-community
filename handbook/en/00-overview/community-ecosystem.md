@@ -1,56 +1,57 @@
 # DeepSeek Harness Community ecosystem
 
-> Project handoff and product-entry map. Baseline date: 2026-08-21.
+> Project handoff and product-entry map. Baseline date: 2026-11-15 (`v0.2.2-rc.3`).
 
 The community project is not a fork of DeepSeek Harness and not another Agent Runtime.
 The official [DeepSeek Harness Runtime](https://github.com/deepseek-ai/deepseek-harness)
-remains the only execution core. Community repositories add distribution, compatibility,
-plugins, knowledge, diagnostics, and experiments around it.
+remains the only execution core. Community infrastructure adds complementary distribution,
+an E2EE multi-agent remote control plane, compatibility contracts, verified plugin
+metadata, operational guidance, and security validation around it.
 
 ## Three conclusions
 
 1. **The official Runtime is the engine.** It owns the Agent loop, model execution,
-   tool execution, official Session persistence, and core lifecycle.
+   tool execution, official Session persistence, Official Web, and Windows/macOS Desktop.
 2. **`dsh-community` is the only canonical product.** Normal users download, install,
-   and use it.
-3. **Suite is merged into this repository.** The former `deepseek-harness-suite` is frozen Labs, not a download
-   channel; its code and history now live under `archive/deepseek-harness-suite/`. The standalone Marketplace and Plugins repos are deleted. New
-   work lives in `dsh-community` and this handbook.
+   and use it for complementary surfaces absent upstream.
+3. **Suite, Marketplace, Plugins, and Edition are merged and retired as standalone repos.**
+   The former `deepseek-harness-suite` is frozen Labs under `archive/deepseek-harness-suite/`
+   and is not a download channel. Standalone Marketplace, Plugins, and Edition repos were
+   merged in and deleted on 2026-09-13.
 
 ## Where users start
 
 ```text
 Official DeepSeek Harness Runtime
+  (owns Official Web + Windows/macOS Desktop)
             │
             ▼
-       dsh-community
-        ├── WSL/Linux Terminal
-        ├── Windows Desktop
-        ├── macOS Desktop
-        ├── Linux AppImage
-        └── Android (archived Labs / UNVERIFIED)
+       dsh-community (three complementary community endpoints)
+        ├── WSL/Linux Terminal (dsh-community / TUI)
+        ├── Linux AppImage (Published Latest binary asset)
+        └── Android Remote Client (apps/android, [UNVERIFIED])
 ```
 
 The formal download entry is
 [`dsh-community/releases/latest`](https://github.com/kamanager2012/dsh-community/releases/latest).
-GitHub Latest is `v0.1.1-rc.2`, 1:1 with official kernel `@deepseek-ai/dsh@0.1.1-rc.2`.
-Use the [current release status](../11-operations/community-release-status.md) and the
-[release runbook](../11-operations/community-release-runbook.md) for the boundary.
-Historical independent numbers `v0.1.2`–`v0.1.6` are pre-release, not a download.
-The five Community endpoints are **WSL/Linux Terminal, Windows Desktop, macOS Desktop,
-Linux AppImage, and Android**. The first four ship with Latest; the Android prototype
-stays in archived Labs as `[UNVERIFIED]` and is not on Latest. Official Web is the
-kernel's own UI, shares `~/.dsh`, and is not a Community endpoint.
-Do not download a client from Suite (archived Labs). The standalone Marketplace,
-Plugins, and Edition repositories were merged into the product repo and deleted
-on 2026-09-13. The plugin catalog lives in the product repo at
-`packages/marketplace/catalog.json`.
+Published Latest is `v0.2.2-rc.3`, 1:1 with official kernel `@deepseek-ai/dsh@0.2.2-rc.3`.
+See [`docs/current-release.json`](https://github.com/kamanager2012/dsh-community/blob/main/docs/current-release.json),
+[current release status](../11-operations/community-release-status.md), and the
+[release runbook](../11-operations/community-release-runbook.md) for machine-readable identity
+and evidence boundaries.
+
+Under **Complementary Edition**:
+
+- The **three Complementary Community endpoints** are **WSL/Linux Terminal**, **Linux AppImage**, and **Android Remote Client**. The first two are shipped today; Android (`apps/android` + `packages/remote-adapter`) stays `[UNVERIFIED]` and is outside Published Latest.
+- Windows and macOS Desktop installers belong upstream in `deepseek-ai/deepseek-harness` (retired from `dsh-community` after historical `v0.1.1-rc.2`; `--win` / `--mac` fail closed). Historical independent numbers `v0.1.2`–`v0.1.6` are not current downloads.
+- Official Web and Win/macOS Desktop are kernel/upstream surfaces sharing `~/.dsh`, not Community endpoints.
+- Around `~/.dsh`, `packages/remote-adapter` and `apps/remote-web` also provide a **Multi-Agent E2EE Remote Control Plane** (`dsh-community remote start --qr`) over Noise IK, LAN mDNS, WebRTC P2P, or self-hosted Blind Relay (`deploy/relay/`) supporting DSH, Claude Code, Codex CLI, OpenCode ACP, and read-only scoped Git diff review.
 
 ## Public repositories
 
 | Repository | Role | Audience | Formal download entry? |
 |---|---|---|---|
-| [`dsh-community`](https://github.com/kamanager2012/dsh-community) | Canonical Product: Desktop, TUI, diagnostics, compatibility, and releases | All users and maintainers | **Yes; the only one** |
+| [`dsh-community`](https://github.com/kamanager2012/dsh-community) | Canonical Product: Linux AppImage, TUI, E2EE control plane, diagnostics, compatibility, and releases | All users and maintainers | **Yes; the only one** |
 | This repo `handbook/` (formerly `deepseek-harness-handbook`, merged in) | Knowledge / Evidence: installation, operations, acceptance, and version facts | Users, maintainers, and Agents | No |
 | [`dsh-community` packages/marketplace](https://github.com/kamanager2012/dsh-community/tree/main/packages/marketplace) | Discovery / Distribution UX + compatibility catalog `catalog.json` | Users and plugin authors | No; not a Runtime |
 | This repo `archive/deepseek-harness-suite/` (formerly `deepseek-harness-suite`) | Archived Labs; last Labs pin `0.1.0-rc.6`, not current Latest | Historical reference | No; do not install |
@@ -63,15 +64,16 @@ product repo and deleted on 2026-09-13.
 
 | Official Runtime owns | Community layer owns |
 |---|---|
-| Agent loop and model execution | Desktop / TUI distribution experience |
+| Agent loop and model execution | Linux AppImage / TUI distribution experience |
 | Tool execution and Runtime lifecycle | Lifecycle wrapping, diagnostics, and compatibility |
-| Official Session persistence and events | Reading, resuming, and presenting official Sessions |
-| Official profiles, CLI, and plugin surface | Bridge normalization, registry metadata, packaging, and safe integration |
+| Official Session persistence and events | Reading, resuming, and E2EE projection of sessions |
+| Official profiles, CLI, and plugin surface | Bridge normalization, registry metadata, keyless packaging |
+| Official Web and Win/macOS Desktop | Complementary endpoints and supply-chain verification |
 
 The community layer must not reimplement the Agent loop, maintain a second equivalent
 Session source of truth, fork the official event vocabulary, or vendor official core
-packages. Use an official capability when it exists; add a community extension only for
-a verified gap.
+packages (`Official Source Ownership = 0`). Use an official capability when it exists;
+add a community extension only for a verified gap.
 
 ## Registry and Marketplace
 
@@ -93,16 +95,16 @@ Neither owns the Runtime or replaces the official plugin manager. The standalone
 Current evidence snapshot `[待复核]`: the registry has 9 verified plugins. CI checks
 shape, npm existence/version, `dist.integrity`, provenance, and repository reachability;
 the compose workflow runs the official `dsh plugin add` chain and a composition assertion
-per plugin. The Marketplace CLI provides `list`, `search`, `info`, and `install`; `info`
-displays digest/provenance and installation remains on the official chain.
+per plugin (`testedDsh` recorded in `catalog.json` remains on `0.1.1-rc.2`). The
+Marketplace CLI provides `list`, `search`, `info`, and `install`; `info` displays
+digest/provenance and installation remains on the official chain.
 
 Current release boundary `[PARTIAL]`: GitHub Actions run
-[32489762676](https://github.com/kamanager2012/dsh-community/actions/runs/32489762676)
-downloaded the exact `v0.1.1-rc.1` Release assets and passed checksum, Windows/macOS install
-and Runtime first-ready, and Linux TUI missing-key/no-TTY checks. This is still not the
-full user loop; Session sharing, plugin restart, upgrade/reinstall, and network-failure
-paths require separate evidence. Historical independent numbers `v0.1.2`–`v0.1.6` are
-not a user download.
+[43663270841](https://github.com/kamanager2012/dsh-community/actions/runs/43663270841)
+downloaded the exact `v0.2.2-rc.3` Release assets and passed `resolve`,
+`linux-appimage`, `linux-terminal`, and `verify-signatures` (keyless cosign on all 8
+assets). This is still not the full user loop; live model calls, session resume
+end-to-end, plugin restart, and upgrade paths remain `[UNVERIFIED]`.
 
 ## Reality language
 
