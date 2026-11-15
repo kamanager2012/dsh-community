@@ -80,7 +80,9 @@ jobs:
 
       - name: Build exact-tag Terminal endpoint
         working-directory: release-src
-        run: pnpm build:tui
+        run: |
+          pnpm build:tui
+          pnpm --filter @dsh-community/marketplace build
 
       - name: Confirm release/runtime identity
         id: identity
@@ -114,6 +116,11 @@ jobs:
           chmod +x "$work/app.AppImage"
           (cd "$work" && ./app.AppImage --appimage-extract >/dev/null)
           test -s "$work/squashfs-root/resources/host/official-dsh.tar"
+          test -x "$work/squashfs-root/AppRun"
+          if ! command -v xvfb-run >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y xvfb
+          fi
           echo "appimage runtime archive extracted: $work/squashfs-root/resources/host/official-dsh.tar"
 
       - name: Run real new -> answer -> resume -> answer loop
@@ -123,15 +130,18 @@ jobs:
           EVIDENCE_TAG: ${{ steps.release.outputs.tag }}
           EVIDENCE_COMMIT: ${{ steps.identity.outputs.commit }}
           APPIMAGE_ARCHIVE: ${{ runner.temp }}/user-loop-appimage/squashfs-root/resources/host/official-dsh.tar
+          APPIMAGE_APPRUN: ${{ runner.temp }}/user-loop-appimage/squashfs-root/AppRun
         run: |
           set -euo pipefail
-          python3 "${GITHUB_WORKSPACE}/scripts/e2e/user-loop.py" \
-            --launcher release-src/apps/tui/dist/bin.js \
-            --appimage-archive "$APPIMAGE_ARCHIVE" \
-            --tag "$EVIDENCE_TAG" \
-            --commit "$EVIDENCE_COMMIT" \
-            --timeout-seconds "${{ github.event.inputs.timeout_seconds }}" \
-            --evidence-out user-loop-evidence.json
+          xvfb-run -a -s "-screen 0 1280x800x24" \
+            python3 "${GITHUB_WORKSPACE}/scripts/e2e/user-loop.py" \
+              --launcher release-src/apps/tui/dist/bin.js \
+              --appimage-archive "$APPIMAGE_ARCHIVE" \
+              --appimage-apprun "$APPIMAGE_APPRUN" \
+              --tag "$EVIDENCE_TAG" \
+              --commit "$EVIDENCE_COMMIT" \
+              --timeout-seconds "${{ github.event.inputs.timeout_seconds }}" \
+              --evidence-out user-loop-evidence.json
 
       - name: Publish sanitized evidence summary
         if: always()

@@ -32,8 +32,11 @@ describe('community product version', () => {
     const manifests = [
       'package.json',
       'apps/desktop/package.json',
+      'apps/remote-web/package.json',
       'apps/tui/package.json',
       'packages/dsh-bridge/package.json',
+      'packages/marketplace/package.json',
+      'packages/remote-adapter/package.json',
       'packages/shared-types/package.json',
       'packages/tui-adapter/package.json',
       'packages/tui/package.json',
