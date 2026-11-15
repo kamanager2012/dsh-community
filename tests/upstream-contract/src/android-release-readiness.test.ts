@@ -44,7 +44,7 @@ describe('Android R5 release readiness is fail-closed', () => {
     expect(evidence.schemaVersion).toBe(2)
     expect(evidence.architecture).toBe('remote-only')
     expect(evidence.status).toBe('NOT_RUN')
-    expect(evidence.officialHostTarget).toBe('0.2.2-rc.2')
+    expect(evidence.officialHostTarget).toBe('0.2.2-rc.3')
     expect(evidence.embeddedNodeRemoved).toBe(true)
     expect(evidence.remoteAcceptance).toEqual({
       pairing: 'NOT_RUN',

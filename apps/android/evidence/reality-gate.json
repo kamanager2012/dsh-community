@@ -1,9 +1,9 @@
 {
   "schemaVersion": 2,
   "architecture": "remote-only",
-  "asOf": "2026-11-13",
+  "asOf": "2026-11-15",
   "status": "NOT_RUN",
-  "officialHostTarget": "0.2.2-rc.2",
+  "officialHostTarget": "0.2.2-rc.3",
   "embeddedNodeRemoved": true,
   "remoteAcceptance": {
     "pairing": "NOT_RUN",
