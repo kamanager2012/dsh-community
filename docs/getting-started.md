@@ -49,7 +49,7 @@ cosign verify-blob \
 
 ## 五分钟从源码启动
 
-需要 Node.js 22.15+、pnpm 和可用的 `DEEPSEEK_API_KEY`（官方 0.1.0-rc.8 起 session JSONL 依赖 `node:zlib` zstd，22.15 才有）：
+需要 Node.js 24.9+（官方 `@deepseek-ai/dsh@0.2.2-rc.3` 声明 `engines.node >=24.9.0`；本仓工作区最低要求 22.15，CI 在 Node 22 上通过）、pnpm 和可用的 `DEEPSEEK_API_KEY`（官方 0.1.0-rc.8 起 session JSONL 依赖 `node:zlib` zstd，22.15 才有）：
 
 ```sh
 git clone https://github.com/kamanager2012/dsh-community.git

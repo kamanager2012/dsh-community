@@ -20,17 +20,36 @@
 
 ## Why Choose DSH Community?
 
-`dsh-community` is built on a strict **"Zero Kernel Fork, Maximum Complementary Reach"** philosophy: we never rewrite or vendor `@deepseek-ai/dsh`, yet we give you the Linux, Terminal, Android, and Multi-Agent E2EE capabilities that neither the upstream release nor third-party rewrites (such as `dsh-go` or vendored forks) provide together.
+First, what the official project ships (from the upstream `deepseek-ai/deepseek-harness` source, checked 2026-11-15):
 
-| Dimension | Official `deepseek-harness` | Other DSH Ports / Rewrites (e.g., `dsh-go`, forks) | **DSH Community (`dsh-community`)** |
+| Official offering | Details |
+|---|---|
+| Web UI | `npx @deepseek-ai/dsh web`; reachable from other machines' browsers through a reverse proxy plus a launch token |
+| Windows / macOS Desktop | Electron shell (`win-x64`, `mac-arm64`, `mac-x64`); the official packaging docs state **Linux is not a supported Desktop release target** |
+| `dsh` launcher | Boots profiles such as `web` / `headless` / `sdk` / `acp`; **ships no terminal UI of its own**, and upstream has no TUI package |
+| Python SDK, ACP server | For programmatic use, not interactive UIs |
+
+Several third-party projects already work on these gaps and around the official kernel. The comparison below uses only each project's own README and release page (stars as of 2026-11-15):
+
+| Project | What it does | License | Stars |
 |---|---|---|---|
-| **Execution Kernel** | Official `@deepseek-ai/dsh` | Rewritten in Go / forked JS (lags upstream prompts & tools) | **100% Official `@deepseek-ai/dsh` (`Official Source Ownership = 0`)** |
-| **`~/.dsh` Session Compatibility** | Native `~/.dsh` (Zstd JSONL) | Separate DB or incompatible JSONL; cannot resume official sessions | **100% Shared `~/.dsh`** — start on Web/Win/Mac, resume on Linux TUI / AppImage / Android |
-| **Linux & WSL Support** | Web UI only (the `dsh` CLI is a launcher with no bundled terminal UI; upstream Desktop docs cover Windows / macOS packaging only) | Single binary CLI, no desktop shell or official Web host | **Native WSL/Linux TUI + Signed Linux `.AppImage`** |
-| **Mobile & Remote Experience** | None | None (local terminal only) | **Signed Android `arm64-v8a` APK + Browser PWA** over **Noise IK E2EE** (LAN / WebRTC P2P / Blind Relay) |
-| **Multi-Agent Orchestration** | DSH only | Single engine only | **Unified Control Plane for DSH + Claude Code + Codex CLI + OpenCode ACP** + scoped Git diff review |
-| **Plugin Ecosystem** | Official Cordis plugin loader | Incompatible with official Cordis plugins | **100% Official Cordis compatibility + Verified `catalog.json`** (`testedDsh` & permission disclosures) |
-| **Supply-Chain Security** | Standard release packages | Unsigned or ad-hoc binaries | **12 Signed Release Assets**: Sigstore Keyless Cosign (`.sigstore.json`) + APK v2/v3 signing + CycloneDX SBOM |
+| [`ccch1mneyyy/dsh-Go`](https://github.com/ccch1mneyyy/dsh-Go) | Flutter Android client: runs DSH on the phone in a built-in Ubuntu + Node environment (latest APK ~231 MB, plus ~1 GB runtime), or remote-controls a computer over SSH / DSHarness Remote; also phone control, desktop pets, native plugin UI | AGPL-3.0 | 23,280 |
+| [`liguobao/ds-harness-remote`](https://github.com/liguobao/ds-harness-remote) | E2EE P2P remote access shipped as an official-style plugin (TURN / relay fallback); reaches DSH, Codex, Cursor, Antigravity, OpenCode, Claude Code and more over ACP; Android, Web, iOS (beta) clients | MIT | 2,941 |
+| [`ccch1mneyyy/dsh-TUI`](https://github.com/ccch1mneyyy/dsh-TUI) | Third-party terminal UI plugin with a rich feature set | MIT | 7,735 |
+| **DSH Community (this repo)** | Linux / WSL terminal UI, signed Linux AppImage, a runtime-free Android remote client, multi-agent E2EE remote control plane | MIT | 0 |
+
+**Differences we can verify:**
+
+- **Fills the official Linux gap**: a WSL/Linux terminal UI and a signed Linux `.AppImage`. None of the three projects above lists a Linux desktop installer in its README.
+- **No changes to the official kernel**: nothing vendored, no `patch-package`; sessions are shared with the official `~/.dsh`. The terminal UI is our own `packages/tui`, and we never mount a third-party TUI.
+- **Verifiable releases**: all 12 assets of each release carry SHA-256 and Keyless Cosign `.sigstore.json` bundles, plus an official-runtime CycloneDX SBOM; the APK is also v2/v3-signed. The latest dsh-Go release ships only the APK and `SHA256SUMS`.
+- **Self-hostable and small**: the blind relay can be self-deployed ([`deploy/relay/`](deploy/relay/)), so no hosted service is required; the Android client is ~13 MB and embeds neither Node nor DSH.
+
+**Weaknesses, stated just as plainly:**
+
+- The project is new (0 stars); community size, documentation, and polish are far behind the three projects above.
+- Android has passed only CI `x86_64` emulator E2EE acceptance; physical `arm64-v8a` handsets remain `[UNVERIFIED]`, and there is no iOS client.
+- If you want to **run DSH on the phone itself** or use **phone control**, use dsh-Go; for **iOS, a hosted web client, or more agents (such as Cursor)**, look at DSHarness Remote; for a richer terminal UI, look at dsh-TUI. Our multi-agent plane covers only DSH, Claude Code, Codex CLI, and OpenCode.
 
 ---
 
@@ -58,7 +77,7 @@ Verification guide: [`docs/release.md#artifact-signing-keyless`](docs/release.md
 
 ### 2. Run from Source (WSL / Linux Terminal, Desktop, or Multi-Agent Remote)
 
-Requirements: Node.js 22.15+, pnpm, and either a configured `DEEPSEEK_API_KEY` (for DSH / hybrid mode) or local **Claude Code / Codex CLI / OpenCode** binaries on `PATH` (for standalone Multi-Agent Remote Control Plane mode).  
+Requirements: Node.js 24.9+ (official `@deepseek-ai/dsh@0.2.2-rc.3` declares `engines.node >=24.9.0`; this workspace requires at least 22.15 and CI passes on Node 22), pnpm, and either a configured `DEEPSEEK_API_KEY` (for DSH / hybrid mode) or local **Claude Code / Codex CLI / OpenCode** binaries on `PATH` (for standalone Multi-Agent Remote Control Plane mode).  
 Since official `0.1.0-rc.8`, session JSONL uses `node:zlib` zstd APIs added in Node 22.15. Sessions continue to use the official `~/.dsh` data source.
 
 ```sh

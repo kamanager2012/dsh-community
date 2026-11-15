@@ -20,17 +20,36 @@
 
 ## 为什么选择 DSH Community？
 
-`dsh-community` 遵循**「零内核分叉、最大化互补覆盖」**原则：既不重造轮子，又一次性补齐了官方发行版缺失的 Linux / 终端 / Android / 多 Agent 远程控制能力，同时避免了第三方重写版（如 `dsh-go` 或硬分叉版本）的会话割裂与生态断代问题。
+先说清楚官方有什么（依据上游 `deepseek-ai/deepseek-harness` 源码，核对于 2026-11-15）：
 
-| 对比维度 | 官方发行版 (`deepseek-harness`) | 其他 DSH 社区衍生版（如 `dsh-go` / 硬分叉） | **DSH Community (`dsh-community`)** |
+| 官方提供 | 说明 |
+|---|---|
+| Web UI | `npx @deepseek-ai/dsh web`；经反向代理加启动 token 可被其他机器的浏览器访问 |
+| Windows / macOS 桌面端 | Electron 壳（`win-x64`、`mac-arm64`、`mac-x64`）；官方打包文档明确 **Linux 不是受支持的 Desktop 发布目标** |
+| `dsh` 启动器 | 按 profile 启动 `web` / `headless` / `sdk` / `acp`；**自身不带终端界面**，上游也没有 TUI 包 |
+| Python SDK、ACP server | 供程序化调用，不是交互界面 |
+
+这些空白，以及围绕官方内核的其他需求，已有几个第三方项目在做。以下对比只取自各项目自己的 README 与发布页（星数为 2026-11-15 当日数据）：
+
+| 项目 | 做什么 | 许可 | Stars |
 |---|---|---|---|
-| **执行内核** | 官方原版 `@deepseek-ai/dsh` | Go 重写或分叉改写（工具链、压缩与提示词滞后于官方迭代） | **100% 官方原版 `@deepseek-ai/dsh`（`Official Source Ownership = 0`）** |
-| **`~/.dsh` 会话互通** | 原生 `~/.dsh`（Zstd JSONL） | 独立数据库或格式不兼容，无法续接官方 Web/桌面端历史会话 | **100% 共享同一份 `~/.dsh`** — 官方 Web/Win/Mac 开聊，Linux TUI / AppImage / Android 无缝续接 |
-| **Linux & WSL 体验** | 仅 Web UI（`dsh` CLI 只是启动器，不自带终端界面；上游桌面端文档仅覆盖 Windows / macOS 打包） | 仅单二进制 CLI，无桌面壳或官方 Web 托管 | **原生 WSL/Linux TUI + 签名版 Linux `.AppImage`** |
-| **移动端与远程能力** | 无 | 无（仅限本机终端） | **已签名 Android `arm64-v8a` APK + 浏览器 PWA**，基于 **Noise IK 端到端加密**（LAN / WebRTC P2P / 自建盲中继） |
-| **多 Agent 协同控制** | 仅限 DSH | 仅限单一引擎 | **统一远程控制 DSH + Claude Code + Codex CLI + OpenCode ACP** + 只读 Git diff 代码审查 |
-| **插件生态兼容性** | 官方 Cordis 插件机制 | 无法加载官方 Node/Cordis 插件生态 | **100% 兼容官方 Cordis 插件 + 经实测的 `catalog.json` 目录**（含 `testedDsh` 与权限披露） |
-| **供应链安全与验签** | 标准发行包 | 无签名或自建非受控构建 | **12 项全签名资产**：Sigstore Keyless Cosign（`.sigstore.json`）+ APK v2/v3 双签名 + CycloneDX SBOM |
+| [`ccch1mneyyy/dsh-Go`](https://github.com/ccch1mneyyy/dsh-Go) | Flutter 写的 Android 客户端：手机内置 Ubuntu + Node + DSH 本机运行（最新 APK 约 231 MB，另需约 1 GB 运行环境），或经 SSH / DSHarness Remote 遥控电脑；另有手机操控、桌宠、插件原生界面 | AGPL-3.0 | 23,280 |
+| [`liguobao/ds-harness-remote`](https://github.com/liguobao/ds-harness-remote) | 官方插件形态的端到端加密 P2P 远程访问（TURN / 中继回退）；经 ACP 接入 DSH、Codex、Cursor、Antigravity、OpenCode、Claude Code 等；Android、Web、iOS（beta）客户端 | MIT | 2,941 |
+| [`ccch1mneyyy/dsh-TUI`](https://github.com/ccch1mneyyy/dsh-TUI) | 第三方终端 UI 插件，功能丰富的 TUI | MIT | 7,735 |
+| **DSH Community（本仓）** | Linux / WSL 终端界面、签名 Linux AppImage、不内置运行时的 Android 遥控端、多 Agent E2EE 远程控制面 | MIT | 0 |
+
+**我们能核实的差异：**
+
+- **补官方的 Linux 空白**：WSL/Linux 终端界面，以及签名的 Linux `.AppImage`。上述三个第三方项目的 README 均未提供 Linux 桌面安装包。
+- **不改官方内核**：不 vendor、不 `patch-package`，Session 与官方共用 `~/.dsh`；终端界面是自研的 `packages/tui`，不挂载第三方 TUI。
+- **发布物可验签**：每个 Release 的 12 个资产都带 SHA-256、Keyless Cosign `.sigstore.json`，并附官方运行时 CycloneDX SBOM；APK 另有 v2/v3 签名。dsh-Go 最新 Release 只提供 APK 与 `SHA256SUMS`。
+- **自托管、体积小**：盲中继可自部署（[`deploy/relay/`](deploy/relay/)），不依赖托管服务；Android 客户端约 13 MB，不内置 Node 或 DSH。
+
+**同样要说清楚的短板：**
+
+- 项目很新（0 star），社区规模、文档与打磨程度都远不及上面三个项目。
+- Android 只经过 CI `x86_64` 模拟器 E2EE 验收，物理 `arm64-v8a` 真机仍是 `[UNVERIFIED]`；没有 iOS。
+- 想在**手机上直接运行 DSH**或使用**手机操控**，请用 dsh-Go；想要 **iOS、托管 Web 客户端或更多 Agent（如 Cursor）**，请看 DSHarness Remote；想要功能更丰富的终端 UI，请看 dsh-TUI。我们的多 Agent 目前只覆盖 DSH、Claude Code、Codex CLI、OpenCode。
 
 ---
 
@@ -55,7 +74,7 @@ Cosign 无密钥验签方法见 [`docs/release.md#artifact-signing-keyless`](doc
 
 ### 2. 从源码运行（WSL/Linux 终端、Linux 桌面或多 Agent 远程）
 
-环境要求：Node.js 22.15+、pnpm，以及 `DEEPSEEK_API_KEY`（DSH / 混合模式）或本地 `PATH` 中的 **Claude Code / Codex CLI / OpenCode**（独立多 Agent 远程控制面模式）。官方 `0.1.0-rc.8` 起 session JSONL 使用了 Node 22.15 才提供的 `node:zlib` zstd API。对话与官方共用 `~/.dsh`。
+环境要求：Node.js 24.9+（官方 `@deepseek-ai/dsh@0.2.2-rc.3` 声明 `engines.node >=24.9.0`；本仓工作区最低要求 22.15，CI 在 Node 22 上通过）、pnpm，以及 `DEEPSEEK_API_KEY`（DSH / 混合模式）或本地 `PATH` 中的 **Claude Code / Codex CLI / OpenCode**（独立多 Agent 远程控制面模式）。官方 `0.1.0-rc.8` 起 session JSONL 使用了 Node 22.15 才提供的 `node:zlib` zstd API。对话与官方共用 `~/.dsh`。
 
 ```sh
 git clone https://github.com/kamanager2012/dsh-community.git
