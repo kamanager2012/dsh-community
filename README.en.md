@@ -54,9 +54,18 @@ pnpm run doctor          # diagnostics (not bare `pnpm doctor` — that is pnpm'
 # Linux Desktop shell (with built-in Marketplace & Remote QR tab)
 pnpm desktop
 
-# Multi-Agent E2EE Remote Control Plane (browser PWA / QR pairing)
-dsh-community remote start --engines claude,codex,opencode --qr
+# Multi-Agent E2EE Remote Control Plane:
+# 1) Build once, then serve the browser PWA + single-port blind gateway locally
+pnpm build
+pnpm start -- remote gateway --serve-web --port 8787 &
+# 2) Start the Host (same-machine browser PWA via --web-url; add --host <LAN-IP> --mdns for LAN/native discovery)
+pnpm start -- remote start --engines claude,codex,opencode \
+  --relay-url ws://127.0.0.1:8787/relay \
+  --signaling-url ws://127.0.0.1:8787/signal \
+  --web-url http://127.0.0.1:8787/app/ --qr
 ```
+
+For cross-machine / mobile browser PWA pairing over HTTPS TLS, reverse-proxy `remote gateway` per [`deploy/relay/README.md`](deploy/relay/README.md) and see [`docs/remote-host-client.md`](docs/remote-host-client.md) (`--host 127.0.0.1` alone prints a `dsh-remote://pair` URI instead of an HTTP/HTTPS PWA URL).
 
 Useful CLI subcommands (`dsh-community` or `dsh-community-tui`): `new`, `resume last`, `sessions`, `doctor`, `version`, `plugins` (read-only catalog view; install stays on official `dsh plugin add` / Desktop marketplace), `desktop`, and `remote`.
 

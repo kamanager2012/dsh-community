@@ -25,7 +25,7 @@ body:
     id: tested-dsh
     attributes:
       label: DSH version tested
-      placeholder: 0.1.1-rc.2
+      placeholder: 0.2.2-rc.3
     validations:
       required: true
   - type: textarea

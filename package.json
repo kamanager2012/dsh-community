@@ -2,11 +2,27 @@
   "name": "dsh-community",
   "private": true,
   "version": "0.2.2-rc.3",
+  "license": "MIT",
   "description": "Community preview distribution around official DeepSeek Harness. Not an official client.",
+  "homepage": "https://kamanager2012.github.io/dsh-community/",
+  "bugs": {
+    "url": "https://github.com/kamanager2012/dsh-community/issues"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/kamanager2012/dsh-community.git"
   },
+  "keywords": [
+    "deepseek",
+    "deepseek-harness",
+    "dsh",
+    "tui",
+    "linux",
+    "appimage",
+    "e2ee",
+    "noise-ik",
+    "remote-control"
+  ],
   "type": "module",
   "packageManager": "pnpm@11.21.0",
   "engines": {

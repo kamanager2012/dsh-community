@@ -2,12 +2,15 @@
 
 ## Scope
 
-`dsh-community` is a distribution shell around the official, published
-`@deepseek-ai/dsh` runtime: a TUI launcher, an Electron Desktop shell, a
-release/signing pipeline, and a thin marketplace UI over
-[`packages/marketplace/catalog.json`](packages/marketplace/catalog.json). Official Source Ownership is 0 (see [ARCHITECTURE.md](ARCHITECTURE.md)):
-this repo does not vendor or reimplement the agent runtime, tool execution, or
-session storage.
+`dsh-community` is a Complementary Edition distribution shell around the
+official, published `@deepseek-ai/dsh` runtime: a WSL/Linux TUI launcher, a
+Linux Desktop AppImage shell, a release/signing pipeline, a thin marketplace UI
+over [`packages/marketplace/catalog.json`](packages/marketplace/catalog.json),
+and a Noise IK E2EE multi-agent Remote Control Plane
+(`packages/remote-adapter`, `apps/remote-web`). Official Source Ownership is 0
+(see [ARCHITECTURE.md](ARCHITECTURE.md)): this repo does not vendor or
+reimplement the agent runtime, tool execution, or official `~/.dsh` session
+storage.
 
 In scope for a security report:
 
@@ -43,9 +46,10 @@ Out of scope (report upstream instead):
   own repository. The catalog `security` metadata (added 2026-08-28)
   records a disclosure and an install/compose check; it is not an
   independent security audit of the plugin's runtime behavior.
-- Windows SmartScreen or macOS Gatekeeper warnings on installers — this is a
-  disclosed, known gap (no OS-level code signing), not a vulnerability; see
-  "Release integrity".
+- Missing OS vendor code signing on the Linux AppImage (or historical Windows
+  SmartScreen / macOS Gatekeeper warnings on pre-retirement `v0.1.1-rc.2`
+  installers) — this is a disclosed, known gap (no OS-level code signing), not
+  a vulnerability; see "Release integrity". Verify via `.sha256` and `.sigstore.json`.
 - Issues already superseded by the current releases in this repository.
 
 ## Desktop security model
@@ -141,20 +145,18 @@ See [docs/remote-host-client.md](docs/remote-host-client.md). None of these Remo
   [docs/release.md#artifact-signing-keyless](docs/release.md#artifact-signing-keyless).
   A passing verification means the asset was built by this repo's
   `release.yml` on a tag ref — it does not mean the binary is malware-free.
-- **Disclosed gap:** OS-level signing is absent — no Windows Authenticode, no
-  macOS notarization (`CSC_IDENTITY_AUTO_DISCOVERY=false`). Expect SmartScreen
-  and Gatekeeper warnings on first run; verify via the sha256 sidecar and the
+- **Disclosed gap:** OS-level vendor signing is absent (for the shipped Linux
+  AppImage, as well as upstream/historical Win/macOS installers); verify
+  community artifacts via the `.sha256` sidecar and keyless `.sigstore.json`
   cosign bundle instead of OS trust prompts.
-- Windows packaging keeps hosted-runner antimalware protection enabled. The
-  packager confines electron-builder to a staging workspace to keep scanning
-  bounded, and a path-scoped Windows PR smoke proves NSIS packaging without
-  disabling Defender.
-- All three Desktop release targets now have pre-tag PR package smokes using
-  the same packaging commands as `release.yml`: Windows NSIS, Linux AppImage,
-  and macOS DMG. Linux additionally extracts the AppImage and requires
-  `resources/app.asar`; macOS mounts the DMG read-only and requires a valid
-  `.app/Contents/MacOS` executable. Every smoke runs the asar vendor=0 guard
-  and independently recomputes the published SHA-256 sidecar.
+- Desktop runtime staging runs `runtime-lock-verify` across Ubuntu, Windows, and
+  macOS (`npm ci --ignore-scripts` against the committed `apps/desktop/runtime-lock/`),
+  while active Desktop release packaging targets **Linux AppImage** under
+  Complementary Edition (historical Windows NSIS / macOS DMG installers were
+  retired after `v0.1.1-rc.2` in favor of upstream `deepseek-ai/deepseek-harness`).
+  Linux AppImage package smoke extracts the AppImage without FUSE, requires
+  `resources/app.asar`, enforces the asar `Official Source Ownership = 0`
+  vendor guard, and independently recomputes the SHA-256 sidecar.
 - Workspace packages (`@dsh-community/*`) are never published to npm.
 
 ## Dependency security

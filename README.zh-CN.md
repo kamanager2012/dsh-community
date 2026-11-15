@@ -50,9 +50,18 @@ pnpm desktop            # 启动桌面壳（含社区市场页与远程二维码
 pnpm marketplace -- list  # 插件发现 CLI
 pnpm run doctor         # 自检（不要裸跑 pnpm doctor，那是 pnpm 自己的）
 
-# 多 Agent E2EE 远程控制面（浏览器 PWA / 扫码配对）
-dsh-community remote start --engines claude,codex,opencode --qr
+# 多 Agent E2EE 远程控制面：
+# 1) 先构建一次，再本地托管浏览器 PWA 与单端口盲中继网关
+pnpm build
+pnpm start -- remote gateway --serve-web --port 8787 &
+# 2) 启动远程宿主（--web-url 输出浏览器配对二维码；局域网/原生客户端可追加 --host <LAN-IP> --mdns）
+pnpm start -- remote start --engines claude,codex,opencode \
+  --relay-url ws://127.0.0.1:8787/relay \
+  --signaling-url ws://127.0.0.1:8787/signal \
+  --web-url http://127.0.0.1:8787/app/ --qr
 ```
+
+跨设备 / 手机浏览器通过 HTTPS 配对 PWA 时，请按 [`deploy/relay/README.md`](deploy/relay/README.md) 配置 TLS 反向代理并传 `https://.../app/`，完整参数见 [`docs/remote-host-client.md`](docs/remote-host-client.md)（不配 `--web-url` 时默认仅监听 `127.0.0.1` 并输出 `dsh-remote://pair` 二维码）。
 
 同一入口也叫 `dsh-community`（`dsh-community-tui` 仍可用），支持子命令：`new`、`resume last`、`sessions`、`doctor`、`version`、`plugins`（只读目录；安装仍走官方 `dsh plugin add` / 桌面市场页）、`desktop`、`remote`。
 
