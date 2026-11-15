@@ -26,7 +26,7 @@ from typing import Iterable
 
 ANSI_CSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 ANSI_OSC = re.compile(r"\x1b\][^\x07]*(?:\x07|\x1b\\)")
-SESSION_FILES = ("session.jsonl.zstd", "session.jsonl")
+SESSION_FILES = ("session.v4.jsonl.zstd", "session.jsonl.zstd", "session.jsonl")
 
 
 def now_iso() -> str:
@@ -96,8 +96,12 @@ def run_turn(
     timeout: float,
     secret_values: list[str],
 ) -> dict[str, object]:
+    # The launcher deletes DSH_TUI_FIRST_PROMPT from its own environment and only
+    # forwards a first turn that is passed as task text after `new` / `resume <id>`
+    # (see apps/tui/src/launch.ts tuiLaunchEnv). Pass it as launcher args.
     child_env = dict(env)
-    child_env["DSH_TUI_FIRST_PROMPT"] = prompt
+    child_env.pop("DSH_TUI_FIRST_PROMPT", None)
+    args = [*args, prompt]
     child_env["TERM"] = child_env.get("TERM") or "xterm-256color"
 
     pid, fd = pty.fork()
