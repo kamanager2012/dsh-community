@@ -103,6 +103,9 @@ describe('real user-loop evidence workflow', () => {
     expect(runner).toContain('"officialHeadlessHandoff": third')
     expect(runner).toContain('"appimageBundledRuntimeHandoff"')
     expect(runner).toContain('"linux-appimage-electron-gui"')
+    expect(runner).toContain('desktopSnapshotAndRenderVerified')
+    expect(runner).toContain('button[data-go="marketplace"]')
+    expect(runner).toContain('在线抓取失败，展示最近一次缓存。')
     expect(runner).toContain('turns["resumeAfterOfficialHandoff"] = fourth')
     expect(runner).toContain('"crossSurfaceVerified": True')
     expect(runner).toContain('"lifecycleRecovery": lifecycle_recovery')
@@ -137,7 +140,7 @@ describe('real user-loop evidence workflow', () => {
         tuiOfflineFailClosed: boolean
         marketplaceClientCacheFallback: boolean
         marketplaceCliCacheFallback: boolean
-        desktopMarketplaceCacheFallback: boolean
+        desktopSnapshotAndRenderVerified: boolean
         cachedPluginCount: number
       }
     }
@@ -151,7 +154,7 @@ describe('real user-loop evidence workflow', () => {
     expect(parsed.offline.tuiOfflineFailClosed).toBe(true)
     expect(parsed.offline.marketplaceClientCacheFallback).toBe(true)
     expect(parsed.offline.marketplaceCliCacheFallback).toBe(true)
-    expect(parsed.offline.desktopMarketplaceCacheFallback).toBe(true)
+    expect(parsed.offline.desktopSnapshotAndRenderVerified).toBe(true)
     expect(parsed.offline.cachedPluginCount).toBeGreaterThanOrEqual(9)
   })
 })

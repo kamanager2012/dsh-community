@@ -273,6 +273,8 @@ def verify_version_upgrade_recovery(
     runtime_view_ts = _resolve_release_file("apps/desktop/src/runtime-view.ts", release_root)
     tui_profile_ts = _resolve_release_file("apps/tui/src/profile.ts", release_root)
     latest_tested_json = _resolve_release_file("contracts/compatibility/latest-tested.json", release_root)
+    target_version = json.loads(latest_tested_json.read_text(encoding="utf-8")).get("version", "0.2.2-rc.3")
+    prior_version = "0.1.1-rc.2" if target_version == "0.2.2-rc.2" else "0.2.2-rc.2"
 
     with tempfile.TemporaryDirectory(prefix="dsh-upgrade-recovery-") as tmp_raw:
         tmp = Path(tmp_raw)
@@ -280,9 +282,9 @@ def verify_version_upgrade_recovery(
         catalog_path.write_text(
             json.dumps(
                 {
-                    "latestTested": "0.2.2-rc.2",
-                    "defaultPin": "0.2.2-rc.2",
-                    "projects": {"/work": "0.2.2-rc.2"},
+                    "latestTested": prior_version,
+                    "defaultPin": prior_version,
+                    "projects": {"/work": prior_version},
                 },
                 indent=2,
             )
@@ -304,7 +306,7 @@ def verify_version_upgrade_recovery(
                     "name": "dsh-profile-dsh-community-tui",
                     "private": True,
                     "dependencies": {
-                        "@dsh-community/tui-surface": "file:/old/v0.2.2-rc.2/packages/tui",
+                        "@dsh-community/tui-surface": f"file:/old/v{prior_version}/packages/tui",
                         "user-custom-plugin": "1.2.3",
                     },
                     "dsh": {
@@ -318,13 +320,13 @@ def verify_version_upgrade_recovery(
             + "\n",
             encoding="utf-8",
         )
-        custom_patch = "# Custom user patch from rc.2\n- id: custom\n  config: {}\n"
+        custom_patch = f"# Custom user patch from {prior_version}\n- id: custom\n  config: {{}}\n"
         (profile_dir / "cordis.patch.yml").write_text(custom_patch, encoding="utf-8")
 
         js_runner = (
             'import { readFileSync, writeFileSync } from "node:fs";\n'
             'import { pathToFileURL } from "node:url";\n'
-            'const [catalogTs, viewTs, profileTs, latestTestedPath, catalogPath, dshHome] = process.argv.slice(1);\n'
+            'const [catalogTs, viewTs, profileTs, latestTestedPath, catalogPath, dshHome, priorVersion] = process.argv.slice(1);\n'
             'const rc = await import(pathToFileURL(catalogTs).href);\n'
             'const rv = await import(pathToFileURL(viewTs).href);\n'
             'const prof = await import(pathToFileURL(profileTs).href);\n'
@@ -332,10 +334,10 @@ def verify_version_upgrade_recovery(
             'if (!latestTested || latestTested === "fallback") throw new Error("failed to read latest-tested.json");\n'
             'const seeded = rc.parseRuntimeCatalog(JSON.parse(readFileSync(catalogPath, "utf8")));\n'
             'if (!seeded) throw new Error("seeded runtime-versions.json failed parseRuntimeCatalog");\n'
-            'const hydratedPrior = rc.hydrateCatalog(seeded, latestTested, "0.2.2-rc.2");\n'
-            'const priorRec = rc.recommendUpdate(hydratedPrior, "0.2.2-rc.2");\n'
-            'if (hydratedPrior.latestTested !== latestTested || priorRec !== "offer-tested" || hydratedPrior.defaultPin !== "0.2.2-rc.2" || hydratedPrior.projects["/work"] !== "0.2.2-rc.2") {\n'
-            '  throw new Error(`unexpected prior upgrade hydration state: ${JSON.stringify({ hydratedPrior, priorRec })}`);\n'
+            'const hydratedPrior = rc.hydrateCatalog(seeded, latestTested, priorVersion);\n'
+            'const priorRec = rc.recommendUpdate(hydratedPrior, priorVersion);\n'
+            'if (hydratedPrior.latestTested !== latestTested || priorRec !== "offer-tested" || hydratedPrior.defaultPin !== priorVersion || hydratedPrior.projects["/work"] !== priorVersion) {\n'
+            '  throw new Error(`unexpected prior upgrade hydration state: ${JSON.stringify({ hydratedPrior, priorRec, priorVersion })}`);\n'
             '}\n'
             'const hydratedCurrent = rc.hydrateCatalog(hydratedPrior, latestTested, latestTested);\n'
             'const view = rv.buildRuntimeView({\n'
@@ -351,14 +353,14 @@ def verify_version_upgrade_recovery(
             '}\n'
             'const pinned = rc.pinDefault(hydratedCurrent, latestTested);\n'
             'writeFileSync(catalogPath, JSON.stringify(pinned, null, 2) + "\\n");\n'
-            'const profileRes = prof.ensureCommunityTuiProfile({ dshHome, communityPatch: "# v0.2.2-rc.3\\n[]\\n" });\n'
+            'const profileRes = prof.ensureCommunityTuiProfile({ dshHome, communityPatch: `# v${latestTested}\\n[]\\n` });\n'
             'if (profileRes.created !== false) throw new Error("expected existing TUI profile to upgrade in place");\n'
             'const updatedManifest = JSON.parse(readFileSync(`${profileRes.dir}/package.json`, "utf8"));\n'
             'if (updatedManifest.dependencies?.["user-custom-plugin"] !== "1.2.3") throw new Error("lost user custom plugin dependency on upgrade");\n'
             'if (updatedManifest.dependencies?.["@dsh-community/tui-surface"] !== prof.communityTuiPackageSpec()) throw new Error("failed to upgrade tui-surface spec");\n'
             'if (JSON.stringify(updatedManifest.dsh?.profile?.bundles) !== JSON.stringify([...prof.COMMUNITY_TUI_BUNDLES])) throw new Error("failed to upgrade profile bundles");\n'
             'const userPatchAfter = readFileSync(`${profileRes.dir}/cordis.patch.yml`, "utf8");\n'
-            'if (!userPatchAfter.includes("Custom user patch from rc.2")) throw new Error("clobbered user cordis.patch.yml on upgrade");\n'
+            'if (!userPatchAfter.includes(`Custom user patch from ${priorVersion}`)) throw new Error("clobbered user cordis.patch.yml on upgrade");\n'
             'console.log(JSON.stringify({\n'
             '  targetVersion: latestTested,\n'
             '  priorRec,\n'
@@ -379,6 +381,7 @@ def verify_version_upgrade_recovery(
                 str(latest_tested_json),
                 str(catalog_path),
                 str(dsh_home_upgrade),
+                prior_version,
             ],
             text=True,
             stdout=subprocess.PIPE,
@@ -399,7 +402,7 @@ def verify_version_upgrade_recovery(
                 "apps/desktop/src/runtime-view.ts",
                 "apps/tui/src/profile.ts",
             ],
-            "fromVersion": "0.2.2-rc.2",
+            "fromVersion": prior_version,
             "toVersion": parsed["targetVersion"],
             "priorInstallRecommendation": parsed["priorRec"],
             "postUpgradeRecommendation": parsed["postRec"],
@@ -510,7 +513,7 @@ def verify_offline_handling(
             '  tuiOfflineFailClosed: tuiOfflineRejected,\n'
             '  marketplaceClientCacheFallback: cachedFetch.source === "cache",\n'
             '  marketplaceCliCacheFallback: cliCode === 0,\n'
-            '  desktopMarketplaceCacheFallback: true,\n'
+            '  desktopSnapshotAndRenderVerified: true,\n'
             '  cachedPluginCount: parsedDesktopCatalog.plugins.length,\n'
             '}));\n'
         )
@@ -560,11 +563,15 @@ def verify_appimage_gui_session_and_lifecycle(
     env: dict[str, str],
     expected_version: str = "0.2.2-rc.3",
     prior_version: str = "0.2.2-rc.2",
+    release_root: Path | None = None,
     node_bin: str = "node",
     timeout: float = 90.0,
 ) -> dict[str, object]:
     if not apprun_path.exists():
         raise RuntimeError(f"--appimage-apprun does not exist: {apprun_path}")
+
+    catalog_json = _resolve_release_file("packages/marketplace/catalog.json", release_root)
+    parsed_catalog_payload = json.loads(catalog_json.read_text(encoding="utf-8"))
 
     with tempfile.TemporaryDirectory(prefix="dsh-appimage-gui-") as sandbox_raw:
         sandbox = Path(sandbox_raw)
@@ -573,6 +580,7 @@ def verify_appimage_gui_session_and_lifecycle(
         data_dir = sandbox / "xdg-data"
         user_data_dir = sandbox / "electron-userdata"
         workspace_dir = sandbox / "workspace"
+        pid_file = sandbox / "electron.pid"
         for d in (home_dir, config_dir, data_dir, user_data_dir, workspace_dir):
             d.mkdir(parents=True, exist_ok=True)
 
@@ -586,6 +594,20 @@ def verify_appimage_gui_session_and_lifecycle(
                     "latestTested": prior_version,
                     "defaultPin": prior_version,
                     "projects": {"/work": prior_version},
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        # Seed an expired persisted snapshot (>10m TTL) so showMarketplace()
+        # exercises the production refreshMarketplaceCatalog() offline fallback.
+        (user_data_dir / "marketplace-catalog.json").write_text(
+            json.dumps(
+                {
+                    "source": "live",
+                    "fetchedAt": "2026-01-01T00:00:00.000Z",
+                    "catalog": parsed_catalog_payload,
                 },
                 indent=2,
             )
@@ -610,12 +632,20 @@ def verify_appimage_gui_session_and_lifecycle(
         child_env["TMPDIR"] = str(sandbox)
         child_env["DSH_HOME"] = str(dsh_home)
         child_env["DSH_DESKTOP_CWD"] = str(workspace_dir)
+        child_env["NODE_USE_ENV_PROXY"] = "1"
+        child_env["HTTPS_PROXY"] = "http://127.0.0.1:1"
+        child_env["https_proxy"] = "http://127.0.0.1:1"
+        child_env["HTTP_PROXY"] = "http://127.0.0.1:1"
+        child_env["http_proxy"] = "http://127.0.0.1:1"
+        child_env["NO_PROXY"] = "127.0.0.1,localhost"
+        child_env["no_proxy"] = "127.0.0.1,localhost"
 
         use_xvfb = not child_env.get("DISPLAY") and shutil.which("xvfb-run") is not None
         launch_timeout_ms = max(90_000, int(timeout * 1000))
 
         driver_js = r'''
 import { spawn } from "node:child_process";
+import { writeFileSync } from "node:fs";
 
 const [
   apprunPath,
@@ -627,6 +657,7 @@ const [
   priorVersion,
   timeoutMsRaw,
   useXvfbRaw,
+  pidFile,
 ] = process.argv.slice(1);
 
 const timeoutMs = Number(timeoutMsRaw) || 90000;
@@ -789,6 +820,9 @@ const child = spawn(cmd, args, {
   detached: process.platform !== "win32",
   stdio: ["ignore", "pipe", "pipe"],
 });
+if (typeof child.pid === "number") {
+  writeFileSync(pidFile, String(child.pid), "utf8");
+}
 
 const stderrLines = [];
 const stdoutLines = [];
@@ -843,7 +877,8 @@ try {
       const snapshot = await window.dshCommunity.hostSnapshot();
       const sessionsBtn = document.querySelector('button[data-go="sessions"]');
       const runtimeBtn = document.querySelector('button[data-go="runtime"]');
-      return { phase: snapshot?.phase ?? null, hasNav: Boolean(sessionsBtn && runtimeBtn) };
+      const marketplaceBtn = document.querySelector('button[data-go="marketplace"]');
+      return { phase: snapshot?.phase ?? null, hasNav: Boolean(sessionsBtn && runtimeBtn && marketplaceBtn) };
     })()`);
     if (!snap || snap.phase !== "ready" || !snap.hasNav) return undefined;
     const res = await fetch(`${debugOrigin}/json/list`, { signal: AbortSignal.timeout(5000) });
@@ -902,6 +937,25 @@ try {
     throw new Error(`Runtime page mismatch: expected @deepseek-ai/dsh@${expectedVersion} and preserved defaultPin ${priorVersion}, got:\n${runtimeCheck.text}`);
   }
 
+  await pageCdp.evaluate(`(() => {
+    const btn = document.querySelector('button[data-go="marketplace"]');
+    if (!btn) throw new Error("Missing marketplace nav button");
+    btn.click();
+    return true;
+  })()`);
+
+  const marketplaceCheck = await waitForCondition("Marketplace offline fallback rendered via refreshMarketplaceCatalog", 25000, rendererErrors, async () => {
+    return pageCdp.evaluate(`(() => {
+      const text = document.body?.innerText ?? "";
+      if (!document.title.includes("社区市场")) return null;
+      if (!text.includes("在线抓取失败，展示最近一次缓存。")) return null;
+      if (!text.includes("缓存目录（网络不可用，展示最近一次抓取）")) return null;
+      const pluginButtons = document.querySelectorAll("[data-plugin-action]").length;
+      if (pluginButtons < 1) return null;
+      return { title: document.title, pluginButtons };
+    })()`);
+  });
+
   if (rendererErrors.length > 0) {
     throw new Error(`Renderer errors observed: ${rendererErrors.join(" | ")}`);
   }
@@ -929,6 +983,8 @@ try {
     sharedHomeRendered: true,
     sessionVisibleInGui: true,
     runtimeUpgradeRenderedInGui: true,
+    marketplaceOfflineCacheFallbackInGui: true,
+    marketplacePluginCountInGui: marketplaceCheck.pluginButtons,
     rendererErrorsCount: rendererErrors.length,
     exitCode: exitResult.code,
   }));
@@ -944,7 +1000,7 @@ try {
 }
 '''
 
-        res = subprocess.run(
+        proc = subprocess.Popen(
             [
                 node_bin,
                 "--input-type=module",
@@ -959,18 +1015,59 @@ try {
                 prior_version,
                 str(launch_timeout_ms),
                 "1" if use_xvfb else "0",
+                str(pid_file),
             ],
             env=child_env,
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            timeout=max(120.0, timeout + 30.0),
-            check=False,
+            start_new_session=True,
         )
-        if res.returncode != 0:
+        outer_timeout = (launch_timeout_ms / 1000.0) + 180.0
+        stdout_text = ""
+        stderr_text = ""
+        try:
+            stdout_text, stderr_text = proc.communicate(timeout=outer_timeout)
+        except subprocess.TimeoutExpired as exc:
+            stdout_text = exc.stdout or ""
+            stderr_text = exc.stderr or ""
             raise RuntimeError(
-                f"verify_appimage_gui_session_and_lifecycle failed ({res.returncode}):\n"
-                f"{res.stdout[-2000:]}\n{res.stderr[-2000:]}"
+                f"verify_appimage_gui_session_and_lifecycle timed out after {outer_timeout:.0f}s:\n"
+                f"{stdout_text[-2000:]}\n{stderr_text[-2000:]}"
+            ) from exc
+        finally:
+            pids_to_kill: list[int] = []
+            if pid_file.exists():
+                try:
+                    raw_pid = pid_file.read_text(encoding="utf-8").strip()
+                    if raw_pid:
+                        pids_to_kill.append(int(raw_pid))
+                except (OSError, ValueError):
+                    pass
+            if proc.poll() is None:
+                pids_to_kill.append(proc.pid)
+            for pgid in dict.fromkeys(pids_to_kill):
+                for sig in (signal.SIGTERM, signal.SIGKILL):
+                    try:
+                        os.killpg(pgid, sig)
+                    except (ProcessLookupError, PermissionError):
+                        pass
+                    if sig == signal.SIGTERM:
+                        time.sleep(0.2)
+            if proc.poll() is None:
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    try:
+                        proc.kill()
+                        proc.wait(timeout=5)
+                    except OSError:
+                        pass
+
+        if proc.returncode != 0:
+            raise RuntimeError(
+                f"verify_appimage_gui_session_and_lifecycle failed ({proc.returncode}):\n"
+                f"{stdout_text[-2000:]}\n{stderr_text[-2000:]}"
             )
 
         upgraded_catalog = json.loads((user_data_dir / "runtime-versions.json").read_text(encoding="utf-8"))
@@ -989,7 +1086,7 @@ try {
                 f"Missing runtime stamps after AppImage upgrade boot: current={ready_stamp.exists()}, prior={prior_stamp.exists()}"
             )
 
-        gui_metrics = json.loads(res.stdout.strip().splitlines()[-1])
+        gui_metrics = json.loads(stdout_text.strip().splitlines()[-1])
         return {
             **gui_metrics,
             "runtimeCatalogHydratedOnDisk": True,
@@ -1503,6 +1600,7 @@ def main() -> int:
             env=env,
             expected_version=expected_version,
             prior_version=prior_version,
+            release_root=release_root,
             node_bin=args.node,
             timeout=args.timeout_seconds,
         )
@@ -1516,6 +1614,11 @@ def main() -> int:
         upgrade_info = lifecycle_recovery.get("versionUpgrade")
         if isinstance(upgrade_info, dict):
             upgrade_info["appimageGuiUpgradeVerified"] = True
+        offline_info = lifecycle_recovery.get("offlineHandling")
+        if isinstance(offline_info, dict):
+            offline_info["desktopMarketplaceCacheFallback"] = bool(
+                appimage_gui_verification.get("marketplaceOfflineCacheFallbackInGui")
+            )
 
     fourth_token = secrets.token_hex(8)
     fourth_expected = f"ACK-{fourth_token}"
