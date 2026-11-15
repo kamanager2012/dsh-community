@@ -102,7 +102,7 @@ dsh-marketplace install <name>
 
 - 自动门禁：`artifact-smoke` 工作流（下载 exact release `.AppImage`、Android `.apk` + sidecars 校验并跑 Linux AppImage、Android APK 与 TUI smoke）。
 - 状态标注规则：只允许 `[REAL] / [PARTIAL] / [UNVERIFIED] / [NOT_IMPLEMENTED]` 等明确标签，禁止 `production-ready` 一类说法。
-- 2026-11-15 记录：`v0.2.2-rc.3` 真实资产在 [Run 43696414193](https://github.com/kamanager2012/dsh-community/actions/runs/43696414193) 通过 `resolve`、`linux-appimage`、`android-apk`、`linux-terminal` 与 `verify-signatures`（cosign keyless 12 文件全通过）；WSL/Linux 社区 TUI ↔ 官方 `dsh --profile headless` 双向 4 轮跨端 Session 接续已通过 [`user-loop-evidence.yml`](https://github.com/kamanager2012/dsh-community/actions/runs/43709890408) 验收 `[REAL]`，物理 `arm64-v8a` Android 真机遥测仍为 `[UNVERIFIED]`。
+- 2026-11-15 记录：`v0.2.2-rc.3` 真实资产在 [Run 43696414193](https://github.com/kamanager2012/dsh-community/actions/runs/43696414193) 通过 `resolve`、`linux-appimage`、`android-apk`、`linux-terminal` 与 `verify-signatures`（cosign keyless 12 文件全通过）；社区 TUI ↔ 官方 `dsh --profile headless` ↔ Linux AppImage 内置运行时（`official-dsh.tar`）5 轮跨端 Session 接续，以及缺 Key 干净拒绝与调用真实 `ensureOfficialHostExtracted()` 的 Runtime 解压中断自愈恢复，均已通过 [`user-loop-evidence.yml`](https://github.com/kamanager2012/dsh-community/actions/runs/43713641736) 验收 `[REAL]`，物理 `arm64-v8a` Android 真机遥测仍为 `[UNVERIFIED]`。
 
 ## 相关仓库
 
