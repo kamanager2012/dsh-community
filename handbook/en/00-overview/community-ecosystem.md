@@ -42,7 +42,7 @@ and evidence boundaries.
 
 Under **Complementary Edition**:
 
-- The **three Complementary Community endpoints** are **WSL/Linux Terminal**, **Linux AppImage**, and **Android Remote Client**. The first two are shipped today; Android (`apps/android` + `packages/remote-adapter`) stays `[UNVERIFIED]` and is outside Published Latest.
+- The **three Complementary Community endpoints** are **WSL/Linux Terminal**, **Linux AppImage**, and **Android Remote Client**. All three are published in Latest (`dsh-community`, `.AppImage`, and signed `-android-arm64-v8a.apk`); Android passes CI `x86_64` emulator E2EE acceptance while physical `arm64-v8a` handset telemetry stays `[UNVERIFIED]`.
 - Windows and macOS Desktop installers belong upstream in `deepseek-ai/deepseek-harness` (retired from `dsh-community` after historical `v0.1.1-rc.2`; `--win` / `--mac` fail closed). Historical independent numbers `v0.1.2`–`v0.1.6` are not current downloads.
 - Official Web and Win/macOS Desktop are kernel/upstream surfaces sharing `~/.dsh`, not Community endpoints.
 - Around `~/.dsh`, `packages/remote-adapter` and `apps/remote-web` also provide a **Multi-Agent E2EE Remote Control Plane** (`dsh-community remote start --qr`) over Noise IK, LAN mDNS, WebRTC P2P, or self-hosted Blind Relay (`deploy/relay/`) supporting DSH, Claude Code, Codex CLI, OpenCode ACP, and read-only scoped Git diff review.
@@ -92,19 +92,19 @@ Neither owns the Runtime or replaces the official plugin manager. The standalone
 `dsh-community-plugins` repo was deleted after its content merged into
 `catalog.json`.
 
-Current evidence snapshot `[待复核]`: the registry has 9 verified plugins. CI checks
+Current evidence snapshot: the registry has 9 verified plugins. CI checks
 shape, npm existence/version, `dist.integrity`, provenance, and repository reachability;
 the compose workflow runs the official `dsh plugin add` chain and a composition assertion
-per plugin (`testedDsh` recorded in `catalog.json` remains on `0.1.1-rc.2`). The
+per plugin (`testedDsh` is `0.2.2-rc.3` for 6/9 plugins; 3 legacy plugins remain on `0.1.1-rc.2`). The
 Marketplace CLI provides `list`, `search`, `info`, and `install`; `info` displays
 digest/provenance and installation remains on the official chain.
 
-Current release boundary `[PARTIAL]`: GitHub Actions run
-[43663270841](https://github.com/kamanager2012/dsh-community/actions/runs/43663270841)
+Current release boundary: GitHub Actions run
+[43696414193](https://github.com/kamanager2012/dsh-community/actions/runs/43696414193)
 downloaded the exact `v0.2.2-rc.3` Release assets and passed `resolve`,
-`linux-appimage`, `linux-terminal`, and `verify-signatures` (keyless cosign on all 8
-assets). This is still not the full user loop; live model calls, session resume
-end-to-end, plugin restart, and upgrade paths remain `[UNVERIFIED]`.
+`linux-appimage`, `android-apk`, `linux-terminal`, and `verify-signatures` (keyless cosign on all 12
+assets); the WSL/Linux live model user loop (`new -> answer -> resume -> answer`) passed in run
+[43688556931](https://github.com/kamanager2012/dsh-community/actions/runs/43688556931) (`[REAL]`), while physical `arm64-v8a` Android handset telemetry remains `[UNVERIFIED]`.
 
 ## Reality language
 

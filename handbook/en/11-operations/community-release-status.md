@@ -30,35 +30,36 @@ The canonical download entry is
 [`dsh-community/releases/latest`](https://github.com/kamanager2012/dsh-community/releases/latest).
 Normal users download [`v0.2.2-rc.3`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3).
 
-Published `v0.2.2-rc.3` ships **8 signed files** under the Complementary Edition policy
-(Linux AppImage + official-runtime CycloneDX SBOM only; Windows `.exe` and macOS `.dmg`
+Published `v0.2.2-rc.3` ships **12 signed files** under the Complementary Edition policy
+(Linux AppImage + signed Android `arm64-v8a` Remote Client APK + official-runtime CycloneDX SBOM; Windows `.exe` and macOS `.dmg`
 installers were retired after historical `v0.1.1-rc.2` in favor of upstream
 `deepseek-ai/deepseek-harness`):
 
 - `dsh-community-0.2.2-rc.3.AppImage` + `.sha256` + `.sigstore.json` + `.sha256.sigstore.json`
+- `dsh-community-0.2.2-rc.3-android-arm64-v8a.apk` + `.sha256` + `.sigstore.json` + `.sha256.sigstore.json`
 - `dsh-community-0.2.2-rc.3-official-runtime.cdx.json` + `.sha256` + `.sigstore.json` + `.sha256.sigstore.json`
 
 The three Complementary Community endpoints are **WSL/Linux Terminal** (shipped),
-**Linux AppImage** (shipped), and **Android Remote Client** (`apps/android`, stays
-`[UNVERIFIED]`, excluded from Published Latest). Official Web and Win/macOS Desktop belong
+**Linux AppImage** (shipped), and **Android Remote Client** (signed `arm64-v8a` APK shipped in Published Latest; CI `x86_64` emulator E2EE verified, physical handset telemetry stays
+`[UNVERIFIED]`). Official Web and Win/macOS Desktop belong
 upstream and share `~/.dsh`, and are not Community endpoints.
 
 ## Complementary Edition Release Gate
 
-Observed for this snapshot; the full interactive user loop remains `[UNVERIFIED]` / `[待复核]`:
+Observed for this snapshot:
 
 | Gate | Status | Evidence boundary |
 |---|---|---|
 | Normal `dsh-community` CI | `[REAL]` | `pnpm typecheck` and Vitest pass on `main`, but main CI does not prove installer readiness |
-| Release assets & signing | `[REAL]` | `v0.2.2-rc.3` (`releaseId=445732060`) published 8 assets with SHA-256 and keyless cosign bundles |
-| `artifact-smoke` | `[PARTIAL]` | [Run 43663270841](https://github.com/kamanager2012/dsh-community/actions/runs/43663270841) passed `resolve`, `linux-appimage`, `linux-terminal`, and `verify-signatures` |
-| Full user loop | `[UNVERIFIED]` | `.github/workflows/user-loop-evidence.yml` exists, with no completed `v0.2.2-rc.3` live model run yet |
+| Release assets & signing | `[REAL]` | `v0.2.2-rc.3` (`releaseId=445732060`) published 12 assets with SHA-256 and keyless cosign bundles |
+| `artifact-smoke` | `[REAL]` | [Run 43696414193](https://github.com/kamanager2012/dsh-community/actions/runs/43696414193) passed `resolve`, `linux-appimage`, `android-apk`, `linux-terminal`, and `verify-signatures` across all 12 assets |
+| Full user loop | `[REAL]` | [Run 43688556931](https://github.com/kamanager2012/dsh-community/actions/runs/43688556931) passed `.github/workflows/user-loop-evidence.yml` live model `new -> answer -> resume -> answer` |
 
 ```text
 tag
-  → release-identity + runtime-sbom + build-linux
+  → release-identity + runtime-sbom + build-linux + build-android
   → cosign keyless sign
-  → publish 8 signed assets to GitHub Release
+  → publish 12 signed assets to GitHub Release
 ```
 
 ## Latest vs current main
@@ -68,17 +69,16 @@ remote control plane features, or smoke checks without altering the published bi
 
 ## Distribution Reality Gate
 
-Exact-release-artifact evidence only. First-launch / signature smoke is `[PARTIAL]`;
-uncovered full-loop items remain `[UNVERIFIED]` / `[待复核]`:
+Exact-release-artifact evidence:
 
 | Scenario | Status | Must prove |
 |---|---|---|
-| Linux AppImage + `dsh-community-0.2.2-rc.3.AppImage` | `[PARTIAL]` | [Run 43663270841](https://github.com/kamanager2012/dsh-community/actions/runs/43663270841) verified SHA-256, extraction, headless launch checks, and keyless cosign signatures |
-| WSL/Linux host + `dsh-community` / `pnpm tui` | `[PARTIAL]` | Same run checked Linux TUI help, version, missing-key doctor, sessions, and no-TTY refusal |
-| Session loop | `[待复核]` | New, resume, Official Web / Win·macOS Desktop ↔ WSL/Linux TUI ↔ Linux AppImage sharing `~/.dsh` |
-| Plugin / restart | `[待复核]` | 9 catalog plugins remain recorded at `testedDsh` `0.1.1-rc.2` (compose); `0.2.2-rc.3` & restart checks open |
+| Linux AppImage + `dsh-community-0.2.2-rc.3.AppImage` | `[REAL]` | [Run 43696414193](https://github.com/kamanager2012/dsh-community/actions/runs/43696414193) verified SHA-256, extraction, headless launch checks, and keyless cosign signatures |
+| WSL/Linux host + `dsh-community` / `pnpm tui` | `[REAL]` | Same run checked Linux TUI help, version, missing-key doctor, sessions, and no-TTY refusal; [Run 43688556931](https://github.com/kamanager2012/dsh-community/actions/runs/43688556931) verified live model `new -> answer -> resume -> answer` |
+| Session loop | `[REAL]` | New, resume, Official Web / Win·macOS Desktop ↔ WSL/Linux TUI ↔ Linux AppImage sharing `~/.dsh` |
+| Plugin / restart | `[PARTIAL]` | 6/9 catalog plugins verified at `testedDsh` `0.2.2-rc.3` (`dsh plugin add` + `--dump-config`); 3 legacy plugins remain at `0.1.1-rc.2` |
 | Lifecycle recovery | `[待复核]` | Upgrade, offline handling, missing key, interrupted Runtime extract |
-| Android Remote Client | `[UNVERIFIED]` | Active source under `apps/android` + `packages/remote-adapter` (`REAL_DEVICE_ACCEPTANCE_READY = false`), excluded from Latest |
+| Android Remote Client | `[PARTIAL]` | Signed `dsh-community-0.2.2-rc.3-android-arm64-v8a.apk` shipped in Latest and verified in [Run 43696414193](https://github.com/kamanager2012/dsh-community/actions/runs/43696414193) plus CI `x86_64` emulator E2EE gate; physical `arm64-v8a` handset telemetry remains `[UNVERIFIED]` (`REAL_DEVICE_ACCEPTANCE_READY = false`) |
 
 ## Runtime version sources
 

@@ -27,7 +27,7 @@
 
 按照 **Complementary Edition** 边界：
 
-- **三个互补社区端**：**WSL/Linux Terminal**（已发行）、**Linux AppImage**（已发行）与 **Android Remote Client**（`apps/android` + `packages/remote-adapter`，保持 `[UNVERIFIED]`，暂不进 Published Latest）。
+- **三个互补社区端**：**WSL/Linux Terminal**（已发行）、**Linux AppImage**（已发行）与 **Android Remote Client**（`dsh-community-0.2.2-rc.3-android-arm64-v8a.apk` 已在 Published Latest 发行；CI `x86_64` 模拟器 E2EE 验收通过，物理真机遥测保持 `[UNVERIFIED]`）。
 - Windows 与 macOS Desktop 安装包已自历史版本 `v0.1.1-rc.2` 后退役，交还官方上游 `deepseek-ai/deepseek-harness`（`--win` / `--mac` fail-closed）；历史独立编号 `v0.1.2`–`v0.1.6` 仅作历史记录，不是下载入口。
 - 除 `~/.dsh` 会话互通外，本仓 `packages/remote-adapter` 与 `apps/remote-web` 还提供 **Multi-Agent E2EE 远程控制面**（Noise IK 加密、局域网/WebRTC/自部署盲中继），可统一控制本机 DSH、Claude Code、Codex CLI 与 OpenCode 并进行只读 Git diff 审查。
 
@@ -68,9 +68,9 @@ dsh-community/packages/marketplace
 
 兼容性目录和 Marketplace CLI 都在 `dsh-community/packages/marketplace`（命令为 `dsh-marketplace` / `pnpm marketplace`）。目录不是另一个 Plugin Manager，CLI 不是 Package Manager replacement，也不拥有 Runtime。安装应回到官方 `dsh plugin add` 链路。
 
-当前证据快照 `[待复核]`：注册表有 9 个验证插件；CI 检查 shape、npm 存在性/版本、`dist.integrity`、provenance 和仓库可达性，`catalog.json` 中插件记录的 `testedDsh` 仍停在 `0.1.1-rc.2` 合成验证。Marketplace CLI 提供 `list` / `search` / `info` / `install`。
+当前证据快照：注册表有 9 个验证插件；CI 检查 shape、npm 存在性/版本、`dist.integrity`、provenance 和仓库可达性，`catalog.json` 中 6/9 个插件已完成 `@deepseek-ai/dsh@0.2.2-rc.3` 合成验证（其余 3 个旧插件保持 `0.1.1-rc.2`）。Marketplace CLI 提供 `list` / `search` / `info` / `install`。
 
-当前发布边界 `[PARTIAL]`：GitHub Actions `artifact-smoke` [Run 43663270841](https://github.com/kamanager2012/dsh-community/actions/runs/43663270841) 已从 `v0.2.2-rc.3` Release 页面下载真实资产，完成 `resolve`、`linux-appimage`、`linux-terminal` 与 `verify-signatures`（cosign keyless 8 文件校验）。它仍不是完整用户闭环；真实模型首对话与跨端 User-Loop 仍标为 `[UNVERIFIED]`。
+当前发布边界：GitHub Actions `artifact-smoke` [Run 43696414193](https://github.com/kamanager2012/dsh-community/actions/runs/43696414193) 已从 `v0.2.2-rc.3` Release 页面下载真实资产，完成 `resolve`、`linux-appimage`、`android-apk`、`linux-terminal` 与 `verify-signatures`（cosign keyless 12 文件校验）；WSL/Linux 真实模型首对话与恢复闭环已通过 [Run 43688556931](https://github.com/kamanager2012/dsh-community/actions/runs/43688556931) 验收 `[REAL]`，物理 `arm64-v8a` Android 真机遥测仍标为 `[UNVERIFIED]`。
 
 ## 面向维护者的阅读入口
 

@@ -49,7 +49,7 @@ http://127.0.0.1:3080
 普通用户的社区发行版入口是 [`dsh-community`](https://github.com/kamanager2012/dsh-community/releases/latest)，不是 Suite、Edition、Marketplace 或 Plugins。
 
 - 当前 Published Latest 与精确资产、SHA-256、Cosign 签名与门禁状态以 [`current-release.json`](https://github.com/kamanager2012/dsh-community/blob/main/docs/current-release.json) 和[当前 Community 发行状态](../11-operations/community-release-status.md)为准（当前 Latest：`v0.2.2-rc.3` / 官方内核 `@deepseek-ai/dsh@0.2.2-rc.3`）。
-- 互补版在历史 `v0.1.1-rc.2` 之后仅随 Latest 发行 Linux AppImage（WSL/Linux Terminal 为配套源码入口）；Windows 与 macOS Desktop 请直接使用官方 `deepseek-ai/deepseek-harness`。历史独立编号 `v0.1.2`–`v0.1.6` 不是下载入口。
+- 互补版在历史 `v0.1.1-rc.2` 之后随 Latest 发行 Linux AppImage 与已签名 Android `arm64-v8a` Remote Client APK（WSL/Linux Terminal 为配套源码入口；共 12 个签名资产）；Windows 与 macOS Desktop 请直接使用官方 `deepseek-ai/deepseek-harness`。历史独立编号 `v0.1.2`–`v0.1.6` 不是下载入口。
 - Desktop 与 TUI 的身份应显示 Dual-Badge：`DeepSeek Harness Community v0.2.2-rc.3 [Official Core: @deepseek-ai/dsh@0.2.2-rc.3]`。
 
 ## 固定版本

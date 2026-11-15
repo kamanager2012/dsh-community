@@ -1,16 +1,16 @@
 # Community 发布 Runbook
 
-> 事实状态：`v0.2.2-rc.3` 的 `artifact-smoke` 已在真实 runner 上通过 `[PARTIAL]`（[Run 43663270841](https://github.com/kamanager2012/dsh-community/actions/runs/43663270841)）；本文仍不把首启与验签 smoke 当成完整用户闭环，也不把 README 声明当成运行证据。
+> 事实状态：`v0.2.2-rc.3` 的 12 资产 `artifact-smoke` 已在真实 runner 上通过（[Run 43696414193](https://github.com/kamanager2012/dsh-community/actions/runs/43696414193)），WSL/Linux 用户闭环已通过 [Run 43688556931](https://github.com/kamanager2012/dsh-community/actions/runs/43688556931) 验收；本文仍将首启/验签 smoke 与完整用户闭环及物理 `arm64-v8a` 真机遥测分开记录，也不把 README 声明当成运行证据。
 
 相关入口：[当前发行状态](community-release-status.md) · [发布检查清单](release-checklist.md) · [生态与产品入口](../00-overview/community-ecosystem.md) · [dsh-community Release](https://github.com/kamanager2012/dsh-community/releases/latest)
 
 ## 当前事实边界
 
-- 当前 Published Latest 是 `v0.2.2-rc.3`，共 **8 个已签名资产**：`dsh-community-0.2.2-rc.3.AppImage`、官方运行时 CycloneDX SBOM `dsh-community-0.2.2-rc.3-official-runtime.cdx.json`，以及各自的 `.sha256` 与 `.sigstore.json` keyless cosign bundle；
+- 当前 Published Latest 是 `v0.2.2-rc.3`，共 **12 个已签名资产**：`dsh-community-0.2.2-rc.3.AppImage`、`dsh-community-0.2.2-rc.3-android-arm64-v8a.apk`、官方运行时 CycloneDX SBOM `dsh-community-0.2.2-rc.3-official-runtime.cdx.json`，以及各自的 `.sha256` 与 `.sigstore.json` keyless cosign bundle；
 - 官方内核是 `@deepseek-ai/dsh@0.2.2-rc.3`，产品 Candidate Source 与内核 1:1 同号；历史独立编号 `v0.1.2`–`v0.1.6` 与 Win/macOS 安装包（`v0.1.1-rc.2` 之后已退役）均不是当前用户下载；
 - Desktop/TUI Dual-Badge 必须显示：`DeepSeek Harness Community v0.2.2-rc.3 [Official Core: @deepseek-ai/dsh@0.2.2-rc.3]`；
-- 三个互补 Community endpoint 为 WSL/Linux Terminal、Linux AppImage、Android Remote Client（`apps/android` `[UNVERIFIED]`，不进 Latest）。官方 Web 与 Win/macOS Desktop 归官方上游所有；
-- `v0.2.2-rc.3` 真实资产在 [Run 43663270841](https://github.com/kamanager2012/dsh-community/actions/runs/43663270841) 通过 `resolve`、`linux-appimage`、`linux-terminal` 与 `verify-signatures`，仍属 `[PARTIAL]`，完整用户闭环保持 `[UNVERIFIED]` / `[待复核]`；
+- 三个互补 Community endpoint 为 WSL/Linux Terminal、Linux AppImage、Android Remote Client（已签名 `arm64-v8a` APK 已在 Latest 发行；CI `x86_64` 模拟器 E2EE 验收通过，物理真机遥测 `[UNVERIFIED]`）。官方 Web 与 Win/macOS Desktop 归官方上游所有；
+- `v0.2.2-rc.3` 真实资产在 [Run 43696414193](https://github.com/kamanager2012/dsh-community/actions/runs/43696414193) 通过 `resolve`、`linux-appimage`、`android-apk`、`linux-terminal` 与 `verify-signatures`（12 资产全验），且 WSL/Linux 用户闭环在 [Run 43688556931](https://github.com/kamanager2012/dsh-community/actions/runs/43688556931) 通过 `[REAL]`；物理 `arm64-v8a` 真机遥测保持 `[UNVERIFIED]`；
 - 发现安装包缺官方 Runtime 依赖时，必须立即停止推广并回退 Latest，再用新 tag 修复，不能移动或覆盖已发布 tag。
 
 ## 1. 发布前冻结
@@ -51,6 +51,7 @@ workflow 的职责是验证身份、生成 SBOM、构建 Linux AppImage、keyles
 | `release-identity` | 校验 immutable release tag 身份与当前 Published Latest 真源 |
 | `runtime-sbom` | 生成并校验官方运行时 CycloneDX SBOM（`.cdx.json`）及 `.sha256` |
 | `build-linux` | `typecheck`、全量 `pnpm test`、Linux AppImage、`asar-purity` vendor=0 校验、`.sha256` |
+| `build-android` | `verify-android-release-ready.mjs --allow-emulator-verified`、已签名 `arm64-v8a` APK、零内嵌 Node/DSH 校验、`apksigner verify`、`.sha256` |
 | `sign` | 使用 Sigstore keyless OIDC（`cosign sign-blob --yes --bundle`）签名全部产物与 `.sha256` |
 | `publish` | 校验签名 bundle、生成 Release notes 并按 tag 创建 GitHub Release（拒绝覆盖已有 Release） |
 
@@ -79,13 +80,13 @@ gh workflow run artifact-smoke.yml --repo kamanager2012/dsh-community --field ta
 gh run list --repo kamanager2012/dsh-community --workflow artifact-smoke.yml --limit 1
 ```
 
-最近一次 `v0.2.2-rc.3` 对应 [Run 43663270841](https://github.com/kamanager2012/dsh-community/actions/runs/43663270841)，通过 `resolve`、`linux-appimage`、`linux-terminal` 与 `verify-signatures` `[PARTIAL]`；完整用户闭环仍需通过 `user-loop-evidence.yml` 或人工记录单独验证（`~/.dsh` 跨端读写、插件重启、断网与升级恢复）。
+最近一次 `v0.2.2-rc.3` 对应 [Run 43696414193](https://github.com/kamanager2012/dsh-community/actions/runs/43696414193)，通过 `resolve`、`linux-appimage`、`android-apk`、`linux-terminal` 与 `verify-signatures`（12 资产全验）；WSL/Linux 用户闭环已通过 `user-loop-evidence.yml`（[Run 43688556931](https://github.com/kamanager2012/dsh-community/actions/runs/43688556931)）验证。
 
 ## 6. Latest 晋升与回退
 
 ### 晋升
 
-仅当真实 Release 创建完成（8 个签名资产齐全）且 `artifact-smoke` 通过后再更新 `docs/current-release.json` / `docs/current-release.md` 同步 Published Latest 记录；不要混淆 Candidate Source 与 Published Latest，也不要将 `[PARTIAL]` 写成完整安装闭环。
+仅当真实 Release 创建完成（12 个签名资产齐全）且 `artifact-smoke` 通过后再更新 `docs/current-release.json` / `docs/current-release.md` 同步 Published Latest 记录；不要混淆 Candidate Source 与 Published Latest，也不要将 `[PARTIAL]` 写成完整安装闭环。
 
 ### 回退
 
