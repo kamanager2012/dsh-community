@@ -88,6 +88,8 @@ describe('real user-loop evidence workflow', () => {
     expect(runner).toContain('def run_official_headless_turn(')
     expect(runner).toContain('def verify_missing_key_refusal_and_recovery(')
     expect(runner).toContain('def verify_interrupted_extract_recovery(')
+    expect(runner).toContain('ensureOfficialHostExtracted')
+    expect(runner).toContain('apps/desktop/src/host-extract.ts#ensureOfficialHostExtracted')
     expect(runner).toContain('"--appimage-archive"')
     expect(runner).toContain('"--profile", "headless"')
     expect(runner).toContain('"--session-id", session_id')
