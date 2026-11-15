@@ -100,6 +100,7 @@ export function renderReleaseNotes({
   const changelogBody = normalizeChangelogBody(rawSection, isLatestEligible)
 
   const appImageName = `dsh-community-${version}.AppImage`
+  const androidApkName = `dsh-community-${version}-android-arm64-v8a.apk`
   const sbomName = `dsh-community-${version}-official-runtime.cdx.json`
   const channelLabel = isLatestEligible
     ? 'Complementary Edition Latest Release'
@@ -111,7 +112,7 @@ export function renderReleaseNotes({
     `# DeepSeek Harness Community \`${version}\``,
     '',
     `> **Dual-Badge**: \`DeepSeek Harness Community v${version} [Official Core: @deepseek-ai/dsh@${coreVersion}]\`  `,
-    `> **Channel**: ${channelLabel} · **Session Truth**: Shared \`~/.dsh\` across Official Web, Official Win/macOS Desktop, WSL/Linux Terminal, and Linux AppImage`,
+    `> **Channel**: ${channelLabel} · **Session Truth**: Shared \`~/.dsh\` across Official Web, Official Win/macOS Desktop, WSL/Linux Terminal, Linux AppImage, and Android Remote Client`,
     '',
   ]
 
@@ -132,38 +133,47 @@ export function renderReleaseNotes({
     '| Surface | How to Run / Download | Scope |',
     '|---|---|---|',
     `| **Linux Desktop (AppImage)** | Download [\`${appImageName}\`](${baseDownloadUrl}/${appImageName}) below | Complementary Linux GUI absent upstream |`,
+    `| **Android Remote Client (APK)** | Download [\`${androidApkName}\`](${baseDownloadUrl}/${androidApkName}) below | Native Kotlin E2EE Remote Client (\`arm64-v8a\`; CI emulator E2EE \`PASS\`, physical handset \`[UNVERIFIED]\`) |`,
     '| **WSL / Linux Terminal & Remote CLI** | From source: `pnpm install && pnpm start` or `dsh-community remote start` | Primary Linux / WSL TUI & multi-agent E2EE host |',
     `| **Official Web & Win / macOS Desktop** | [\`deepseek-ai/deepseek-harness\`](https://github.com/deepseek-ai/deepseek-harness) (\`npx @deepseek-ai/dsh@${coreVersion} web\`) | Upstream surfaces (Win \`.exe\` / macOS \`.dmg\` retired here after \`v0.1.1-rc.2\`) |`,
-    '| **Android Remote Client** | Source under `apps/android` | `[UNVERIFIED]` — omitted from GitHub Release binaries until R6 real-device acceptance passes |',
     '',
-    '### Launch Linux AppImage',
+    '### Launch Linux AppImage & Install Android APK',
     '',
     '```sh',
     `chmod +x ${appImageName}`,
     `./${appImageName}`,
+    '',
+    `# Optional: install Android arm64-v8a Remote Client APK over ADB`,
+    `adb install -r ${androidApkName}`,
     '```',
     '',
-    `First launch extracts the embedded official \`@deepseek-ai/dsh@${coreVersion}\` runtime once into user data; all conversations stay in \`~/.dsh\`.`,
+    `First launch of the Linux AppImage extracts the embedded official \`@deepseek-ai/dsh@${coreVersion}\` runtime once into user data; all conversations stay in \`~/.dsh\`. The Android APK is a pure thin Remote Client (zero Node.js runtime) that pairs over Noise IK E2EE with \`dsh-community remote start\`.`,
     '',
     '## Release Assets & Verification (SHA-256 + Keyless Cosign)',
     '',
-    'Every release publishes 8 signed files (`.AppImage`, official-runtime CycloneDX `.cdx.json` SBOM, `.sha256` sidecars, and `.sigstore.json` keyless Sigstore bundles):',
+    'Every release publishes 12 signed files (`.AppImage`, `arm64-v8a` `.apk`, official-runtime CycloneDX `.cdx.json` SBOM, `.sha256` sidecars, and `.sigstore.json` keyless Sigstore bundles):',
     '',
     '```sh',
     '# 1. Verify SHA-256 checksums',
-    `sha256sum -c ${appImageName}.sha256 ${sbomName}.sha256`,
+    `sha256sum -c ${appImageName}.sha256 ${androidApkName}.sha256 ${sbomName}.sha256`,
     '',
-    '# 2. Verify Keyless Cosign signature (requires cosign >= v2.4)',
+    '# 2. Verify Keyless Cosign signatures (requires cosign >= v2.4)',
     'cosign verify-blob \\',
     `  --bundle ${appImageName}.sigstore.json \\`,
     '  --certificate-oidc-issuer https://token.actions.githubusercontent.com \\',
     `  --certificate-identity "${certIdentity}" \\`,
     `  ${appImageName}`,
+    '',
+    'cosign verify-blob \\',
+    `  --bundle ${androidApkName}.sigstore.json \\`,
+    '  --certificate-oidc-issuer https://token.actions.githubusercontent.com \\',
+    `  --certificate-identity "${certIdentity}" \\`,
+    `  ${androidApkName}`,
     '```',
     '',
     '## Verification Boundaries & Docs',
     '',
-    '- **Boundaries**: `artifact-smoke` checks SHA-256 checksums, keyless Cosign signatures across all 8 assets, Linux AppImage extraction, and CLI startup; `Full user loop` and `Android` real-device acceptance remain `[UNVERIFIED]` until explicitly promoted.',
+    '- **Boundaries**: `artifact-smoke` checks SHA-256 checksums, keyless Cosign signatures across all 12 assets, Linux AppImage extraction, Android APK signature/purity, and CLI startup; physical `arm64-v8a` handset telemetry remains `[UNVERIFIED]` until USB hardware sign-off.',
     `- **Docs**: [Current Release Facts](https://github.com/${repository}/blob/main/docs/current-release.md) · [Machine Facts (\`current-release.json\`)](https://github.com/${repository}/blob/main/docs/current-release.json) · [Release & Signing Guide](https://github.com/${repository}/blob/main/docs/release.md#artifact-signing-keyless) · [Handbook](https://kamanager2012.github.io/dsh-community/)`,
   )
 

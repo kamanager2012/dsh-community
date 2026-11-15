@@ -19,7 +19,7 @@ describe('release signing identity least privilege', () => {
     )
     expect(sign).toContain('id-token: write')
     expect(sign).toContain('contents: read')
-    expect(sign).toContain('needs: [build-linux, runtime-sbom]')
+    expect(sign).toContain('needs: [build-linux, build-android, runtime-sbom]')
   })
 
   it('keeps manual diagnostic builds away from signing identity', () => {

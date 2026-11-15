@@ -98,13 +98,104 @@ jobs:
             apps/desktop/release/*.AppImage.sha256
           if-no-files-found: error
 
+  build-android:
+    needs: release-identity
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install Gradle 8.11.1
+        run: |
+          GRADLE_VER="8.11.1"
+          GRADLE_SHA256="f397b287023acdba1e9f6fc5ea72d22dd63669d59ed4a289a29b1a76eee151c6"
+          curl -fsSL "https://services.gradle.org/distributions/gradle-${GRADLE_VER}-bin.zip" -o /tmp/gradle.zip
+          echo "${GRADLE_SHA256}  /tmp/gradle.zip" | sha256sum -c -
+          sudo unzip -q /tmp/gradle.zip -d /opt/gradle
+          echo "/opt/gradle/gradle-${GRADLE_VER}/bin" >> "$GITHUB_PATH"
+      - name: Verify Android release readiness gate (pure-remote + emulator E2EE verified)
+        run: node scripts/verify-android-release-ready.mjs --allow-emulator-verified
+      - name: Build and verify signed arm64-v8a Android release APK
+        env:
+          IS_TAG_REF: ${{ startsWith(github.ref, 'refs/tags/v') && '1' || '0' }}
+          KEYSTORE_BASE64: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.DSH_ANDROID_KEYSTORE_BASE64 || '' }}
+          KEYSTORE_PASSWORD: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.DSH_ANDROID_KEYSTORE_PASSWORD || '' }}
+          KEY_ALIAS: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.DSH_ANDROID_KEY_ALIAS || '' }}
+          KEY_PASSWORD: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.DSH_ANDROID_KEY_PASSWORD || '' }}
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./package.json').version")
+          KEY_DIR="$(mktemp -d)"
+          trap 'rm -rf "$KEY_DIR"' EXIT
+          KEYSTORE_PATH="$KEY_DIR/dsh-release.jks"
+          if [ "$IS_TAG_REF" = "1" ]; then
+            if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
+              echo "ERROR: Persistent Android signing secrets (DSH_ANDROID_KEYSTORE_*) are required on release tag builds" >&2
+              exit 1
+            fi
+            printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$KEYSTORE_PATH"
+          else
+            KEYSTORE_PASSWORD="dsh-ci-ephemeral-keystore-pass"
+            KEY_ALIAS="dsh-ci-ephemeral-key"
+            KEY_PASSWORD="$KEYSTORE_PASSWORD"
+            keytool -genkeypair \
+              -keystore "$KEYSTORE_PATH" \
+              -storetype PKCS12 \
+              -storepass "$KEYSTORE_PASSWORD" \
+              -keypass "$KEY_PASSWORD" \
+              -alias "$KEY_ALIAS" \
+              -keyalg RSA -keysize 2048 -validity 1 \
+              -dname "CN=DSH CI Diagnostic Release, O=DSH Community, C=US" >/dev/null 2>&1
+          fi
+
+          DSH_ANDROID_SIGNING_REQUIRED=true \
+          DSH_ANDROID_KEYSTORE_PATH="$KEYSTORE_PATH" \
+          DSH_ANDROID_KEYSTORE_PASSWORD="$KEYSTORE_PASSWORD" \
+          DSH_ANDROID_KEY_ALIAS="$KEY_ALIAS" \
+          DSH_ANDROID_KEY_PASSWORD="$KEY_PASSWORD" \
+          gradle --no-daemon -p apps/android -PdshAbiFilters=arm64-v8a :app:assembleRelease
+
+          REL_APK="$(find apps/android/app/build/outputs/apk/release -name '*.apk' | head -n 1)"
+          test -n "$REL_APK"
+          APK_LIST="$KEY_DIR/apk-entries.txt"
+          unzip -l "$REL_APK" > "$APK_LIST"
+          if grep -Eiq "libnode\.so|nodejs-mobile|nodejs-project|@deepseek-ai/dsh|deepseek-ai|webkit" "$APK_LIST"; then
+            echo "ERROR: Forbidden embedded Node/DSH/WebView entries found in release APK" >&2
+            exit 1
+          fi
+          grep -q "lib/arm64-v8a/libjingle_peerconnection_so.so" "$APK_LIST"
+          if grep -q "lib/x86_64/" "$APK_LIST"; then
+            echo "ERROR: Expected arm64-v8a-only release APK, found x86_64 native libraries" >&2
+            exit 1
+          fi
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -n 1)"
+          test -n "$APKSIGNER"
+          "$APKSIGNER" verify --verbose "$REL_APK"
+
+          mkdir -p apps/android/release-out
+          OUT_APK="apps/android/release-out/dsh-community-${VERSION}-android-arm64-v8a.apk"
+          cp "$REL_APK" "$OUT_APK"
+          node scripts/checksum-release.mjs "$OUT_APK"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: android
+          path: |
+            apps/android/release-out/*.apk
+            apps/android/release-out/*.apk.sha256
+          if-no-files-found: error
+
   sign:
     if: ${{ startsWith(github.ref, 'refs/tags/v') && success() }}
-    # Sigstore keyless signing of every release asset (AppImage, SBOM, sha256 sidecars).
+    # Sigstore keyless signing of every release asset (AppImage, APK, SBOM, sha256 sidecars).
     # cosign >= v3 removed --output-signature/--output-certificate; the v3 way is one
     # bundle per blob: <asset>.sigstore.json (signature + Fulcio certificate +
     # Rekor transparency-log proof). See docs/release.md "Artifact signing".
-    needs: [build-linux, runtime-sbom]
+    needs: [build-linux, build-android, runtime-sbom]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -115,6 +206,10 @@ jobs:
         with:
           name: linux
           path: dist-artifacts/linux
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: android
+          path: dist-artifacts/android
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: sbom
@@ -155,7 +250,7 @@ jobs:
 
   publish:
     if: ${{ startsWith(github.ref, 'refs/tags/v') && success() }}
-    needs: [build-linux, runtime-sbom, sign]
+    needs: [build-linux, build-android, runtime-sbom, sign]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # Sole writer in this workflow: creates the GitHub Release and uploads assets.
@@ -169,6 +264,10 @@ jobs:
         with:
           name: linux
           path: dist-artifacts/linux
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: android
+          path: dist-artifacts/android
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: sbom
@@ -223,6 +322,7 @@ jobs:
           shopt -s nullglob
           assets=(
             dist-artifacts/*/*.AppImage
+            dist-artifacts/*/*.apk
             dist-artifacts/*/*-official-runtime.cdx.json
             dist-artifacts/*/*.sha256
             dist-signed/*/*.sigstore.json
@@ -242,14 +342,52 @@ jobs:
             fi
           done
           printf 'publishing %s\n' "${assets[@]}"
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "release $TAG already exists; refusing to replace published assets"
-            echo "cut a new tag for a new build. do not move a published tag."
-            exit 1
-          fi
           RELEASE_TITLE=$(head -n 1 release-title.txt)
-          gh release create "$TAG" \
-            --title "${RELEASE_TITLE:-$TAG}" \
-            --notes-file release-notes.md \
-            "${EXTRA[@]}" \
-            "${assets[@]}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            existing_names=$(gh release view "$TAG" --json assets --jq '.assets[].name')
+            missing_assets=()
+            primary_payloads=(
+              dist-artifacts/*/*.AppImage
+              dist-artifacts/*/*.apk
+              dist-artifacts/*/*-official-runtime.cdx.json
+            )
+            for p in "${primary_payloads[@]}"; do
+              rel=${p#dist-artifacts/}
+              group=(
+                "$p"
+                "${p}.sha256"
+                "dist-signed/${rel}.sigstore.json"
+                "dist-signed/${rel}.sha256.sigstore.json"
+              )
+              present_count=0
+              for item in "${group[@]}"; do
+                base=$(basename "$item")
+                if printf '%s\n' "$existing_names" | grep -Fxq "$base"; then
+                  present_count=$((present_count + 1))
+                fi
+              done
+              if [[ "$present_count" -eq 0 ]]; then
+                missing_assets+=("${group[@]}")
+              elif [[ "$present_count" -ne 4 ]]; then
+                echo "partial asset group for $(basename "$p") on release $TAG ($present_count/4 present); refusing inconsistent companion backfill" >&2
+                exit 1
+              fi
+            done
+            if [[ ${#missing_assets[@]} -eq 0 ]]; then
+              echo "release $TAG already contains all release assets; refusing to replace published assets"
+              echo "cut a new tag for a new build. do not move a published tag."
+              exit 1
+            fi
+            printf 'uploading missing asset groups to existing release %s: %s\n' "$TAG" "${missing_assets[*]}"
+            gh release upload "$TAG" "${missing_assets[@]}"
+            gh release edit "$TAG" \
+              --title "${RELEASE_TITLE:-$TAG}" \
+              --notes-file release-notes.md \
+              "${EXTRA[@]}"
+          else
+            gh release create "$TAG" \
+              --title "${RELEASE_TITLE:-$TAG}" \
+              --notes-file release-notes.md \
+              "${EXTRA[@]}" \
+              "${assets[@]}"
+          fi

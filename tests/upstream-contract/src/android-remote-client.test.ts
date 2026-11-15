@@ -125,9 +125,10 @@ describe('Android R5 pure thin Remote Client contract', () => {
 
     const realityGate = JSON.parse(
       readFileSync(join(ANDROID_ROOT, 'evidence/reality-gate.json'), 'utf8'),
-    ) as { status: string; apk: { arm64RealDeviceSmoke: boolean } }
-    expect(realityGate.status).toBe('NOT_RUN')
+    ) as { status: string; apk: { arm64RealDeviceSmoke: boolean; x86_64EmulatorSmoke: boolean } }
+    expect(realityGate.status).toBe('EMULATOR_PASS_NOT_PHYSICAL_ARM64')
     expect(realityGate.apk.arm64RealDeviceSmoke).toBe(false)
+    expect(realityGate.apk.x86_64EmulatorSmoke).toBe(true)
 
     const workflowPath = join(ROOT, '.github/workflows/android-remote-acceptance.yml')
     expect(existsSync(workflowPath)).toBe(true)

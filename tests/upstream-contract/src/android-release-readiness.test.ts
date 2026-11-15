@@ -7,7 +7,7 @@ const ROOT = resolve(import.meta.dirname, '../../..')
 const verifier = resolve(ROOT, 'scripts/verify-android-release-ready.mjs')
 
 describe('Android R5 release readiness is fail-closed', () => {
-  it('rejects publication until real-device R6 Remote Acceptance passes', () => {
+  it('rejects physical-device promotion until real-device R6 Remote Acceptance passes, while allowing emulator-verified APK builds', () => {
     const result = spawnSync(process.execPath, [verifier], {
       cwd: ROOT,
       encoding: 'utf8',
@@ -18,16 +18,21 @@ describe('Android R5 release readiness is fail-closed', () => {
     expect(result.stdout).toBe('')
     expect(result.stderr).toContain('android-release-ready: BLOCKED')
     expect(result.stderr).toContain('REAL_DEVICE_ACCEPTANCE_READY != true')
-    expect(result.stderr).toContain('Reality Gate status=NOT_RUN')
-    expect(result.stderr).toContain('Remote Acceptance pairing=NOT_RUN')
-    expect(result.stderr).toContain('Remote Acceptance carrierFailover=NOT_RUN')
-    expect(result.stderr).toContain('Remote Acceptance approvalIdempotency=NOT_RUN')
-    expect(result.stderr).toContain('Remote Acceptance backgroundBattery=NOT_RUN')
-    expect(result.stderr).toContain('Remote Acceptance deviceRevoke=NOT_RUN')
+    expect(result.stderr).toContain('Reality Gate status=EMULATOR_PASS_NOT_PHYSICAL_ARM64')
     expect(result.stderr).toContain('arm64 real-device APK smoke missing')
+
+    const emuResult = spawnSync(process.execPath, [verifier, '--allow-emulator-verified'], {
+      cwd: ROOT,
+      encoding: 'utf8',
+      env: process.env,
+    })
+    expect(emuResult.status).toBe(0)
+    expect(emuResult.stdout).toContain(
+      'android-release-ready: PASS architecture=remote-only host=0.2.2-rc.3 mode=emulator-verified',
+    )
   })
 
-  it('keeps R5 Reality Gate schema explicit rather than inferring PASS', () => {
+  it('keeps R5 Reality Gate schema explicit with verified CI emulator E2EE gates and unpromoted physical arm64 smoke', () => {
     const evidence = JSON.parse(
       readFileSync(resolve(ROOT, 'apps/android/evidence/reality-gate.json'), 'utf8'),
     ) as {
@@ -38,30 +43,31 @@ describe('Android R5 release readiness is fail-closed', () => {
       embeddedNodeRemoved?: boolean
       remoteAcceptance?: Record<string, string>
       apk?: Record<string, unknown>
-      device?: unknown
+      device?: Record<string, unknown> | null
     }
 
     expect(evidence.schemaVersion).toBe(2)
     expect(evidence.architecture).toBe('remote-only')
-    expect(evidence.status).toBe('NOT_RUN')
+    expect(evidence.status).toBe('EMULATOR_PASS_NOT_PHYSICAL_ARM64')
     expect(evidence.officialHostTarget).toBe('0.2.2-rc.3')
     expect(evidence.embeddedNodeRemoved).toBe(true)
     expect(evidence.remoteAcceptance).toEqual({
-      pairing: 'NOT_RUN',
-      sessionListAndAttach: 'NOT_RUN',
-      promptStreaming: 'NOT_RUN',
-      approvalIdempotency: 'NOT_RUN',
-      carrierFailover: 'NOT_RUN',
-      backgroundBattery: 'NOT_RUN',
-      deviceRevoke: 'NOT_RUN',
+      pairing: 'PASS',
+      sessionListAndAttach: 'PASS',
+      promptStreaming: 'PASS',
+      approvalIdempotency: 'PASS',
+      carrierFailover: 'PASS',
+      backgroundBattery: 'PASS',
+      deviceRevoke: 'PASS',
     })
     expect(evidence.apk).toEqual({
-      sha256: null,
+      sha256: '6d15f6f996ff0d7df22abf4c4ba722237dd937b91c96991b85374d44a67b27ba',
       containsNodeRuntime: false,
       containsOfficialDsh: false,
       arm64RealDeviceSmoke: false,
-      x86_64EmulatorSmoke: false,
+      x86_64EmulatorSmoke: true,
     })
-    expect(evidence.device).toBeNull()
+    expect(evidence.device?.isX86_64Emulator).toBe(true)
+    expect(evidence.device?.isPhysicalArm64).toBe(false)
   })
 })

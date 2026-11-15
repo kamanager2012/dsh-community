@@ -75,21 +75,33 @@ afterEach(() => {
 })
 
 describe('verify-release-set CLI', () => {
-  it('accepts a Complementary Edition Linux AppImage + SBOM release set', () => {
+  it('accepts a Complementary Edition Linux AppImage + Android APK + SBOM release set', () => {
     const { artifacts, signed } = makeRoot()
     addAsset(artifacts, signed, 'linux', 'dsh-community.AppImage', 'linux-bytes')
+    addAsset(artifacts, signed, 'android', 'dsh-community-android-arm64-v8a.apk', 'android-bytes')
     addSbom(artifacts, signed)
 
     const result = runVerifier(artifacts, signed)
     expect(result.status).toBe(0)
     expect(result.stdout).toContain(
-      'release-set verified: primary=1 metadata=1 sidecars=2 bundles=4',
+      'release-set verified: primary=2 metadata=1 sidecars=3 bundles=6',
     )
+  })
+
+  it('rejects a release set missing the Android APK', () => {
+    const { artifacts, signed } = makeRoot()
+    addAsset(artifacts, signed, 'linux', 'dsh-community.AppImage', 'linux-bytes')
+    addSbom(artifacts, signed)
+
+    const result = runVerifier(artifacts, signed)
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain('missing required platform artifact: *.apk')
   })
 
   it('rejects retired Windows or macOS installer artifacts in the release set', () => {
     const { artifacts, signed } = makeRoot()
     addAsset(artifacts, signed, 'linux', 'dsh-community.AppImage', 'linux-bytes')
+    addAsset(artifacts, signed, 'android', 'dsh-community-android-arm64-v8a.apk', 'android-bytes')
     addAsset(artifacts, signed, 'windows', 'DSH Community Setup.exe', 'windows-bytes')
     addSbom(artifacts, signed)
 
@@ -101,6 +113,7 @@ describe('verify-release-set CLI', () => {
   it('rejects a tampered binary even when sidecars and bundles still exist', () => {
     const { artifacts, signed } = makeRoot()
     const linux = addAsset(artifacts, signed, 'linux', 'dsh-community.AppImage', 'linux-bytes')
+    addAsset(artifacts, signed, 'android', 'dsh-community-android-arm64-v8a.apk', 'android-bytes')
     addSbom(artifacts, signed)
     writeFileSync(linux, 'tampered')
 
@@ -112,6 +125,7 @@ describe('verify-release-set CLI', () => {
   it('rejects missing bundles', () => {
     const { artifacts, signed } = makeRoot()
     addAsset(artifacts, signed, 'linux', 'dsh-community.AppImage', 'linux-bytes')
+    addAsset(artifacts, signed, 'android', 'dsh-community-android-arm64-v8a.apk', 'android-bytes')
     addSbom(artifacts, signed)
     rmSync(join(signed, 'linux', 'dsh-community.AppImage.sigstore.json'))
 
@@ -123,6 +137,7 @@ describe('verify-release-set CLI', () => {
   it('rejects orphan signature bundles that do not map to a published asset', () => {
     const { artifacts, signed } = makeRoot()
     addAsset(artifacts, signed, 'linux', 'dsh-community.AppImage', 'linux-bytes')
+    addAsset(artifacts, signed, 'android', 'dsh-community-android-arm64-v8a.apk', 'android-bytes')
     addSbom(artifacts, signed)
     writeFileSync(join(signed, 'linux', 'ghost.bin.sigstore.json'), '{"bundle":true}\n')
 
@@ -134,6 +149,7 @@ describe('verify-release-set CLI', () => {
   it('rejects an orphan checksum sidecar without a primary asset', () => {
     const { artifacts, signed } = makeRoot()
     addAsset(artifacts, signed, 'linux', 'dsh-community.AppImage', 'linux-bytes')
+    addAsset(artifacts, signed, 'android', 'dsh-community-android-arm64-v8a.apk', 'android-bytes')
     addSbom(artifacts, signed)
     writeFileSync(join(artifacts, 'linux', 'ghost.bin.sha256'), '0'.repeat(64) + '  ghost.bin\n')
     writeFileSync(join(signed, 'linux', 'ghost.bin.sha256.sigstore.json'), '{"bundle":true}\n')
@@ -146,6 +162,7 @@ describe('verify-release-set CLI', () => {
   it('rejects a release with no official-runtime SBOM', () => {
     const { artifacts, signed } = makeRoot()
     addAsset(artifacts, signed, 'linux', 'dsh-community.AppImage', 'linux-bytes')
+    addAsset(artifacts, signed, 'android', 'dsh-community-android-arm64-v8a.apk', 'android-bytes')
 
     const result = runVerifier(artifacts, signed)
     expect(result.status).toBe(1)
@@ -155,6 +172,7 @@ describe('verify-release-set CLI', () => {
   it('rejects malformed official-runtime SBOM JSON', () => {
     const { artifacts, signed } = makeRoot()
     addAsset(artifacts, signed, 'linux', 'dsh-community.AppImage', 'linux-bytes')
+    addAsset(artifacts, signed, 'android', 'dsh-community-android-arm64-v8a.apk', 'android-bytes')
     addSbom(artifacts, signed, '{not-json')
 
     const result = runVerifier(artifacts, signed)
@@ -165,6 +183,7 @@ describe('verify-release-set CLI', () => {
   it('rejects an SBOM that does not describe official DSH', () => {
     const { artifacts, signed } = makeRoot()
     addAsset(artifacts, signed, 'linux', 'dsh-community.AppImage', 'linux-bytes')
+    addAsset(artifacts, signed, 'android', 'dsh-community-android-arm64-v8a.apk', 'android-bytes')
     addSbom(artifacts, signed, JSON.stringify({
       bomFormat: 'CycloneDX',
       specVersion: '1.5',
@@ -186,6 +205,7 @@ describe('verify-release-set CLI', () => {
   it('rejects a sidecar that names a different file', () => {
     const { artifacts, signed } = makeRoot()
     const linux = addAsset(artifacts, signed, 'linux', 'dsh-community.AppImage', 'linux-bytes')
+    addAsset(artifacts, signed, 'android', 'dsh-community-android-arm64-v8a.apk', 'android-bytes')
     addSbom(artifacts, signed)
     const digest = createHash('sha256').update('linux-bytes').digest('hex')
     writeFileSync(linux + '.sha256', digest + '  wrong-name.AppImage\n')

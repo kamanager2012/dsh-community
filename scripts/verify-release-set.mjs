@@ -10,7 +10,7 @@ import {
 import { basename, dirname, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const PRIMARY_SUFFIXES = ['.AppImage']
+const PRIMARY_SUFFIXES = ['.AppImage', '.apk']
 const METADATA_SUFFIXES = ['-official-runtime.cdx.json']
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 const RUNTIME_MANIFEST = JSON.parse(
@@ -82,7 +82,7 @@ export function verifyReleaseSet({
   const publishable = [...payload, ...sidecars].sort()
 
   if (primary.length === 0) fail('no primary release artifacts found')
-  for (const required of ['.AppImage']) {
+  for (const required of ['.AppImage', '.apk']) {
     if (!primary.some((file) => file.endsWith(required))) {
       fail(`missing required platform artifact: *${required}`)
     }

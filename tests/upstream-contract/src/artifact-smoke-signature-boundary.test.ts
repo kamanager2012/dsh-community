@@ -47,7 +47,7 @@ describe('post-release signature verification boundary', () => {
   it('runs a real signature-only check when the smoke workflow itself changes', () => {
     expect(workflow).toContain('pull_request:')
     expect(workflow).toContain("'.github/workflows/artifact-smoke.yml'")
-    for (const job of ['linux-appimage', 'linux-terminal']) {
+    for (const job of ['linux-appimage', 'android-apk', 'linux-terminal']) {
       expect(workflow).toMatch(
         new RegExp(
           '  ' + job + ':\\n    needs: resolve\\n    if: \\$\\{\\{ github\\.event_name != \'pull_request\' \\}\\}',
