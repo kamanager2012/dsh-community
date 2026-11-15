@@ -61,7 +61,7 @@ describe('real user-loop evidence workflow', () => {
     expect(workflow).toContain('permissions:\n  contents: read')
   })
 
-  it('does not upgrade release facts before a real successful run exists', () => {
+  it('records verified exact-release user-loop PASS evidence in current-release.json', () => {
     const facts = JSON.parse(readFileSync(currentReleasePath, 'utf8')) as {
       evidence?: {
         userLoop?: {
@@ -71,8 +71,8 @@ describe('real user-loop evidence workflow', () => {
         }
       }
     }
-    expect(facts.evidence?.userLoop?.status).toBe('UNVERIFIED')
+    expect(facts.evidence?.userLoop?.status).toBe('PASS')
     expect(facts.evidence?.userLoop?.workflow).toBe('.github/workflows/user-loop-evidence.yml')
-    expect(facts.evidence?.userLoop?.note).toMatch(/no successful exact-release run/i)
+    expect(facts.evidence?.userLoop?.note).toMatch(/actions\/runs\/43688556931/)
   })
 })
