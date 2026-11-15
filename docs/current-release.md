@@ -35,8 +35,8 @@ Candidate Source and Published Latest may coincide after publication, but they a
 | Retired from future releases | Windows Desktop (`DSH.Community.Setup.*.exe`), macOS Desktop (`dsh-community-*.dmg`) — last shipped in historical `v0.1.1-rc.2` |
 | Official Web & Win/macOS Desktop | Upstream surfaces; not community endpoints |
 | artifact-smoke | `[PASS]` on `v0.2.2-rc.3` ([run 43663270841](https://github.com/kamanager2012/dsh-community/actions/runs/43663270841)): keyless Cosign verify (all 8 release assets) + Linux AppImage SHA256/extract + Linux Terminal smoke |
-| Full user loop | `[UNVERIFIED]` — manual exact-release WSL/Linux new→answer→resume→answer gate now lives in [`user-loop-evidence.yml`](../.github/workflows/user-loop-evidence.yml); no successful release run is recorded yet, so status stays unchanged |
-| Plugin `testedDsh` | `0.1.1-rc.2` (compose: `plugin add` + `--dump-config`; restart/user-loop still `[UNVERIFIED]`) |
+| Full user loop | `[PASS]` — exact-release `v0.2.2-rc.3` (`07fa09e1db70020a6ddae0c830e899de5a5fdd59`) WSL/Linux new→answer→resume→answer verified via [`user-loop-evidence.yml`](../.github/workflows/user-loop-evidence.yml) ([run 43688556931](https://github.com/kamanager2012/dsh-community/actions/runs/43688556931); artifact `user-loop-evidence-v0.2.2-rc.3`) |
+| Plugin `testedDsh` | `0.2.2-rc.3 (6/9 plugins; 3 legacy at 0.1.1-rc.2)` (compose: `plugin add` + `--dump-config` on `@deepseek-ai/dsh@0.2.2-rc.3` for 6 plugins; 3 legacy plugins remain at `0.1.1-rc.2`) |
 | Historical tags | `v0.1.2`–`v0.1.6`, `v0.1.1-rc.2`, `v0.2.2-rc.2`, `v0.2.2-rc.2-community.1` are superseded by `v0.2.2-rc.3` |
 
 Published `v0.2.2-rc.3` release-page primary binary asset (plus official-runtime CycloneDX SBOM, `.sha256`, and `.sigstore.json` bundles; Windows/macOS installers retired after historical `v0.1.1-rc.2`):
