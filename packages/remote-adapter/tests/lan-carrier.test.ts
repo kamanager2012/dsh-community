@@ -26,6 +26,7 @@ import {
   type OfficialRemoteSeams,
   REMOTE_PROTOCOL_VERSION,
 } from '../src/index.js'
+import { WebSocketFrameParser } from '../src/carrier/websocket-frame.js'
 
 interface DhModule {
   generateKeyPair(): {
@@ -2052,5 +2053,44 @@ describe('R2B LAN Carrier Adversarial Security & Regression Suite', () => {
         credential: 'password123',
       })
     }).toThrow('session or credential field')
+  })
+
+  it('44. WebSocketFrameParser dispatches 0-length masked/unmasked control frames immediately at chunk end', () => {
+    const maskedFrames: number[] = []
+    const maskedParser = new WebSocketFrameParser(4096, true, {
+      onFrame: (frame) => maskedFrames.push(frame.opcode),
+      onTextFrameRejected: () => {
+        throw new Error('unexpected text reject')
+      },
+      onOversizedFrame: () => {
+        throw new Error('unexpected oversize')
+      },
+      onProtocolError: (reason) => {
+        throw new Error(`unexpected protocol error: ${reason}`)
+      },
+    })
+
+    // 0-length masked CLOSE frame (88 80 + 4-byte mask) arriving as one exact chunk
+    maskedParser.push(Buffer.from([0x88, 0x80, 0x11, 0x22, 0x33, 0x44]))
+    expect(maskedFrames).toEqual([WebSocketOpcode.CLOSE])
+
+    // 0-length masked PING frame split mid mask key
+    maskedParser.push(Buffer.from([0x89, 0x80, 0xaa, 0xbb]))
+    expect(maskedFrames).toEqual([WebSocketOpcode.CLOSE])
+    maskedParser.push(Buffer.from([0xcc, 0xdd]))
+    expect(maskedFrames).toEqual([WebSocketOpcode.CLOSE, WebSocketOpcode.PING])
+
+    // 0-length unmasked CLOSE frame arriving as exact 2-byte chunk
+    const unmaskedFrames: number[] = []
+    const unmaskedParser = new WebSocketFrameParser(4096, false, {
+      onFrame: (frame) => unmaskedFrames.push(frame.opcode),
+      onTextFrameRejected: () => {},
+      onOversizedFrame: () => {},
+      onProtocolError: (reason) => {
+        throw new Error(`unexpected protocol error: ${reason}`)
+      },
+    })
+    unmaskedParser.push(Buffer.from([0x88, 0x00]))
+    expect(unmaskedFrames).toEqual([WebSocketOpcode.CLOSE])
   })
 })

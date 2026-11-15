@@ -410,7 +410,14 @@ export class BlindRelayServer {
         }
         if (frame.opcode === WebSocketOpcode.CLOSE) {
           const parsedClose = parseClosePayload(frame.payload)
-          this.terminatePeer(peer, parsedClose.code, parsedClose.reason)
+          const safeCode =
+            parsedClose.code === 1005 ||
+            parsedClose.code === 1006 ||
+            parsedClose.code === 1015 ||
+            parsedClose.code < 1000
+              ? 1000
+              : parsedClose.code
+          this.terminatePeer(peer, safeCode, parsedClose.reason)
           return
         }
         this.resetIdleTimer(peer)

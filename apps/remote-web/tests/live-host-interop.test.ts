@@ -632,4 +632,68 @@ describe('remote-web live E2EE host interoperability', () => {
     expect((await keyStore.getTrustedHost(saved.hostFingerprint))?.lastEpoch).toBe(saved.lastEpoch)
     expect((await keyStore.getTrustedHost(saved.hostFingerprint))?.endpointUrl).toBe(saved.endpointUrl)
   })
+
+  it('closes established Noise transport and enters error state when epoch persistence fails with IDB abort/quota error', async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), 'dsh-rweb-idb-fail-close-'))
+    cleanupCallbacks.push(() => rmSync(tmpDir, { recursive: true, force: true }))
+    const dshHome = join(tmpDir, 'dsh-home')
+    const configDir = join(tmpDir, 'remote-config')
+
+    const mock = createMockMultiAgentBackend(tmpDir)
+    const host = new MultiAgentRemoteHost({
+      dshHome,
+      configDir,
+      cwd: tmpDir,
+      backends: [mock.backend],
+      autoConfirmCapabilities: ['observe', 'prompt'],
+      carrier: { enabled: true, host: '127.0.0.1', port: 0 },
+    })
+    await host.start()
+    cleanupCallbacks.push(() => host.stop())
+
+    const keyStore = new RemoteWebKeyStore(false)
+    const client = new RemoteWebClient(keyStore)
+    cleanupCallbacks.push(() => client.disconnect())
+
+    const issued = await host.issuePairingDescriptor()
+    const saved = await client.connectWithPairing(issued.descriptor, {
+      displayName: 'Persistence Abort Peer',
+      autoPairPollIntervalMs: 30,
+    })
+    client.disconnect()
+    await expect.poll(async () => (await host.getStatus()).activeConnections, { timeout: 5_000 }).toBe(0)
+
+    const statusesSeen: Array<{ status: string; detail: string | undefined }> = []
+    const notificationsSeen: unknown[] = []
+    client.onStatus((evt) => statusesSeen.push({ status: evt.status, detail: evt.detail }))
+    client.onNotification((n) => notificationsSeen.push(n))
+
+    const origUpdateHostEpoch = keyStore.updateHostEpoch.bind(keyStore)
+    let injectAbort = true
+    keyStore.updateHostEpoch = async (...args) => {
+      if (injectAbort) {
+        injectAbort = false
+        throw new Error('IndexedDB epoch update aborted: QuotaExceededError')
+      }
+      return origUpdateHostEpoch(...args)
+    }
+
+    await expect(client.connectToProfile(saved)).rejects.toThrow(/QuotaExceededError/)
+    expect(client.getStatus()).toBe('error')
+    expect(client.getActiveTransportKind()).toBeUndefined()
+    expect(statusesSeen.some((s) => s.status === 'error' && (s.detail ?? '').includes('QuotaExceededError'))).toBe(
+      true,
+    )
+
+    // Established WebSocket/Noise transport must already be closed; host events must not reach client
+    await expect.poll(async () => (await host.getStatus()).activeConnections, { timeout: 5_000 }).toBe(0)
+    mock.emit('claude--s1', [
+      {
+        type: 'assistant_message_delta',
+        delta: 'should never reach closed client',
+      } as unknown as OfficialSessionEvent,
+    ])
+    await new Promise((r) => setTimeout(r, 80))
+    expect(notificationsSeen).toEqual([])
+  })
 })
