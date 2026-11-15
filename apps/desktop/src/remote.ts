@@ -1571,23 +1571,13 @@ export class DesktopRemoteController {
             : `已更新设备 ${deviceId} 权限`
       } else {
         const stores = openPersistentRemoteStores({ configDir, dshHome: ctx.dshHome })
-        let nextCaps: readonly Capability[]
-        if (payload.kind === 'replace') {
-          nextCaps = payload.grantedCapabilities
-        } else {
-          const existing = stores.trustStore.getSync(deviceId)
-          if (!existing) {
-            throw new Error(`device does not exist: ${deviceId}`)
-          }
-          if (existing.revokedAt !== undefined) {
-            throw new Error(`cannot update capabilities for revoked device: ${deviceId}`)
-          }
-          const merged = new Set<Capability>(existing.grantedCapabilities)
-          for (const cap of payload.grant) merged.add(cap)
-          for (const cap of payload.revoke) merged.delete(cap)
-          nextCaps = Array.from(merged)
-        }
-        const updated = await stores.trustStore.updateCapabilities(deviceId, nextCaps)
+        const updated =
+          payload.kind === 'replace'
+            ? await stores.trustStore.updateCapabilities(deviceId, payload.grantedCapabilities)
+            : await stores.trustStore.updateCapabilitiesDelta(deviceId, {
+                grant: payload.grant,
+                revoke: payload.revoke,
+              })
         this.notice = `已离线更新设备 ${deviceId} 权限: ${[...updated.grantedCapabilities].join(', ') || '无'}`
       }
       this.lastError = undefined

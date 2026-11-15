@@ -1079,5 +1079,38 @@ rl.on('line', (line) => {
     await host.updateDeviceCapabilities(confirmed.device.deviceId, ['observe', 'prompt'])
     emitText(4, 'MA_VISIBLE_REGRANT')
     await expect.poll(() => seenTexts.includes('MA_VISIBLE_REGRANT'), { timeout: 2_000 }).toBe(true)
+
+    // Overlapping HTTP delta revocations via MultiAgentRemoteHost control server must remain atomic
+    const maControl = await host.createControlServer({ controlToken: 'ma-atomic-token' })
+    activeClosers.push(() => maControl.close())
+    const [resObs, resPrompt] = await Promise.all([
+      fetch(`${maControl.url}/devices/capabilities`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${maControl.controlToken}`,
+        },
+        body: JSON.stringify({ deviceId: confirmed.device.deviceId, revoke: ['observe'] }),
+      }),
+      fetch(`${maControl.url}/devices/capabilities`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${maControl.controlToken}`,
+        },
+        body: JSON.stringify({ deviceId: confirmed.device.deviceId, revoke: ['prompt'] }),
+      }),
+    ])
+    expect(resObs.status).toBe(200)
+    expect(resPrompt.status).toBe(200)
+
+    const persistedAfter = (await host.listTrustedDevices()).find(
+      (d) => d.deviceId === confirmed.device.deviceId,
+    )
+    expect(Array.from(persistedAfter?.grantedCapabilities ?? [])).toEqual([])
+
+    emitText(5, 'MA_BLOCKED_AFTER_CONCURRENT_REVOKE')
+    await new Promise((r) => setTimeout(r, 60))
+    expect(seenTexts).not.toContain('MA_BLOCKED_AFTER_CONCURRENT_REVOKE')
   })
 })

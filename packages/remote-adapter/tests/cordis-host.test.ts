@@ -1397,4 +1397,150 @@ describe('OfficialHostCordisBridge & Persistent Community Storage', () => {
       rmSync(root, { recursive: true, force: true })
     }
   })
+
+  it('serializes and applies overlapping live capability deltas atomically across control endpoints and fallback bridges', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-cordis-atomic-delta-'))
+    const dshHome = join(root, 'official-dsh-home')
+    const configDir = join(root, 'community-remote-config')
+    mkdirSync(dshHome, { recursive: true })
+
+    const bridge = new OfficialHostCordisBridge({
+      ctx: new FakeRootContext(),
+      dshHome,
+      configDir,
+      cwd: root,
+      carrier: { enabled: true, host: '127.0.0.1', port: 0 },
+    })
+    await bridge.start()
+    const control = await createBridgeControlServer(bridge, { controlToken: 'atomic-token' })
+
+    try {
+      const issued = await bridge.issuePairingDescriptor({
+        allowedCapabilities: ['observe', 'prompt', 'approve', 'session.manage', 'workspace.write'],
+      })
+      const parsed = parsePairingInput(issued.deepLink)
+      const kp = await new InMemoryHostIdentityStore().loadOrCreate()
+      const client = new FailoverRemoteClient({
+        clientKeyPair: { publicKey: kp.identity.publicKey, secretKey: kp.secretKey },
+        hostPublicKey: Uint8Array.from(Buffer.from(parsed.hostPublicKeyHex, 'hex')),
+        lan: { endpointUrl: parsed.endpointUrl },
+      })
+      await client.connect()
+      const pending = await client.request<{ candidateId: string }>('pairing.request', {
+        token: parsed.bootstrapToken,
+        displayName: 'Concurrent Delta Client',
+        requestedCapabilities: ['observe', 'prompt', 'approve', 'session.manage'],
+      })
+      client.close()
+
+      const confirmRes = await fetch(`${control.url}/pairing/confirm`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${control.controlToken}`,
+        },
+        body: JSON.stringify({
+          candidateId: pending.candidateId,
+          grantedCapabilities: ['observe', 'prompt', 'approve', 'session.manage'],
+        }),
+      })
+      const confirmed = (await confirmRes.json()) as { deviceId: string }
+
+      const postDelta = (delta: { grant?: string[]; revoke?: string[] }) =>
+        fetch(`${control.url}/devices/capabilities`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            authorization: `Bearer ${control.controlToken}`,
+          },
+          body: JSON.stringify({ deviceId: confirmed.deviceId, ...delta }),
+        })
+
+      const responses = await Promise.all([
+        postDelta({ revoke: ['observe'] }),
+        postDelta({ revoke: ['prompt'] }),
+        postDelta({ grant: ['workspace.write'] }),
+        postDelta({ revoke: ['approve'] }),
+      ])
+      for (const r of responses) expect(r.status).toBe(200)
+
+      const devicesAfter = await bridge.listTrustedDevices()
+      const finalRecord = devicesAfter.find((d) => d.deviceId === confirmed.deviceId)
+      expect(Array.from(finalRecord?.grantedCapabilities ?? []).sort()).toEqual([
+        'session.manage',
+        'workspace.write',
+      ])
+    } finally {
+      await control.close()
+      await bridge.stop()
+      rmSync(root, { recursive: true, force: true })
+    }
+
+    // Also verify createBridgeControlServer serializes overlapping deltas when a custom bridge
+    // only implements async listTrustedDevices + updateDeviceCapabilities (no delta method).
+    let slowCaps: string[] = ['observe', 'prompt', 'session.manage']
+    const delay = (ms: number) => new Promise((r) => setTimeout(r, ms))
+    const slowControl = await createBridgeControlServer(
+      {
+        pairingCoordinator: bridge.pairingCoordinator,
+        getStatus: async () => ({}),
+        listSessions: async () => [],
+        createSession: async () => ({ id: 's', title: 's' }),
+        resetSessionStream: () => {},
+        issuePairingDescriptor: async () => {
+          throw new Error('unused')
+        },
+        listTrustedDevices: async () => {
+          const snapshot = [...slowCaps]
+          await delay(20)
+          return [
+            {
+              deviceId: 'slow-dev-1',
+              displayName: 'Slow Bridge Device',
+              staticPublicKeyHex: '00'.repeat(32),
+              trustDomainId: 'td-1',
+              grantedCapabilities: new Set(snapshot as any),
+              pairedAt: 1,
+              lastSeenAt: 1,
+              keyVersion: 1,
+            },
+          ]
+        },
+        revokeDevice: async () => false,
+        updateDeviceCapabilities: async (_id, next) => {
+          await delay(10)
+          slowCaps = [...next]
+          return {
+            deviceId: 'slow-dev-1',
+            displayName: 'Slow Bridge Device',
+            staticPublicKeyHex: '00'.repeat(32),
+            trustDomainId: 'td-1',
+            grantedCapabilities: new Set(slowCaps),
+            pairedAt: 1,
+            lastSeenAt: 1,
+            keyVersion: 1,
+          }
+        },
+        stop: async () => {},
+      },
+      { controlToken: 'slow-token' },
+    )
+    try {
+      const slowPost = (revoke: string[]) =>
+        fetch(`${slowControl.url}/devices/capabilities`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            authorization: `Bearer ${slowControl.controlToken}`,
+          },
+          body: JSON.stringify({ deviceId: 'slow-dev-1', revoke }),
+        })
+      const [r1, r2] = await Promise.all([slowPost(['observe']), slowPost(['prompt'])])
+      expect(r1.status).toBe(200)
+      expect(r2.status).toBe(200)
+      expect(slowCaps.sort()).toEqual(['session.manage'])
+    } finally {
+      await slowControl.close()
+    }
+  })
 })

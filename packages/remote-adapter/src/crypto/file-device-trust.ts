@@ -20,6 +20,7 @@ import {
   VALID_CAPABILITIES,
   toDeviceRecordSnapshot,
   validateCapabilities,
+  type CapabilityDelta,
   type DeviceRecord,
   type StoredDeviceRecord,
 } from './device-trust.js'
@@ -910,6 +911,15 @@ export class FileDeviceTrustStore extends InMemoryDeviceTrustStore {
     grantedCapabilities: readonly Capability[],
   ): Promise<DeviceRecord> {
     return this.updateCapabilitiesSync(deviceId, grantedCapabilities)
+  }
+
+  override updateCapabilitiesDeltaSync(deviceId: string, delta: CapabilityDelta): DeviceRecord {
+    this.assertNotPoisoned()
+    return super.updateCapabilitiesDeltaSync(deviceId, delta)
+  }
+
+  override async updateCapabilitiesDelta(deviceId: string, delta: CapabilityDelta): Promise<DeviceRecord> {
+    return this.updateCapabilitiesDeltaSync(deviceId, delta)
   }
 
   override async adminReEnroll(params: {

@@ -118,6 +118,11 @@ export interface DeviceRevocationEvent {
 
 export type DeviceRevocationListener = (event: DeviceRevocationEvent) => void
 
+export interface CapabilityDelta {
+  readonly grant?: readonly Capability[] | undefined
+  readonly revoke?: readonly Capability[] | undefined
+}
+
 export interface DeviceTrustStore {
   get(deviceId: string): Promise<DeviceRecord | undefined>
   findByPublicKey(staticPublicKey: Uint8Array): Promise<DeviceRecord | undefined>
@@ -130,6 +135,8 @@ export interface DeviceTrustStore {
   revoke(deviceId: string): Promise<boolean>
   updateCapabilitiesSync(deviceId: string, grantedCapabilities: readonly Capability[]): DeviceRecord
   updateCapabilities(deviceId: string, grantedCapabilities: readonly Capability[]): Promise<DeviceRecord>
+  updateCapabilitiesDeltaSync(deviceId: string, delta: CapabilityDelta): DeviceRecord
+  updateCapabilitiesDelta(deviceId: string, delta: CapabilityDelta): Promise<DeviceRecord>
   grantCapability(deviceId: string, capability: Capability): Promise<DeviceRecord>
   revokeCapability(deviceId: string, capability: Capability): Promise<DeviceRecord>
   adminReEnroll(params: {
@@ -324,23 +331,34 @@ export class InMemoryDeviceTrustStore implements DeviceTrustStore {
     return this.updateCapabilitiesSync(deviceId, grantedCapabilities)
   }
 
-  async grantCapability(deviceId: string, capability: Capability): Promise<DeviceRecord> {
-    const [validCap] = validateCapabilities([capability], 'capability')
-    const current = this.devices.get(deviceId)
-    if (!current) {
+  updateCapabilitiesDeltaSync(deviceId: string, delta: CapabilityDelta): DeviceRecord {
+    const record = this.devices.get(deviceId)
+    if (!record) {
       throw new RemoteCryptoError('DEVICE_NOT_TRUSTED', `device does not exist: ${deviceId}`)
     }
-    return this.updateCapabilities(deviceId, [...current.grantedCapabilities, validCap!])
+    if (record.revokedAt !== undefined) {
+      throw new RemoteCryptoError('DEVICE_REVOKED', `cannot update capabilities for revoked device: ${deviceId}`)
+    }
+    const grantList = validateCapabilities(delta.grant ?? [], 'grant')
+    const revokeSet = new Set<Capability>(validateCapabilities(delta.revoke ?? [], 'revoke'))
+    const merged = new Set<Capability>(record.grantedCapabilities)
+    for (const cap of grantList) merged.add(cap)
+    for (const cap of revokeSet) merged.delete(cap)
+    return this.updateCapabilitiesSync(deviceId, Array.from(merged))
+  }
+
+  async updateCapabilitiesDelta(deviceId: string, delta: CapabilityDelta): Promise<DeviceRecord> {
+    return this.updateCapabilitiesDeltaSync(deviceId, delta)
+  }
+
+  async grantCapability(deviceId: string, capability: Capability): Promise<DeviceRecord> {
+    const [validCap] = validateCapabilities([capability], 'capability')
+    return this.updateCapabilitiesDelta(deviceId, { grant: [validCap!] })
   }
 
   async revokeCapability(deviceId: string, capability: Capability): Promise<DeviceRecord> {
     const [validCap] = validateCapabilities([capability], 'capability')
-    const current = this.devices.get(deviceId)
-    if (!current) {
-      throw new RemoteCryptoError('DEVICE_NOT_TRUSTED', `device does not exist: ${deviceId}`)
-    }
-    const next = Array.from(current.grantedCapabilities).filter((cap) => cap !== validCap)
-    return this.updateCapabilities(deviceId, next)
+    return this.updateCapabilitiesDelta(deviceId, { revoke: [validCap!] })
   }
 
   async adminReEnroll(params: {

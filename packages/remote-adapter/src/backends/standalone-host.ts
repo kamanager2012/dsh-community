@@ -12,6 +12,7 @@ import {
 import {
   DEFAULT_GRANTED_CAPABILITIES,
   validateCapabilities,
+  type CapabilityDelta,
   type DeviceRecord,
 } from '../crypto/device-trust.js'
 import { MAX_PAIRING_TTL_MS, PairingTokenRegistry, type PairingCandidateView } from '../crypto/pairing-token.js'
@@ -306,15 +307,24 @@ export class MultiAgentRemoteHost {
     return this.stores.trustStore.revoke(deviceId)
   }
 
+  private finalizeCapabilityUpdate(deviceId: string, updated: DeviceRecord): DeviceRecord {
+    if (!updated.grantedCapabilities.has('workspace.write')) {
+      this.router.revokeDeviceUploads(deviceId)
+    }
+    return updated
+  }
+
   async updateDeviceCapabilities(
     deviceId: string,
     grantedCapabilities: readonly Capability[],
   ): Promise<DeviceRecord> {
     const updated = await this.stores.trustStore.updateCapabilities(deviceId, grantedCapabilities)
-    if (!updated.grantedCapabilities.has('workspace.write')) {
-      this.router.revokeDeviceUploads(deviceId)
-    }
-    return updated
+    return this.finalizeCapabilityUpdate(deviceId, updated)
+  }
+
+  async updateDeviceCapabilitiesDelta(deviceId: string, delta: CapabilityDelta): Promise<DeviceRecord> {
+    const updated = await this.stores.trustStore.updateCapabilitiesDelta(deviceId, delta)
+    return this.finalizeCapabilityUpdate(deviceId, updated)
   }
 
   async getStatus(): Promise<{
