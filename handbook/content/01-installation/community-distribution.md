@@ -102,7 +102,7 @@ dsh-marketplace install <name>
 
 - 自动门禁：`artifact-smoke` 工作流（下载 exact release `.AppImage`、Android `.apk` + sidecars 校验并跑 Linux AppImage、Android APK 与 TUI smoke）。
 - 状态标注规则：只允许 `[REAL] / [PARTIAL] / [UNVERIFIED] / [NOT_IMPLEMENTED]` 等明确标签，禁止 `production-ready` 一类说法。
-- 2026-11-15 记录：`v0.2.2-rc.3` 真实资产在 [Run 43696414193](https://github.com/kamanager2012/dsh-community/actions/runs/43696414193) 通过 `resolve`、`linux-appimage`、`android-apk`、`linux-terminal` 与 `verify-signatures`（cosign keyless 12 文件全通过）；社区 TUI ↔ 官方 `dsh --profile headless` ↔ Linux AppImage 内置运行时（`official-dsh.tar`）↔ Linux AppImage Electron GUI（`AppRun`）4 端跨端 Session 接续，以及缺 Key 干净拒绝、`ensureOfficialHostExtracted()` 解压中断恢复、版本升级与断网离线回退全部 4 项生命周期恢复，均已通过 [`user-loop-evidence.yml`](https://github.com/kamanager2012/dsh-community/actions/runs/43729024796) 验收 `[REAL]`，物理 `arm64-v8a` Android 真机遥测仍为 `[UNVERIFIED]`。
+- 2026-11-15 记录：`v0.2.2-rc.3` 真实资产在 [Run 43696414193](https://github.com/kamanager2012/dsh-community/actions/runs/43696414193) 通过 `resolve`、`linux-appimage`、`android-apk`、`linux-terminal` 与 `verify-signatures`（cosign keyless 12 文件全通过）；社区 TUI ↔ 官方 `dsh --profile headless` ↔ Linux AppImage 内置运行时（`official-dsh.tar`）三方跨端 Session 接续、Linux AppImage Electron GUI（`AppRun`）Session 可见性/Runtime/Marketplace 离线缓存验证，以及缺 Key 干净拒绝、`ensureOfficialHostExtracted()` 解压中断恢复、版本升级与断网离线回退全部 4 项生命周期恢复，均已通过 [`user-loop-evidence.yml`](https://github.com/kamanager2012/dsh-community/actions/runs/43729024796) 验收 `[REAL]`（通过交互式官方 Web / Win·macOS 桌面发对话轮次尚未纳入自动化实测），物理 `arm64-v8a` Android 真机遥测仍为 `[UNVERIFIED]`。
 
 ## 相关仓库
 

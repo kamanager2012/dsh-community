@@ -66,8 +66,8 @@
     "userLoop": {
       "status": "PASS",
       "workflow": ".github/workflows/user-loop-evidence.yml",
-      "scope": "WSL/Linux Terminal + Linux AppImage Electron GUI exact-release 4-surface roundtrip (dsh-community new -> dsh-community resume -> official dsh --profile headless --session-id -> linux AppImage bundled official-dsh.tar headless -> linux AppImage Electron GUI AppRun sessions/runtime/marketplace -> dsh-community resume) + full 4-item lifecycle recovery (missingKeyRefusal, ensureOfficialHostExtracted interruptedRuntimeExtract, versionUpgrade, offlineHandling)",
-      "note": "Exact-release v0.2.2-rc.3 (commit 073826c38df4cf246e7ac90b27e0df98569a534d) verified PASS via .github/workflows/user-loop-evidence.yml run 43729024796 (https://github.com/kamanager2012/dsh-community/actions/runs/43729024796; artifact user-loop-evidence-v0.2.2-rc.3; 5 live turns + AppImage Electron GUI AppRun under xvfb-run + all 4 lifecycleRecovery checks PASS) superseding runs 43713641736, 43709890408, and 43688556931."
+      "scope": "WSL/Linux Terminal 3-way Session continuation roundtrip (dsh-community new -> dsh-community resume -> official dsh --profile headless --session-id -> linux AppImage bundled official-dsh.tar headless -> dsh-community resume) + packaged Linux AppImage Electron GUI (AppRun) Session visibility/Runtime/Marketplace checks + full 4-item lifecycle recovery (missingKeyRefusal, ensureOfficialHostExtracted interruptedRuntimeExtract, versionUpgrade, offlineHandling)",
+      "note": "Exact-release v0.2.2-rc.3 (commit 073826c38df4cf246e7ac90b27e0df98569a534d) verified PASS via .github/workflows/user-loop-evidence.yml run 43729024796 (https://github.com/kamanager2012/dsh-community/actions/runs/43729024796; artifact user-loop-evidence-v0.2.2-rc.3; 5 live turns + AppImage Electron GUI AppRun Session visibility/Runtime/Marketplace under xvfb-run + all 4 lifecycleRecovery checks PASS) superseding runs 43713641736, 43709890408, and 43688556931."
     },
     "pluginRegistryLastVerified": {
       "testedDsh": "0.2.2-rc.3 (6/9 plugins; 3 legacy at 0.1.1-rc.2)",
