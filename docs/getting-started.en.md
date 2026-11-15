@@ -1,6 +1,6 @@
 # DSH Community Getting Started
 
-> A task-oriented entry point for first-time users. Evidence snapshot: 2026-08-21.
+> A task-oriented entry point for first-time users. Live machine facts live in [`current-release.json`](current-release.json).
 
 [简体中文](getting-started.md) · [Back to English README](../README.en.md) · [Community endpoints](community-endpoints.en.md) · [Online Handbook](https://kamanager2012.github.io/dsh-community/en/)
 
@@ -9,8 +9,8 @@
 | Goal | Entry | Meaning |
 | --- | --- | --- |
 | Use Official Web or Windows / macOS Desktop | [`deepseek-ai/deepseek-harness`](https://github.com/deepseek-ai/deepseek-harness) (`npx @deepseek-ai/dsh web`) | Upstream product and Win/macOS desktop builds; Complementary Edition does not duplicate them |
-| Use the community Terminal / TUI | `dsh-community` or `pnpm tui` from source | Primary Linux / WSL complementary endpoint around the official Runtime |
-| Download the Linux Desktop AppImage | [Latest `v0.1.1-rc.2`](https://github.com/kamanager2012/dsh-community/releases/latest) `.AppImage` or `pnpm desktop:package -- --appimage` | Linux desktop complementary build absent upstream |
+| Use the community Terminal / TUI & Remote Host | `dsh-community`, `pnpm tui`, or `dsh-community remote start` from source | Primary Linux / WSL complementary endpoint around the official Runtime |
+| Download the Linux Desktop AppImage | [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) `.AppImage` or `pnpm desktop:package -- --appimage` | Linux desktop complementary build absent upstream; exact tag/filenames live in [`current-release.md`](current-release.md) |
 | Inspect Android Remote Client (experimental) | In-repo `apps/android` + `packages/remote-adapter` | `[LABS]` / `[UNVERIFIED]`, outside Published Latest |
 | Read the full operational guide | [DeepSeek Harness Handbook](https://kamanager2012.github.io/dsh-community/en/) | Providers, Sessions, security, automation, and acceptance |
 
@@ -20,16 +20,21 @@ A source checkout displays the **Candidate Source** Dual-Badge, not the Publishe
 
 ## Current published download assets
 
-Historical [`v0.1.1-rc.2`](https://github.com/kamanager2012/dsh-community/releases/latest) on the Release page (GitHub may display spaces as dots):
+At [`releases/latest`](https://github.com/kamanager2012/dsh-community/releases/latest) (exact filenames and SHA-256 digests are pinned in [`current-release.json`](current-release.json)), each Complementary Edition release publishes **8 signed files** (Windows `.exe` and macOS `.dmg` were retired after historical `v0.1.1-rc.2` in favor of upstream `deepseek-harness`):
 
-- `dsh-community-0.1.1-rc.2.AppImage` — Linux Desktop AppImage (retained on future Complementary Edition releases)
-- `dsh-community-0.1.1-rc.2.dmg` — macOS (historical artifact; retired after `v0.1.1-rc.2` in favor of official `deepseek-harness`)
-- `DSH Community Setup 0.1.1-rc.2.exe` — Windows (historical artifact; retired after `v0.1.1-rc.2` in favor of official `deepseek-harness`)
+- `dsh-community-<version>.AppImage` — Linux Desktop AppImage
+- `dsh-community-<version>-official-runtime.cdx.json` — CycloneDX SBOM for the embedded `@deepseek-ai/dsh` dependency tree
+- `*.sha256` & `*.sigstore.json` — SHA-256 sidecar and keyless Cosign bundle for every asset
 
-Future Complementary Edition releases publish only `.AppImage` plus the `official-runtime.cdx.json` SBOM. Each file has a matching `.sha256` sidecar and `.sigstore.json` bundle:
+Verify integrity and keyless provenance locally (`cosign >= v2.4`; see the copy-paste command on [`current-release.md`](current-release.md#quick-download--verification-v022-rc3)):
 
 ```sh
-sha256sum -c dsh-community-0.1.1-rc.2.AppImage.sha256
+sha256sum -c dsh-community-<version>.AppImage.sha256
+cosign verify-blob \
+  --bundle dsh-community-<version>.AppImage.sigstore.json \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity "https://github.com/kamanager2012/dsh-community/.github/workflows/release.yml@refs/tags/v<version>" \
+  dsh-community-<version>.AppImage
 ```
 
 The first desktop launch unpacks the official runtime into user data once. Sessions stay in official `~/.dsh`.
