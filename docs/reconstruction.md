@@ -8,7 +8,7 @@
 
 ## 官方 TUI 现状（不要写死）
 
-能确认的是：官方当前 `apps/` 只有 `cli` 和 `web`；架构文档要求 UI 走 `ctx.agents` + `session/event`。
+能确认的是：官方当前 `apps/` 包含 `cli`（`dsh` 启动器，按 profile 启动 Web / headless / SDK / ACP，自身不带终端界面）、`web` 与 `desktop`（包裹 Web 的 Electron 壳）；架构文档要求 UI 走 `ctx.agents` + `session/event`。
 
 这是很强的架构信号，**不是**“官方删除 TUI = 永远不做 TUI”。即使官方以后自己做 TUI，社区 TUI 仍应走公开 seam，而不是 fork core。
 

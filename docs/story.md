@@ -15,7 +15,7 @@
 
 ## 与其它 Desktop / DSH 衍生项目的差别(客观口径)
 
-- 不重写内核（区别于 `dsh-go` 等重写版），也不 patch 官方上游表面(不打 patch-package 改 onboarding/preset/branding);上游升级 = 契约重验,不是重写 patch。
+- 不 vendor 内核，也不 patch 官方上游表面(不打 patch-package 改 onboarding/preset/branding);上游升级 = 契约重验,不是重写 patch。
 - Session 真源就是官方 `~/.dsh`,不另建 harness home，官方 Web/Win/Mac 与 Linux/Android 100% 互通。
 - 生态定位是官方内核的**互补发行**：三个互补端（WSL/Linux 终端 + Linux AppImage + 已签名 Android `arm64-v8a` Remote Client APK）是当前发行面（Android 物理真机遥测 `[UNVERIFIED]`）；Windows/macOS Desktop 与 Web 明确交还官方上游，不再双份构建。Registry = 验证层，Marketplace = 发现与安装 UX，Handbook = 文档。
 - 不要说“我们另做了一套 Harness”，也不要再宣传自己替 Windows/macOS 打包桌面端。官方 Web 与 Win/macOS Desktop 归官方内核上游所有；社区只负责官方缺失的三个互补社区端。
