@@ -1,6 +1,6 @@
 # DSH Community
 
-[English](README.md) | **简体中文**
+**简体中文** | [English](README.en.md)
 
 [![CI](https://github.com/kamanager2012/dsh-community/actions/workflows/ci.yml/badge.svg)](https://github.com/kamanager2012/dsh-community/actions/workflows/ci.yml)
 [![Published Latest](https://img.shields.io/github/v/release/kamanager2012/dsh-community?include_prereleases&label=Published%20Latest)](https://github.com/kamanager2012/dsh-community/releases/latest)
@@ -13,7 +13,7 @@
 ## 核心亮点
 
 - **官方与社区共享同一个 `~/.dsh`，补齐上游缺失的三个互补社区端** — 官方上游提供唯一执行内核、Official Web 及 Windows / macOS Desktop（`win-x64`、`mac-arm64`、`mac-x64`）；本仓专注于上游未提供的 **3 个互补 Community endpoints**：**WSL/Linux 终端（TUI）**、**Linux 桌面 AppImage** 与 **Android Remote Client APK**（`dsh-community-*-android-arm64-v8a.apk` 已在 [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) 正式发布；已通过 CI `x86_64` 模拟器 E2EE 全链路验收，物理 `arm64-v8a` 真机遥测保持 `[UNVERIFIED]`）。
-- **多 Agent 端到端加密远程控制面（`packages/remote-adapter`）** — 支持用 Android 已签名 APK 或浏览器 PWA 通过 Noise IK 端到端加密、局域网 mDNS、WebRTC P2P 或自部署盲中继（[`deploy/relay/`](deploy/relay/)）远程操控 **DSH、Claude Code、Codex CLI 与 OpenCode ACP**（`dsh-community remote start --engines claude,codex,opencode --qr`），并内置受限只读 Git diff 审查。
+- **多 Agent（Multi-Agent）端到端加密远程控制面（`packages/remote-adapter`）** — 支持用 Android 已签名 APK 或浏览器 PWA 通过 Noise IK 端到端加密、局域网 mDNS、WebRTC P2P 或自部署盲中继（[`deploy/relay/`](deploy/relay/)）远程操控 **DSH、Claude Code、Codex CLI 与 OpenCode ACP**（`dsh-community remote start --engines claude,codex,opencode --qr`），并内置受限只读 Git diff 审查。
 - **供应链可核验的 12 资产发行与插件兼容层** — 每次 Release 同时交付 Linux `.AppImage`、Android `arm64-v8a` `.apk` 与官方运行时 CycloneDX SBOM，并附带 SHA-256 与 Keyless Cosign `.sigstore.json` 签名包；[`packages/marketplace/catalog.json`](packages/marketplace/catalog.json) 记录实际 `testedDsh`、完整性摘要与权限披露（安装仍走官方 `dsh plugin add` 链）。
 
 ---

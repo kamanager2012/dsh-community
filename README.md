@@ -1,65 +1,61 @@
 # DSH Community
 
-**English** | [简体中文](README.zh-CN.md)
+**简体中文** | [English](README.en.md)
 
 [![CI](https://github.com/kamanager2012/dsh-community/actions/workflows/ci.yml/badge.svg)](https://github.com/kamanager2012/dsh-community/actions/workflows/ci.yml)
 [![Published Latest](https://img.shields.io/github/v/release/kamanager2012/dsh-community?include_prereleases&label=Published%20Latest)](https://github.com/kamanager2012/dsh-community/releases/latest)
 [![Official Core](https://img.shields.io/badge/Official%20Core-%40deepseek--ai%2Fdsh-blue)](https://github.com/deepseek-ai/deepseek-harness)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-> **Start a task in official `dsh web` or official Win/macOS Desktop, resume it seamlessly in Linux Terminal, Linux AppImage, or on your Android phone — and steer DSH, Claude Code, Codex CLI, and OpenCode remotely over E2EE.**  
-> Unvendored complementary community edition for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`@deepseek-ai/dsh`, Official Source Ownership = 0): 100% shared `~/.dsh` session truth, zero duplicate official surfaces, zero second agent loop.
+> **你在官方 Web 或官方 Win/macOS Desktop 开的对话，在 Linux 终端、Linux AppImage 或 Android 手机上无缝接着聊 — 还能通过端到端加密统一远程操控 DSH、Claude Code、Codex CLI 与 OpenCode。**  
+> 官方 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（`@deepseek-ai/dsh`）的**不 vendor 官方源码、官方互补社区发行版**：100% 共用 `~/.dsh` 会话真源，不重复建设官方已有端，绝不重写第二套 Agent 循环。
 
-## Highlights
+## 核心亮点
 
-- **Shared `~/.dsh` Across Official & Three Complementary Community Endpoints** — Official `deepseek-ai/deepseek-harness` owns the execution kernel, Web UI, and Windows/macOS Desktop (`win-x64`, `mac-arm64`, `mac-x64`). `dsh-community` delivers the **three complementary community endpoints** absent upstream: **WSL/Linux Terminal**, **Linux Desktop AppImage**, and **Android Remote Client APK** (`dsh-community-*-android-arm64-v8a.apk` shipped in [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest); CI `x86_64` emulator E2EE verified, physical `arm64-v8a` handset telemetry `[UNVERIFIED]`).
-- **Multi-Agent E2EE Remote Control Plane** — Steer local **DSH, Claude Code, Codex CLI, and OpenCode ACP** sessions from the signed Android APK, browser PWA, or mobile screen (`dsh-community remote start --engines claude,codex,opencode --qr`) over Noise IK encryption, LAN mDNS, WebRTC P2P, or a self-hosted Blind Relay ([`deploy/relay/`](deploy/relay/)), with read-only scoped Git diff review.
-- **Supply-Chain Verified Releases (12 Signed Assets) & Plugin Catalog** — Every release publishes the Linux `.AppImage`, Android `arm64-v8a` `.apk`, and official-runtime CycloneDX SBOM with SHA-256 digests and Keyless Cosign `.sigstore.json` bundles. [`packages/marketplace/catalog.json`](packages/marketplace/catalog.json) records real `testedDsh`, package integrity digests, and permission disclosures (installation remains on the official `dsh plugin add` chain).
+- **官方与社区共享同一个 `~/.dsh`，补齐上游缺失的三个互补社区端** — 官方上游提供唯一执行内核、Official Web 及 Windows / macOS Desktop（`win-x64`、`mac-arm64`、`mac-x64`）；本仓专注于上游未提供的 **3 个互补 Community endpoints**：**WSL/Linux 终端（TUI）**、**Linux 桌面 AppImage** 与 **Android Remote Client APK**（`dsh-community-*-android-arm64-v8a.apk` 已在 [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) 正式发布；已通过 CI `x86_64` 模拟器 E2EE 全链路验收，物理 `arm64-v8a` 真机遥测保持 `[UNVERIFIED]`）。
+- **多 Agent（Multi-Agent）端到端加密远程控制面（`packages/remote-adapter`）** — 支持用 Android 已签名 APK 或浏览器 PWA 通过 Noise IK 端到端加密、局域网 mDNS、WebRTC P2P 或自部署盲中继（[`deploy/relay/`](deploy/relay/)）远程操控 **DSH、Claude Code、Codex CLI 与 OpenCode ACP**（`dsh-community remote start --engines claude,codex,opencode --qr`），并内置受限只读 Git diff 审查。
+- **供应链可核验的 12 资产发行与插件兼容层** — 每次 Release 同时交付 Linux `.AppImage`、Android `arm64-v8a` `.apk` 与官方运行时 CycloneDX SBOM，并附带 SHA-256 与 Keyless Cosign `.sigstore.json` 签名包；[`packages/marketplace/catalog.json`](packages/marketplace/catalog.json) 记录实际 `testedDsh`、完整性摘要与权限披露（安装仍走官方 `dsh plugin add` 链）。
 
 ---
 
-## Why Choose DSH Community?
+## 为什么选择 DSH Community？
 
-`dsh-community` is built on a strict **"Zero Kernel Fork, Maximum Complementary Reach"** philosophy: we never rewrite or vendor `@deepseek-ai/dsh`, yet we give you the Linux, Terminal, Android, and Multi-Agent E2EE capabilities that neither the upstream release nor third-party rewrites (such as `dsh-go` or vendored forks) provide together.
+`dsh-community` 遵循**「零内核分叉、最大化互补覆盖」**原则：既不重造轮子，又一次性补齐了官方发行版缺失的 Linux / 终端 / Android / 多 Agent 远程控制能力，同时避免了第三方重写版（如 `dsh-go` 或硬分叉版本）的会话割裂与生态断代问题。
 
-| Dimension | Official `deepseek-harness` | Other DSH Ports / Rewrites (e.g., `dsh-go`, forks) | **DSH Community (`dsh-community`)** |
+| 对比维度 | 官方发行版 (`deepseek-harness`) | 其他 DSH 社区衍生版（如 `dsh-go` / 硬分叉） | **DSH Community (`dsh-community`)** |
 |---|---|---|---|
-| **Execution Kernel** | Official `@deepseek-ai/dsh` | Rewritten in Go / forked JS (lags upstream prompts & tools) | **100% Official `@deepseek-ai/dsh` (`Official Source Ownership = 0`)** |
-| **`~/.dsh` Session Compatibility** | Native `~/.dsh` (Zstd JSONL) | Separate DB or incompatible JSONL; cannot resume official sessions | **100% Shared `~/.dsh`** — start on Web/Win/Mac, resume on Linux TUI / AppImage / Android |
-| **Linux & WSL Support** | CLI + Web only (no native TUI or Linux desktop installer) | Single binary CLI, no desktop shell or official Web host | **Native WSL/Linux TUI + Signed Linux `.AppImage`** |
-| **Mobile & Remote Experience** | None | None (local terminal only) | **Signed Android `arm64-v8a` APK + Browser PWA** over **Noise IK E2EE** (LAN / WebRTC P2P / Blind Relay) |
-| **Multi-Agent Orchestration** | DSH only | Single engine only | **Unified Control Plane for DSH + Claude Code + Codex CLI + OpenCode ACP** + scoped Git diff review |
-| **Plugin Ecosystem** | Official Cordis plugin loader | Incompatible with official Cordis plugins | **100% Official Cordis compatibility + Verified `catalog.json`** (`testedDsh` & permission disclosures) |
-| **Supply-Chain Security** | Standard release packages | Unsigned or ad-hoc binaries | **12 Signed Release Assets**: Sigstore Keyless Cosign (`.sigstore.json`) + APK v2/v3 signing + CycloneDX SBOM |
+| **执行内核** | 官方原版 `@deepseek-ai/dsh` | Go 重写或分叉改写（工具链、压缩与提示词滞后于官方迭代） | **100% 官方原版 `@deepseek-ai/dsh`（`Official Source Ownership = 0`）** |
+| **`~/.dsh` 会话互通** | 原生 `~/.dsh`（Zstd JSONL） | 独立数据库或格式不兼容，无法续接官方 Web/桌面端历史会话 | **100% 共享同一份 `~/.dsh`** — 官方 Web/Win/Mac 开聊，Linux TUI / AppImage / Android 无缝续接 |
+| **Linux & WSL 体验** | 仅 CLI 与 Web（无原生 TUI 与 Linux 桌面安装包） | 仅单二进制 CLI，无桌面壳或官方 Web 托管 | **原生 WSL/Linux TUI + 签名版 Linux `.AppImage`** |
+| **移动端与远程能力** | 无 | 无（仅限本机终端） | **已签名 Android `arm64-v8a` APK + 浏览器 PWA**，基于 **Noise IK 端到端加密**（LAN / WebRTC P2P / 自建盲中继） |
+| **多 Agent 协同控制** | 仅限 DSH | 仅限单一引擎 | **统一远程控制 DSH + Claude Code + Codex CLI + OpenCode ACP** + 只读 Git diff 代码审查 |
+| **插件生态兼容性** | 官方 Cordis 插件机制 | 无法加载官方 Node/Cordis 插件生态 | **100% 兼容官方 Cordis 插件 + 经实测的 `catalog.json` 目录**（含 `testedDsh` 与权限披露） |
+| **供应链安全与验签** | 标准发行包 | 无签名或自建非受控构建 | **12 项全签名资产**：Sigstore Keyless Cosign（`.sigstore.json`）+ APK v2/v3 双签名 + CycloneDX SBOM |
 
 ---
 
-## Quick Start
+## 快速开始
 
-### 1. Download Signed Linux AppImage or Android APK
+### 1. 下载已签名的 Linux AppImage 或 Android APK
 
-Grab the latest `.AppImage` (for Linux Desktop) or `-android-arm64-v8a.apk` (for Android 8.0+ `arm64-v8a` phones) from [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest), verify SHA-256 + Keyless Cosign signatures, and launch:
+在 [`releases/latest`](https://github.com/kamanager2012/dsh-community/releases/latest) 获取最新 `.AppImage`（Linux 桌面端）或 `-android-arm64-v8a.apk`（Android 8.0+ `arm64-v8a` 手机端，精确文件名与校验见 [`docs/current-release.json`](docs/current-release.json)）：
 
 ```sh
-# See docs/current-release.json for exact filenames in Published Latest:
-# https://github.com/kamanager2012/dsh-community/releases/latest
-
-# Linux Desktop AppImage:
+# Linux 桌面 AppImage：
 chmod +x dsh-community-*.AppImage
 sha256sum -c dsh-community-*.AppImage.sha256
 ./dsh-community-*.AppImage
 
-# Android Remote Client APK (verify checksum before installing via adb or on-device):
+# Android Remote Client APK（校验 SHA-256 后安装到手机）：
 sha256sum -c dsh-community-*-android-arm64-v8a.apk.sha256
 adb install dsh-community-*-android-arm64-v8a.apk
 ```
 
-Verification guide: [`docs/release.md#artifact-signing-keyless`](docs/release.md#artifact-signing-keyless) · Current release ledger: [`docs/current-release.md`](docs/current-release.md)
+Cosign 无密钥验签方法见 [`docs/release.md#artifact-signing-keyless`](docs/release.md#artifact-signing-keyless) · 当前版本事实索引：[`docs/current-release.md`](docs/current-release.md)。
 
-### 2. Run from Source (WSL / Linux Terminal, Desktop, or Multi-Agent Remote)
+### 2. 从源码运行（WSL/Linux 终端、Linux 桌面或多 Agent 远程）
 
-Requirements: Node.js 22.15+, pnpm, and either a configured `DEEPSEEK_API_KEY` (for DSH / hybrid mode) or local **Claude Code / Codex CLI / OpenCode** binaries on `PATH` (for standalone Multi-Agent Remote Control Plane mode).  
-Since official `0.1.0-rc.8`, session JSONL uses `node:zlib` zstd APIs added in Node 22.15. Sessions continue to use the official `~/.dsh` data source.
+环境要求：Node.js 22.15+、pnpm，以及 `DEEPSEEK_API_KEY`（DSH / 混合模式）或本地 `PATH` 中的 **Claude Code / Codex CLI / OpenCode**（独立多 Agent 远程控制面模式）。官方 `0.1.0-rc.8` 起 session JSONL 使用了 Node 22.15 才提供的 `node:zlib` zstd API。对话与官方共用 `~/.dsh`。
 
 ```sh
 git clone https://github.com/kamanager2012/dsh-community.git
@@ -67,31 +63,30 @@ cd dsh-community
 pnpm install
 export DEEPSEEK_API_KEY=...
 
-# WSL/Linux TUI (resume latest ~/.dsh conversation or start a new one)
-pnpm start
-pnpm new
-pnpm sessions            # list official session history
-pnpm run doctor          # diagnostics (not bare `pnpm doctor` — that is pnpm's own command)
+pnpm start              # 有对话就接着最近一条，否则开新的
+pnpm new                # 强制开新对话
+pnpm sessions           # 查看本地会话历史
+pnpm plugins            # 查看已安装插件
+pnpm desktop            # 启动桌面壳（含社区市场页与远程二维码页）
+pnpm marketplace -- list  # 插件发现 CLI
+pnpm run doctor         # 自检（不要裸跑 pnpm doctor，那是 pnpm 自己的）
 
-# Linux Desktop shell (with built-in Marketplace & Remote QR tab)
-pnpm desktop
-
-# Multi-Agent E2EE Remote Control Plane:
-# 1) Build once, then serve the browser PWA + single-port blind gateway locally
+# 多 Agent E2EE 远程控制面：
+# 1) 先构建一次，再本地托管浏览器 PWA 与单端口盲中继网关
 pnpm build
 pnpm start -- remote gateway --serve-web --port 8787 &
-# 2) Start the Host (same-machine browser PWA via --web-url; add --host <LAN-IP> --mdns for LAN/Android discovery)
+# 2) 启动远程宿主（--web-url 输出浏览器配对二维码；局域网/Android 客户端可追加 --host <LAN-IP> --mdns）
 pnpm start -- remote start --engines claude,codex,opencode \
   --relay-url ws://127.0.0.1:8787/relay \
   --signaling-url ws://127.0.0.1:8787/signal \
   --web-url http://127.0.0.1:8787/app/ --qr
 ```
 
-For cross-machine / mobile pairing over HTTPS TLS or Android `dsh-remote://pair` QR codes, reverse-proxy `remote gateway` per [`deploy/relay/README.md`](deploy/relay/README.md) and see [`docs/remote-host-client.md`](docs/remote-host-client.md).
+跨设备 / 手机通过 HTTPS 配对 PWA 或使用 Android APK 扫描 `dsh-remote://pair` 二维码时，请按 [`deploy/relay/README.md`](deploy/relay/README.md) 配置 TLS 反向代理并参见 [`docs/remote-host-client.md`](docs/remote-host-client.md)。
 
-Useful CLI subcommands (`dsh-community` or `dsh-community-tui`): `new`, `resume last`, `sessions`, `doctor`, `version`, `plugins` (read-only catalog view; install stays on official `dsh plugin add` / Desktop marketplace), `desktop`, and `remote`.
+同一入口也叫 `dsh-community`（`dsh-community-tui` 仍可用），支持子命令：`new`、`resume last`、`sessions`、`doctor`、`version`、`plugins`（只读目录；安装仍走官方 `dsh plugin add` / 桌面市场页）、`desktop`、`remote`。
 
-Package Linux Desktop locally (unsigned preview):
+本地打包 Linux 解包目录或 AppImage（预览，未签名）：
 
 ```sh
 pnpm desktop:package
@@ -102,88 +97,87 @@ pnpm desktop:package -- --appimage
 
 ---
 
-## Endpoints & Source/Release State
+## 互补端边界与双状态事实
 
 > **One Harness. Three complementary community endpoints — all published in Latest; Android physical `arm64-v8a` handset telemetry remains `[UNVERIFIED]`.**  
-> Runtime, Session, plugin execution, Official Web, and Win/macOS Desktop belong to upstream `deepseek-ai/deepseek-harness`; historical Windows/macOS installers were retired after `v0.1.1-rc.2` (`--win` / `--mac` fail closed). Earlier independent numbers `v0.1.2`–`v0.1.6` are historical only.
+> Runtime / Session / 插件执行及官方 Web、Win/macOS Desktop 归官方内核上游所有；历史版本 `v0.1.1-rc.2` 之后已退役 Win/macOS 安装包（`--win` / `--mac` fail-closed），`v0.1.2`–`v0.1.6` 仅作历史记录。
 
-| Surface | Owner | Entry |
+> 命名红线：不叫 dsh-TUI / DeepSeek Harness Desktop（那是别人的产品名），不在 npm 冒用 `@deepseek-ai` 或 `dsh-tui` 的包名；不要 `npm publish` 本仓的 workspace 包。
+
+| 发行面 | 归属 | 入口 |
 |---|---|---|
-| Official Web & Win/macOS Desktop | Upstream [`deepseek-ai/deepseek-harness`](https://github.com/deepseek-ai/deepseek-harness) | `npx @deepseek-ai/dsh web` / upstream desktop releases |
-| WSL/Linux Terminal / TUI | **Complementary Endpoint 1 (Shipped)** | `dsh-community` / `pnpm start` / `pnpm tui` |
-| Linux Desktop AppImage | **Complementary Endpoint 2 (Shipped)** | [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) `.AppImage` |
-| Android Remote Client | **Complementary Endpoint 3 (Shipped APK; physical `arm64-v8a` `[UNVERIFIED]`)** | [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) `-android-arm64-v8a.apk` (`apps/android` + `packages/remote-adapter`, [architecture](docs/remote-host-client.md)) |
-| Multi-Agent E2EE Remote Control Plane | Community Control Plane (`packages/remote-adapter`) | `dsh-community remote start --qr` / Desktop "远程" tab |
-| Verified Community Plugins | Compatibility Catalog (Not Awesome List) | Desktop marketplace tab / `pnpm marketplace -- list` / [`catalog.json`](packages/marketplace/catalog.json) |
-| Engineering & Ops Handbook | Documentation & AI Retrieval Catalog | [Online Handbook](https://kamanager2012.github.io/dsh-community/) · [`handbook/`](handbook/) |
+| 官方 Web & Win/macOS Desktop | 官方上游既有端，不是 Community 互补端 | [`deepseek-ai/deepseek-harness`](https://github.com/deepseek-ai/deepseek-harness)（`npx @deepseek-ai/dsh web`） |
+| WSL/Linux 终端 | **互补社区端 1：Terminal / TUI（已发行）** | `dsh-community` / `dsh-community-tui` / `pnpm tui` |
+| Linux AppImage | **互补社区端 2：Linux Desktop（已发行）** | [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) `.AppImage` |
+| Android Remote Client | **互补社区端 3：Remote Mobile（已发行 APK；真机遥测 `[UNVERIFIED]`）** | [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) `-android-arm64-v8a.apk`（`apps/android` + `packages/remote-adapter`，[架构说明](docs/remote-host-client.md)） |
+| 多 Agent 远程控制面 | 社区远程控制层（`packages/remote-adapter`） | `dsh-community remote start --qr` 或桌面「远程」标签页 |
+| 已验证能装的社区插件 | 兼容性目录（不是 awesome 目录） | 桌面市场页 · `pnpm marketplace` · [`packages/marketplace/catalog.json`](packages/marketplace/catalog.json) |
+| 中文/英文工程手册 | 知识 / 证据与 AI 检索库 | [在线手册站](https://kamanager2012.github.io/dsh-community/) · [`handbook/`](handbook/) |
 
-**Candidate Source and Published Latest are independent states.**  
-Source may advance to a newer reviewed upstream `@deepseek-ai/dsh` candidate while GitHub Latest, published installers, plugin `testedDsh`, and real User-Loop evidence remain on the last version that actually passed those gates. Do not infer workspace version from `releases/latest`, and never synthesize installer names from an unpublished candidate.
+**Candidate Source 与 Published Latest 是两条独立状态。**  
+源码可以先升级到新的官方候选版本，而 GitHub Latest、已发布安装包、插件 `testedDsh` 和真实 User-Loop 证据继续停留在上一个已验证版本。不要从 `releases/latest` 的版本号反推当前 workspace 版本，也不要从源码候选版本伪造尚未发布的安装包。
 
-| State | Source of truth |
+| 状态 | 去哪看 |
 |---|---|
-| **Published Latest** | [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) — exact tag, asset names, release ID, and asset evidence live in [`docs/current-release.json`](docs/current-release.json) |
-| **Candidate Source** | `candidateTag`, official-core pin (`packages/dsh-bridge/src/pin.ts`), workspace product version, and Dual-Badge live in [`docs/current-release.json`](docs/current-release.json) (`latest-tested.json` is compatibility evidence, not the pin source of truth) |
+| **Published Latest** | [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest)；真实 tag、安装包名、release/asset 证据以 [`docs/current-release.json`](docs/current-release.json) 为准 |
+| **Candidate Source** | 当前源码候选的 `candidateTag`、官方 core pin（`packages/dsh-bridge/src/pin.ts`）、workspace 产品号与 Dual-Badge 以 [`docs/current-release.json`](docs/current-release.json) 为准（`latest-tested.json` 只是契约兼容性推荐，不是 pin 真源） |
 | **Historical / Pre-release** | [Releases](https://github.com/kamanager2012/dsh-community/releases) |
 
-Read the locked endpoint definition in [Community endpoints](docs/community-endpoints.en.md) and start-to-finish onboarding in [Getting Started](docs/getting-started.en.md).
+三个互补社区端的详细定义与入门请见：[使用指南](docs/getting-started.md) · [发行端与实验端定义](docs/community-endpoints.md) · [当前发行说明](docs/current-release.md)。
 
 ---
 
-## Architectural Boundary & Success Criteria
+## 硬边界与成功标准
 
-`dsh-community` must **not vendor** official `packages/*` (`Official Source Ownership = 0`), must **not** `patch-package` official UI, must **not** fork the official event vocabulary, and must **not** maintain a second equivalent Session source of truth.
-
-| Official Runtime owns | This repository owns |
+| 做 | 不做 |
 |---|---|
-| Agent loop and model execution | Complementary Desktop AppImage, Android Remote APK, and TUI distribution/UX |
-| Tool execution and Runtime lifecycle | Lifecycle wrapping, diagnostics, and upstream compatibility contracts |
-| Official Session persistence and event surface | Session selection, resume UX, and E2EE multi-agent adapters |
-| Official CLI, profiles, and plugin surface | Keyless release packaging, plugin security metadata, and ecosystem links |
+| 依赖已发布的 `@deepseek-ai/dsh` | 不 vendor 官方 `packages/*`（Official Source Ownership = 0） |
+| Desktop 子进程启动 `dsh web`，只管理生命周期 | 不把 stdout 解析成业务协议，不 `patch-package` 改官方 UI |
+| 默认共用官方 `~/.dsh` session 真源 | 不把 DSH 数据迁进 Desktop AppData |
+| 我们的 TUI 自己组合、自己列官方 session | 不把参考 TUI 当上游，不维护第二套 session log |
+| `contracts/` 快照官方表面 | 不维护一套社区 `event-types.ts` |
 
-1. Official Source Ownership = 0 (zero vendored official code).
-2. TUI patch-surface on official Cordis rows drops toward zero.
-3. TUI/Desktop/Android do not implement Agent loop, Session persistence, or Tool execution.
-4. One upstream rc bump requires zero business UI edits in principle.
-5. WSL/Linux TUI, Linux AppImage, Android Remote Client, and official Web/Desktop share the same session truth (`~/.dsh`).
-6. Upstream regressions break in contract CI before user release.
+1. 官方源代码 vendor = 0
+2. TUI 对官方 Cordis row 的覆盖数量显著下降（33 → 15 → 8 → 只剩 TUI 自己的 insert）
+3. TUI/Desktop/Android 不实现 Agent loop、Session persistence、Tool execution
+4. 一次 upstream rc bump，业务 UI 原则上零修改
+5. WSL/Linux TUI、Linux AppImage、Android Remote Client 与官方 Web/Desktop 能共享同一 `~/.dsh` Session 真源
+6. 新版本兼容问题首先在 contract CI 爆
 
-Currently: criteria 1, 3, and 5 hold by design; criterion 2 community overlay touches official rows without mounting third-party TUIs; criterion 4 is verified against upstream releases.
+当前：1 / 3 / 5 按设计成立；2 社区 overlay 只改官方行，不挂第三方 TUI；第 4 条持续按上游新包做回归。
 
 ---
 
-## Repository Map & Layout
+## 生态地图与仓库布局
 
-[`dsh-community`](https://github.com/kamanager2012/dsh-community) is the **only canonical community download entry**. The former standalone repositories `dsh-marketplace`, `dsh-community-plugins`, `dsh-community-edition`, and `deepseek-harness-suite` were merged into this repository and deleted on 2026-09-13.
+本仓是**唯一用户下载入口**。原独立仓库 `dsh-marketplace`、`dsh-community-plugins`、`dsh-community-edition` 与 `deepseek-harness-suite` 已于 2026-09-13 并入本仓后删除：
 
 ```text
-contracts/              Official CLI and package surface snapshots + compatibility matrix
-packages/dsh-bridge     Runtime process and lifecycle boundary
-packages/marketplace    Plugin discovery CLI + audited catalog.json
-packages/remote-adapter Multi-Agent E2EE control plane (DSH, Claude Code, Codex CLI, OpenCode ACP + scoped Git diff review) over Noise IK & LAN/WebRTC/Relay
-packages/tui            Community terminal UI library (@dsh-community/tui-surface, Ink-based)
-packages/tui-adapter    Community TUI adapter and patch surface
-packages/shared-types   Community-owned types, not an official event fork
-apps/desktop            Official `dsh web` Electron shell + session list + Marketplace/Remote UI
-apps/remote-web         Browser PWA client for E2EE remote control
-apps/android            Android Remote Client (shipped arm64-v8a APK; CI x86_64 emulator E2EE PASS, physical arm64-v8a [UNVERIFIED])
-apps/tui                Official profile / resume launcher (`dsh-community`)
-deploy/                 Self-hosted blind relay deployment configurations (`deploy/relay/`)
-handbook/               Bilingual engineering handbook (`mkdocs`) & AI retrieval catalog
-archive/                Frozen historical Labs (`archive/deepseek-harness-suite/`, excluded from build/CI)
-tests/upstream-contract Compatibility, vendor=0, security, and release-gate contract checks
+contracts/              官方表面快照 + compatibility matrix
+packages/dsh-bridge     解析官方 bin、生命周期、数据目录
+packages/marketplace    插件发现 CLI + catalog.json
+packages/remote-adapter 多 Agent E2EE 远程控制面（DSH / Claude Code / Codex CLI / OpenCode ACP + 只读 Git diff 审查），支持 Noise IK 与 LAN/WebRTC/Relay
+packages/tui            社区终端界面库（@dsh-community/tui-surface，基于 Ink）
+packages/tui-adapter    我们的 TUI 薄 patch + KPI
+packages/shared-types   社区自己的类型，不是官方 event fork
+apps/desktop            官方 `dsh web` Electron 壳 + 官方 session 列表 + 市场/远程界面
+apps/remote-web         浏览器端 E2EE 远程控制 PWA
+apps/android            Android Remote Client（已发行 arm64-v8a APK；CI x86_64 模拟器 E2EE PASS，物理真机遥测 [UNVERIFIED]）
+apps/tui                官方 `dsh --profile` / `--resume` 启动器（dsh-community）
+deploy/                 自部署盲中继部署配置（deploy/relay/）
+handbook/               中英文工程手册（mkdocs）与 AI 检索目录
+archive/                已归档历史 Labs（archive/deepseek-harness-suite/，不进构建与 CI）
+tests/upstream-contract vendor=0、pin、CLI 与发行契约检查
 ```
 
-Further reading: [Getting Started](docs/getting-started.en.md) · [ARCHITECTURE.md](ARCHITECTURE.md) · [ECOSYSTEM.md](ECOSYSTEM.md) · [Release Guide](docs/release.md) · [Remote Host-Client](docs/remote-host-client.md) · [Contracts](contracts/README.md) · [Handbook](https://kamanager2012.github.io/dsh-community/).
+延伸文档：[Architecture](ARCHITECTURE.md) · [ECOSYSTEM.md](ECOSYSTEM.md) · [发布指南](docs/release.md) · [Remote Host-Client](docs/remote-host-client.md) · [重构说明](docs/reconstruction.md) · [Upgrade](docs/upgrade.md) · [TUI adapter](docs/tui-adapter.md) · [contracts](contracts/README.md) · [Version Manager](docs/version-manager.md)。
 
-## Evidence Language & Security
+## Security
 
-Use explicit status labels (`[REAL]`, `[PARTIAL]`, `[LABS]`, `[PROBE]`, `[FAIL-CLOSED]`, `[BLOCKED_BY_UPSTREAM]`, `[UNVERIFIED]`). A green unit test, successful fallback, or README statement is not proof of a real Runtime E2E.
-
-See [SECURITY.md](SECURITY.md) for Desktop Electron hardening (`contextIsolation`, default-deny permissions, allow-listed navigation), keyless cosign signature verification, `~/.dsh` session-sharing boundaries, and private vulnerability reporting.
+见 [SECURITY.md](SECURITY.md)：Desktop 的 Electron 加固边界（`contextIsolation` / 权限默认拒绝 / 导航白名单）、cosign keyless 发行签名的验证方法、`~/.dsh` 会话数据共享范围，以及如何私下报告安全问题。
 
 ## Community & License
 
-[Contributing](CONTRIBUTING.md) · [Governance](GOVERNANCE.md) · [Code of Conduct](CODE_OF_CONDUCT.md) · [Support](SUPPORT.md) · [Security](SECURITY.md)
+[Contributing](CONTRIBUTING.md) · [Governance](GOVERNANCE.md) · [Community Conduct](CODE_OF_CONDUCT.md) · [Support](SUPPORT.md) · [Security](SECURITY.md)
 
-MIT. Official runtime and third-party notices are documented in [NOTICE](NOTICE) and upstream `@deepseek-ai/dsh` package metadata.
+MIT。运行时版权与第三方声明见 [NOTICE](NOTICE) 和官方 `@deepseek-ai/dsh` 包元数据。
