@@ -74,6 +74,22 @@
     },
     "candidateAcceptance": {
       "status": "PASS",
+      "version": "0.2.2-rc.3",
+      "execution": "local-consolidated-acceptance",
+      "baselineCommit": "8e0a596328555e83affa8866cdf6bf9ab033925b",
+      "runHeadCommit": "12e343a8931cebfac24ffb6dd9a1cbedd16505b7",
+      "runtimeLockGenerateRunId": 43661345685,
+      "runtimeLockGenerateJobId": 132651140528,
+      "covers": "Candidate/Published identity, frozen pnpm install, pnpm + npm high-severity security audits, zero contract drift, exact 0.2.2-rc.3 Desktop runtime closure (328 DSH entries), Android provenance/closure/backing/ripgrep/drift audits, typecheck (8 projects), full Vitest (118 files / 636 tests), authenticated official-Web lifecycle, marketplace offline (9 plugins)",
+      "testFiles": "118 passed (118)",
+      "tests": "636 passed (636)",
+      "runtimeDshEntries": 328,
+      "marketplaceOffline": "9 plugins verified",
+      "providerCalls": 0,
+      "note": "Consolidated 0.2.2-rc.3 local acceptance passed on commit 12e343a8931cebfac24ffb6dd9a1cbedd16505b7 atop CI-attested runtime-lock (run 43661345685 / job 132651140528), promoting latest-tested to 0.2.2-rc.3; Published Latest and published installer evidence remain v0.2.2-rc.2."
+    },
+    "previousCandidateAcceptance": {
+      "status": "PASS",
       "version": "0.2.2-rc.2",
       "execution": "local-consolidated-acceptance",
       "baselineCommit": "d66c3f0fd9c936d7aaad3da6b31181f410bd922e",
@@ -87,22 +103,6 @@
       "marketplaceOffline": "9 plugins verified",
       "providerCalls": 0,
       "note": "Consolidated 0.2.2-rc.2 local acceptance passed on commit 750d8c5c94628746e6cc3fac08c563f56b62ba48 atop CI-attested runtime-lock (run 43334043848 / job 131585590246), promoting latest-tested to 0.2.2-rc.2; Published Latest and published installer evidence remain v0.1.1-rc.2."
-    },
-    "previousCandidateAcceptance": {
-      "status": "PASS",
-      "version": "0.2.2-rc.1",
-      "execution": "local-consolidated-acceptance",
-      "baselineCommit": "938979a8d9688e0cbc142e98aa4751606344170a",
-      "runHeadCommit": "9f4476d214fc17a341f896635ff2ab0bd9ad1959",
-      "runtimeLockGenerateRunId": 43327677647,
-      "runtimeLockVerifyRunId": 43328060175,
-      "covers": "Candidate/Published identity, frozen pnpm install, pnpm + npm high-severity security audits, zero contract drift, exact 0.2.2-rc.1 Desktop runtime closure (320 DSH entries), Android provenance/closure/backing audits, typecheck, full Vitest, authenticated official-Web lifecycle, marketplace offline",
-      "testFiles": "96 passed, 1 skipped (97)",
-      "tests": "468 passed, 1 skipped (469)",
-      "runtimeDshEntries": 320,
-      "marketplaceOffline": "9 plugins verified",
-      "providerCalls": 0,
-      "note": "Consolidated 0.2.2-rc.1 local acceptance passed on commit 9f4476d214fc17a341f896635ff2ab0bd9ad1959 atop CI-attested runtime-lock (runs 43327677647 / 43328060175), promoting latest-tested to 0.2.2-rc.1; Published Latest and published installer evidence remain v0.1.1-rc.2."
     }
   },
   "candidateTag": "v0.2.2-rc.3",

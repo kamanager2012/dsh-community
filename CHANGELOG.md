@@ -76,7 +76,7 @@
 
 ## 0.2.2-rc.3 — Candidate Source (2026-11-15)
 
-This release aligns **Community Product Version** 1:1 with the pinned official kernel (`0.2.2-rc.3`). GitHub Published Latest remains `v0.2.2-rc.2` until `v0.2.2-rc.3` release workflows publish; pre-promotion consolidated local acceptance is pending on `upgrade/dsh-0.2.2-rc.3`.
+This release aligns **Community Product Version** 1:1 with the pinned official kernel (`0.2.2-rc.3`). GitHub Published Latest remains `v0.2.2-rc.2` until `v0.2.2-rc.3` release workflows publish; consolidated local acceptance passed on commit `12e343a` (**118 test files / 636 tests passed**, 328 exact `0.2.2-rc.3` DSH runtime entries, 0 high/critical advisories in `pnpm audit` and `npm audit`, Android closure/backing/portable/ripgrep/drift audits PASS, 9-plugin offline marketplace PASS) and `latest-tested` advances to `0.2.2-rc.3`.
 
 - **Synced kernel & product (`@deepseek-ai/dsh@0.2.2-rc.3`)**: Verified npm `@deepseek-ai/dsh@0.2.2-rc.3` (`next` dist-tag, published `2026-11-13T08:05:45.455Z`, upstream tag `dsh-v0.2.2-rc.3`, release commit `4c1cf20cb1fa6dd021a6988454df1df853209f63`, merge commit `38a6a5c965aa99ab525161efb7cc5cf1fe62fced`). `PINNED_DSH_VERSION`, `COMMUNITY_PRODUCT_VERSION`, workspace manifests, TUI peers, Android target metadata, and `pnpm-lock.yaml` advance to `0.2.2-rc.3`.
 - **Desktop runtime lock**: Regenerated via GitHub Actions `runtime-lock-generate` (run `43661345685` / job `132651140528` on `ubuntu-24.04`, Node `v22.23.4`, npm `10.9.9`): **676 entries** with **328 DSH-family entries** (adding `@deepseek-ai/dsh-deepseek-chat-import@0.2.2-rc.3`), exact `0.2.2-rc.3`, plus `zod@4.6.7` and `undici@^8.12.2` overrides so `npm audit --omit=dev --audit-level high` exits `0`.
