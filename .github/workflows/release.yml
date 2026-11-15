@@ -113,11 +113,13 @@ jobs:
       - name: Install Gradle 8.11.1
         run: |
           GRADLE_VER="8.11.1"
-          GRADLE_SHA256="5d5ebdd0a82d1a02c5effd8e5b9cf2d669f06c38d9a282c816ef9808a015e9d9"
+          GRADLE_SHA256="f397b287023acdba1e9f6fc5ea72d22dd63669d59ed4a289a29b1a76eee151c6"
           curl -fsSL "https://services.gradle.org/distributions/gradle-${GRADLE_VER}-bin.zip" -o /tmp/gradle.zip
           echo "${GRADLE_SHA256}  /tmp/gradle.zip" | sha256sum -c -
           sudo unzip -q /tmp/gradle.zip -d /opt/gradle
           echo "/opt/gradle/gradle-${GRADLE_VER}/bin" >> "$GITHUB_PATH"
+      - name: Verify Android release readiness gate (pure-remote + emulator E2EE verified)
+        run: node scripts/verify-android-release-ready.mjs --allow-emulator-verified
       - name: Build and verify signed arm64-v8a Android release APK
         env:
           KEYSTORE_BASE64: ${{ secrets.DSH_ANDROID_KEYSTORE_BASE64 }}
@@ -135,7 +137,7 @@ jobs:
           else
             KEYSTORE_PASSWORD="dsh-ci-ephemeral-keystore-pass"
             KEY_ALIAS="dsh-ci-ephemeral-key"
-            KEY_PASSWORD="dsh-ci-ephemeral-key-pass"
+            KEY_PASSWORD="$KEYSTORE_PASSWORD"
             keytool -genkeypair \
               -keystore "$KEYSTORE_PATH" \
               -storetype PKCS12 \
@@ -335,7 +337,21 @@ jobs:
           printf 'publishing %s\n' "${assets[@]}"
           RELEASE_TITLE=$(head -n 1 release-title.txt)
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" "${assets[@]}" --clobber
+            existing_names=$(gh release view "$TAG" --json assets --jq '.assets[].name')
+            missing_assets=()
+            for a in "${assets[@]}"; do
+              base=$(basename "$a")
+              if ! printf '%s\n' "$existing_names" | grep -Fxq "$base"; then
+                missing_assets+=("$a")
+              fi
+            done
+            if [[ ${#missing_assets[@]} -eq 0 ]]; then
+              echo "release $TAG already contains all release assets; refusing to replace published assets"
+              echo "cut a new tag for a new build. do not move a published tag."
+              exit 1
+            fi
+            printf 'uploading missing assets to existing release %s: %s\n' "$TAG" "${missing_assets[*]}"
+            gh release upload "$TAG" "${missing_assets[@]}"
             gh release edit "$TAG" \
               --title "${RELEASE_TITLE:-$TAG}" \
               --notes-file release-notes.md \

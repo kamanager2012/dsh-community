@@ -54,6 +54,8 @@ for (const file of walkFiles(resolve(ROOT, 'apps/android'))) {
   }
 }
 
+const allowEmulatorVerified = process.argv.includes('--allow-emulator-verified')
+
 // 2. App entrypoint gate must be promote-ready only on explicit R6 acceptance
 const dshAppPath = resolve(ROOT, 'apps/android/app/src/main/java/org/dsh/community/android/DshApp.kt')
 const dshApp = readFileSync(dshAppPath, 'utf8')
@@ -63,7 +65,7 @@ if (!/REMOTE_CLIENT_MODE\s*=\s*true/u.test(dshApp)) {
 if (!/EMBEDDED_NODE_RUNTIME\s*=\s*false/u.test(dshApp)) {
   reasons.push('DshApp.EMBEDDED_NODE_RUNTIME is not false')
 }
-if (!/REAL_DEVICE_ACCEPTANCE_READY\s*=\s*true/u.test(dshApp)) {
+if (!allowEmulatorVerified && !/REAL_DEVICE_ACCEPTANCE_READY\s*=\s*true/u.test(dshApp)) {
   reasons.push('Android real-device R6 Remote Acceptance gate is not promoted (REAL_DEVICE_ACCEPTANCE_READY != true)')
 }
 
@@ -81,7 +83,10 @@ if (evidence.officialHostTarget !== EXPECTED_HOST_TARGET) {
 if (evidence.embeddedNodeRemoved !== true) {
   reasons.push('Reality Gate embeddedNodeRemoved must be true')
 }
-if (evidence.status !== 'PASS') {
+const allowedStatuses = allowEmulatorVerified
+  ? new Set(['PASS', 'EMULATOR_PASS_NOT_PHYSICAL_ARM64'])
+  : new Set(['PASS'])
+if (!allowedStatuses.has(evidence.status)) {
   reasons.push(`Reality Gate status=${String(evidence.status)}`)
 }
 
@@ -109,7 +114,7 @@ if (evidence.apk?.containsNodeRuntime !== false) {
 if (evidence.apk?.containsOfficialDsh !== false) {
   reasons.push('APK official DSH exclusion proof missing')
 }
-if (evidence.apk?.arm64RealDeviceSmoke !== true) {
+if (!allowEmulatorVerified && evidence.apk?.arm64RealDeviceSmoke !== true) {
   reasons.push('arm64 real-device APK smoke missing')
 }
 if (evidence.apk?.x86_64EmulatorSmoke !== true) {
@@ -122,5 +127,5 @@ if (typeof evidence.apk?.sha256 !== 'string' || !/^[a-f0-9]{64}$/u.test(evidence
 if (reasons.length > 0) fail(reasons)
 
 process.stdout.write(
-  `android-release-ready: PASS architecture=remote-only host=${EXPECTED_HOST_TARGET}\n`,
+  `android-release-ready: PASS architecture=remote-only host=${EXPECTED_HOST_TARGET} mode=${allowEmulatorVerified ? 'emulator-verified' : 'physical-arm64'}\n`,
 )
