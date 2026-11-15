@@ -1028,6 +1028,68 @@ async function spawnCliUntilReadyJson<T>(
     }
   })
 
+  it('fails closed on grant/revoke/capability revoke when live control returns 404 or is unreachable (F-02 P2)', async () => {
+    const root = makeTempDir('dsh-remote-cli-live-fail-closed-')
+    const dshHome = join(root, 'official-dsh-home')
+    const configDir = join(root, 'community-remote-config')
+    const stores = openPersistentRemoteStores({ configDir, dshHome })
+    const hostPub = await stores.hostIdentityStore.getPublicIdentity()
+    const record = stores.trustStore.trustSync({
+      staticPublicKey: new Uint8Array(32).fill(77),
+      displayName: 'Fail-Closed Live Control Phone',
+      grantedCapabilities: ['observe', 'prompt'],
+      trustDomainId: hostPub.trustDomainId,
+    })
+
+    const server404 = createServer((_req, res) => {
+      res.writeHead(404, { 'content-type': 'text/plain' }).end('not found')
+    })
+    await new Promise<void>((r) => server404.listen(0, '127.0.0.1', () => r()))
+    const addr = server404.address() as { port: number }
+    const controlPath = join(stores.configDir, '.control.json')
+    writeFileSync(
+      controlPath,
+      JSON.stringify({
+        pid: process.pid,
+        controlUrl: `http://127.0.0.1:${addr.port}`,
+        controlToken: 'test-token-404',
+      }),
+      { mode: 0o600 },
+    )
+    if (process.platform !== 'win32') chmodSync(controlPath, 0o600)
+
+    try {
+      const env = { DSH_HOME: dshHome, DSH_REMOTE_CONFIG_DIR: configDir }
+
+      const ioGrant = captureOutputs()
+      expect(await runRemoteCommand(['grant', record.deviceId, 'approve'], env, dshHome)).toBe(1)
+      expect(ioGrant.stderr()).toContain('404')
+      expect(ioGrant.stderr()).toContain('已拒绝回退至离线写入')
+
+      const ioRevokeCap = captureOutputs()
+      expect(await runRemoteCommand(['revoke', record.deviceId, '--cap', 'prompt'], env, dshHome)).toBe(1)
+      expect(ioRevokeCap.stderr()).toContain('404')
+      expect(ioRevokeCap.stderr()).toContain('已拒绝回退至离线写入')
+
+      const ioRevoke = captureOutputs()
+      expect(await runRemoteCommand(['revoke', record.deviceId], env, dshHome)).toBe(1)
+      expect(ioRevoke.stderr()).toContain('404')
+      expect(ioRevoke.stderr()).toContain('已拒绝回退至离线写入')
+    } finally {
+      await new Promise<void>((r) => server404.close(() => r()))
+    }
+
+    // Now the port is closed while .control.json still has live process.pid -> connection error must fail closed too.
+    const env = { DSH_HOME: dshHome, DSH_REMOTE_CONFIG_DIR: configDir }
+    const ioUnreachable = captureOutputs()
+    expect(await runRemoteCommand(['grant', record.deviceId, 'approve'], env, dshHome)).toBe(1)
+    expect(ioUnreachable.stderr()).toContain('连接控制接口失败')
+
+    const persisted = await openPersistentRemoteStores({ configDir, dshHome }).trustStore.get(record.deviceId)
+    expect(persisted?.revokedAt).toBeUndefined()
+    expect(Array.from(persisted?.grantedCapabilities ?? []).sort()).toEqual(['observe', 'prompt'])
+  })
+
   it('fails closed on non-loopback/wildcard relay, signaling, and gateway without --host-secret (F-04)', async () => {
     const binPath = ensureBuiltTuiBin()
 

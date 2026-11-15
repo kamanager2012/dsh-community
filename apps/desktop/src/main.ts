@@ -1073,7 +1073,7 @@ function bindIpc(): void {
     assertAuthorizedSender(event)
     const req = parseSetCapabilitiesInput(raw)
     if (req === undefined) return
-    await ensureRemoteController().setDeviceCapabilities(req.deviceId, req.grantedCapabilities)
+    await ensureRemoteController().setDeviceCapabilities(req.deviceId, req)
     await finishRemoteAction({ preserveDraft: true })
   })
   ipcMain.handle(DESKTOP_IPC.remoteRevokeDevice, async (event, raw: unknown) => {

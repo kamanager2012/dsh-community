@@ -793,13 +793,16 @@ export async function runRemoteCommand(
           )
           return 0
         }
-        if (res.status !== 404) {
-          const text = (await res.text().catch(() => '')).trim()
-          process.stderr.write(`在线控制接口授权失败 (${String(res.status)})${text ? `: ${text}` : ''}\n`)
-          return 1
-        }
-      } catch {
-        // Fallback to offline durable trust store below when live control is unreachable
+        const text = (await res.text().catch(() => '')).trim()
+        process.stderr.write(
+          `检测到在线 Remote Host (pid=${String(live.pid)})，在线控制接口授权失败 (${String(res.status)})${text ? `: ${text}` : ''}；已拒绝回退至离线写入以免状态不一致。\n`,
+        )
+        return 1
+      } catch (err) {
+        process.stderr.write(
+          `检测到在线 Remote Host (pid=${String(live.pid)})，连接控制接口失败 (${err instanceof Error ? err.message : String(err)})；请先确认 host 状态或停止 host 后再执行。\n`,
+        )
+        return 1
       }
     }
     try {
@@ -875,13 +878,16 @@ export async function runRemoteCommand(
             )
             return 0
           }
-          if (res.status !== 404) {
-            const text = (await res.text().catch(() => '')).trim()
-            process.stderr.write(`在线控制接口撤权失败 (${String(res.status)})${text ? `: ${text}` : ''}\n`)
-            return 1
-          }
-        } catch {
-          // Fallback to offline durable trust store below when live control is unreachable
+          const text = (await res.text().catch(() => '')).trim()
+          process.stderr.write(
+            `检测到在线 Remote Host (pid=${String(live.pid)})，在线控制接口撤权失败 (${String(res.status)})${text ? `: ${text}` : ''}；已拒绝回退至离线写入以免已连接设备继续接收事件。\n`,
+          )
+          return 1
+        } catch (err) {
+          process.stderr.write(
+            `检测到在线 Remote Host (pid=${String(live.pid)})，连接控制接口失败 (${err instanceof Error ? err.message : String(err)})；请先确认 host 状态或停止 host 后再执行。\n`,
+          )
+          return 1
         }
       }
       try {
@@ -922,13 +928,16 @@ export async function runRemoteCommand(
           process.stdout.write(`已吊销设备：${targetId}（在线会话已断开）\n`)
           return 0
         }
-        if (res.status !== 404) {
-          const text = (await res.text().catch(() => '')).trim()
-          process.stderr.write(`在线控制接口吊销失败 (${String(res.status)})${text ? `: ${text}` : ''}\n`)
-          return 1
-        }
-      } catch {
-        // Fallback to offline durable trust store below when live control is unreachable
+        const text = (await res.text().catch(() => '')).trim()
+        process.stderr.write(
+          `检测到在线 Remote Host (pid=${String(live.pid)})，在线控制接口吊销失败 (${String(res.status)})${text ? `: ${text}` : ''}；已拒绝回退至离线写入以免在线会话继续保留。\n`,
+        )
+        return 1
+      } catch (err) {
+        process.stderr.write(
+          `检测到在线 Remote Host (pid=${String(live.pid)})，连接控制接口失败 (${err instanceof Error ? err.message : String(err)})；请先确认 host 状态或停止 host 后再执行。\n`,
+        )
+        return 1
       }
     }
     const revoked = await stores.trustStore.revoke(targetId)

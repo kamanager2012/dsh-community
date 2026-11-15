@@ -28,8 +28,12 @@ contextBridge.exposeInMainWorld('dshCommunity', {
     allowApprove?: boolean
     grantedCapabilities?: readonly string[]
   }) => ipcRenderer.invoke(DESKTOP_IPC.remoteConfirmPairing, payload),
-  remoteSetCapabilities: (payload: { deviceId: string; grantedCapabilities: readonly string[] }) =>
-    ipcRenderer.invoke(DESKTOP_IPC.remoteSetCapabilities, payload),
+  remoteSetCapabilities: (payload: {
+    deviceId: string
+    grantedCapabilities?: readonly string[]
+    grant?: readonly string[]
+    revoke?: readonly string[]
+  }) => ipcRenderer.invoke(DESKTOP_IPC.remoteSetCapabilities, payload),
   remoteRevokeDevice: (deviceId: string) =>
     ipcRenderer.invoke(DESKTOP_IPC.remoteRevokeDevice, deviceId),
   remoteGitInspect: (payload: { sessionId?: string; path?: string; staged?: boolean; clear?: boolean }) =>

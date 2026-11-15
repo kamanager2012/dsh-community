@@ -223,7 +223,12 @@ describe('shell pages', () => {
     expect(html).toContain('data-confirm-candidate="cand-1"')
     expect(html).toContain('data-allow-approve="cand-1"')
     expect(html).toContain('data-cap-candidate="cand-1" data-cap-name="observe"')
-    expect(html).toContain('data-device-cap-revoke="dev-trusted-1"')
+    expect(html).toContain('data-device-cap-revoke="dev-trusted-1" data-cap-name="observe"')
+    expect(html).toContain('data-device-cap-grant="dev-trusted-1" data-cap-name="approve"')
+    expect(html).not.toContain('data-current-caps')
+    expect(html).toContain("remoteSetCapabilities({ deviceId, revoke: [capToRemove] })")
+    expect(html).toContain("remoteSetCapabilities({ deviceId, grant: [capToAdd] })")
+    expect(html).toContain('btn.disabled = true')
     expect(html).toContain('data-revoke-device="dev-trusted-1"')
     const approveCheckbox = html.match(/<input[^>]*data-allow-approve="cand-1"[^>]*>/)?.[0] ?? ''
     expect(approveCheckbox).not.toContain('checked')

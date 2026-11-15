@@ -604,16 +604,75 @@ export function parseConfirmPairingInput(
   }
 }
 
-export function parseSetCapabilitiesInput(
-  raw: unknown,
-): { readonly deviceId: string; readonly grantedCapabilities: readonly Capability[] } | undefined {
+export type SetCapabilitiesDelta = {
+  readonly grant?: readonly Capability[] | undefined
+  readonly revoke?: readonly Capability[] | undefined
+}
+
+export type SetCapabilitiesInput =
+  | { readonly deviceId: string; readonly grantedCapabilities: readonly Capability[] }
+  | ({ readonly deviceId: string; readonly grantedCapabilities?: undefined } & SetCapabilitiesDelta)
+
+export type SetCapabilitiesUpdate =
+  | readonly string[]
+  | {
+      readonly grantedCapabilities?: readonly string[] | undefined
+      readonly grant?: readonly string[] | undefined
+      readonly revoke?: readonly string[] | undefined
+    }
+
+type NormalizedCapabilitiesPayload =
+  | { readonly kind: 'replace'; readonly grantedCapabilities: readonly Capability[] }
+  | {
+      readonly kind: 'delta'
+      readonly grant: readonly Capability[]
+      readonly revoke: readonly Capability[]
+    }
+
+function normalizeCapabilityFields(
+  grantedCapabilitiesRaw: unknown,
+  grantRaw: unknown,
+  revokeRaw: unknown,
+): NormalizedCapabilitiesPayload | undefined {
+  if (grantedCapabilitiesRaw !== undefined) {
+    if (grantRaw !== undefined || revokeRaw !== undefined) return undefined
+    const grantedCapabilities = normalizeCapabilityArray(grantedCapabilitiesRaw)
+    return grantedCapabilities === undefined ? undefined : { kind: 'replace', grantedCapabilities }
+  }
+  const grant = grantRaw !== undefined ? normalizeCapabilityArray(grantRaw) : []
+  const revoke = revokeRaw !== undefined ? normalizeCapabilityArray(revokeRaw) : []
+  if (grant === undefined || revoke === undefined) return undefined
+  if (grant.length === 0 && revoke.length === 0) return undefined
+  return { kind: 'delta', grant, revoke }
+}
+
+function normalizeCapabilitiesUpdate(update: SetCapabilitiesUpdate): NormalizedCapabilitiesPayload | undefined {
+  if (Array.isArray(update)) {
+    return normalizeCapabilityFields(update, undefined, undefined)
+  }
+  const rec = update as {
+    readonly grantedCapabilities?: readonly string[] | undefined
+    readonly grant?: readonly string[] | undefined
+    readonly revoke?: readonly string[] | undefined
+  }
+  return normalizeCapabilityFields(rec.grantedCapabilities, rec.grant, rec.revoke)
+}
+
+export function parseSetCapabilitiesInput(raw: unknown): SetCapabilitiesInput | undefined {
   if (raw === null || typeof raw !== 'object') return undefined
   const rec = raw as Record<string, unknown>
   const deviceId = parseRevokeDeviceInput(rec.deviceId)
   if (deviceId === undefined) return undefined
-  const grantedCapabilities = normalizeCapabilityArray(rec.grantedCapabilities)
-  if (grantedCapabilities === undefined) return undefined
-  return { deviceId, grantedCapabilities }
+  const payload = normalizeCapabilityFields(rec.grantedCapabilities, rec.grant, rec.revoke)
+  if (payload === undefined) return undefined
+  if (payload.kind === 'replace') {
+    return { deviceId, grantedCapabilities: payload.grantedCapabilities }
+  }
+  return {
+    deviceId,
+    ...(payload.grant.length > 0 ? { grant: payload.grant } : {}),
+    ...(payload.revoke.length > 0 ? { revoke: payload.revoke } : {}),
+  }
 }
 
 export function parseRevokeDeviceInput(raw: unknown): string | undefined {
@@ -1474,10 +1533,10 @@ export class DesktopRemoteController {
     }
   }
 
-  async setDeviceCapabilities(deviceId: string, capabilities: readonly string[]): Promise<void> {
-    const normalized = normalizeCapabilityArray(capabilities)
-    if (normalized === undefined) {
-      this.lastError = '更新设备权限失败: 包含未知能力名称'
+  async setDeviceCapabilities(deviceId: string, capabilities: SetCapabilitiesUpdate): Promise<void> {
+    const payload = normalizeCapabilitiesUpdate(capabilities)
+    if (payload === undefined) {
+      this.lastError = '更新设备权限失败: 包含未知能力名称或空权限变更'
       this.emitChange()
       return
     }
@@ -1487,19 +1546,48 @@ export class DesktopRemoteController {
     const control = this.activeControl()
     try {
       if (control !== undefined) {
+        const requestBody =
+          payload.kind === 'replace'
+            ? { deviceId, grantedCapabilities: payload.grantedCapabilities }
+            : {
+                deviceId,
+                ...(payload.grant.length > 0 ? { grant: payload.grant } : {}),
+                ...(payload.revoke.length > 0 ? { revoke: payload.revoke } : {}),
+              }
         const res = await this.controlFetch(control, '/devices/capabilities', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ deviceId, grantedCapabilities: normalized }),
+          body: JSON.stringify(requestBody),
         })
         const body = (await res.json()) as { ok?: boolean; capabilities?: readonly string[]; error?: string }
         if (!res.ok || !body.ok) {
           throw new Error(body.error ?? `HTTP ${String(res.status)}`)
         }
-        this.notice = `已更新设备 ${deviceId} 权限: ${(body.capabilities ?? normalized).join(', ') || '无'}`
+        const summaryCaps =
+          body.capabilities ?? (payload.kind === 'replace' ? payload.grantedCapabilities : undefined)
+        this.notice =
+          summaryCaps !== undefined
+            ? `已更新设备 ${deviceId} 权限: ${summaryCaps.join(', ') || '无'}`
+            : `已更新设备 ${deviceId} 权限`
       } else {
         const stores = openPersistentRemoteStores({ configDir, dshHome: ctx.dshHome })
-        const updated = await stores.trustStore.updateCapabilities(deviceId, normalized)
+        let nextCaps: readonly Capability[]
+        if (payload.kind === 'replace') {
+          nextCaps = payload.grantedCapabilities
+        } else {
+          const existing = stores.trustStore.getSync(deviceId)
+          if (!existing) {
+            throw new Error(`device does not exist: ${deviceId}`)
+          }
+          if (existing.revokedAt !== undefined) {
+            throw new Error(`cannot update capabilities for revoked device: ${deviceId}`)
+          }
+          const merged = new Set<Capability>(existing.grantedCapabilities)
+          for (const cap of payload.grant) merged.add(cap)
+          for (const cap of payload.revoke) merged.delete(cap)
+          nextCaps = Array.from(merged)
+        }
+        const updated = await stores.trustStore.updateCapabilities(deviceId, nextCaps)
         this.notice = `已离线更新设备 ${deviceId} 权限: ${[...updated.grantedCapabilities].join(', ') || '无'}`
       }
       this.lastError = undefined

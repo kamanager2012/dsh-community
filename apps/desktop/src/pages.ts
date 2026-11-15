@@ -1137,14 +1137,13 @@ export function renderRemotePage(model: RemotePageModel): string {
     const statusChip = isRevoked
       ? `<span class="chip risk-high">已吊销 (${escapeHtml(formatRemoteTime(d.revokedAt))})</span>`
       : '<span class="chip ok">有效</span>'
-    const currentCapsRaw = d.capabilities.join(',')
     const capControls = isRevoked
       ? `<code>${escapeHtml(d.capabilities.join(', ') || '—')}</code>`
       : `<div class="row">
           ${d.capabilities.length === 0
             ? '<span class="meta">无已授予能力</span>'
-            : d.capabilities.map((cap) => `<button class="secondary small" data-device-cap-revoke="${escapeHtml(d.deviceId)}" data-cap-name="${escapeHtml(cap)}" data-current-caps="${escapeHtml(currentCapsRaw)}" title="点击独立撤回 ${escapeHtml(cap)}">× ${escapeHtml(cap)}</button>`).join('')}
-          ${allCapabilities.filter((cap) => !d.capabilities.includes(cap)).map((cap) => `<button class="secondary small" data-device-cap-grant="${escapeHtml(d.deviceId)}" data-cap-name="${escapeHtml(cap)}" data-current-caps="${escapeHtml(currentCapsRaw)}" title="点击授予 ${escapeHtml(cap)}">+ ${escapeHtml(cap)}</button>`).join('')}
+            : d.capabilities.map((cap) => `<button class="secondary small" data-device-cap-revoke="${escapeHtml(d.deviceId)}" data-cap-name="${escapeHtml(cap)}" title="点击独立撤回 ${escapeHtml(cap)}">× ${escapeHtml(cap)}</button>`).join('')}
+          ${allCapabilities.filter((cap) => !d.capabilities.includes(cap)).map((cap) => `<button class="secondary small" data-device-cap-grant="${escapeHtml(d.deviceId)}" data-cap-name="${escapeHtml(cap)}" title="点击授予 ${escapeHtml(cap)}">+ ${escapeHtml(cap)}</button>`).join('')}
         </div>`
     const actionBtn = isRevoked
       ? '<span class="meta">—</span>'
@@ -1406,10 +1405,9 @@ export function renderRemotePage(model: RemotePageModel): string {
          btn.addEventListener('click', () => {
            const deviceId = btn.getAttribute('data-device-cap-revoke') ?? ''
            const capToRemove = btn.getAttribute('data-cap-name') ?? ''
-           const current = (btn.getAttribute('data-current-caps') ?? '').split(',').filter(Boolean)
-           const next = current.filter((c) => c !== capToRemove)
            if (deviceId && capToRemove) {
-             window.dshCommunity?.remoteSetCapabilities({ deviceId, grantedCapabilities: next })
+             btn.disabled = true
+             window.dshCommunity?.remoteSetCapabilities({ deviceId, revoke: [capToRemove] })
            }
          })
        })
@@ -1417,12 +1415,9 @@ export function renderRemotePage(model: RemotePageModel): string {
          btn.addEventListener('click', () => {
            const deviceId = btn.getAttribute('data-device-cap-grant') ?? ''
            const capToAdd = btn.getAttribute('data-cap-name') ?? ''
-           const current = (btn.getAttribute('data-current-caps') ?? '').split(',').filter(Boolean)
-           if (deviceId && capToAdd && !current.includes(capToAdd)) {
-             window.dshCommunity?.remoteSetCapabilities({
-               deviceId,
-               grantedCapabilities: [...current, capToAdd],
-             })
+           if (deviceId && capToAdd) {
+             btn.disabled = true
+             window.dshCommunity?.remoteSetCapabilities({ deviceId, grant: [capToAdd] })
            }
          })
        })
