@@ -16,6 +16,7 @@ describe('current-release human index consistency', () => {
       dualBadge: string
       publishedAssets: {
         linuxAppImage: string
+        androidApk?: string
         macosDmg?: string
         windowsSetup?: string
       }
@@ -55,6 +56,7 @@ describe('current-release human index consistency', () => {
 
     for (const asset of [
       facts.publishedAssets.linuxAppImage,
+      facts.publishedAssets.androidApk,
       facts.publishedAssets.macosDmg,
       facts.publishedAssets.windowsSetup,
     ].filter((name): name is string => typeof name === 'string')) {
