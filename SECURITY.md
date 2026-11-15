@@ -207,10 +207,11 @@ See [docs/remote-host-client.md](docs/remote-host-client.md). None of these Remo
 
 ## Known gaps
 
-- A dependency-graph-backed PR blocking gate is not enabled today. The
-  repository's GitHub Dependency Graph is not currently available to the
-  dependency-review action, so that action is intentionally not wired as a
-  permanent red check.
+- A dependency-graph-backed PR gate (`dependency-review`, fails on high/critical)
+  is wired for dependency-changing pull requests, but it is **not** claimed as a
+  required merge gate until it has a recorded successful run on a real
+  dependency-changing PR and is added to the branch ruleset (tracked in
+  issue #16).
 - Moderate npm advisories are in scope and should be triaged, but the automated
   root `pnpm audit` and independent runtime-lock `npm audit` gates currently
   block at **high** severity and above. Raising the threshold to moderate is an
