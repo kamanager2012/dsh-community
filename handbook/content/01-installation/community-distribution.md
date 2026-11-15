@@ -65,7 +65,7 @@ dsh-community desktop          # 打开桌面壳
 dsh-community remote start --qr # 启动 E2EE 多 Agent 远程控制面
 ```
 
-需要 Node.js 22.15+、pnpm、`DEEPSEEK_API_KEY`（DSH 模式）或本地对应 Agent CLI；没密钥不会闷头进 Ink，`doctor` 会明确提示。
+需要 Node.js 24.9+（官方包声明 `engines.node >=24.9.0`；本仓工作区最低 22.15）、pnpm、`DEEPSEEK_API_KEY`（DSH 模式）或本地对应 Agent CLI；没密钥不会闷头进 Ink，`doctor` 会明确提示。
 
 ## 插件：验证层，不是最大目录
 

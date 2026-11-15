@@ -40,7 +40,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) and
 
 ## Development setup
 
-Requirements: Node.js 22.15+ and pnpm.
+Requirements: Node.js 22.15+ for this workspace (official `@deepseek-ai/dsh` itself declares `>=24.9.0`) and pnpm.
 
 ```sh
 git clone https://github.com/kamanager2012/dsh-community.git

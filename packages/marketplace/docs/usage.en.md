@@ -18,7 +18,7 @@ packages/marketplace/catalog.json
 
 ## Install
 
-Node.js 22+ is required, and the official `dsh` CLI must be available on PATH. Source of truth is `dsh-community`; the former standalone repository is deleted and `npm i -g github:kamanager2012/dsh-marketplace` no longer works.
+Node.js 24.9+ is required (the official `dsh` requirement), and the official `dsh` CLI must be available on PATH. Source of truth is `dsh-community`; the former standalone repository is deleted and `npm i -g github:kamanager2012/dsh-marketplace` no longer works.
 
 ```sh
 npm i -g @deepseek-ai/dsh

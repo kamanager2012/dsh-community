@@ -12,8 +12,8 @@ plugins, or control the complete repository build chain.
 
 ## Runtime prerequisites
 
-The Web UI and CLI require Node.js. The current upstream guide requires Node.js 22.19+
-or 24+; after upgrades, follow the repository's `engines`, development guide, and
+The Web UI and CLI require Node.js. The current upstream guide requires Node.js 24.9 or newer
+(CI covers 24.9, the latest 24, and 26), and the package declares `engines.node >=24.9.0`; after upgrades, follow the repository's `engines`, development guide, and
 command help.
 
 ```bash
