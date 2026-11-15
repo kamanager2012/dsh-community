@@ -36,7 +36,7 @@ describe('current endpoint narrative', () => {
     }
   })
 
-  it('keeps three Complementary Community endpoints explicit while Android remains unpublished and unverified', () => {
+  it('keeps three Complementary Community endpoints explicit while Android physical handset telemetry remains unverified', () => {
     expect(read('README.md')).toMatch(/three complementary community endpoints/iu)
     expect(read('README.en.md')).toMatch(/three complementary community endpoints/iu)
     expect(read('ARCHITECTURE.md')).toMatch(/three complementary community endpoints/iu)
@@ -61,10 +61,10 @@ describe('current endpoint narrative', () => {
     }
   })
 
-  it('keeps Chinese onboarding aligned on two shipped Complementary endpoints and unverified Android', () => {
+  it('keeps Chinese onboarding aligned on three Complementary endpoints and unverified Android physical handset telemetry', () => {
     const gettingStarted = read('docs/getting-started.md')
     expect(gettingStarted).toContain('三个互补 Community endpoints')
-    expect(gettingStarted).toContain('两个当前已发行')
+    expect(gettingStarted).toContain('全部已发行')
     expect(gettingStarted).toMatch(/Android.*UNVERIFIED/u)
   })
 

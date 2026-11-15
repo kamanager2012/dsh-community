@@ -11,18 +11,19 @@
 | 使用官方 Web 或 Windows / macOS 桌面 | [`deepseek-ai/deepseek-harness`](https://github.com/deepseek-ai/deepseek-harness)（`npx @deepseek-ai/dsh web`） | 官方上游产品与桌面路径，互补版不重复打包 Win/macOS |
 | 使用社区终端 / TUI 与多引擎远程 | 本仓库 `dsh-community`、`pnpm tui` 或 `dsh-community remote start` | Linux / WSL 主力互补端，执行核心仍是官方 Runtime |
 | 下载 Linux 桌面 AppImage | [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) `.AppImage` 或 `pnpm desktop:package -- --appimage` | 官方未覆盖的 Linux 桌面互补端；精确 tag/文件名见 [`current-release.md`](current-release.md) |
-| 了解 Android Remote Client（实验中） | 本仓 `apps/android` + `packages/remote-adapter` | `[LABS]` / `[UNVERIFIED]`，不进 Published Latest |
+| 下载 Android Remote Client APK | [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) `-android-arm64-v8a.apk`（源码 `apps/android` + `packages/remote-adapter`） | 已签名 `arm64-v8a` APK（CI `x86_64` 模拟器 E2EE 已验收，物理真机遥测 `[UNVERIFIED]`） |
 | 查完整操作手册 | [DeepSeek Harness Handbook](https://kamanager2012.github.io/dsh-community/) | Provider、Session、安全、自动化和验收 |
 
-不要从已归档的 Suite、独立 Marketplace、独立 Plugins 或 Edition 下载正式客户端。**Published Latest** 仍以 [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) 和 `current-release.json` 中的 `githubLatestTag / publishedAssets / publishedReleaseEvidence` 为准；发行产物带 keyless cosign 签名（`.sigstore.json`）。不要下载历史编号 `v0.1.2`–`v0.1.6` 当当前产品。官方 Web 与 Windows/macOS Desktop 是上游端，不是 Community 互补端。三个互补 Community endpoints（两个当前已发行：WSL/Linux 终端与 Linux AppImage；外加活跃源码 Android `[UNVERIFIED]`）的定义见 [community-endpoints.md](community-endpoints.md)。详见[版本策略](version-policy.md)。
+不要从已归档的 Suite、独立 Marketplace、独立 Plugins 或 Edition 下载正式客户端。**Published Latest** 仍以 [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) 和 `current-release.json` 中的 `githubLatestTag / publishedAssets / publishedReleaseEvidence` 为准；发行产物带 keyless cosign 签名（`.sigstore.json`）。不要下载历史编号 `v0.1.2`–`v0.1.6` 当当前产品。官方 Web 与 Windows/macOS Desktop 是上游端，不是 Community 互补端。三个互补 Community endpoints（全部已发行：WSL/Linux 终端、Linux AppImage 与已签名 Android `arm64-v8a` APK；其中 Android 物理真机遥测保持 `[UNVERIFIED]`）的定义见 [community-endpoints.md](community-endpoints.md)。详见[版本策略](version-policy.md)。
 
 从源码运行时，Desktop/TUI 显示的是 **Candidate Source** 的 Dual-Badge，而不是 Published Latest 的版本号。候选 core、产品号、`candidateTag` 与 Dual-Badge 统一读取 [`current-release.json`](current-release.json)；源码候选可以领先于已发布下载。
 
 ## 当前已发布下载资产
 
-在 [`releases/latest`](https://github.com/kamanager2012/dsh-community/releases/latest)（精确文件名与 SHA-256 摘要固定在 [`current-release.json`](current-release.json)），Complementary Edition 每次发行共包含 **8 个已签名文件**（历史 `v0.1.1-rc.2` 之后已将 Windows `.exe` / macOS `.dmg` 交还官方上游）：
+在 [`releases/latest`](https://github.com/kamanager2012/dsh-community/releases/latest)（精确文件名与 SHA-256 摘要固定在 [`current-release.json`](current-release.json)），Complementary Edition 每次发行共包含 **12 个已签名文件**（历史 `v0.1.1-rc.2` 之后已将 Windows `.exe` / macOS `.dmg` 交还官方上游）：
 
 - `dsh-community-<version>.AppImage` — Linux 桌面 AppImage（主程序）
+- `dsh-community-<version>-android-arm64-v8a.apk` — Android Remote Client `arm64-v8a` 安装包（APK Signature Scheme v2/v3 + Keyless Cosign 双签名）
 - `dsh-community-<version>-official-runtime.cdx.json` — 内嵌官方 `@deepseek-ai/dsh` 依赖树的 CycloneDX SBOM
 - `*.sha256` 与 `*.sigstore.json` — 每个文件的 SHA-256 sidecar 与 keyless Cosign 签名包
 
@@ -35,6 +36,13 @@ cosign verify-blob \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   --certificate-identity "https://github.com/kamanager2012/dsh-community/.github/workflows/release.yml@refs/tags/v<version>" \
   dsh-community-<version>.AppImage
+
+sha256sum -c dsh-community-<version>-android-arm64-v8a.apk.sha256
+cosign verify-blob \
+  --bundle dsh-community-<version>-android-arm64-v8a.apk.sigstore.json \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity "https://github.com/kamanager2012/dsh-community/.github/workflows/release.yml@refs/tags/v<version>" \
+  dsh-community-<version>-android-arm64-v8a.apk
 ```
 
 第一次打开 Linux AppImage 会解一份官方 Runtime 到用户数据目录，只做一次。对话仍在官方 `~/.dsh`。

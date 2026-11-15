@@ -11,18 +11,19 @@
 | Use Official Web or Windows / macOS Desktop | [`deepseek-ai/deepseek-harness`](https://github.com/deepseek-ai/deepseek-harness) (`npx @deepseek-ai/dsh web`) | Upstream product and Win/macOS desktop builds; Complementary Edition does not duplicate them |
 | Use the community Terminal / TUI & Remote Host | `dsh-community`, `pnpm tui`, or `dsh-community remote start` from source | Primary Linux / WSL complementary endpoint around the official Runtime |
 | Download the Linux Desktop AppImage | [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) `.AppImage` or `pnpm desktop:package -- --appimage` | Linux desktop complementary build absent upstream; exact tag/filenames live in [`current-release.md`](current-release.md) |
-| Inspect Android Remote Client (experimental) | In-repo `apps/android` + `packages/remote-adapter` | `[LABS]` / `[UNVERIFIED]`, outside Published Latest |
+| Download the Android Remote Client APK | [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) `-android-arm64-v8a.apk` (in-repo `apps/android` + `packages/remote-adapter`) | Signed `arm64-v8a` APK (CI `x86_64` emulator E2EE verified; physical `arm64-v8a` handset telemetry `[UNVERIFIED]`) |
 | Read the full operational guide | [DeepSeek Harness Handbook](https://kamanager2012.github.io/dsh-community/en/) | Providers, Sessions, security, automation, and acceptance |
 
-Do not download a formal client from archived Suite, the standalone Marketplace, the standalone Plugins registry, or Edition. **Published Latest** is defined by [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) plus `githubLatestTag / publishedAssets / publishedReleaseEvidence` in `current-release.json`; published assets carry keyless cosign signatures (`.sigstore.json`). Do not download historical `v0.1.2`–`v0.1.6` as the current product. Official Web and Win/macOS Desktop are upstream surfaces, not Complementary Community endpoints. The product defines three complementary Community endpoints: two currently published (`WSL/Linux Terminal` and `Linux AppImage`) plus the active-source `Android` Remote Client, which remains `[UNVERIFIED]` and outside Published Latest. See [community-endpoints.en.md](community-endpoints.en.md) and the [version policy](version-policy.md).
+Do not download a formal client from archived Suite, the standalone Marketplace, the standalone Plugins registry, or Edition. **Published Latest** is defined by [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) plus `githubLatestTag / publishedAssets / publishedReleaseEvidence` in `current-release.json`; published assets carry keyless cosign signatures (`.sigstore.json`). Do not download historical `v0.1.2`–`v0.1.6` as the current product. Official Web and Win/macOS Desktop are upstream surfaces, not Complementary Community endpoints. The product defines three complementary Community endpoints — all published in Latest (`WSL/Linux Terminal`, `Linux AppImage`, and signed `Android arm64-v8a` Remote Client APK), while physical `arm64-v8a` handset telemetry remains `[UNVERIFIED]`. See [community-endpoints.en.md](community-endpoints.en.md) and the [version policy](version-policy.md).
 
 A source checkout displays the **Candidate Source** Dual-Badge, not the Published Latest version. Candidate core, community product version, `candidateTag`, and Dual-Badge are read from [`current-release.json`](current-release.json); source may lead the published download.
 
 ## Current published download assets
 
-At [`releases/latest`](https://github.com/kamanager2012/dsh-community/releases/latest) (exact filenames and SHA-256 digests are pinned in [`current-release.json`](current-release.json)), each Complementary Edition release publishes **8 signed files** (Windows `.exe` and macOS `.dmg` were retired after historical `v0.1.1-rc.2` in favor of upstream `deepseek-harness`):
+At [`releases/latest`](https://github.com/kamanager2012/dsh-community/releases/latest) (exact filenames and SHA-256 digests are pinned in [`current-release.json`](current-release.json)), each Complementary Edition release publishes **12 signed files** (Windows `.exe` and macOS `.dmg` were retired after historical `v0.1.1-rc.2` in favor of upstream `deepseek-harness`):
 
 - `dsh-community-<version>.AppImage` — Linux Desktop AppImage
+- `dsh-community-<version>-android-arm64-v8a.apk` — Android Remote Client `arm64-v8a` APK (APK Signature Scheme v2/v3 + Keyless Cosign dual-signed)
 - `dsh-community-<version>-official-runtime.cdx.json` — CycloneDX SBOM for the embedded `@deepseek-ai/dsh` dependency tree
 - `*.sha256` & `*.sigstore.json` — SHA-256 sidecar and keyless Cosign bundle for every asset
 
@@ -35,6 +36,13 @@ cosign verify-blob \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   --certificate-identity "https://github.com/kamanager2012/dsh-community/.github/workflows/release.yml@refs/tags/v<version>" \
   dsh-community-<version>.AppImage
+
+sha256sum -c dsh-community-<version>-android-arm64-v8a.apk.sha256
+cosign verify-blob \
+  --bundle dsh-community-<version>-android-arm64-v8a.apk.sigstore.json \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity "https://github.com/kamanager2012/dsh-community/.github/workflows/release.yml@refs/tags/v<version>" \
+  dsh-community-<version>-android-arm64-v8a.apk
 ```
 
 The first desktop launch unpacks the official runtime into user data once. Sessions stay in official `~/.dsh`.
