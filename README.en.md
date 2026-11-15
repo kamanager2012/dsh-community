@@ -26,7 +26,7 @@
 |---|---|---|---|
 | **Execution Kernel** | Official `@deepseek-ai/dsh` | Rewritten in Go / forked JS (lags upstream prompts & tools) | **100% Official `@deepseek-ai/dsh` (`Official Source Ownership = 0`)** |
 | **`~/.dsh` Session Compatibility** | Native `~/.dsh` (Zstd JSONL) | Separate DB or incompatible JSONL; cannot resume official sessions | **100% Shared `~/.dsh`** — start on Web/Win/Mac, resume on Linux TUI / AppImage / Android |
-| **Linux & WSL Support** | CLI + Web only (no native TUI or Linux desktop installer) | Single binary CLI, no desktop shell or official Web host | **Native WSL/Linux TUI + Signed Linux `.AppImage`** |
+| **Linux & WSL Support** | Web UI only (the `dsh` CLI is a launcher with no bundled terminal UI; upstream Desktop docs cover Windows / macOS packaging only) | Single binary CLI, no desktop shell or official Web host | **Native WSL/Linux TUI + Signed Linux `.AppImage`** |
 | **Mobile & Remote Experience** | None | None (local terminal only) | **Signed Android `arm64-v8a` APK + Browser PWA** over **Noise IK E2EE** (LAN / WebRTC P2P / Blind Relay) |
 | **Multi-Agent Orchestration** | DSH only | Single engine only | **Unified Control Plane for DSH + Claude Code + Codex CLI + OpenCode ACP** + scoped Git diff review |
 | **Plugin Ecosystem** | Official Cordis plugin loader | Incompatible with official Cordis plugins | **100% Official Cordis compatibility + Verified `catalog.json`** (`testedDsh` & permission disclosures) |

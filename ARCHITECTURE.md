@@ -55,7 +55,7 @@ The first Remote baseline is tracked in [docs/remote-host-client.md](docs/remote
 
 ## What official currently signals
 
-Official `apps/` today is `cli` and `web`. Architecture says UI/editor integration should drive `ctx.agents` and render from `session/event`, and that there is no privileged core to patch.
+Official `apps/` today includes `cli` (the `dsh` launcher that boots profiles such as Web, headless, SDK, and ACP; it ships no terminal UI), `web`, and `desktop` (an Electron shell around the Web app). Architecture says UI/editor integration should drive `ctx.agents` and render from `session/event`, and that there is no privileged core to patch.
 
 That is a strong **architecture** signal: runtime + composable surfaces, not every UI in core.
 

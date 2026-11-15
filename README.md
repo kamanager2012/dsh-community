@@ -26,7 +26,7 @@
 |---|---|---|---|
 | **执行内核** | 官方原版 `@deepseek-ai/dsh` | Go 重写或分叉改写（工具链、压缩与提示词滞后于官方迭代） | **100% 官方原版 `@deepseek-ai/dsh`（`Official Source Ownership = 0`）** |
 | **`~/.dsh` 会话互通** | 原生 `~/.dsh`（Zstd JSONL） | 独立数据库或格式不兼容，无法续接官方 Web/桌面端历史会话 | **100% 共享同一份 `~/.dsh`** — 官方 Web/Win/Mac 开聊，Linux TUI / AppImage / Android 无缝续接 |
-| **Linux & WSL 体验** | 仅 CLI 与 Web（无原生 TUI 与 Linux 桌面安装包） | 仅单二进制 CLI，无桌面壳或官方 Web 托管 | **原生 WSL/Linux TUI + 签名版 Linux `.AppImage`** |
+| **Linux & WSL 体验** | 仅 Web UI（`dsh` CLI 只是启动器，不自带终端界面；上游桌面端文档仅覆盖 Windows / macOS 打包） | 仅单二进制 CLI，无桌面壳或官方 Web 托管 | **原生 WSL/Linux TUI + 签名版 Linux `.AppImage`** |
 | **移动端与远程能力** | 无 | 无（仅限本机终端） | **已签名 Android `arm64-v8a` APK + 浏览器 PWA**，基于 **Noise IK 端到端加密**（LAN / WebRTC P2P / 自建盲中继） |
 | **多 Agent 协同控制** | 仅限 DSH | 仅限单一引擎 | **统一远程控制 DSH + Claude Code + Codex CLI + OpenCode ACP** + 只读 Git diff 代码审查 |
 | **插件生态兼容性** | 官方 Cordis 插件机制 | 无法加载官方 Node/Cordis 插件生态 | **100% 兼容官方 Cordis 插件 + 经实测的 `catalog.json` 目录**（含 `testedDsh` 与权限披露） |
