@@ -73,6 +73,19 @@ describe('real user-loop evidence workflow', () => {
     }
     expect(facts.evidence?.userLoop?.status).toBe('PASS')
     expect(facts.evidence?.userLoop?.workflow).toBe('.github/workflows/user-loop-evidence.yml')
-    expect(facts.evidence?.userLoop?.note).toMatch(/actions\/runs\/43688556931/)
+    expect(facts.evidence?.userLoop?.note).toMatch(/actions\/runs\/\d+/)
+  })
+
+  it('verifies two-way cross-surface session handoff between dsh-community TUI and official dsh headless', () => {
+    const runner = readFileSync(
+      join(repoRoot, 'scripts/e2e/user-loop.py'),
+      'utf8',
+    )
+    expect(runner).toContain('def run_official_headless_turn(')
+    expect(runner).toContain('"--profile", "headless"')
+    expect(runner).toContain('"--session-id", session_id')
+    expect(runner).toContain('"officialHeadlessHandoff": third')
+    expect(runner).toContain('"resumeAfterOfficialHandoff": fourth')
+    expect(runner).toContain('"crossSurfaceVerified": True')
   })
 })

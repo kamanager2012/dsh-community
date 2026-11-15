@@ -11,9 +11,7 @@ not run on pushes or pull requests.
 
 ## Scope
 
-The current workflow covers the **WSL/Linux Terminal** endpoint only. A passing
-Linux run is real evidence for that endpoint; it is not evidence that the
-Windows/macOS packaged Desktop user loop has passed.
+The current workflow covers the **WSL/Linux Terminal (`dsh-community`) ↔ Official `dsh --profile headless` cross-surface Session roundtrip**. A passing Linux run is real evidence for Terminal and cross-surface `DSH_HOME` Session handoff; it is not evidence that the packaged GUI Desktop user loop has passed.
 
 The evidence runner:
 
@@ -29,11 +27,18 @@ The evidence runner:
 8. exits cleanly;
 9. proves exactly one official Session exists and that the launcher lists the
    same Session ID;
-10. resumes that exact Session ID, sends a second randomized prompt, receives a
-    second real model ACK, and exits;
+10. resumes that exact Session ID in `dsh-community`, sends a second randomized
+    prompt, receives a second real model ACK, and exits;
 11. proves resume did not create a second Session and that the official
     transcript advanced;
-12. publishes a sanitized JSON evidence artifact.
+12. invokes the official `dsh --profile headless --session-id <id>` entrypoint
+    against the same `DSH_HOME`, sends a third randomized prompt, receives a
+    third real model ACK, and proves the official headless surface appended to
+    the same Session without creating a second Session;
+13. resumes that exact Session ID again in `dsh-community`, sends a fourth
+    randomized prompt, receives a fourth real model ACK, and proves two-way
+    cross-surface Session roundtrip (`dsh-community-tui` ↔ `official-dsh-headless`);
+14. publishes a sanitized JSON evidence artifact.
 
 The artifact contains the release tag and exact tested Git commit SHA, plus a
 SHA-256 of the Session ID rather than the Session ID itself. It does not export
