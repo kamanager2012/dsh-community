@@ -39,10 +39,12 @@ The evidence runner:
     against the same `DSH_HOME`, sends a third randomized prompt, receives a
     third real model ACK, and proves the official headless surface appended to
     the same Session without creating a second Session;
-15. simulates an interrupted AppImage runtime extraction (partial temp file,
-    missing `.dsh-host-ready`), verifies clean wipe-and-re-extract recovery from
-    `official-dsh.tar`, and invokes that recovered runtime against the same
-    Session ID (`appimageBundledRuntimeHandoff`) to receive a fourth real model ACK;
+15. simulates an interrupted AppImage runtime extraction (partial temp files
+    without `.dsh-host-ready`) and invokes the shipped Desktop extractor
+    `ensureOfficialHostExtracted()` (`apps/desktop/src/host-extract.ts`) against
+    that interrupted directory to prove clean wipe-and-re-extract recovery from
+    `official-dsh.tar` before running `appimageBundledRuntimeHandoff` against
+    the same Session ID to receive a fourth real model ACK;
 16. resumes that exact Session ID again in `dsh-community`, sends a fifth
     randomized prompt, receives a fifth real model ACK, and proves cross-surface
     Session roundtrip across `dsh-community-tui`, `official-dsh-headless`, and
