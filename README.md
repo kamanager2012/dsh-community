@@ -141,7 +141,7 @@ pnpm desktop:package -- --appimage
 2. TUI 对官方 Cordis row 的覆盖数量显著下降（33 → 15 → 8 → 只剩 TUI 自己的 insert）
 3. TUI/Desktop/Android 不实现 Agent loop、Session persistence、Tool execution
 4. 一次 upstream rc bump，业务 UI 原则上零修改
-5. WSL/Linux TUI、Linux AppImage、Android Remote Client 与官方 Web/Desktop 能共享同一 `~/.dsh` Session 真源
+5. WSL/Linux TUI、Linux AppImage、Android Remote Client 与官方 Web/Desktop 能共享同一 Session 真源（`~/.dsh`）
 6. 新版本兼容问题首先在 contract CI 爆
 
 当前：1 / 3 / 5 按设计成立；2 社区 overlay 只改官方行，不挂第三方 TUI；第 4 条持续按上游新包做回归。
