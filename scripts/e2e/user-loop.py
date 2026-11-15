@@ -17,7 +17,6 @@ import pty
 import re
 import secrets
 import select
-import shutil
 import signal
 import struct
 import subprocess
@@ -299,21 +298,59 @@ def verify_missing_key_refusal_and_recovery(
 def verify_interrupted_extract_recovery(
     archive_path: Path,
     work_dir: Path,
+    *,
+    node_bin: str = "node",
+    release_root: Path | None = None,
 ) -> tuple[Path, dict[str, object]]:
+    repo_root = Path(__file__).resolve().parents[2]
+    candidate_roots = [release_root, repo_root] if release_root is not None else [repo_root]
+    host_extract_ts: Path | None = None
+    for root in candidate_roots:
+        if root is None:
+            continue
+        candidate = root / "apps" / "desktop" / "src" / "host-extract.ts"
+        if candidate.exists():
+            host_extract_ts = candidate.resolve()
+            break
+    if host_extract_ts is None:
+        raise RuntimeError(
+            "Could not locate apps/desktop/src/host-extract.ts in release checkout or repo"
+        )
+
     dest_root = work_dir / "official-dsh"
-    partial_dir = dest_root / "node_modules" / "@deepseek-ai" / "dsh"
+    partial_dir = dest_root / "node_modules" / "@deepseek-ai" / "dsh" / "lib"
     partial_dir.mkdir(parents=True, exist_ok=True)
-    partial_marker = partial_dir / "partial.tmp"
+    partial_marker = dest_root / "node_modules" / "@deepseek-ai" / "dsh" / "partial.tmp"
     partial_marker.write_text("interrupted\n", encoding="utf-8")
+    partial_bin = partial_dir / "bin.js"
+    partial_bin.write_text("// truncated interrupted extract\n", encoding="utf-8")
 
     ready_stamp = dest_root / ".dsh-host-ready"
     if ready_stamp.exists():
         raise RuntimeError("simulated interrupted extract unexpectedly has .dsh-host-ready stamp")
 
-    shutil.rmtree(dest_root, ignore_errors=False)
-    dest_root.mkdir(parents=True, exist_ok=True)
+    js_runner = (
+        'import("node:url").then(async ({ pathToFileURL }) => {'
+        '  const mod = await import(pathToFileURL(process.argv[1]).href);'
+        '  const archivePath = process.argv[2];'
+        '  const destRoot = process.argv[3];'
+        '  const readyBefore = mod.isOfficialHostReady(destRoot);'
+        '  if (readyBefore) {'
+        '    throw new Error("expected isOfficialHostReady(destRoot) to be false before recovery");'
+        '  }'
+        '  const bin = mod.ensureOfficialHostExtracted({ archivePath, destRoot });'
+        '  const readyAfter = mod.isOfficialHostReady(destRoot);'
+        '  if (!readyAfter) {'
+        '    throw new Error("expected isOfficialHostReady(destRoot) to be true after recovery");'
+        '  }'
+        '  console.log(JSON.stringify({ bin, readyBefore, readyAfter }));'
+        '}).catch((err) => {'
+        '  console.error(err);'
+        '  process.exit(1);'
+        '});'
+    )
     extract = subprocess.run(
-        ["tar", "-xf", str(archive_path), "-C", str(dest_root)],
+        [node_bin, "-e", js_runner, str(host_extract_ts), str(archive_path), str(dest_root)],
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -322,19 +359,22 @@ def verify_interrupted_extract_recovery(
     )
     if extract.returncode != 0:
         raise RuntimeError(
-            f"tar recovery extraction failed ({extract.returncode}): {extract.stderr[-1000:]}"
+            f"ensureOfficialHostExtracted recovery failed ({extract.returncode}): {extract.stderr[-1000:]}"
         )
     if partial_marker.exists():
-        raise RuntimeError("stale partial.tmp survived interrupted runtime recovery extraction")
+        raise RuntimeError("stale partial.tmp survived ensureOfficialHostExtracted recovery")
 
     dsh_bin = dest_root / "node_modules" / "@deepseek-ai" / "dsh" / "lib" / "bin.js"
     app_boot = dest_root / "node_modules" / "@deepseek-ai" / "dsh-app-boot" / "package.json"
-    if not dsh_bin.exists() or not app_boot.exists():
+    if not dsh_bin.exists() or not app_boot.exists() or not ready_stamp.exists():
         raise RuntimeError(
-            f"recovered AppImage runtime extract is incomplete: bin={dsh_bin.exists()}, app_boot={app_boot.exists()}"
+            "recovered AppImage runtime extract is incomplete: "
+            f"bin={dsh_bin.exists()}, app_boot={app_boot.exists()}, ready={ready_stamp.exists()}"
         )
-    ready_stamp.write_text("ok\n", encoding="utf-8")
+    if partial_bin.read_text(encoding="utf-8", errors="replace").startswith("// truncated interrupted extract"):
+        raise RuntimeError("stale truncated bin.js survived ensureOfficialHostExtracted recovery")
     return dsh_bin, {
+        "extractor": "apps/desktop/src/host-extract.ts#ensureOfficialHostExtracted",
         "interruptedStateDetected": True,
         "recoveredCleanly": True,
         "readyStampWritten": ready_stamp.exists(),
@@ -593,9 +633,14 @@ def main() -> int:
         appimage_archive = Path(appimage_archive_raw).resolve()
         if not appimage_archive.exists():
             raise RuntimeError(f"--appimage-archive does not exist: {appimage_archive}")
+        launcher_resolved = launcher.resolve()
+        release_root = launcher_resolved.parents[3] if len(launcher_resolved.parents) > 3 else None
         with tempfile.TemporaryDirectory(prefix="dsh-appimage-recovery-") as recovery_tmp:
             appimage_dsh_bin, extract_recovery = verify_interrupted_extract_recovery(
-                appimage_archive, Path(recovery_tmp)
+                appimage_archive,
+                Path(recovery_tmp),
+                node_bin=args.node,
+                release_root=release_root,
             )
             lifecycle_recovery["interruptedRuntimeExtract"] = extract_recovery
 
