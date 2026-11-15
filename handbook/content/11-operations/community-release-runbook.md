@@ -80,7 +80,7 @@ gh workflow run artifact-smoke.yml --repo kamanager2012/dsh-community --field ta
 gh run list --repo kamanager2012/dsh-community --workflow artifact-smoke.yml --limit 1
 ```
 
-最近一次 `v0.2.2-rc.3` 对应 [Run 43696414193](https://github.com/kamanager2012/dsh-community/actions/runs/43696414193)，通过 `resolve`、`linux-appimage`、`android-apk`、`linux-terminal` 与 `verify-signatures`（12 资产全验）；WSL/Linux 用户闭环已通过 `user-loop-evidence.yml`（[Run 43688556931](https://github.com/kamanager2012/dsh-community/actions/runs/43688556931)）验证。
+最近一次 `v0.2.2-rc.3` 对应 [Run 43696414193](https://github.com/kamanager2012/dsh-community/actions/runs/43696414193)，通过 `resolve`、`linux-appimage`、`android-apk`、`linux-terminal` 与 `verify-signatures`（12 资产全验）；社区 TUI ↔ 官方 `dsh --profile headless` 双向 4 轮跨端 Session 接续闭环已通过 `user-loop-evidence.yml`（[Run 43709890408](https://github.com/kamanager2012/dsh-community/actions/runs/43709890408)）验证。
 
 ## 6. Latest 晋升与回退
 

@@ -78,7 +78,7 @@ gh workflow run artifact-smoke.yml --repo kamanager2012/dsh-community --field ta
 gh run list --repo kamanager2012/dsh-community --workflow artifact-smoke.yml --limit 1
 ```
 
-On `v0.2.2-rc.3`, [Run 43696414193](https://github.com/kamanager2012/dsh-community/actions/runs/43696414193) passed `resolve`, `linux-appimage`, `android-apk`, `linux-terminal`, and `verify-signatures` across all 12 assets, and `user-loop-evidence.yml` passed in [Run 43688556931](https://github.com/kamanager2012/dsh-community/actions/runs/43688556931).
+On `v0.2.2-rc.3`, [Run 43696414193](https://github.com/kamanager2012/dsh-community/actions/runs/43696414193) passed `resolve`, `linux-appimage`, `android-apk`, `linux-terminal`, and `verify-signatures` across all 12 assets, and `user-loop-evidence.yml` verified the 4-turn two-way `dsh-community` TUI ↔ official `dsh --profile headless` cross-surface Session roundtrip in [Run 43709890408](https://github.com/kamanager2012/dsh-community/actions/runs/43709890408).
 
 ## 6. Latest promotion and rollback
 
