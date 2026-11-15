@@ -28,6 +28,9 @@ overrides:
   'brace-expansion@>=4.0.0 <5.0.11': '>=5.0.11'
   'source-map-js@>=1.0.0 <1.2.2': '>=1.2.2'
   '@modelcontextprotocol/sdk@>=1.10.0 <1.32.0': '>=1.32.0'
+  '@modelcontextprotocol/client@>=2.0.0 <2.3.0': '>=2.3.0'
+  'fflate@>=0.8.0 <0.8.3': '>=0.8.3'
+  'minimatch@>=7.0.0 <11.0.1': '>=11.0.1'
   'zod@<4.6.6': '>=4.6.7'
   'body-parser@>=2.0.0 <2.4.0': '>=2.4.0'
 

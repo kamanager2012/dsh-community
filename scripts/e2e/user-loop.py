@@ -205,6 +205,72 @@ def launcher_sessions(node_bin: str, launcher: Path, env: dict[str, str]) -> lis
     return ids
 
 
+def resolve_official_dsh_bin(node_bin: str, launcher: Path, env: dict[str, str]) -> Path:
+    result = subprocess.run(
+        [node_bin, str(launcher), "doctor"],
+        env=env,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=30,
+        check=False,
+    )
+    match = re.search(r"官方 bin\s+(\S+)", result.stdout)
+    if not match:
+        raise RuntimeError(
+            f"failed to resolve official dsh bin from doctor output:\n{result.stdout}\n{result.stderr}"
+        )
+    dsh_bin = Path(match.group(1)).resolve()
+    if not dsh_bin.exists():
+        raise RuntimeError(f"resolved official dsh bin does not exist: {dsh_bin}")
+    return dsh_bin
+
+
+def run_official_headless_turn(
+    *,
+    node_bin: str,
+    dsh_bin: Path,
+    patch_file: Path | None,
+    session_id: str,
+    prompt: str,
+    expected: str,
+    env: dict[str, str],
+    timeout: float,
+    secret_values: list[str],
+) -> dict[str, object]:
+    cmd = [node_bin, str(dsh_bin), "--profile", "headless"]
+    if patch_file is not None and patch_file.exists():
+        cmd.extend(["--patch", str(patch_file)])
+    cmd.extend(["--session-id", session_id, prompt])
+    started = time.monotonic()
+    result = subprocess.run(
+        cmd,
+        env=env,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=timeout,
+        check=False,
+    )
+    combined = sanitize(f"{result.stdout}\n{result.stderr}", secret_values)
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"official dsh --profile headless --session-id exited with {result.returncode}. "
+            f"Sanitized tail:\n{combined[-2000:]}"
+        )
+    if expected not in sanitize(result.stdout, secret_values):
+        raise RuntimeError(
+            "official dsh --profile headless exited 0 without expected model marker. "
+            f"Sanitized tail:\n{combined[-2000:]}"
+        )
+    return {
+        "matched": True,
+        "exitCode": result.returncode,
+        "surface": "official-dsh-headless",
+        "durationSeconds": round(time.monotonic() - started, 3),
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--launcher", default="apps/tui/dist/bin.js")
@@ -340,8 +406,86 @@ def main() -> int:
             f"{cli_ids_after_resume!r} vs {session_id!r}"
         )
     second_transcript = sessions_after_resume[session_id]
-    if second_transcript.stat().st_mtime_ns <= first_mtime:
+    second_mtime = second_transcript.stat().st_mtime_ns
+    if second_mtime <= first_mtime:
         raise RuntimeError("official session transcript mtime did not advance after resume turn")
+
+    official_dsh_bin = resolve_official_dsh_bin(args.node, launcher, env)
+    provider_patch = dsh_home / "profiles" / "dsh-community-tui" / "cordis.patch.yml"
+
+    third_token = secrets.token_hex(8)
+    third_expected = f"ACK-{third_token}"
+    third_prompt = (
+        "Reply with only ACK- immediately followed by this token, with no spaces, "
+        f"punctuation, markdown, or explanation: {third_token}"
+    )
+
+    third = run_official_headless_turn(
+        node_bin=args.node,
+        dsh_bin=official_dsh_bin,
+        patch_file=provider_patch if provider_patch.exists() else None,
+        session_id=session_id,
+        prompt=third_prompt,
+        expected=third_expected,
+        env=env,
+        timeout=args.timeout_seconds,
+        secret_values=secrets_to_redact,
+    )
+
+    sessions_after_official = discover_sessions(dsh_home)
+    cli_ids_after_official = launcher_sessions(args.node, launcher, env)
+    if set(sessions_after_official) != {session_id}:
+        raise RuntimeError(
+            "official headless handoff created or switched to a different session: "
+            f"{sorted(sessions_after_official)}"
+        )
+    if cli_ids_after_official != [session_id]:
+        raise RuntimeError(
+            "launcher session view changed after official headless handoff: "
+            f"{cli_ids_after_official!r} vs {session_id!r}"
+        )
+    third_transcript = sessions_after_official[session_id]
+    third_mtime = third_transcript.stat().st_mtime_ns
+    if third_mtime <= second_mtime:
+        raise RuntimeError(
+            "official session transcript mtime did not advance after official headless handoff turn"
+        )
+
+    fourth_token = secrets.token_hex(8)
+    fourth_expected = f"ACK-{fourth_token}"
+    fourth_prompt = (
+        "Reply with only ACK- immediately followed by this token, with no spaces, "
+        f"punctuation, markdown, or explanation: {fourth_token}"
+    )
+
+    fourth = run_turn(
+        node_bin=args.node,
+        launcher=launcher,
+        args=["resume", session_id],
+        prompt=fourth_prompt,
+        expected=fourth_expected,
+        env=env,
+        timeout=args.timeout_seconds,
+        secret_values=secrets_to_redact,
+    )
+
+    sessions_after_roundtrip = discover_sessions(dsh_home)
+    cli_ids_after_roundtrip = launcher_sessions(args.node, launcher, env)
+    if set(sessions_after_roundtrip) != {session_id}:
+        raise RuntimeError(
+            "community TUI resume after official handoff created or switched session: "
+            f"{sorted(sessions_after_roundtrip)}"
+        )
+    if cli_ids_after_roundtrip != [session_id]:
+        raise RuntimeError(
+            "launcher session view changed after roundtrip resume: "
+            f"{cli_ids_after_roundtrip!r} vs {session_id!r}"
+        )
+    fourth_transcript = sessions_after_roundtrip[session_id]
+    if fourth_transcript.stat().st_mtime_ns <= third_mtime:
+        raise RuntimeError(
+            "official session transcript mtime did not advance after roundtrip TUI resume"
+        )
 
     evidence = {
         "schemaVersion": 1,
@@ -349,7 +493,7 @@ def main() -> int:
         "generatedAt": now_iso(),
         "releaseTag": args.tag,
         "releaseCommit": args.commit,
-        "endpoint": "linux-terminal",
+        "endpoint": "linux-terminal+official-headless-cross-surface",
         "runtimeIdentity": version,
         "githubRun": (
             f"{os.environ.get('GITHUB_SERVER_URL', '')}/"
@@ -359,14 +503,20 @@ def main() -> int:
         "sessionEvidence": {
             "sessionCountAfterNew": len(sessions_after_new),
             "sessionCountAfterResume": len(sessions_after_resume),
+            "sessionCountAfterOfficialHandoff": len(sessions_after_official),
+            "sessionCountAfterRoundtripResume": len(sessions_after_roundtrip),
             "sameSession": True,
+            "crossSurfaceVerified": True,
+            "surfaces": ["dsh-community-tui", "official-dsh-headless"],
             "sessionIdSha256": hashlib.sha256(session_id.encode("utf-8")).hexdigest(),
-            "transcriptKind": second_transcript.name,
+            "transcriptKind": fourth_transcript.name,
             "contentsExported": False,
         },
         "turns": {
             "new": first,
             "resume": second,
+            "officialHeadlessHandoff": third,
+            "resumeAfterOfficialHandoff": fourth,
         },
         "privacy": {
             "isolatedDshHome": True,

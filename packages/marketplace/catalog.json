@@ -24,7 +24,7 @@
             "processExecution": "原生 subagent、会话 fork 由官方能力驱动;浏览器/computer-use 扩展可代表用户执行页面操作,是本条目风险的主要来源之一",
             "persistence": "`~/.dsh-tui`(固定会话、其他 UI 偏好)",
             "manualReviewStatus": "partial",
-            "manualReviewNote": "compose 验证通过(0.1.1-rc.2);高风险判定直接来自作者 README 自述的权限边界——dsh-TUI 不实现独立沙箱,复用当前 DSH profile 的 file/shell/sandbox/approval 策略,Windows 目前没有对应的沙箱后端,组合会退回 danger-full-access 且不弹审批。作者建议在含敏感凭证或不可信仓库的环境启动前先检查 profile 配置;浏览器/computer-use 扩展未逐项独立核实",
+            "manualReviewNote": "compose 验证通过(0.2.2-rc.3);高风险判定直接来自作者 README 自述的权限边界——dsh-TUI 不实现独立沙箱,复用当前 DSH profile 的 file/shell/sandbox/approval 策略,Windows 目前没有对应的沙箱后端,组合会退回 danger-full-access 且不弹审批。作者建议在含敏感凭证或不可信仓库的环境启动前先检查 profile 配置;浏览器/computer-use 扩展未逐项独立核实",
             "lastReviewedAt": "2026-11-15"
           }
         }
@@ -80,7 +80,7 @@
             "processExecution": "无",
             "persistence": "每用户的面板偏好(趋势粒度、排序方式等)写入 settings 文档(Host 已安装且该文档可写时)",
             "manualReviewStatus": "partial",
-            "manualReviewNote": "compose 验证通过(0.1.1-rc.2);本身不引入新的访问边界,但会把会话内容/文件活动集中可视化,若叠加 dsh-lan-access 等把 Web UI 暴露到局域网的插件,可见范围会随之扩大,建议届时重新评估",
+            "manualReviewNote": "compose 验证通过(0.2.2-rc.3);本身不引入新的访问边界,但会把会话内容/文件活动集中可视化,若叠加 dsh-lan-access 等把 Web UI 暴露到局域网的插件,可见范围会随之扩大,建议届时重新评估",
             "lastReviewedAt": "2026-11-15"
           }
         }
@@ -108,7 +108,7 @@
             "processExecution": "无",
             "persistence": "无新增持久化;绑定配置随插件生命周期,卸载后 webserver 恢复仅 127.0.0.1",
             "manualReviewStatus": "partial",
-            "manualReviewNote": "compose 验证通过(0.1.1-rc.2);作者 README 本身已包含充分的安全提醒与远程访问边界说明(HTTP 403 门禁范围、SSH 隧道替代方案),风险评级直接采用该自述,仍需用户在安装前手动确认只在可信内网使用",
+            "manualReviewNote": "compose 验证通过(0.2.2-rc.3);作者 README 本身已包含充分的安全提醒与远程访问边界说明(HTTP 403 门禁范围、SSH 隧道替代方案),风险评级直接采用该自述,仍需用户在安装前手动确认只在可信内网使用",
             "lastReviewedAt": "2026-11-15"
           }
         }
@@ -192,7 +192,7 @@
             "processExecution": "全局挂载在所有会话的 bash/grep/read 工具事件上(非按需注册);rewrite 模式下可 deny 一次 bash 调用并要求模型改用改写后的命令,默认 suggest 模式仅追加建议文本;对成功输出按管线做 ANSI 剥离/摘要/截断等改写,会改变模型实际看到的工具结果内容",
             "persistence": "运行期统计(压缩节省字符数等)保存在插件自身状态,不涉及跨会话敏感数据",
             "manualReviewStatus": "partial",
-            "manualReviewNote": "compose 验证通过(0.1.1-rc.2);风险点是全局命令拦截与输出改写能力而非网络/凭据——默认 mode:suggest 不阻断调用,只有用户手动切到 mode:rewrite 才会 deny 命令;`/rtk show` 可随时查看当前生效配置",
+            "manualReviewNote": "compose 验证通过(0.2.2-rc.3);风险点是全局命令拦截与输出改写能力而非网络/凭据——默认 mode:suggest 不阻断调用,只有用户手动切到 mode:rewrite 才会 deny 命令;`/rtk show` 可随时查看当前生效配置",
             "lastReviewedAt": "2026-11-15"
           }
         }
@@ -220,7 +220,7 @@
             "processExecution": "无子进程;本地生成 edge-tts 所需的 DRM 令牌(Sec-MS-GEC)后通过 WebSocket 直连微软服务",
             "persistence": "无跨会话持久化;仅落盘生成的音频文件",
             "manualReviewStatus": "partial",
-            "manualReviewNote": "compose 验证通过(0.1.1-rc.2,作者称 31 个测试含真实合成集成测试);风险点是文本/音频内容离开本机发往第三方云服务且涉及 ASR API Key,未见对第三方数据处理协议或留存政策的独立核实,ASR 服务商由用户自行配置决定",
+            "manualReviewNote": "compose 验证通过(0.2.2-rc.3,作者称 31 个测试含真实合成集成测试);风险点是文本/音频内容离开本机发往第三方云服务且涉及 ASR API Key,未见对第三方数据处理协议或留存政策的独立核实,ASR 服务商由用户自行配置决定",
             "lastReviewedAt": "2026-11-15"
           }
         }
@@ -248,7 +248,7 @@
             "processExecution": "无",
             "persistence": "无;数据随当前会话生命周期,通过 activity/status 会话事件双出口转发,不落盘",
             "manualReviewStatus": "partial",
-            "manualReviewNote": "第一方官方生态插件(author: dsh-community),行为面是只读状态转发,compose 验证通过(0.1.1-rc.2)",
+            "manualReviewNote": "第一方官方生态插件(author: dsh-community),行为面是只读状态转发,compose 验证通过(0.2.2-rc.3)",
             "lastReviewedAt": "2026-11-15"
           }
         }
