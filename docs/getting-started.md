@@ -1,6 +1,6 @@
 # DSH Community 使用指南
 
-> 面向第一次使用者的任务型入口。事实快照：2026-08-21。
+> 面向第一次使用者的任务型入口。最新机器事实以 [`current-release.json`](current-release.json) 为准。
 
 [English](getting-started.en.md) · [返回中文 README](../README.md) · [发行端与实验端定义](community-endpoints.md) · [在线 Handbook](https://kamanager2012.github.io/dsh-community/)
 
@@ -9,8 +9,8 @@
 | 目标 | 入口 | 说明 |
 | --- | --- | --- |
 | 使用官方 Web 或 Windows / macOS 桌面 | [`deepseek-ai/deepseek-harness`](https://github.com/deepseek-ai/deepseek-harness)（`npx @deepseek-ai/dsh web`） | 官方上游产品与桌面路径，互补版不重复打包 Win/macOS |
-| 使用社区终端 / TUI | 本仓库 `dsh-community` 或源码中的 `pnpm tui` | Linux / WSL 主力互补端，执行核心仍是官方 Runtime |
-| 下载 Linux 桌面 AppImage | [Latest `v0.1.1-rc.2`](https://github.com/kamanager2012/dsh-community/releases/latest) `.AppImage` 或 `pnpm desktop:package -- --appimage` | 官方未覆盖的 Linux 桌面互补端；新 tag 需重跑 exact-asset smoke |
+| 使用社区终端 / TUI 与多引擎远程 | 本仓库 `dsh-community`、`pnpm tui` 或 `dsh-community remote start` | Linux / WSL 主力互补端，执行核心仍是官方 Runtime |
+| 下载 Linux 桌面 AppImage | [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) `.AppImage` 或 `pnpm desktop:package -- --appimage` | 官方未覆盖的 Linux 桌面互补端；精确 tag/文件名见 [`current-release.md`](current-release.md) |
 | 了解 Android Remote Client（实验中） | 本仓 `apps/android` + `packages/remote-adapter` | `[LABS]` / `[UNVERIFIED]`，不进 Published Latest |
 | 查完整操作手册 | [DeepSeek Harness Handbook](https://kamanager2012.github.io/dsh-community/) | Provider、Session、安全、自动化和验收 |
 
@@ -20,16 +20,21 @@
 
 ## 当前已发布下载资产
 
-历史 [`v0.1.1-rc.2`](https://github.com/kamanager2012/dsh-community/releases/latest) Release 页目前包含（GitHub 可能把 Windows 空格显示成点）：
+在 [`releases/latest`](https://github.com/kamanager2012/dsh-community/releases/latest)（精确文件名与 SHA-256 摘要固定在 [`current-release.json`](current-release.json)），Complementary Edition 每次发行共包含 **8 个已签名文件**（历史 `v0.1.1-rc.2` 之后已将 Windows `.exe` / macOS `.dmg` 交还官方上游）：
 
-- `dsh-community-0.1.1-rc.2.AppImage` — Linux 桌面 AppImage（未来互补版持续保留）
-- `dsh-community-0.1.1-rc.2.dmg` — macOS（历史版本，后续已交还官方 `deepseek-harness` 退役）
-- `DSH Community Setup 0.1.1-rc.2.exe` — Windows（历史版本，后续已交还官方 `deepseek-harness` 退役）
+- `dsh-community-<version>.AppImage` — Linux 桌面 AppImage（主程序）
+- `dsh-community-<version>-official-runtime.cdx.json` — 内嵌官方 `@deepseek-ai/dsh` 依赖树的 CycloneDX SBOM
+- `*.sha256` 与 `*.sigstore.json` — 每个文件的 SHA-256 sidecar 与 keyless Cosign 签名包
 
-后续新版本将仅发行 `.AppImage` 与 `official-runtime.cdx.json` SBOM。每个文件都有对应的 `.sha256` 与 `.sigstore.json`。本地校验：
+本地完整性与无密钥签名校验（需 `cosign >= v2.4`，完整步骤见 [当前版本页面](current-release.md#quick-download--verification-v022-rc3)）：
 
 ```sh
-sha256sum -c dsh-community-0.1.1-rc.2.AppImage.sha256
+sha256sum -c dsh-community-<version>.AppImage.sha256
+cosign verify-blob \
+  --bundle dsh-community-<version>.AppImage.sigstore.json \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity "https://github.com/kamanager2012/dsh-community/.github/workflows/release.yml@refs/tags/v<version>" \
+  dsh-community-<version>.AppImage
 ```
 
 第一次打开 Linux AppImage 会解一份官方 Runtime 到用户数据目录，只做一次。对话仍在官方 `~/.dsh`。

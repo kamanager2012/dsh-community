@@ -31,7 +31,7 @@ node scripts/release.mjs v0.1.1-rc.2
 Replace the example tag with the next intended community version. If the change
 only advances the official core, use the exact official version. If it is a
 community-only fix on the same core, increment `-community.N`.
-The current download is `v0.1.1-rc.2` on
+Published Latest is tracked in [`current-release.json`](current-release.json) and points at
 [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest).
 Do not download historical `v0.1.2`–`v0.1.6` as the current product. Never move
 or overwrite a published tag.
@@ -41,7 +41,7 @@ The script checks a clean tree and a free tag, then runs the canonical release-i
 1. **Linux** — typecheck + test + AppImage + sha256
 2. **Runtime SBOM** — official-runtime CycloneDX JSON + sha256
 
-The `publish` job collects all assets and creates the GitHub Release with the CHANGELOG section as notes. Only plain `vX.Y.Z` or `vX.Y.Z-rc.N` tags are eligible for `--latest`. Any other prerelease identifier, including `alpha`, `beta`, `preview`, or `community.N`, is forced to `--prerelease`.
+The `publish` job collects all assets and creates the GitHub Release using `scripts/release-notes.mjs` (pairing the CHANGELOG section with quick-start and verification guidance, plus `--title` Dual-Core framing). Only plain `vX.Y.Z` or `vX.Y.Z-rc.N` tags are eligible for `--latest`. Any other prerelease identifier, including `alpha`, `beta`, `preview`, or `community.N`, is forced to `--prerelease`.
 
 ## Promote Published Latest facts after publication
 
@@ -137,18 +137,18 @@ https://github.com/kamanager2012/dsh-community/.github/workflows/release.yml@ref
 our CI verifies with v2.6.1):
 
 ```sh
-TAG=v0.1.1-rc.2   # example; use the exact filename shown on the Release page
+TAG=v0.2.2-rc.3   # example; use the exact tag and filename from current-release.json
 BASE=https://github.com/kamanager2012/dsh-community/releases/download/$TAG
 
-curl -fLO "$BASE/dsh-community-0.1.1-rc.2.AppImage" \
-     -O "$BASE/dsh-community-0.1.1-rc.2.AppImage.sigstore.json"
+curl -fLO "$BASE/dsh-community-0.2.2-rc.3.AppImage" \
+     -O "$BASE/dsh-community-0.2.2-rc.3.AppImage.sigstore.json"
 
 cosign verify-blob \
-  --bundle dsh-community-0.1.1-rc.2.AppImage.sigstore.json \
+  --bundle dsh-community-0.2.2-rc.3.AppImage.sigstore.json \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   --certificate-identity \
     "https://github.com/kamanager2012/dsh-community/.github/workflows/release.yml@refs/tags/$TAG" \
-  dsh-community-0.1.1-rc.2.AppImage
+  dsh-community-0.2.2-rc.3.AppImage
 ```
 
 A passing check means: signed by this repo's `release.yml` on the **exact release tag being checked**, cert chain rooted at Sigstore's Fulcio CA, logged in Rekor, and the blob bytes match the signature. `artifact-smoke` reuses one resolved tag across signature, Linux AppImage, and Linux terminal checks; it does not re-read Latest mid-run. It does not mean the binary is malware-free.
@@ -172,8 +172,7 @@ https://github.com/kamanager2012/dsh-community/releases/latest
 
 ## Distribution Reality Gate
 
-GitHub Latest is `v0.1.1-rc.2` (historical 3-OS release; future Complementary Edition tags publish Linux AppImage + SBOM only). Later `main` commits may
-contain code or verification fixes that are not in the published download.
+Published Latest is pinned in [`current-release.json`](current-release.json) (Complementary Edition tags publish Linux AppImage + official-runtime CycloneDX SBOM + `.sha256` / `.sigstore.json` only; historical `v0.1.1-rc.2` predated Windows/macOS retirement). Later `main` commits may contain code or verification fixes that are not in the published download.
 Validate exact Release downloads separately from source or CI:
 
 | Endpoint | Exact artifact / path | Required flow |

@@ -43,6 +43,29 @@ Published `v0.2.2-rc.3` release-page primary binary asset (plus official-runtime
 
 - `dsh-community-0.2.2-rc.3.AppImage`
 
+## Quick Download & Verification (`v0.2.2-rc.3`)
+
+Download from [`releases/latest`](https://github.com/kamanager2012/dsh-community/releases/latest) (all 8 files carry SHA-256 sidecars and keyless Cosign bundles):
+
+```sh
+TAG=v0.2.2-rc.3
+BASE="https://github.com/kamanager2012/dsh-community/releases/download/$TAG"
+
+curl -fLO "$BASE/dsh-community-0.2.2-rc.3.AppImage" \
+     -O "$BASE/dsh-community-0.2.2-rc.3.AppImage.sha256" \
+     -O "$BASE/dsh-community-0.2.2-rc.3.AppImage.sigstore.json"
+
+sha256sum -c dsh-community-0.2.2-rc.3.AppImage.sha256
+cosign verify-blob \
+  --bundle dsh-community-0.2.2-rc.3.AppImage.sigstore.json \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity "https://github.com/kamanager2012/dsh-community/.github/workflows/release.yml@refs/tags/$TAG" \
+  dsh-community-0.2.2-rc.3.AppImage
+
+chmod +x dsh-community-0.2.2-rc.3.AppImage
+./dsh-community-0.2.2-rc.3.AppImage
+```
+
 When the source pin changes, update Candidate Source fields in `current-release.json` in the same
 commit as `pin.ts` / `package.json`. Do not move Published Latest, published assets,
 plugin evidence, or user-loop evidence until those independent events actually happen. User-loop evidence
