@@ -1,34 +1,33 @@
 # DSH 社区发行版（dsh-community）
 
-> 本页描述 **DSH Community** —— 官方 DeepSeek Harness Runtime 之上的社区发行版。
-> 版本号、安装包名称与校验和一律以 [GitHub Release 页面](https://github.com/kamanager2012/dsh-community/releases) 为准，不以此页为准。
+> 本页描述 **DSH Community** —— 官方 DeepSeek Harness Runtime 之上的互补社区发行版。
+> 版本号、安装包名称与校验和一律以 [GitHub Release 页面](https://github.com/kamanager2012/dsh-community/releases) 与 [`docs/current-release.json`](https://github.com/kamanager2012/dsh-community/blob/main/docs/current-release.json) 为准。
 
-## 定位：Community Distribution，不是 Desktop 壳
+## 定位：Complementary Edition，不是第二套内核
 
-**One Harness. Five Community Endpoints.**
+**One Harness. Three Complementary Community Endpoints.**
 
 ```text
              Official DeepSeek Harness Runtime
+       （官方 Web + Win/macOS Desktop 归上游维护）
                          │
-     ┌──────────┬────────┼────────┬──────────┐
-     ▼          ▼        ▼        ▼          ▼
- WSL/Linux   Windows   macOS   Linux      Android
-  Terminal   Desktop   Desktop AppImage    (archived Labs)
+          ┌──────────────┼──────────────┐
+          ▼              ▼              ▼
+      WSL/Linux        Linux         Android
+      Terminal       AppImage    Remote Client [UNVERIFIED]
 ```
 
 - 社区层**不重写** Agent loop、Session persistence、Tool execution —— 官方 Runtime 是唯一执行核心。
 - 社区层**不 patch** 官方 UI 表面；升级 = 契约重验，不是重写补丁。
-- 官方 Web 是内核自带界面：它和社区端共用同一套 `~/.dsh` Session，但它不是社区发行端。
+- 官方 Web 与 Windows / macOS Desktop 归官方上游（`deepseek-ai/deepseek-harness`）所有；历史版本 `v0.1.1-rc.2` 之后社区不再双份构建 Win/macOS 安装包。
 
-五个社区端：
+三个互补社区端（当前 2 个已随 Published Latest / 源码发行）：
 
 | 端 | 面向 | 入口 |
 |---|---|---|
-| WSL / Linux Terminal | 开发者、CLI 用户、WSL2 用户 | `dsh-community` 命令 |
-| Windows Desktop | 不想折腾 Node / CLI 的用户 | `DSH.Community.Setup.0.1.1-rc.2.exe`（以 Release 页为准） |
-| macOS Desktop | 同上 | `dsh-community-0.1.1-rc.2.dmg` |
-| Linux AppImage | Linux 图形桌面 | `dsh-community-0.1.1-rc.2.AppImage` |
-| Android | 已归档 Labs | 不在 Latest 下载页，`[UNVERIFIED]` |
+| WSL / Linux Terminal | 开发者、CLI 用户、WSL2 用户 | `dsh-community` 命令（`pnpm start` / `pnpm tui`） |
+| Linux AppImage | Linux 图形桌面 | `dsh-community-0.2.2-rc.3.AppImage`（以 Release 页为准） |
+| Android Remote Client | 轻量移动远程客户端 | `apps/android` + `packages/remote-adapter`，保持 `[UNVERIFIED]`，不在 Latest 下载清单 |
 
 ## 下载与校验
 
@@ -36,22 +35,22 @@
 https://github.com/kamanager2012/dsh-community/releases/latest
 ```
 
-- **Latest** 指向 `releases/latest`；当前是 **v0.1.1-rc.2**（Linux AppImage / Windows Setup / macOS dmg）。历史独立编号 `v0.1.2`–`v0.1.6` 不是当前下载。
-- 每个资产带 `<文件>.sha256` 侧车；安装前用 `sha256sum` / `certutil` / `shasum -a 256` 核对。
+- **Latest** 指向 `releases/latest`；当前为 **v0.2.2-rc.3**（Linux AppImage + 官方运行时 CycloneDX SBOM，共 8 个带签名文件；历史 `v0.1.2`–`v0.1.6` 与 `v0.1.1-rc.2` 均不是当前下载）。
+- 每个资产同时附带 `.sha256` 摘要侧车与 `.sigstore.json` keyless cosign bundle；安装前务必使用 `sha256sum -c` 与 `cosign verify-blob --bundle` 核对。
 
-## 同一套 Session：Web ↔ Terminal ↔ Desktop
+## 同一套 Session：官方 Web / Win·macOS ↔ Terminal ↔ Linux AppImage
 
 社区端默认共用官方 `~/.dsh`：
 
 ```text
-官方 Web 里开的对话
+官方 Web 或官方 Win/macOS Desktop 里开的对话
       ↓
-关掉 Web，用 dsh-community 终端 resume
+用 WSL/Linux dsh-community 终端 resume
       ↓
-再打开 Desktop，还是同一条会话
+再打开 Linux AppImage，还是同一条会话
 ```
 
-社区层不另建第二套 session 存储；隔离模式（`DSH_COMMUNITY_ISOLATED=1`）是显式选择的例外。
+社区层不另建第二套 session 存储；隔离模式（`DSH_COMMUNITY_ISOLATED=1`）是显式选择的例外。如需跨设备或配合 Claude Code / Codex CLI / OpenCode 使用端到端加密控制面，可启动 `dsh-community remote start --qr`。
 
 ## 社区终端（WSL / Linux）常用命令
 
@@ -63,9 +62,10 @@ dsh-community sessions         # 列出官方 ~/.dsh 里的对话（--porcelain 
 dsh-community doctor           # 自检：官方包 / TTY / 密钥（不打印密钥）
 dsh-community plugins          # 只读插件目录
 dsh-community desktop          # 打开桌面壳
+dsh-community remote start --qr # 启动 E2EE 多 Agent 远程控制面
 ```
 
-需要 Node 22+、pnpm、`DEEPSEEK_API_KEY`；没密钥不会闷头进 Ink，`doctor` 会明确提示。
+需要 Node.js 22.15+、pnpm、`DEEPSEEK_API_KEY`（DSH 模式）或本地对应 Agent CLI；没密钥不会闷头进 Ink，`doctor` 会明确提示。
 
 ## 插件：验证层，不是最大目录
 
@@ -93,16 +93,16 @@ dsh-marketplace install <name>
 
 ## 发布与验证（Distribution Reality Gate）
 
-发布不等于可用。每个 Release 的**真实安装包**要在干净机器上过一轮：
+发布不等于可用。每个 Release 的**真实安装包**要在干净环境过一轮：
 
 ```text
-干净 VM → 下载 Release 资产 → sha256 核对 → 安装 → 首启
-→ 官方 Runtime 就绪 → 缺 key / 断网失败路径 → 退出无残留
+干净 runner → 下载 Release 资产 → cosign & sha256 核对 → 解包/启动
+→ 官方 Runtime 就绪 → 缺 key / 无 TTY 失败路径 → 退出无残留
 ```
 
-- 自动门禁：`artifact-smoke` 工作流（Windows / macOS runner 上下载 exact release 资产实测）。
-- 状态标注规则：只允许 `[REAL] / [PARTIAL] / [UNVERIFIED] / [NOT_IMPLEMENTED]` 等明确标签，禁止 production-ready 一类说法。
-- 2026-08-21 记录：`v0.1.1-rc.1` 三资产在 [Run 32489762676](https://github.com/kamanager2012/dsh-community/actions/runs/32489762676) 通过安装/首启或缺 key smoke；完整用户闭环仍未验证。历史记录：v0.1.4 曾因桌面解压缺依赖回退 Latest。**桌面安装包的完整用户流状态以 artifact-smoke 最新 run 为准。**
+- 自动门禁：`artifact-smoke` 工作流（下载 exact release `.AppImage` + sidecars 校验并跑 Linux AppImage 与 TUI smoke）。
+- 状态标注规则：只允许 `[REAL] / [PARTIAL] / [UNVERIFIED] / [NOT_IMPLEMENTED]` 等明确标签，禁止 `production-ready` 一类说法。
+- 2026-11-15 记录：`v0.2.2-rc.3` 真实资产在 [Run 43663270841](https://github.com/kamanager2012/dsh-community/actions/runs/43663270841) 通过 `resolve`、`linux-appimage`、`linux-terminal` 与 `verify-signatures`（cosign keyless 8 文件全通过）`[PARTIAL]`；完整用户闭环仍待实机人工验收（`[UNVERIFIED]`）。
 
 ## 相关仓库
 

@@ -10,13 +10,13 @@
 - [ ] 插件目录被描述为 `dsh-community/packages/marketplace/catalog.json`，而不是独立 Plugin Manager；
 - [ ] Marketplace CLI（`dsh-community/packages/marketplace`）被描述为 Discovery / Distribution UX，而不是 Runtime 或 Package Manager replacement；
 - [ ] 官方 Runtime 的 Agent loop、工具执行和 Session persistence 没有被社区仓库的 README 重新认领；
-- [ ] 任何 Labs 能力都标注 `[LABS]`、`[PARTIAL]` 或 `[UNVERIFIED]`，直到 Reality Gate 完成。
-- [ ] README 和网页写明：官方内核与产品号都是 `0.1.1-rc.2`，GitHub Latest 是 `v0.1.1-rc.2`；
-- [ ] 明确说明历史独立编号 `v0.1.2`–`v0.1.6` 不是用户下载入口；
-- [ ] Desktop 与 TUI 都显示完整 Dual-Badge：`DeepSeek Harness Community v0.1.1-rc.2 [Official Core: @deepseek-ai/dsh@0.1.1-rc.2]`；
-- [ ] 当前 Stable 的已知问题和 Preview 的修复范围都有链接，不把 Preview 写成无条件生产推荐；
-- [ ] 三平台发布逐项记录：普通 CI、Linux packaging、Windows packaging、macOS packaging、publish 和 artifact-smoke；任一项未复核时不得写成“安装包已验证”；
-- [ ] Official Runtime staging、安装包和完整用户闭环明确记录为 `[待复核]` 或经事实确认的状态；不得把 smoke 子集写成完整安装验收；
+- [ ] 任何 Labs / 移动端能力都标注 `[LABS]`、`[PARTIAL]` 或 `[UNVERIFIED]`，直到 Reality Gate 完成；
+- [ ] README、发行页和 `docs/current-release.json` 对官方内核、产品号与 Published Latest（当前 `v0.2.2-rc.3` / `@deepseek-ai/dsh@0.2.2-rc.3`）描述一致，不混淆 Candidate Source 与 Published Latest；
+- [ ] 明确说明互补版已自历史 `v0.1.1-rc.2` 后退役 Win/macOS 安装包，历史独立编号 `v0.1.2`–`v0.1.6` 不是用户下载入口；
+- [ ] Desktop 与 TUI 都显示完整 Dual-Badge（例如：`DeepSeek Harness Community v0.2.2-rc.3 [Official Core: @deepseek-ai/dsh@0.2.2-rc.3]`）；
+- [ ] 当前 Stable / Latest 的已知问题与实验范围都有链接，不把 Preview 写成无条件生产推荐；
+- [ ] 逐项记录 Linux CI、Linux AppImage packaging、CycloneDX SBOM、keyless cosign 签名、publish 和 `artifact-smoke`；任一项未复核时不得写成“安装包已验证”；
+- [ ] Official Runtime staging、安装包与完整用户闭环明确记录为 `[待复核]` 或经事实确认的状态；不得把 smoke 子集写成完整安装验收；
 
 统一边界见[社区生态与产品入口](../00-overview/community-ecosystem.md)，当前版本和发行门禁见[当前发行状态](community-release-status.md)，完整流程见[Community 发布 Runbook](community-release-runbook.md)，实验能力的当前状态见 [Community Labs handoff](community-labs-handoff.md)。
 
