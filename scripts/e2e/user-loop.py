@@ -230,6 +230,7 @@ def run_official_headless_turn(
     *,
     node_bin: str,
     dsh_bin: Path,
+    session_cwd: Path,
     patch_file: Path | None,
     session_id: str,
     prompt: str,
@@ -245,6 +246,7 @@ def run_official_headless_turn(
     started = time.monotonic()
     result = subprocess.run(
         cmd,
+        cwd=str(session_cwd),
         env=env,
         text=True,
         stdout=subprocess.PIPE,
@@ -411,7 +413,8 @@ def main() -> int:
         raise RuntimeError("official session transcript mtime did not advance after resume turn")
 
     official_dsh_bin = resolve_official_dsh_bin(args.node, launcher, env)
-    provider_patch = dsh_home / "profiles" / "dsh-community-tui" / "cordis.patch.yml"
+    session_cwd = dsh_home / "profiles" / "dsh-community-tui"
+    provider_patch = session_cwd / "cordis.patch.yml"
 
     third_token = secrets.token_hex(8)
     third_expected = f"ACK-{third_token}"
@@ -423,6 +426,7 @@ def main() -> int:
     third = run_official_headless_turn(
         node_bin=args.node,
         dsh_bin=official_dsh_bin,
+        session_cwd=session_cwd,
         patch_file=provider_patch if provider_patch.exists() else None,
         session_id=session_id,
         prompt=third_prompt,
