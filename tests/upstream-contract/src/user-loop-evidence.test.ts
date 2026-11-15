@@ -76,16 +76,25 @@ describe('real user-loop evidence workflow', () => {
     expect(facts.evidence?.userLoop?.note).toMatch(/actions\/runs\/\d+/)
   })
 
-  it('verifies two-way cross-surface session handoff between dsh-community TUI and official dsh headless', () => {
+  it('verifies two-way cross-surface session handoff between dsh-community TUI, official dsh headless, and AppImage runtime with lifecycle recovery', () => {
+    const workflow = readFileSync(workflowPath, 'utf8')
+    expect(workflow).toContain('Download and extract published Linux AppImage runtime archive')
+    expect(workflow).toContain('--appimage-archive "$APPIMAGE_ARCHIVE"')
+
     const runner = readFileSync(
       join(repoRoot, 'scripts/e2e/user-loop.py'),
       'utf8',
     )
     expect(runner).toContain('def run_official_headless_turn(')
+    expect(runner).toContain('def verify_missing_key_refusal_and_recovery(')
+    expect(runner).toContain('def verify_interrupted_extract_recovery(')
+    expect(runner).toContain('"--appimage-archive"')
     expect(runner).toContain('"--profile", "headless"')
     expect(runner).toContain('"--session-id", session_id')
     expect(runner).toContain('"officialHeadlessHandoff": third')
-    expect(runner).toContain('"resumeAfterOfficialHandoff": fourth')
+    expect(runner).toContain('"appimageBundledRuntimeHandoff"')
+    expect(runner).toContain('turns["resumeAfterOfficialHandoff"] = fourth')
     expect(runner).toContain('"crossSurfaceVerified": True')
+    expect(runner).toContain('"lifecycleRecovery": lifecycle_recovery')
   })
 })

@@ -17,10 +17,12 @@ import pty
 import re
 import secrets
 import select
+import shutil
 import signal
 import struct
 import subprocess
 import sys
+import tempfile
 import termios
 import time
 from datetime import datetime, timezone
@@ -226,6 +228,119 @@ def resolve_official_dsh_bin(node_bin: str, launcher: Path, env: dict[str, str])
     return dsh_bin
 
 
+def verify_missing_key_refusal_and_recovery(
+    node_bin: str,
+    launcher: Path,
+    dsh_home: Path,
+    env: dict[str, str],
+) -> dict[str, object]:
+    child_env = dict(env)
+    child_env.pop("DEEPSEEK_API_KEY", None)
+    child_env["DSH_HOME"] = str(dsh_home)
+    child_env["CI"] = "false"
+    child_env["TERM"] = child_env.get("TERM") or "xterm-256color"
+
+    pid, fd = pty.fork()
+    if pid == 0:
+        os.execvpe(node_bin, [node_bin, str(launcher), "new", "ping"], child_env)
+
+    try:
+        fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 40, 160, 0, 0))
+    except OSError:
+        pass
+
+    raw = bytearray()
+    exit_code: int | None = None
+    deadline = time.monotonic() + 30.0
+    try:
+        while time.monotonic() < deadline:
+            ready, _, _ = select.select([fd], [], [], 0.25)
+            if ready:
+                try:
+                    chunk = os.read(fd, 65536)
+                except OSError as exc:
+                    if exc.errno == errno.EIO:
+                        break
+                    raise
+                if not chunk:
+                    break
+                raw.extend(chunk)
+            if exit_code is None:
+                ended, status = os.waitpid(pid, os.WNOHANG)
+                if ended == pid:
+                    exit_code = os.waitstatus_to_exitcode(status)
+        if exit_code is None:
+            exit_code = wait_child(pid, 5)
+    finally:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+
+    output = sanitize(raw.decode("utf-8", errors="replace"), [])
+    if exit_code == 0:
+        raise RuntimeError(
+            f"missing-key invocation unexpectedly exited 0. Sanitized tail:\n{output[-2000:]}"
+        )
+    if "DEEPSEEK_API_KEY" not in output:
+        raise RuntimeError(
+            f"missing-key refusal did not mention DEEPSEEK_API_KEY. Sanitized tail:\n{output[-2000:]}"
+        )
+    remaining = discover_sessions(dsh_home)
+    if remaining:
+        raise RuntimeError(f"missing-key refusal left orphan sessions: {sorted(remaining)}")
+    return {
+        "refusedCleanly": True,
+        "exitCode": exit_code,
+        "orphanSessions": len(remaining),
+    }
+
+
+def verify_interrupted_extract_recovery(
+    archive_path: Path,
+    work_dir: Path,
+) -> tuple[Path, dict[str, object]]:
+    dest_root = work_dir / "official-dsh"
+    partial_dir = dest_root / "node_modules" / "@deepseek-ai" / "dsh"
+    partial_dir.mkdir(parents=True, exist_ok=True)
+    partial_marker = partial_dir / "partial.tmp"
+    partial_marker.write_text("interrupted\n", encoding="utf-8")
+
+    ready_stamp = dest_root / ".dsh-host-ready"
+    if ready_stamp.exists():
+        raise RuntimeError("simulated interrupted extract unexpectedly has .dsh-host-ready stamp")
+
+    shutil.rmtree(dest_root, ignore_errors=False)
+    dest_root.mkdir(parents=True, exist_ok=True)
+    extract = subprocess.run(
+        ["tar", "-xf", str(archive_path), "-C", str(dest_root)],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=120,
+        check=False,
+    )
+    if extract.returncode != 0:
+        raise RuntimeError(
+            f"tar recovery extraction failed ({extract.returncode}): {extract.stderr[-1000:]}"
+        )
+    if partial_marker.exists():
+        raise RuntimeError("stale partial.tmp survived interrupted runtime recovery extraction")
+
+    dsh_bin = dest_root / "node_modules" / "@deepseek-ai" / "dsh" / "lib" / "bin.js"
+    app_boot = dest_root / "node_modules" / "@deepseek-ai" / "dsh-app-boot" / "package.json"
+    if not dsh_bin.exists() or not app_boot.exists():
+        raise RuntimeError(
+            f"recovered AppImage runtime extract is incomplete: bin={dsh_bin.exists()}, app_boot={app_boot.exists()}"
+        )
+    ready_stamp.write_text("ok\n", encoding="utf-8")
+    return dsh_bin, {
+        "interruptedStateDetected": True,
+        "recoveredCleanly": True,
+        "readyStampWritten": ready_stamp.exists(),
+    }
+
+
 def run_official_headless_turn(
     *,
     node_bin: str,
@@ -238,6 +353,7 @@ def run_official_headless_turn(
     env: dict[str, str],
     timeout: float,
     secret_values: list[str],
+    surface: str = "official-dsh-headless",
 ) -> dict[str, object]:
     cmd = [node_bin, str(dsh_bin), "--profile", "headless"]
     if patch_file is not None and patch_file.exists():
@@ -257,18 +373,18 @@ def run_official_headless_turn(
     combined = sanitize(f"{result.stdout}\n{result.stderr}", secret_values)
     if result.returncode != 0:
         raise RuntimeError(
-            f"official dsh --profile headless --session-id exited with {result.returncode}. "
+            f"{surface} --profile headless --session-id exited with {result.returncode}. "
             f"Sanitized tail:\n{combined[-2000:]}"
         )
     if expected not in sanitize(result.stdout, secret_values):
         raise RuntimeError(
-            "official dsh --profile headless exited 0 without expected model marker. "
+            f"{surface} --profile headless exited 0 without expected model marker. "
             f"Sanitized tail:\n{combined[-2000:]}"
         )
     return {
         "matched": True,
         "exitCode": result.returncode,
-        "surface": "official-dsh-headless",
+        "surface": surface,
         "durationSeconds": round(time.monotonic() - started, 3),
     }
 
@@ -276,6 +392,7 @@ def run_official_headless_turn(
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--launcher", default="apps/tui/dist/bin.js")
+    parser.add_argument("--appimage-archive", default="")
     parser.add_argument("--node", default="node")
     parser.add_argument("--timeout-seconds", type=float, default=180.0)
     parser.add_argument("--evidence-out", default="user-loop-evidence.json")
@@ -337,6 +454,10 @@ def main() -> int:
     env = dict(os.environ)
     env["DSH_HOME"] = str(dsh_home)
     secrets_to_redact = [api_key]
+
+    missing_key_recovery = verify_missing_key_refusal_and_recovery(
+        args.node, launcher, dsh_home, env
+    )
 
     version = subprocess.run(
         [args.node, str(launcher), "version"],
@@ -455,6 +576,71 @@ def main() -> int:
             "official session transcript mtime did not advance after official headless handoff turn"
         )
 
+    surfaces = ["dsh-community-tui", "official-dsh-headless"]
+    turns: dict[str, object] = {
+        "new": first,
+        "resume": second,
+        "officialHeadlessHandoff": third,
+    }
+    lifecycle_recovery: dict[str, object] = {
+        "missingKeyRefusal": missing_key_recovery,
+    }
+    latest_mtime = third_mtime
+    session_count_after_appimage: int | None = None
+
+    appimage_archive_raw = args.appimage_archive.strip()
+    if appimage_archive_raw:
+        appimage_archive = Path(appimage_archive_raw).resolve()
+        if not appimage_archive.exists():
+            raise RuntimeError(f"--appimage-archive does not exist: {appimage_archive}")
+        with tempfile.TemporaryDirectory(prefix="dsh-appimage-recovery-") as recovery_tmp:
+            appimage_dsh_bin, extract_recovery = verify_interrupted_extract_recovery(
+                appimage_archive, Path(recovery_tmp)
+            )
+            lifecycle_recovery["interruptedRuntimeExtract"] = extract_recovery
+
+            appimage_token = secrets.token_hex(8)
+            appimage_expected = f"ACK-{appimage_token}"
+            appimage_prompt = (
+                "Reply with only ACK- immediately followed by this token, with no spaces, "
+                f"punctuation, markdown, or explanation: {appimage_token}"
+            )
+            appimage_turn = run_official_headless_turn(
+                node_bin=args.node,
+                dsh_bin=appimage_dsh_bin,
+                session_cwd=session_cwd,
+                patch_file=provider_patch if provider_patch.exists() else None,
+                session_id=session_id,
+                prompt=appimage_prompt,
+                expected=appimage_expected,
+                env=env,
+                timeout=args.timeout_seconds,
+                secret_values=secrets_to_redact,
+                surface="linux-appimage-bundled-runtime",
+            )
+            sessions_after_appimage = discover_sessions(dsh_home)
+            cli_ids_after_appimage = launcher_sessions(args.node, launcher, env)
+            if set(sessions_after_appimage) != {session_id}:
+                raise RuntimeError(
+                    "AppImage bundled runtime handoff created or switched session: "
+                    f"{sorted(sessions_after_appimage)}"
+                )
+            if cli_ids_after_appimage != [session_id]:
+                raise RuntimeError(
+                    "launcher session view changed after AppImage runtime handoff: "
+                    f"{cli_ids_after_appimage!r} vs {session_id!r}"
+                )
+            appimage_transcript = sessions_after_appimage[session_id]
+            appimage_mtime = appimage_transcript.stat().st_mtime_ns
+            if appimage_mtime <= latest_mtime:
+                raise RuntimeError(
+                    "official session transcript mtime did not advance after AppImage runtime handoff"
+                )
+            latest_mtime = appimage_mtime
+            session_count_after_appimage = len(sessions_after_appimage)
+            surfaces.append("linux-appimage-bundled-runtime")
+            turns["appimageBundledRuntimeHandoff"] = appimage_turn
+
     fourth_token = secrets.token_hex(8)
     fourth_expected = f"ACK-{fourth_token}"
     fourth_prompt = (
@@ -486,10 +672,26 @@ def main() -> int:
             f"{cli_ids_after_roundtrip!r} vs {session_id!r}"
         )
     fourth_transcript = sessions_after_roundtrip[session_id]
-    if fourth_transcript.stat().st_mtime_ns <= third_mtime:
+    if fourth_transcript.stat().st_mtime_ns <= latest_mtime:
         raise RuntimeError(
             "official session transcript mtime did not advance after roundtrip TUI resume"
         )
+    turns["resumeAfterOfficialHandoff"] = fourth
+
+    session_evidence: dict[str, object] = {
+        "sessionCountAfterNew": len(sessions_after_new),
+        "sessionCountAfterResume": len(sessions_after_resume),
+        "sessionCountAfterOfficialHandoff": len(sessions_after_official),
+        "sessionCountAfterRoundtripResume": len(sessions_after_roundtrip),
+        "sameSession": True,
+        "crossSurfaceVerified": True,
+        "surfaces": surfaces,
+        "sessionIdSha256": hashlib.sha256(session_id.encode("utf-8")).hexdigest(),
+        "transcriptKind": fourth_transcript.name,
+        "contentsExported": False,
+    }
+    if session_count_after_appimage is not None:
+        session_evidence["sessionCountAfterAppimageHandoff"] = session_count_after_appimage
 
     evidence = {
         "schemaVersion": 1,
@@ -497,31 +699,20 @@ def main() -> int:
         "generatedAt": now_iso(),
         "releaseTag": args.tag,
         "releaseCommit": args.commit,
-        "endpoint": "linux-terminal+official-headless-cross-surface",
+        "endpoint": (
+            "linux-terminal+official-headless+appimage-bundled-runtime"
+            if session_count_after_appimage is not None
+            else "linux-terminal+official-headless-cross-surface"
+        ),
         "runtimeIdentity": version,
         "githubRun": (
             f"{os.environ.get('GITHUB_SERVER_URL', '')}/"
             f"{os.environ.get('GITHUB_REPOSITORY', '')}/actions/runs/"
             f"{os.environ.get('GITHUB_RUN_ID', '')}"
         ).strip("/"),
-        "sessionEvidence": {
-            "sessionCountAfterNew": len(sessions_after_new),
-            "sessionCountAfterResume": len(sessions_after_resume),
-            "sessionCountAfterOfficialHandoff": len(sessions_after_official),
-            "sessionCountAfterRoundtripResume": len(sessions_after_roundtrip),
-            "sameSession": True,
-            "crossSurfaceVerified": True,
-            "surfaces": ["dsh-community-tui", "official-dsh-headless"],
-            "sessionIdSha256": hashlib.sha256(session_id.encode("utf-8")).hexdigest(),
-            "transcriptKind": fourth_transcript.name,
-            "contentsExported": False,
-        },
-        "turns": {
-            "new": first,
-            "resume": second,
-            "officialHeadlessHandoff": third,
-            "resumeAfterOfficialHandoff": fourth,
-        },
+        "sessionEvidence": session_evidence,
+        "lifecycleRecovery": lifecycle_recovery,
+        "turns": turns,
         "privacy": {
             "isolatedDshHome": True,
             "apiKeyExported": False,
