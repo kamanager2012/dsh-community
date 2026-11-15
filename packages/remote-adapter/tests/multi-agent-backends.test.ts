@@ -429,7 +429,17 @@ describe('multi-agent control plane backends and standalone host', () => {
     expect(enginesHttpJson.engines.every((e) => e.available)).toBe(true)
 
     // Pair full-capability client + observe-only client over Noise IK LAN
-    const issueRes = await host.issuePairingDescriptor()
+    const issueRes = await host.issuePairingDescriptor({
+      allowedCapabilities: [
+        'observe',
+        'prompt',
+        'session.manage',
+        'command.execute',
+        'workspace.write',
+        'approve',
+        'answer-question',
+      ],
+    })
     const parsedLink = parsePairingInput(issueRes.deepLink)
 
     const fullId = await new InMemoryHostIdentityStore().loadOrCreate()
@@ -456,7 +466,15 @@ describe('multi-agent control plane backends and standalone host', () => {
     })
     await host.pairingCoordinator.confirmPairing({
       candidateId: cand1.candidateId,
-      grantedCapabilities: ['observe', 'prompt', 'approve', 'answer-question'],
+      grantedCapabilities: [
+        'observe',
+        'prompt',
+        'session.manage',
+        'command.execute',
+        'workspace.write',
+        'approve',
+        'answer-question',
+      ],
     })
     fullClient.close()
     await fullClient.reconnectWithBackoff({ initialDelayMs: 5, maxDelayMs: 10, maxAttempts: 2 })

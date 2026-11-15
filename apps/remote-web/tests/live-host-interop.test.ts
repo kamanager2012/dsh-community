@@ -208,13 +208,29 @@ describe('remote-web live E2EE host interoperability', () => {
       configDir: join(tmpDir, 'remote-config'),
       cwd: tmpDir,
       backends: [mock.backend],
-      autoConfirmCapabilities: ['observe', 'prompt', 'approve', 'answer-question'],
+      autoConfirmCapabilities: [
+        'observe',
+        'prompt',
+        'approve',
+        'answer-question',
+        'session.manage',
+        'command.execute',
+      ],
       carrier: { enabled: true, host: '127.0.0.1', port: 0 },
     })
     await host.start()
     cleanupCallbacks.push(() => host.stop())
 
-    const issued = await host.issuePairingDescriptor()
+    const issued = await host.issuePairingDescriptor({
+      allowedCapabilities: [
+        'observe',
+        'prompt',
+        'approve',
+        'answer-question',
+        'session.manage',
+        'command.execute',
+      ],
+    })
     const base64Fragment = new URL(issued.deepLink).searchParams.get('data')!
 
     // Verify URL #pair= extraction + history.replaceState token scrubbing
@@ -424,13 +440,29 @@ describe('remote-web live E2EE host interoperability', () => {
       configDir: join(tmpDir, 'remote-config'),
       cwd: tmpDir,
       backends: [mock.backend],
-      autoConfirmCapabilities: ['observe', 'prompt', 'approve', 'answer-question'],
+      autoConfirmCapabilities: [
+        'observe',
+        'prompt',
+        'approve',
+        'answer-question',
+        'session.manage',
+        'command.execute',
+      ],
       carrier: { enabled: true, host: '127.0.0.1', port: 0 },
     })
     await host.start()
     cleanupCallbacks.push(() => host.stop())
 
-    const issued = await host.issuePairingDescriptor()
+    const issued = await host.issuePairingDescriptor({
+      allowedCapabilities: [
+        'observe',
+        'prompt',
+        'approve',
+        'answer-question',
+        'session.manage',
+        'command.execute',
+      ],
+    })
     const keyStore = new RemoteWebKeyStore(false)
     const client = new RemoteWebClient(keyStore)
     cleanupCallbacks.push(() => client.disconnect())

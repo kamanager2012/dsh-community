@@ -16,6 +16,13 @@ docker run --rm -p 8787:8787 \
   dsh-community-gateway
 ```
 
+> **Fail-Closed Authentication Requirement (F-04):** Binding `BlindRelayServer`,
+> `SelfHostedSignalingServer`, or `BlindGatewayServer` to any non-loopback or wildcard address
+> (`0.0.0.0`, `::`, LAN IP, or public IP) **fails closed at startup** unless a non-empty
+> `hostAuthSecret` (`--host-secret` / `DSH_REMOTE_*_HOST_SECRET`) is configured. Starting the
+> Docker container with empty `DSH_REMOTE_GATEWAY_HOST_SECRET` / `DSH_REMOTE_RELAY_HOST_SECRET`
+> exits immediately with status `1` unless `DSH_REMOTE_GATEWAY_HOST` is explicitly loopback.
+
 ## Behind a TLS Reverse Proxy (Proxy-Aware Per-IP Caps)
 
 By default (`trustedProxies` / `DSH_REMOTE_GATEWAY_TRUSTED_PROXIES` unset), forwarding headers

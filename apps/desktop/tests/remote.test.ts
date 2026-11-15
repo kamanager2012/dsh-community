@@ -16,6 +16,7 @@ import {
   parseDesktopRemoteSettings,
   parseRemoteGitInspectInput,
   parseRevokeDeviceInput,
+  parseSetCapabilitiesInput,
   resolveDesktopRemoteConfigDir,
   resolveDesktopRemoteEnvDefaults,
   resolveDesktopRemotePluginPath,
@@ -133,6 +134,12 @@ async function startMockControlServer(): Promise<{
       }
       if (reqUrl === '/pairing/confirm') {
         res.end(JSON.stringify({ ok: true, displayName: 'Test Phone', deviceId: 'dev-1' }))
+        return
+      }
+      if (reqUrl === '/devices/capabilities') {
+        const rec = parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {}
+        const caps = Array.isArray(rec.grantedCapabilities) ? rec.grantedCapabilities : []
+        res.end(JSON.stringify({ ok: true, deviceId: rec.deviceId, capabilities: caps }))
         return
       }
       if (reqUrl === '/devices/revoke') {
@@ -266,7 +273,33 @@ describe('desktop remote controller & validators', () => {
       candidateId: 'cand_1-a',
       allowApprove: false,
     })
+    expect(
+      parseConfirmPairingInput({
+        candidateId: 'cand_1-a',
+        grantedCapabilities: ['observe', 'session.manage', 'observe'],
+      }),
+    ).toEqual({
+      candidateId: 'cand_1-a',
+      allowApprove: false,
+      grantedCapabilities: ['observe', 'session.manage'],
+    })
+    expect(
+      parseConfirmPairingInput({
+        candidateId: 'cand_1-a',
+        grantedCapabilities: ['observe', 'bogus-cap'],
+      }),
+    ).toBeUndefined()
     expect(parseConfirmPairingInput({ candidateId: '../evil' })).toBeUndefined()
+
+    expect(
+      parseSetCapabilitiesInput({ deviceId: ' dev-1 ', grantedCapabilities: ['observe', 'prompt'] }),
+    ).toEqual({
+      deviceId: 'dev-1',
+      grantedCapabilities: ['observe', 'prompt'],
+    })
+    expect(
+      parseSetCapabilitiesInput({ deviceId: 'dev-1', grantedCapabilities: ['superadmin'] }),
+    ).toBeUndefined()
 
     expect(parseRevokeDeviceInput(' dev-123 ')).toBe('dev-123')
     expect(parseRevokeDeviceInput('   ')).toBeUndefined()
@@ -362,7 +395,22 @@ describe('desktop remote controller & validators', () => {
       expect(confirmReq?.auth).toBe('Bearer ctrl-secret-123')
       expect(confirmReq?.body).toEqual({
         candidateId: 'cand-abc',
-        grantedCapabilities: ['observe', 'prompt', 'answer-question'],
+        grantedCapabilities: ['observe', 'prompt'],
+      })
+
+      await controller.confirmPairing('cand-abc', ['observe', 'session.manage', 'approve'])
+      const granularConfirmReqs = mock.requests.filter((r) => r.url === '/pairing/confirm')
+      expect(granularConfirmReqs[1]?.body).toEqual({
+        candidateId: 'cand-abc',
+        grantedCapabilities: ['observe', 'session.manage', 'approve'],
+      })
+
+      await controller.setDeviceCapabilities('dev-trusted', ['observe'])
+      const setCapsReq = mock.requests.find((r) => r.url === '/devices/capabilities')
+      expect(setCapsReq?.auth).toBe('Bearer ctrl-secret-123')
+      expect(setCapsReq?.body).toEqual({
+        deviceId: 'dev-trusted',
+        grantedCapabilities: ['observe'],
       })
 
       await controller.revokeDevice('dev-trusted')

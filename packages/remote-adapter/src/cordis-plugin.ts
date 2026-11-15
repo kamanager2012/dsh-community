@@ -47,6 +47,9 @@ export function apply(ctx: OfficialCordisContextLike): () => void {
     ...(parsed.relay !== undefined ? { relay: parsed.relay } : {}),
     ...(parsed.webrtc !== undefined ? { webrtc: parsed.webrtc } : {}),
     ...(parsed.pairingTtlMs !== undefined ? { pairingTtlMs: parsed.pairingTtlMs } : {}),
+    ...(parsed.allowedCapabilities !== undefined
+      ? { defaultAllowedCapabilities: parsed.allowedCapabilities }
+      : {}),
     ...(parsed.autoConfirmCapabilities !== undefined
       ? { autoConfirmCapabilities: parsed.autoConfirmCapabilities }
       : {}),

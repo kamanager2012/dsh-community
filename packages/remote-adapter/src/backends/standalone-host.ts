@@ -9,7 +9,11 @@ import {
   type BridgeControlServerHandle,
   type PairingIssueResult,
 } from '../cordis-host.js'
-import type { DeviceRecord } from '../crypto/device-trust.js'
+import {
+  DEFAULT_GRANTED_CAPABILITIES,
+  validateCapabilities,
+  type DeviceRecord,
+} from '../crypto/device-trust.js'
 import { MAX_PAIRING_TTL_MS, PairingTokenRegistry, type PairingCandidateView } from '../crypto/pairing-token.js'
 import { RemoteProtocolError } from '../errors.js'
 import { RemoteHostRuntime, type RemoteHostRuntimeOptions } from '../host-runtime.js'
@@ -38,12 +42,7 @@ import { CodexAgentBackend } from './codex-backend.js'
 import { MultiAgentHostRouter } from './multi-agent-router.js'
 import type { ManagedAgentBackend } from './types.js'
 
-const DEFAULT_GRANTED_CAPABILITIES: readonly Capability[] = Object.freeze([
-  'observe',
-  'prompt',
-  'approve',
-  'answer-question',
-])
+// DEFAULT_GRANTED_CAPABILITIES imported from ../crypto/device-trust.js (least-privilege ['observe', 'prompt'])
 
 export interface MultiAgentRemoteHostOptions {
   readonly engines?: readonly AgentEngineId[] | undefined
@@ -67,6 +66,7 @@ export interface MultiAgentRemoteHostOptions {
   readonly coreOptions?: RemoteHostRuntimeOptions['coreOptions'] | undefined
   readonly pairingTtlMs?: number | undefined
   readonly onPairingCandidate?: ((candidate: PairingCandidateView) => void) | undefined
+  readonly defaultAllowedCapabilities?: readonly Capability[] | undefined
   readonly autoConfirmCapabilities?: readonly Capability[] | undefined
   readonly clock?: (() => number) | undefined
   readonly env?: NodeJS.ProcessEnv | undefined
@@ -261,7 +261,12 @@ export class MultiAgentRemoteHost {
       trustDomainId: identity.identity.trustDomainId,
       hostGeneration: identity.identity.generation,
       ttlMs: options?.ttlMs ?? this.options.pairingTtlMs ?? MAX_PAIRING_TTL_MS,
-      allowedCapabilities: options?.allowedCapabilities ?? DEFAULT_GRANTED_CAPABILITIES,
+      allowedCapabilities: validateCapabilities(
+        options?.allowedCapabilities ??
+          this.options.defaultAllowedCapabilities ??
+          DEFAULT_GRANTED_CAPABILITIES,
+        'allowedCapabilities',
+      ),
     })
 
     const relayUrl = this.options.relay?.relayUrl
@@ -299,6 +304,17 @@ export class MultiAgentRemoteHost {
   async revokeDevice(deviceId: string): Promise<boolean> {
     this.router.revokeDeviceUploads(deviceId)
     return this.stores.trustStore.revoke(deviceId)
+  }
+
+  async updateDeviceCapabilities(
+    deviceId: string,
+    grantedCapabilities: readonly Capability[],
+  ): Promise<DeviceRecord> {
+    const updated = await this.stores.trustStore.updateCapabilities(deviceId, grantedCapabilities)
+    if (!updated.grantedCapabilities.has('workspace.write')) {
+      this.router.revokeDeviceUploads(deviceId)
+    }
+    return updated
   }
 
   async getStatus(): Promise<{

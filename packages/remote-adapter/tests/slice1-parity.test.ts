@@ -9,6 +9,8 @@ import {
   InMemoryHostIdentityStore,
   OfficialHostCordisBridge,
   parsePairingInput,
+  VALID_CAPABILITIES,
+  type Capability,
   type OfficialAgentContextLike,
   type OfficialAgentHandleLike,
   type OfficialAgentLike,
@@ -251,7 +253,7 @@ class MockCordisRoot implements OfficialCordisContextLike {
 async function createPairedClient(
   bridge: OfficialHostCordisBridge,
   displayName: string,
-  requestedCapabilities?: readonly ('observe' | 'prompt' | 'approve' | 'answer-question')[],
+  requestedCapabilities?: readonly Capability[],
 ): Promise<FailoverRemoteClient> {
   const issued = await bridge.issuePairingDescriptor(
     requestedCapabilities ? { allowedCapabilities: requestedCapabilities } : undefined,
@@ -503,17 +505,12 @@ describe('Slice 1 dsh-Go parity optimizations in remote-adapter', () => {
       configDir,
       dshHome,
       carrier: { enabled: true, host: '127.0.0.1', port: 0 },
-      autoConfirmCapabilities: ['observe', 'prompt', 'approve', 'answer-question'],
+      autoConfirmCapabilities: VALID_CAPABILITIES,
     })
     await bridge.start()
 
     try {
-      const fullClient = await createPairedClient(bridge, 'Primary Controller', [
-        'observe',
-        'prompt',
-        'approve',
-        'answer-question',
-      ])
+      const fullClient = await createPairedClient(bridge, 'Primary Controller', VALID_CAPABILITIES)
       const readOnlyClient = await createPairedClient(bridge, 'Observer Tablet', ['observe'])
 
       // RTT & transport diagnostics check

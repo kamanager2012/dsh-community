@@ -1051,4 +1051,51 @@ describe('BlindGatewayServer', () => {
     expect(gw2.getStats().webAppRequests).toBe(1)
     expect(gw2.getStats().rejectedPreAuthRate).toBe(1)
   })
+
+  it('enforces non-empty hostAuthSecret on non-loopback and wildcard binds while allowing loopback (F-04)', async () => {
+    const noSecretWildcard = new BlindGatewayServer({
+      enabled: true,
+      host: '0.0.0.0',
+      port: 0,
+      allowWildcardHost: true,
+    })
+    await expect(noSecretWildcard.start()).rejects.toThrow(/requires non-empty hostAuthSecret/i)
+
+    const whitespaceWildcard = new BlindGatewayServer({
+      enabled: true,
+      host: '::',
+      port: 0,
+      allowWildcardHost: true,
+      hostAuthSecret: '   ',
+    })
+    await expect(whitespaceWildcard.start()).rejects.toThrow(/requires non-empty hostAuthSecret/i)
+
+    const partialSecretGateway = new BlindGatewayServer({
+      enabled: true,
+      host: '192.168.10.20',
+      port: 0,
+      relayHostSecret: 'only-relay-secret',
+    })
+    await expect(partialSecretGateway.start()).rejects.toThrow(/blind gateway signaling requires non-empty hostAuthSecret/i)
+
+    const loopbackNoSecret = new BlindGatewayServer({
+      enabled: true,
+      host: '127.0.0.1',
+      port: 0,
+    })
+    await loopbackNoSecret.start()
+    cleanups.push(() => loopbackNoSecret.stop())
+    expect(loopbackNoSecret.isListening()).toBe(true)
+
+    const authenticatedWildcard = new BlindGatewayServer({
+      enabled: true,
+      host: '0.0.0.0',
+      port: 0,
+      allowWildcardHost: true,
+      hostAuthSecret: 'public-gateway-secret',
+    })
+    await authenticatedWildcard.start()
+    cleanups.push(() => authenticatedWildcard.stop())
+    expect(authenticatedWildcard.isListening()).toBe(true)
+  })
 })

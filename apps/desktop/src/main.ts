@@ -76,6 +76,7 @@ import {
   DesktopRemoteController,
   parseConfirmPairingInput,
   parseRevokeDeviceInput,
+  parseSetCapabilitiesInput,
 } from './remote.ts'
 import { formatSessionMtime } from './session-view.ts'
 import {
@@ -1062,7 +1063,17 @@ function bindIpc(): void {
     assertAuthorizedSender(event)
     const req = parseConfirmPairingInput(raw)
     if (req === undefined) return
-    await ensureRemoteController().confirmPairing(req.candidateId, req.allowApprove)
+    await ensureRemoteController().confirmPairing(
+      req.candidateId,
+      req.grantedCapabilities ?? req.allowApprove,
+    )
+    await finishRemoteAction({ preserveDraft: true })
+  })
+  ipcMain.handle(DESKTOP_IPC.remoteSetCapabilities, async (event, raw: unknown) => {
+    assertAuthorizedSender(event)
+    const req = parseSetCapabilitiesInput(raw)
+    if (req === undefined) return
+    await ensureRemoteController().setDeviceCapabilities(req.deviceId, req.grantedCapabilities)
     await finishRemoteAction({ preserveDraft: true })
   })
   ipcMain.handle(DESKTOP_IPC.remoteRevokeDevice, async (event, raw: unknown) => {

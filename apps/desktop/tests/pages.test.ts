@@ -222,7 +222,11 @@ describe('shell pages', () => {
     expect(html).toContain('<svg xmlns="http://www.w3.org/2000/svg"')
     expect(html).toContain('data-confirm-candidate="cand-1"')
     expect(html).toContain('data-allow-approve="cand-1"')
+    expect(html).toContain('data-cap-candidate="cand-1" data-cap-name="observe"')
+    expect(html).toContain('data-device-cap-revoke="dev-trusted-1"')
     expect(html).toContain('data-revoke-device="dev-trusted-1"')
+    const approveCheckbox = html.match(/<input[^>]*data-allow-approve="cand-1"[^>]*>/)?.[0] ?? ''
+    expect(approveCheckbox).not.toContain('checked')
     expect(html).toContain('192.168.1.50')
     expect(html).toContain('100.64.0.9')
     expect(html).not.toContain('</script><img')

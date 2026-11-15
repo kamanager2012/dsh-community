@@ -625,8 +625,26 @@ async function spawnCliUntilReadyJson<T>(
     )
     expect(statusSummary).toContain('Branch: feat/ux (↑1 ↓0)')
     expect(statusSummary).toContain('[M] src/main.ts')
-    expect(parseRemoteReplLine('confirm')).toEqual({ kind: 'usage', usage: '用法: confirm <candidateId>' })
+    expect(parseRemoteReplLine('confirm')).toEqual({
+      kind: 'usage',
+      usage: '用法: confirm <candidateId> [cap1,cap2,...]',
+    })
     expect(parseRemoteReplLine('confirm cand-42')).toEqual({ kind: 'confirm', candidateId: 'cand-42' })
+    expect(parseRemoteReplLine('confirm cand-42 observe,session.manage')).toEqual({
+      kind: 'confirm',
+      candidateId: 'cand-42',
+      capabilities: ['observe', 'session.manage'],
+    })
+    expect(parseRemoteReplLine('grant dev-9 command.execute,approve')).toEqual({
+      kind: 'grant',
+      deviceId: 'dev-9',
+      capabilities: ['command.execute', 'approve'],
+    })
+    expect(parseRemoteReplLine('revoke-cap dev-9 command.execute')).toEqual({
+      kind: 'revoke-cap',
+      deviceId: 'dev-9',
+      capabilities: ['command.execute'],
+    })
     expect(parseRemoteReplLine('revoke')).toEqual({ kind: 'usage', usage: '用法: revoke <deviceId>' })
     expect(parseRemoteReplLine('revoke dev-9')).toEqual({ kind: 'revoke', deviceId: 'dev-9' })
     expect(parseRemoteReplLine('foobar')).toEqual({ kind: 'unknown', command: 'foobar' })
@@ -897,6 +915,156 @@ async function spawnCliUntilReadyJson<T>(
       expect(ready.trustedProxies).toEqual(['127.0.0.1', '10.0.0.0/8'])
     } finally {
       await stopAndWait()
+    }
+  })
+
+  it('grants and independently revokes device capabilities offline and through live control server', async () => {
+    const root = makeTempDir('dsh-remote-cli-caps-')
+    const dshHome = join(root, 'dsh')
+    const configDir = join(root, 'cfg')
+    const env: NodeJS.ProcessEnv = { DSH_HOME: dshHome, DSH_REMOTE_CONFIG_DIR: configDir }
+
+    const stores = openPersistentRemoteStores({ configDir, dshHome })
+    const hostPub = await stores.hostIdentityStore.getPublicIdentity()
+    const record = stores.trustStore.trustSync({
+      staticPublicKey: new Uint8Array(32).fill(21),
+      displayName: 'Granular Phone',
+      grantedCapabilities: ['observe', 'prompt'],
+      trustDomainId: hostPub.trustDomainId,
+    })
+
+    // Offline grant + revoke --cap
+    expect(
+      await runRemoteCommand(['grant', record.deviceId, 'session.manage,command.execute'], env, dshHome),
+    ).toBe(0)
+    expect([
+      ...((await openPersistentRemoteStores({ configDir, dshHome }).trustStore.get(record.deviceId))
+        ?.grantedCapabilities ?? []),
+    ]).toEqual([
+      'observe',
+      'prompt',
+      'session.manage',
+      'command.execute',
+    ])
+
+    expect(
+      await runRemoteCommand(['revoke', record.deviceId, '--cap', 'command.execute'], env, dshHome),
+    ).toBe(0)
+    expect([
+      ...((await openPersistentRemoteStores({ configDir, dshHome }).trustStore.get(record.deviceId))
+        ?.grantedCapabilities ?? []),
+    ]).toEqual([
+      'observe',
+      'prompt',
+      'session.manage',
+    ])
+
+    // Invalid capability returns exit 2
+    const badCapIo = captureOutputs()
+    expect(await runRemoteCommand(['grant', record.deviceId, 'bogus'], env, dshHome)).toBe(2)
+    expect(badCapIo.stderr()).toContain('未知能力')
+    vi.restoreAllMocks()
+
+    // Live control server delegation for grant + revoke --cap
+    const requests: Array<{ deviceId: string; grant?: string[]; revoke?: string[] }> = []
+    const token = 'cap-ctrl-token'
+    const server = createServer(async (req, res) => {
+      if (
+        req.method === 'POST' &&
+        req.url === '/devices/capabilities' &&
+        req.headers.authorization === `Bearer ${token}`
+      ) {
+        const chunks: Buffer[] = []
+        for await (const chunk of req) chunks.push(Buffer.from(chunk))
+        const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as {
+          deviceId: string
+          grant?: string[]
+          revoke?: string[]
+        }
+        requests.push(body)
+        const liveStores = openPersistentRemoteStores({ configDir, dshHome })
+        const current = await liveStores.trustStore.get(body.deviceId)
+        const set = new Set(current?.grantedCapabilities ?? [])
+        for (const c of body.grant ?? []) set.add(c as any)
+        for (const c of body.revoke ?? []) set.delete(c as any)
+        const updated = await liveStores.trustStore.updateCapabilities(body.deviceId, Array.from(set))
+        res.writeHead(200, { 'content-type': 'application/json' })
+        res.end(JSON.stringify({ ok: true, capabilities: [...updated.grantedCapabilities] }))
+        return
+      }
+      res.writeHead(404).end()
+    })
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()))
+
+    try {
+      const addr = server.address() as { port: number }
+      writeFileSync(
+        join(stores.configDir, '.control.json'),
+        JSON.stringify({
+          pid: process.pid,
+          controlUrl: `http://127.0.0.1:${addr.port}`,
+          controlToken: token,
+        }),
+        { mode: 0o600 },
+      )
+      expect(await runRemoteCommand(['grant', record.deviceId, 'workspace.write'], env, dshHome)).toBe(0)
+      expect(
+        await runRemoteCommand(['revoke', record.deviceId, '--cap', 'session.manage'], env, dshHome),
+      ).toBe(0)
+      expect(requests).toEqual([
+        { deviceId: record.deviceId, grant: ['workspace.write'] },
+        { deviceId: record.deviceId, revoke: ['session.manage'] },
+      ])
+      expect([
+        ...((await openPersistentRemoteStores({ configDir, dshHome }).trustStore.get(record.deviceId))
+          ?.grantedCapabilities ?? []),
+      ]).toEqual([
+        'observe',
+        'prompt',
+        'workspace.write',
+      ])
+    } finally {
+      await new Promise<void>((r) => server.close(() => r()))
+    }
+  })
+
+  it('fails closed on non-loopback/wildcard relay, signaling, and gateway without --host-secret (F-04)', async () => {
+    const binPath = ensureBuiltTuiBin()
+
+    expect(
+      await runRemoteCommand(['relay', '--host', '0.0.0.0', '--port', '0', '--allow-wildcard'], {}),
+    ).toBe(1)
+    expect(
+      await runRemoteCommand(['signaling', '--host', '::', '--port', '0', '--allow-wildcard'], {}),
+    ).toBe(1)
+    expect(
+      await runRemoteCommand(['gateway', '--host', '192.168.50.10', '--port', '0'], {}),
+    ).toBe(1)
+
+    const { ready, stopAndWait } = await spawnCliUntilReadyJson<{
+      kind: string
+      authRequired: boolean
+    }>(
+      binPath,
+      [
+        'remote',
+        'gateway',
+        '--host',
+        '0.0.0.0',
+        '--port',
+        '0',
+        '--allow-wildcard',
+        '--host-secret',
+        'cli-gateway-secret',
+        '--json',
+      ],
+      {},
+    )
+    try {
+      expect(ready.kind).toBe('blind-gateway')
+      expect(ready.authRequired).toBe(true)
+    } finally {
+      expect(await stopAndWait()).toBe(0)
     }
   })
 })

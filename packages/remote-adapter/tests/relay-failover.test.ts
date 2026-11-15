@@ -895,4 +895,49 @@ describe('R4 Blind Relay Server, HostRelayCarrier, and Multi-Path Failover', () 
     expect(respNoise.tx.every((b) => b === 0)).toBe(true)
     expect(respNoise.rx.every((b) => b === 0)).toBe(true)
   })
+
+  it('requires non-empty hostAuthSecret for BlindRelayServer non-loopback or wildcard binds (F-04)', async () => {
+    const wildcardNoSecret = new BlindRelayServer({
+      enabled: true,
+      host: '0.0.0.0',
+      port: 0,
+      allowWildcardHost: true,
+    })
+    await expect(wildcardNoSecret.start()).rejects.toThrow(/requires non-empty hostAuthSecret/i)
+
+    const nonLoopbackWhitespace = new BlindRelayServer({
+      enabled: true,
+      host: '10.20.30.40',
+      port: 0,
+      hostAuthSecret: '  \t ',
+    })
+    await expect(nonLoopbackWhitespace.start()).rejects.toThrow(/requires non-empty hostAuthSecret/i)
+
+    const ipv4MappedWildcard = new BlindRelayServer({
+      enabled: true,
+      host: '::',
+      port: 0,
+      allowWildcardHost: true,
+      hostAuthSecret: 'relay-wildcard-secret',
+    })
+    await ipv4MappedWildcard.start().catch(async (err) => {
+      // Fallback for IPv6-disabled containers: validate 0.0.0.0 with secret instead
+      expect(String(err)).not.toMatch(/hostAuthSecret/i)
+      const v4Wildcard = new BlindRelayServer({
+        enabled: true,
+        host: '0.0.0.0',
+        port: 0,
+        allowWildcardHost: true,
+        hostAuthSecret: 'relay-wildcard-secret',
+      })
+      await v4Wildcard.start()
+      expect(v4Wildcard.isListening()).toBe(true)
+      await v4Wildcard.stop()
+      return
+    })
+    if (ipv4MappedWildcard.isListening()) {
+      expect(ipv4MappedWildcard.isListening()).toBe(true)
+      await ipv4MappedWildcard.stop()
+    }
+  })
 })

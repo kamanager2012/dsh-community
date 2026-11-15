@@ -644,4 +644,35 @@ describe('R3 STUN, Signaling, and WebRTC P2P carrier', () => {
       rmSync(dir, { recursive: true, force: true })
     }
   })
+
+  it('requires non-empty hostAuthSecret for SelfHostedSignalingServer non-loopback or wildcard binds (F-04)', async () => {
+    const wildcardNoSecret = new SelfHostedSignalingServer({
+      enabled: true,
+      host: '0.0.0.0',
+      port: 0,
+      allowWildcardHost: true,
+    })
+    await expect(wildcardNoSecret.start()).rejects.toThrow(/requires non-empty hostAuthSecret/i)
+
+    const nonLoopbackNoSecret = new SelfHostedSignalingServer({
+      enabled: true,
+      host: '192.168.1.99',
+      port: 0,
+    })
+    await expect(nonLoopbackNoSecret.start()).rejects.toThrow(/requires non-empty hostAuthSecret/i)
+
+    const wildcardWithSecret = new SelfHostedSignalingServer({
+      enabled: true,
+      host: '0.0.0.0',
+      port: 0,
+      allowWildcardHost: true,
+      hostAuthSecret: 'signaling-wildcard-secret',
+    })
+    await wildcardWithSecret.start()
+    try {
+      expect(wildcardWithSecret.isListening()).toBe(true)
+    } finally {
+      await wildcardWithSecret.stop()
+    }
+  })
 })

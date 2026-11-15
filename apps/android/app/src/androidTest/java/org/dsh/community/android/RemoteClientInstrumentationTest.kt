@@ -27,6 +27,7 @@ import org.dsh.community.android.crypto.Curve25519
 import org.dsh.community.android.crypto.EncryptedDeviceIdentityStore
 import org.dsh.community.android.crypto.EncryptedTrustedHostStore
 import org.dsh.community.android.protocol.AttachResumeResult
+import org.dsh.community.android.protocol.JsonArray
 import org.dsh.community.android.protocol.JsonCodec
 import org.dsh.community.android.protocol.JsonObject
 import org.dsh.community.android.protocol.JsonString
@@ -267,7 +268,18 @@ class RemoteClientInstrumentationTest {
             val confirmStatus = postControlJson(
                 url = "$controlUrl/pairing/confirm",
                 token = controlToken,
-                bodyJson = JsonObject.of("candidateId" to JsonString(candidateId!!)).stringify(),
+                bodyJson = JsonObject.of(
+                    "candidateId" to JsonString(candidateId!!),
+                    "grantedCapabilities" to JsonArray(
+                        listOf(
+                            JsonString("observe"),
+                            JsonString("prompt"),
+                            JsonString("session.manage"),
+                            JsonString("approve"),
+                            JsonString("answer-question"),
+                        ),
+                    ),
+                ).stringify(),
             )
             assertTrue("pairing/confirm failed with HTTP ${confirmStatus.first}: ${confirmStatus.second}", confirmStatus.first in 200..299)
         } else {
@@ -400,7 +412,21 @@ class RemoteClientInstrumentationTest {
         // Ensure primary hardware-backed identity is paired (independent of JUnit execution order)
         val primaryIdentity = EncryptedDeviceIdentityStore.createForAndroid(context).loadOrCreate()
         assertTrue(primaryIdentity.backing.startsWith("android-keystore-"))
-        val mintedForUi = postControlJson("$controlUrl/pairing-token", controlToken, "{}")
+        val mintedForUi = postControlJson(
+            "$controlUrl/pairing-token",
+            controlToken,
+            JsonObject.of(
+                "allowedCapabilities" to JsonArray(
+                    listOf(
+                        JsonString("observe"),
+                        JsonString("prompt"),
+                        JsonString("session.manage"),
+                        JsonString("approve"),
+                        JsonString("answer-question"),
+                    ),
+                ),
+            ).stringify(),
+        )
         assertTrue("pairing-token mint failed", mintedForUi.first in 200..299)
         val freshDeepLink = JsonCodec.parseObject(mintedForUi.second).str("deepLink")!!
         val freshDescriptor = PairingQrParser.parseInput(freshDeepLink)
@@ -414,7 +440,18 @@ class RemoteClientInstrumentationTest {
                     val res = postControlJson(
                         url = "$controlUrl/pairing/confirm",
                         token = controlToken,
-                        bodyJson = JsonObject.of("candidateId" to JsonString(cid)).stringify(),
+                        bodyJson = JsonObject.of(
+                            "candidateId" to JsonString(cid),
+                            "grantedCapabilities" to JsonArray(
+                                listOf(
+                                    JsonString("observe"),
+                                    JsonString("prompt"),
+                                    JsonString("session.manage"),
+                                    JsonString("approve"),
+                                    JsonString("answer-question"),
+                                ),
+                            ),
+                        ).stringify(),
                     )
                     assertTrue("pairing/confirm failed: ${res.second}", res.first in 200..299)
                 }

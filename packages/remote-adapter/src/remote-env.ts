@@ -8,12 +8,11 @@ import type { PairingCandidateView } from './crypto/pairing-token.js'
 import type { AgentEngineId, Capability, EngineDescriptor } from './protocol.js'
 import { defaultRemoteConfigDir, defaultRemoteDshHome } from './stores.js'
 
-const ALL_CAPABILITIES: ReadonlySet<Capability> = new Set<Capability>([
-  'observe',
-  'prompt',
-  'approve',
-  'answer-question',
-])
+import { DEFAULT_GRANTED_CAPABILITIES, VALID_CAPABILITIES } from './crypto/device-trust.js'
+
+export { DEFAULT_GRANTED_CAPABILITIES, VALID_CAPABILITIES, type Capability }
+
+const ALL_CAPABILITIES: ReadonlySet<Capability> = new Set<Capability>(VALID_CAPABILITIES)
 
 const VALID_ENGINES: ReadonlySet<AgentEngineId> = new Set<AgentEngineId>([
   'dsh',
@@ -159,13 +158,16 @@ export function parseOptionalPort(raw: string | undefined): number | undefined {
   return parsed
 }
 
-export function parseOptionalCapabilities(raw: string | undefined): Capability[] | undefined {
+export function parseOptionalCapabilities(
+  raw: string | undefined,
+  envVarName = 'DSH_REMOTE_AUTO_APPROVE_PAIRING',
+): Capability[] | undefined {
   if (raw === undefined || raw.trim() === '') return undefined
   const out: Capability[] = []
   for (const part of raw.split(',')) {
     const cap = part.trim() as Capability
     if (!ALL_CAPABILITIES.has(cap)) {
-      throw new Error(`unsupported capability '${part}' in DSH_REMOTE_AUTO_APPROVE_PAIRING`)
+      throw new Error(`unsupported capability '${part}' in ${envVarName}`)
     }
     if (!out.includes(cap)) out.push(cap)
   }
@@ -236,6 +238,7 @@ export interface ParsedRemoteHostEnv {
   readonly initialSessionEnv?: string | undefined
   readonly issuePairingOnStart: boolean
   readonly pairingTtlMs?: number | undefined
+  readonly allowedCapabilities?: readonly Capability[] | undefined
   readonly autoConfirmCapabilities?: readonly Capability[] | undefined
   readonly enginesRaw?: string | undefined
   readonly defaultEngine?: AgentEngineId | undefined
@@ -283,7 +286,14 @@ export function parseAndScrubRemoteHostEnv(env: NodeJS.ProcessEnv = process.env)
   const issuePairingOnStart = parseBooleanEnv(env.DSH_REMOTE_ISSUE_PAIRING)
   const pairingTtlRaw = env.DSH_REMOTE_PAIRING_TTL_MS?.trim()
   const pairingTtlMs = pairingTtlRaw ? Number(pairingTtlRaw) : undefined
-  const autoConfirmCapabilities = parseOptionalCapabilities(env.DSH_REMOTE_AUTO_APPROVE_PAIRING)
+  const allowedCapabilities = parseOptionalCapabilities(
+    env.DSH_REMOTE_ALLOWED_CAPS,
+    'DSH_REMOTE_ALLOWED_CAPS',
+  )
+  const autoConfirmCapabilities = parseOptionalCapabilities(
+    env.DSH_REMOTE_AUTO_APPROVE_PAIRING,
+    'DSH_REMOTE_AUTO_APPROVE_PAIRING',
+  )
   const enginesRaw = env.DSH_REMOTE_ENGINES?.trim() || undefined
   const defaultEngineRaw = env.DSH_REMOTE_DEFAULT_ENGINE?.trim().toLowerCase()
   const defaultEngine =
@@ -339,6 +349,7 @@ export function parseAndScrubRemoteHostEnv(env: NodeJS.ProcessEnv = process.env)
     initialSessionEnv,
     issuePairingOnStart,
     pairingTtlMs: pairingTtlMs !== undefined && Number.isFinite(pairingTtlMs) ? pairingTtlMs : undefined,
+    ...(allowedCapabilities !== undefined ? { allowedCapabilities } : {}),
     autoConfirmCapabilities,
     enginesRaw,
     defaultEngine,

@@ -14,6 +14,7 @@ import {
   listOfficialSessionRefsFromRoot,
   OfficialHostCordisBridge,
   parsePairingInput,
+  VALID_CAPABILITIES,
   type OfficialAgentContextLike,
   type OfficialAgentHandleLike,
   type OfficialAgentLike,
@@ -372,7 +373,9 @@ describe('OfficialHostCordisBridge & Persistent Community Storage', () => {
     // Ensure host-identity.json and trusted-devices.json are outside DSH_HOME with 0600 perms
     expect(statSync(bridge1.stores.hostIdentityPath).mode & 0o777).toBe(0o600)
     const control1 = await createBridgeControlServer(bridge1)
-    const issued = await bridge1.issuePairingDescriptor()
+    const issued = await bridge1.issuePairingDescriptor({
+      allowedCapabilities: VALID_CAPABILITIES,
+    })
     expect(issued.deepLink.startsWith(DSH_REMOTE_DEEP_LINK_PREFIX)).toBe(true)
 
     const parsedDescriptor = parsePairingInput(issued.deepLink)
@@ -421,7 +424,10 @@ describe('OfficialHostCordisBridge & Persistent Community Storage', () => {
         'content-type': 'application/json',
         authorization: `Bearer ${control1.controlToken}`,
       },
-      body: JSON.stringify({ candidateId: candidate.candidateId }),
+      body: JSON.stringify({
+        candidateId: candidate.candidateId,
+        grantedCapabilities: ['observe', 'prompt', 'approve', 'answer-question'],
+      }),
     })
     expect(confirmRes.status).toBe(200)
     client.close()
@@ -762,7 +768,9 @@ describe('OfficialHostCordisBridge & Persistent Community Storage', () => {
     await bridge.start()
 
     try {
-      const pairing = await bridge.issuePairingDescriptor()
+      const pairing = await bridge.issuePairingDescriptor({
+        allowedCapabilities: VALID_CAPABILITIES,
+      })
       const parsed = parsePairingInput(pairing.deepLink)
       const clientIdentity = await new InMemoryHostIdentityStore().loadOrCreate()
       const client = new FailoverRemoteClient({
@@ -788,7 +796,7 @@ describe('OfficialHostCordisBridge & Persistent Community Storage', () => {
       })
       await bridge.pairingCoordinator.confirmPairing({
         candidateId: candidate.candidateId,
-        grantedCapabilities: ['observe', 'prompt', 'approve', 'answer-question'],
+        grantedCapabilities: VALID_CAPABILITIES,
       })
       client.close()
       await client.reconnectWithBackoff({ initialDelayMs: 5, maxDelayMs: 10, maxAttempts: 2 })
@@ -970,7 +978,9 @@ describe('OfficialHostCordisBridge & Persistent Community Storage', () => {
     await bridge.start()
 
     try {
-      const pairing = await bridge.issuePairingDescriptor()
+      const pairing = await bridge.issuePairingDescriptor({
+        allowedCapabilities: VALID_CAPABILITIES,
+      })
       const parsed = parsePairingInput(pairing.deepLink)
       const clientIdentity = await new InMemoryHostIdentityStore().loadOrCreate()
       const client = new FailoverRemoteClient({
@@ -996,7 +1006,7 @@ describe('OfficialHostCordisBridge & Persistent Community Storage', () => {
       })
       await bridge.pairingCoordinator.confirmPairing({
         candidateId: candidate.candidateId,
-        grantedCapabilities: ['observe', 'prompt', 'approve', 'answer-question'],
+        grantedCapabilities: VALID_CAPABILITIES,
       })
       client.close()
       await client.reconnectWithBackoff({ initialDelayMs: 5, maxDelayMs: 10, maxAttempts: 2 })
@@ -1140,6 +1150,181 @@ describe('OfficialHostCordisBridge & Persistent Community Storage', () => {
       client.close()
       obsClient.close()
     } finally {
+      await bridge.stop()
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('enforces least-privilege default pairing and granular capability split/revocation (F-02)', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-cordis-f02-'))
+    const dshHome = join(root, 'official-dsh-home')
+    const configDir = join(root, 'community-remote-config')
+    mkdirSync(join(dshHome, 'sessions'), { recursive: true })
+
+    const ctx = new FakeRootContext()
+    ;(ctx as FakeRootContext & { commands?: unknown }).commands = {
+      list: async () => [{ name: 'status', description: 'status' }],
+      execute: async (_agent: unknown, cmd: string) => ({ ok: true, output: `ran ${cmd}` }),
+    }
+    await ctx.agents.create({ sessionId: 's-f02' })
+
+    const bridge = new OfficialHostCordisBridge({
+      ctx,
+      configDir,
+      dshHome,
+      cwd: root,
+      carrier: { enabled: true, host: '127.0.0.1', port: 0 },
+    })
+    await bridge.start()
+    const control = await createBridgeControlServer(bridge)
+
+    try {
+      // 1. Default issuePairingDescriptor + /pairing/confirm without explicit caps grants strictly ['observe', 'prompt']
+      const defaultIssued = await bridge.issuePairingDescriptor()
+      const defaultParsed = parsePairingInput(defaultIssued.deepLink)
+      const defaultId = await new InMemoryHostIdentityStore().loadOrCreate()
+      const defaultClient = new FailoverRemoteClient({
+        clientKeyPair: { publicKey: defaultId.identity.publicKey, secretKey: defaultId.secretKey },
+        hostPublicKey: Uint8Array.from(Buffer.from(defaultParsed.hostPublicKeyHex, 'hex')),
+        lan: { endpointUrl: defaultParsed.endpointUrl },
+      })
+
+      await defaultClient.connect()
+      const defaultCand = await defaultClient.request('pairing.request', {
+        token: defaultParsed.bootstrapToken,
+        displayName: 'Least Privilege Phone',
+        requestedCapabilities: [...VALID_CAPABILITIES],
+      })
+      expect(defaultCand.maxAllowedCapabilities).toEqual(['observe', 'prompt'])
+
+      const confirmRes = await fetch(`${control.url}/pairing/confirm`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${control.controlToken}`,
+        },
+        body: JSON.stringify({ candidateId: defaultCand.candidateId }),
+      })
+      expect(confirmRes.status).toBe(200)
+      const confirmBody = (await confirmRes.json()) as {
+        deviceId: string
+        capabilities: string[]
+      }
+      expect(confirmBody.capabilities).toEqual(['observe', 'prompt'])
+
+      defaultClient.close()
+      await defaultClient.reconnectWithBackoff({ initialDelayMs: 5, maxDelayMs: 10, maxAttempts: 2 })
+
+      // observe + prompt succeed
+      await expect(defaultClient.request('session.list')).resolves.toHaveLength(1)
+      await defaultClient.resumeSession('s-f02')
+      await expect(
+        defaultClient.request(
+          'prompt.submit',
+          { sessionId: 's-f02', prompt: 'hello' },
+          { idempotencyKey: 'f02-prompt-ok' },
+        ),
+      ).resolves.toMatchObject({ sessionId: 's-f02' })
+
+      // Privileged operations split out from 'prompt' must be denied cleanly
+      await expect(
+        defaultClient.request(
+          'session.create',
+          { sessionId: 's-f02-denied', title: 'Denied' },
+          { idempotencyKey: 'f02-create-deny' },
+        ),
+      ).rejects.toThrow(/CAPABILITY_DENIED/)
+      await expect(
+        defaultClient.request(
+          'model.select',
+          { sessionId: 's-f02', provider: 'deepseek-official', model: 'deepseek-flash' },
+          { idempotencyKey: 'f02-model-deny' },
+        ),
+      ).rejects.toThrow(/CAPABILITY_DENIED/)
+      await expect(
+        defaultClient.request(
+          'command.execute',
+          { sessionId: 's-f02', command: '/status' },
+          { idempotencyKey: 'f02-cmd-deny' },
+        ),
+      ).rejects.toThrow(/CAPABILITY_DENIED/)
+      await expect(
+        defaultClient.request(
+          'workspace.upload.open',
+          { sessionId: 's-f02', filename: 'note.txt', totalBytes: 4 },
+          { idempotencyKey: 'f02-upload-deny' },
+        ),
+      ).rejects.toThrow(/CAPABILITY_DENIED/)
+      await expect(
+        defaultClient.request(
+          'approval.respond',
+          { callId: 'c1', decision: 'approved' },
+          { idempotencyKey: 'f02-apr-deny' },
+        ),
+      ).rejects.toThrow(/CAPABILITY_DENIED/)
+
+      // 2. Grant command.execute + session.manage -> works -> independently revoke command.execute -> only command.execute is blocked
+      const grantRes = await fetch(`${control.url}/devices/capabilities`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${control.controlToken}`,
+        },
+        body: JSON.stringify({
+          deviceId: confirmBody.deviceId,
+          grant: ['session.manage', 'command.execute'],
+        }),
+      })
+      expect(grantRes.status).toBe(200)
+      await expect(
+        defaultClient.request(
+          'command.execute',
+          { sessionId: 's-f02', command: '/status' },
+          { idempotencyKey: 'f02-cmd-ok' },
+        ),
+      ).resolves.toMatchObject({ ok: true })
+      await expect(
+        defaultClient.request(
+          'session.create',
+          { sessionId: 's-f02-created', title: 'Allowed Manage' },
+          { idempotencyKey: 'f02-create-ok' },
+        ),
+      ).resolves.toMatchObject({ id: 's-f02-created' })
+
+      const revokeCapRes = await fetch(`${control.url}/devices/capabilities`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${control.controlToken}`,
+        },
+        body: JSON.stringify({
+          deviceId: confirmBody.deviceId,
+          revoke: ['command.execute'],
+        }),
+      })
+      expect(revokeCapRes.status).toBe(200)
+      const revokeCapJson = (await revokeCapRes.json()) as { capabilities: string[] }
+      expect(revokeCapJson.capabilities).toEqual(['observe', 'prompt', 'session.manage'])
+
+      await expect(
+        defaultClient.request(
+          'command.execute',
+          { sessionId: 's-f02', command: '/status' },
+          { idempotencyKey: 'f02-cmd-revoked' },
+        ),
+      ).rejects.toThrow(/CAPABILITY_DENIED/)
+      // Remaining granted capabilities stay functional without reconnecting
+      await expect(
+        defaultClient.request(
+          'session.rename',
+          { sessionId: 's-f02-created', title: 'Still Allowed' },
+          { idempotencyKey: 'f02-rename-ok' },
+        ),
+      ).resolves.toEqual({ id: 's-f02-created', title: 'Still Allowed' })
+
+      defaultClient.close()
+    } finally {
+      await control.close()
       await bridge.stop()
       rmSync(root, { recursive: true, force: true })
     }

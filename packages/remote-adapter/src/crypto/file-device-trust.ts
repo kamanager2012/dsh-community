@@ -17,7 +17,9 @@ import { randomBytes } from 'node:crypto'
 import type { Capability, RemoteMethod } from '../protocol.js'
 import {
   InMemoryDeviceTrustStore,
+  VALID_CAPABILITIES,
   toDeviceRecordSnapshot,
+  validateCapabilities,
   type DeviceRecord,
   type StoredDeviceRecord,
 } from './device-trust.js'
@@ -25,15 +27,8 @@ import { RemoteCryptoError } from './errors.js'
 import { computeFingerprint } from './host-identity.js'
 
 const AUTHORITATIVE_CAPABILITIES: ReadonlySet<Capability> = Object.freeze(
-  new Set<Capability>(['observe', 'prompt', 'approve', 'answer-question']),
+  new Set<Capability>(VALID_CAPABILITIES),
 )
-
-export const VALID_CAPABILITIES: readonly Capability[] = Object.freeze([
-  'observe',
-  'prompt',
-  'approve',
-  'answer-question',
-])
 
 export interface SerializedDeviceRecord {
   readonly deviceId: string
@@ -884,6 +879,39 @@ export class FileDeviceTrustStore extends InMemoryDeviceTrustStore {
     return true
   }
 
+  override updateCapabilitiesSync(
+    deviceId: string,
+    grantedCapabilities: readonly Capability[],
+  ): DeviceRecord {
+    this.assertNotPoisoned()
+    const existing = this.devices.get(deviceId)
+    if (!existing) {
+      throw new RemoteCryptoError('DEVICE_NOT_TRUSTED', `device does not exist: ${deviceId}`)
+    }
+    if (existing.revokedAt !== undefined) {
+      throw new RemoteCryptoError(
+        'DEVICE_REVOKED',
+        `cannot update capabilities for revoked device: ${deviceId}`,
+      )
+    }
+    const validated = validateCapabilities(grantedCapabilities, 'grantedCapabilities')
+    const staged = this.cloneDevices()
+    const target = staged.get(deviceId)
+    if (!target) {
+      throw new RemoteCryptoError('DEVICE_NOT_TRUSTED', `device does not exist: ${deviceId}`)
+    }
+    target.grantedCapabilities = new Set(validated)
+    this.commitDurableTransaction(staged)
+    return toDeviceRecordSnapshot(target)
+  }
+
+  override async updateCapabilities(
+    deviceId: string,
+    grantedCapabilities: readonly Capability[],
+  ): Promise<DeviceRecord> {
+    return this.updateCapabilitiesSync(deviceId, grantedCapabilities)
+  }
+
   override async adminReEnroll(params: {
     deviceId: string
     displayName?: string
@@ -895,6 +923,7 @@ export class FileDeviceTrustStore extends InMemoryDeviceTrustStore {
     if (!existing) {
       throw new RemoteCryptoError('DEVICE_NOT_TRUSTED', 'device does not exist for re-enrollment')
     }
+    const validated = validateCapabilities(params.grantedCapabilities, 'grantedCapabilities')
 
     const staged = this.cloneDevices()
     const target = staged.get(params.deviceId)
@@ -904,7 +933,7 @@ export class FileDeviceTrustStore extends InMemoryDeviceTrustStore {
 
     const now = this.clock()
     target.displayName = params.displayName ?? target.displayName
-    target.grantedCapabilities = new Set(params.grantedCapabilities)
+    target.grantedCapabilities = new Set(validated)
     target.revokedAt = undefined
     target.lastSeenAt = now
     target.keyVersion += 1

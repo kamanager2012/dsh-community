@@ -1049,24 +1049,46 @@ export function renderRemotePage(model: RemotePageModel): string {
     }
   })()
 
+  const capabilityLabels: Readonly<Record<string, string>> = {
+    observe: '只读观察会话与文件（observe）',
+    prompt: '发送提示词与中止回合（prompt）',
+    'session.manage': '新建 / 重命名 / 分叉会话与切换模型（session.manage）',
+    'command.execute': '执行 Agent 命令（command.execute）',
+    'workspace.write': '上传文件至工作区（workspace.write）',
+    approve: '远程审批工具调用（approve）',
+    'answer-question': '远程回答 Agent 提问（answer-question）',
+  }
+  const allCapabilities = [
+    'observe',
+    'prompt',
+    'session.manage',
+    'command.execute',
+    'workspace.write',
+    'approve',
+    'answer-question',
+  ] as const
+
   const pendingBlock = model.pendingCandidates.length === 0
     ? ''
     : `<section class="panel pending">
         <h2>待授权配对请求（${String(model.pendingCandidates.length)}）</h2>
-        <p>请核对手机端显示的设备名与请求标识，确认后再授予能力。</p>
+        <p>请核对手机端显示的设备名与请求标识，按最小权限勾选授予能力（高权限默认不勾选）。</p>
         ${model.pendingCandidates.map((c) => {
-          const canApprove = c.maxAllowedCapabilities.includes('approve')
-          const caps = c.maxAllowedCapabilities.map(escapeHtml).join(', ') || 'observe'
-          const approveToggle = canApprove
-            ? `<label class="opt">
-                <input type="checkbox" checked data-allow-approve="${escapeHtml(c.candidateId)}" />
-                <span>允许手机远程审批工具调用（<code>approve</code>）</span>
-              </label>`
-            : `<p class="meta">该请求未包含远程审批（<code>approve</code>）权限。</p>`
+          const allowed = c.maxAllowedCapabilities.length > 0 ? c.maxAllowedCapabilities : ['observe']
+          const caps = allowed.map(escapeHtml).join(', ')
+          const capToggles = allowed.map((cap) => {
+            const defaultChecked = cap === 'observe' || cap === 'prompt' ? ' checked' : ''
+            const approveAttr = cap === 'approve' ? ` data-allow-approve="${escapeHtml(c.candidateId)}"` : ''
+            const label = capabilityLabels[cap] ?? cap
+            return `<label class="opt">
+              <input type="checkbox"${defaultChecked}${approveAttr} data-cap-candidate="${escapeHtml(c.candidateId)}" data-cap-name="${escapeHtml(cap)}" />
+              <span>${escapeHtml(label)}</span>
+            </label>`
+          }).join('')
           return `<div class="pending-item">
             <div><strong>${escapeHtml(c.displayName || '未命名设备')}</strong> · <code>${escapeHtml(c.deviceId)}</code></div>
             <p class="meta">请求 ID: <code>${escapeHtml(c.candidateId)}</code> · 状态: ${escapeHtml(c.state)} · 过期: ${escapeHtml(formatRemoteTime(c.expiresAt))} · 上限能力: <code>${caps}</code></p>
-            ${approveToggle}
+            ${capToggles}
             <div class="row">
               <button class="small" data-confirm-candidate="${escapeHtml(c.candidateId)}">确认授权此设备</button>
             </div>
@@ -1115,12 +1137,21 @@ export function renderRemotePage(model: RemotePageModel): string {
     const statusChip = isRevoked
       ? `<span class="chip risk-high">已吊销 (${escapeHtml(formatRemoteTime(d.revokedAt))})</span>`
       : '<span class="chip ok">有效</span>'
+    const currentCapsRaw = d.capabilities.join(',')
+    const capControls = isRevoked
+      ? `<code>${escapeHtml(d.capabilities.join(', ') || '—')}</code>`
+      : `<div class="row">
+          ${d.capabilities.length === 0
+            ? '<span class="meta">无已授予能力</span>'
+            : d.capabilities.map((cap) => `<button class="secondary small" data-device-cap-revoke="${escapeHtml(d.deviceId)}" data-cap-name="${escapeHtml(cap)}" data-current-caps="${escapeHtml(currentCapsRaw)}" title="点击独立撤回 ${escapeHtml(cap)}">× ${escapeHtml(cap)}</button>`).join('')}
+          ${allCapabilities.filter((cap) => !d.capabilities.includes(cap)).map((cap) => `<button class="secondary small" data-device-cap-grant="${escapeHtml(d.deviceId)}" data-cap-name="${escapeHtml(cap)}" data-current-caps="${escapeHtml(currentCapsRaw)}" title="点击授予 ${escapeHtml(cap)}">+ ${escapeHtml(cap)}</button>`).join('')}
+        </div>`
     const actionBtn = isRevoked
       ? '<span class="meta">—</span>'
       : `<button class="danger small" data-revoke-device="${escapeHtml(d.deviceId)}">吊销</button>`
     return `<tr>
       <td><div>${escapeHtml(d.displayName || '未命名设备')}</div><code>${escapeHtml(d.deviceId)}</code></td>
-      <td><code>${escapeHtml(d.capabilities.join(', ') || '—')}</code></td>
+      <td>${capControls}</td>
       <td>配对: ${escapeHtml(formatRemoteTime(d.pairedAt))}<br/>最近: ${escapeHtml(formatRemoteTime(d.lastSeenAt))}</td>
       <td>${statusChip}</td>
       <td>${actionBtn}</td>
@@ -1361,13 +1392,38 @@ export function renderRemotePage(model: RemotePageModel): string {
        document.querySelectorAll('[data-confirm-candidate]').forEach((btn) => {
          btn.addEventListener('click', () => {
            const candidateId = btn.getAttribute('data-confirm-candidate') ?? ''
-           let allowApprove = true
-           document.querySelectorAll('[data-allow-approve]').forEach((cb) => {
-             if (cb.getAttribute('data-allow-approve') === candidateId) {
-               allowApprove = cb.checked === true
+           const grantedCapabilities = []
+           document.querySelectorAll('[data-cap-candidate]').forEach((cb) => {
+             if (cb.getAttribute('data-cap-candidate') === candidateId && cb.checked === true) {
+               const cap = cb.getAttribute('data-cap-name')
+               if (cap) grantedCapabilities.push(cap)
              }
            })
-           window.dshCommunity?.remoteConfirmPairing({ candidateId, allowApprove })
+           window.dshCommunity?.remoteConfirmPairing({ candidateId, grantedCapabilities })
+         })
+       })
+       document.querySelectorAll('[data-device-cap-revoke]').forEach((btn) => {
+         btn.addEventListener('click', () => {
+           const deviceId = btn.getAttribute('data-device-cap-revoke') ?? ''
+           const capToRemove = btn.getAttribute('data-cap-name') ?? ''
+           const current = (btn.getAttribute('data-current-caps') ?? '').split(',').filter(Boolean)
+           const next = current.filter((c) => c !== capToRemove)
+           if (deviceId && capToRemove) {
+             window.dshCommunity?.remoteSetCapabilities({ deviceId, grantedCapabilities: next })
+           }
+         })
+       })
+       document.querySelectorAll('[data-device-cap-grant]').forEach((btn) => {
+         btn.addEventListener('click', () => {
+           const deviceId = btn.getAttribute('data-device-cap-grant') ?? ''
+           const capToAdd = btn.getAttribute('data-cap-name') ?? ''
+           const current = (btn.getAttribute('data-current-caps') ?? '').split(',').filter(Boolean)
+           if (deviceId && capToAdd && !current.includes(capToAdd)) {
+             window.dshCommunity?.remoteSetCapabilities({
+               deviceId,
+               grantedCapabilities: [...current, capToAdd],
+             })
+           }
          })
        })
        document.querySelectorAll('[data-revoke-device]').forEach((btn) => {

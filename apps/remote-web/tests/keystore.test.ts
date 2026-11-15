@@ -24,6 +24,7 @@ function cloneRecord<T>(value: T): T {
 
 function createSerializedIndexedDbMock(options?: {
   readonly onReadonlyIdentityGet?: () => Promise<void> | void
+  readonly failOpenError?: Error
 }) {
   const tables = new Map<string, Map<string, FakeStoreRecord>>([
     ['identity', new Map()],
@@ -34,6 +35,9 @@ function createSerializedIndexedDbMock(options?: {
     ['hosts', 0],
   ])
   let rwTail: Promise<void> = Promise.resolve()
+  let nextTxFailure:
+    | { readonly kind: 'error' | 'abort'; readonly error?: Error; readonly throwSyncInPut?: boolean }
+    | undefined
 
   const fakeDb = {
     objectStoreNames: {
@@ -52,11 +56,21 @@ function createSerializedIndexedDbMock(options?: {
       if (!store) {
         throw new Error(`Missing object store: ${storeName}`)
       }
+      const txFailure = mode === 'readwrite' ? nextTxFailure : undefined
+      if (txFailure) {
+        nextTxFailure = undefined
+      }
       const ops: Array<() => Promise<void> | void> = []
       const tx = {
+        error: null as DOMException | Error | null,
         oncomplete: null as ((ev: Event) => void) | null,
         onerror: null as ((ev: Event) => void) | null,
         onabort: null as ((ev: Event) => void) | null,
+        abort() {
+          if (tx.error === null && txFailure?.error) {
+            tx.error = txFailure.error
+          }
+        },
         objectStore(requestedStore: string) {
           if (requestedStore !== storeName) {
             throw new Error(`Unexpected store: ${requestedStore}`)
@@ -65,10 +79,12 @@ function createSerializedIndexedDbMock(options?: {
             get(key: IDBValidKey) {
               const req: {
                 result: unknown
+                error: Error | null
                 onsuccess: ((ev: Event) => void) | null
                 onerror: ((ev: Event) => void) | null
               } = {
                 result: undefined,
+                error: null,
                 onsuccess: null,
                 onerror: null,
               }
@@ -89,10 +105,12 @@ function createSerializedIndexedDbMock(options?: {
             getAll() {
               const req: {
                 result: unknown
+                error: Error | null
                 onsuccess: ((ev: Event) => void) | null
                 onerror: ((ev: Event) => void) | null
               } = {
                 result: undefined,
+                error: null,
                 onsuccess: null,
                 onerror: null,
               }
@@ -103,9 +121,13 @@ function createSerializedIndexedDbMock(options?: {
               return req
             },
             put(value: FakeStoreRecord) {
+              if (txFailure?.throwSyncInPut) {
+                throw txFailure.error ?? new Error('QuotaExceededError')
+              }
               const keyField = storeName === 'identity' ? 'id' : 'hostFingerprint'
               const key = String(value[keyField] ?? '')
               ops.push(() => {
+                if (txFailure) return
                 writeCounts.set(storeName, (writeCounts.get(storeName) ?? 0) + 1)
                 store.set(key, cloneRecord(value))
               })
@@ -113,19 +135,40 @@ function createSerializedIndexedDbMock(options?: {
             },
             delete(key: IDBValidKey) {
               ops.push(() => {
+                if (txFailure) return
                 store.delete(String(key))
               })
               return {}
             },
           }
         },
-      } as unknown as IDBTransaction
+      }
 
       const runOps = async (): Promise<void> => {
         // Yield once so caller attaches request/transaction handlers synchronously after tx creation.
         await Promise.resolve()
-        for (let i = 0; i < ops.length; i += 1) {
-          await ops[i]!()
+        const snapshot = new Map([...store.entries()].map(([k, v]) => [k, cloneRecord(v)]))
+        try {
+          for (let i = 0; i < ops.length; i += 1) {
+            await ops[i]!()
+          }
+        } catch (err) {
+          store.clear()
+          for (const [k, v] of snapshot) store.set(k, v)
+          tx.error = err instanceof Error ? err : new Error(String(err))
+          tx.onabort?.(new Event('abort'))
+          return
+        }
+        if (txFailure) {
+          store.clear()
+          for (const [k, v] of snapshot) store.set(k, v)
+          tx.error = txFailure.error ?? new Error(`IndexedDB simulated ${txFailure.kind}`)
+          if (txFailure.kind === 'abort') {
+            tx.onabort?.(new Event('abort'))
+          } else {
+            tx.onerror?.(new Event('error'))
+          }
+          return
         }
         tx.oncomplete?.(new Event('complete'))
       }
@@ -137,7 +180,7 @@ function createSerializedIndexedDbMock(options?: {
         void runOps()
       }
 
-      return tx
+      return tx as unknown as IDBTransaction
     },
   } as unknown as IDBDatabase
 
@@ -145,16 +188,25 @@ function createSerializedIndexedDbMock(options?: {
     open(): IDBOpenDBRequest {
       const req: {
         result: IDBDatabase | undefined
+        error: Error | null
         onupgradeneeded: ((ev: IDBVersionChangeEvent) => void) | null
         onsuccess: ((ev: Event) => void) | null
         onerror: ((ev: Event) => void) | null
+        onblocked: ((ev: Event) => void) | null
       } = {
         result: undefined,
+        error: null,
         onupgradeneeded: null,
         onsuccess: null,
         onerror: null,
+        onblocked: null,
       }
       queueMicrotask(() => {
+        if (options?.failOpenError) {
+          req.error = options.failOpenError
+          req.onerror?.(new Event('error'))
+          return
+        }
         req.result = fakeDb
         req.onupgradeneeded?.(new Event('upgradeneeded') as IDBVersionChangeEvent)
         req.onsuccess?.(new Event('success'))
@@ -163,7 +215,18 @@ function createSerializedIndexedDbMock(options?: {
     },
   } as unknown as IDBFactory
 
-  return { indexedDBMock, tables, writeCounts }
+  return {
+    indexedDBMock,
+    tables,
+    writeCounts,
+    failNextReadWriteTx(
+      kind: 'error' | 'abort',
+      error = new Error(kind === 'abort' ? 'Transaction aborted' : 'QuotaExceededError'),
+      throwSyncInPut = false,
+    ) {
+      nextTxFailure = { kind, error, throwSyncInPut }
+    },
+  }
 }
 
 describe('RemoteWebKeyStore atomic client identity', () => {
@@ -317,5 +380,69 @@ describe('RemoteWebKeyStore atomic client identity', () => {
     const resetRes = await tab1.updateHostEpoch(fp, 5, { allowReset: true })
     expect(resetRes?.lastEpoch).toBe(5)
     expect((await tab2.getTrustedHost(fp))?.lastEpoch).toBe(5)
+  })
+
+  it('fails closed without mutating memory state when IndexedDB write/delete/open errors or aborts', async () => {
+    const failOpenMock = createSerializedIndexedDbMock({
+      failOpenError: new Error('SecurityError: IndexedDB disabled'),
+    })
+    Object.defineProperty(globalThis, 'indexedDB', {
+      value: failOpenMock.indexedDBMock,
+      configurable: true,
+      writable: true,
+    })
+    const brokenStore = new RemoteWebKeyStore(true)
+    await expect(brokenStore.getOrCreateClientKeyPair()).rejects.toThrow(/IndexedDB open failed/i)
+
+    const mock = createSerializedIndexedDbMock()
+    Object.defineProperty(globalThis, 'indexedDB', {
+      value: mock.indexedDBMock,
+      configurable: true,
+      writable: true,
+    })
+
+    const store = new RemoteWebKeyStore(true)
+    const initialId = await store.getOrCreateClientKeyPair()
+    const fp = 'cc'.repeat(32)
+    const initialHost = {
+      hostFingerprint: fp,
+      hostPublicKeyHex: 'dd'.repeat(32),
+      label: 'Primary Host',
+      endpointUrl: 'ws://127.0.0.1:4666',
+      lastEpoch: 10,
+      pairedAt: 1000,
+      lastConnectedAt: 1000,
+      preferredTransport: 'lan' as const,
+    }
+    await store.saveTrustedHost(initialHost)
+
+    // 1. Key rotation QuotaExceededError -> rejects & preserves previous memory + IDB identity
+    mock.failNextReadWriteTx('error', new Error('QuotaExceededError: disk full'))
+    await expect(store.rotateClientKeyPair()).rejects.toThrow(/QuotaExceededError/)
+    expect((await store.getOrCreateClientKeyPair()).fingerprint).toBe(initialId.fingerprint)
+    expect((await new RemoteWebKeyStore(true).getOrCreateClientKeyPair()).fingerprint).toBe(
+      initialId.fingerprint,
+    )
+
+    // 2. Host save abort -> rejects & does not pollute memoryHosts or IDB
+    const fp2 = 'ee'.repeat(32)
+    mock.failNextReadWriteTx('abort', new Error('AbortError: quota exceeded'))
+    await expect(
+      store.saveTrustedHost({ ...initialHost, hostFingerprint: fp2, label: 'Aborted Host' }),
+    ).rejects.toThrow(/AbortError/)
+    expect(await store.getTrustedHost(fp2)).toBeUndefined()
+    expect((await store.listTrustedHosts()).map((h) => h.hostFingerprint)).toEqual([fp])
+
+    // 3. Epoch update sync throw/abort -> rejects & preserves old epoch in memory and on reload
+    mock.failNextReadWriteTx('abort', new Error('QuotaExceededError'), true)
+    await expect(store.updateHostEpoch(fp, 25)).rejects.toThrow(/QuotaExceededError/)
+    expect((await store.getTrustedHost(fp))?.lastEpoch).toBe(10)
+    expect((await new RemoteWebKeyStore(true).getTrustedHost(fp))?.lastEpoch).toBe(10)
+
+    // 4. forgetHost error -> rejects & preserves host in memory and on reload
+    mock.failNextReadWriteTx('error', new Error('UnknownError: delete failed'))
+    await expect(store.forgetHost(fp)).rejects.toThrow(/delete failed/)
+    expect((await store.listTrustedHosts()).map((h) => h.hostFingerprint)).toEqual([fp])
+    expect((await new RemoteWebKeyStore(true).getTrustedHost(fp))?.hostFingerprint).toBe(fp)
   })
 })
