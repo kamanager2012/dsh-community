@@ -199,11 +199,12 @@ jobs:
           actual=$(sha256sum app.apk | cut -d' ' -f1)
           [ "$expected" = "$actual" ] || { echo "sha256 mismatch: $actual vs $expected"; exit 1; }
           echo "sha256 OK ($(wc -c < app.apk) bytes)"
-          if unzip -l app.apk | grep -Eiq "libnode\.so|nodejs-mobile|nodejs-project|@deepseek-ai/dsh|deepseek-ai|webkit"; then
+          unzip -l app.apk > apk-entries.txt
+          if grep -Eiq "libnode\.so|nodejs-mobile|nodejs-project|@deepseek-ai/dsh|deepseek-ai|webkit" apk-entries.txt; then
             echo "ERROR: Forbidden embedded Node/DSH/WebView entries found in release APK" >&2
             exit 1
           fi
-          unzip -l app.apk | grep -q "lib/arm64-v8a/libjingle_peerconnection_so.so"
+          grep -q "lib/arm64-v8a/libjingle_peerconnection_so.so" apk-entries.txt
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -n 1)"
           test -n "$APKSIGNER"
           "$APKSIGNER" verify --verbose app.apk

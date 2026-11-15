@@ -162,12 +162,14 @@ jobs:
 
           REL_APK="$(find apps/android/app/build/outputs/apk/release -name '*.apk' | head -n 1)"
           test -n "$REL_APK"
-          if unzip -l "$REL_APK" | grep -Eiq "libnode\.so|nodejs-mobile|nodejs-project|@deepseek-ai/dsh|deepseek-ai|webkit"; then
+          APK_LIST="$KEY_DIR/apk-entries.txt"
+          unzip -l "$REL_APK" > "$APK_LIST"
+          if grep -Eiq "libnode\.so|nodejs-mobile|nodejs-project|@deepseek-ai/dsh|deepseek-ai|webkit" "$APK_LIST"; then
             echo "ERROR: Forbidden embedded Node/DSH/WebView entries found in release APK" >&2
             exit 1
           fi
-          unzip -l "$REL_APK" | grep -q "lib/arm64-v8a/libjingle_peerconnection_so.so"
-          if unzip -l "$REL_APK" | grep -q "lib/x86_64/"; then
+          grep -q "lib/arm64-v8a/libjingle_peerconnection_so.so" "$APK_LIST"
+          if grep -q "lib/x86_64/" "$APK_LIST"; then
             echo "ERROR: Expected arm64-v8a-only release APK, found x86_64 native libraries" >&2
             exit 1
           fi
