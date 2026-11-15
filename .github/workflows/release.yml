@@ -122,17 +122,22 @@ jobs:
         run: node scripts/verify-android-release-ready.mjs --allow-emulator-verified
       - name: Build and verify signed arm64-v8a Android release APK
         env:
-          KEYSTORE_BASE64: ${{ secrets.DSH_ANDROID_KEYSTORE_BASE64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.DSH_ANDROID_KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.DSH_ANDROID_KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.DSH_ANDROID_KEY_PASSWORD }}
+          IS_TAG_REF: ${{ startsWith(github.ref, 'refs/tags/v') && '1' || '0' }}
+          KEYSTORE_BASE64: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.DSH_ANDROID_KEYSTORE_BASE64 || '' }}
+          KEYSTORE_PASSWORD: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.DSH_ANDROID_KEYSTORE_PASSWORD || '' }}
+          KEY_ALIAS: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.DSH_ANDROID_KEY_ALIAS || '' }}
+          KEY_PASSWORD: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.DSH_ANDROID_KEY_PASSWORD || '' }}
         run: |
           set -euo pipefail
           VERSION=$(node -p "require('./package.json').version")
           KEY_DIR="$(mktemp -d)"
           trap 'rm -rf "$KEY_DIR"' EXIT
           KEYSTORE_PATH="$KEY_DIR/dsh-release.jks"
-          if [ -n "$KEYSTORE_BASE64" ] && [ -n "$KEYSTORE_PASSWORD" ] && [ -n "$KEY_ALIAS" ] && [ -n "$KEY_PASSWORD" ]; then
+          if [ "$IS_TAG_REF" = "1" ]; then
+            if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
+              echo "ERROR: Persistent Android signing secrets (DSH_ANDROID_KEYSTORE_*) are required on release tag builds" >&2
+              exit 1
+            fi
             printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$KEYSTORE_PATH"
           else
             KEYSTORE_PASSWORD="dsh-ci-ephemeral-keystore-pass"
@@ -339,10 +344,31 @@ jobs:
           if gh release view "$TAG" >/dev/null 2>&1; then
             existing_names=$(gh release view "$TAG" --json assets --jq '.assets[].name')
             missing_assets=()
-            for a in "${assets[@]}"; do
-              base=$(basename "$a")
-              if ! printf '%s\n' "$existing_names" | grep -Fxq "$base"; then
-                missing_assets+=("$a")
+            primary_payloads=(
+              dist-artifacts/*/*.AppImage
+              dist-artifacts/*/*.apk
+              dist-artifacts/*/*-official-runtime.cdx.json
+            )
+            for p in "${primary_payloads[@]}"; do
+              rel=${p#dist-artifacts/}
+              group=(
+                "$p"
+                "${p}.sha256"
+                "dist-signed/${rel}.sigstore.json"
+                "dist-signed/${rel}.sha256.sigstore.json"
+              )
+              present_count=0
+              for item in "${group[@]}"; do
+                base=$(basename "$item")
+                if printf '%s\n' "$existing_names" | grep -Fxq "$base"; then
+                  present_count=$((present_count + 1))
+                fi
+              done
+              if [[ "$present_count" -eq 0 ]]; then
+                missing_assets+=("${group[@]}")
+              elif [[ "$present_count" -ne 4 ]]; then
+                echo "partial asset group for $(basename "$p") on release $TAG ($present_count/4 present); refusing inconsistent companion backfill" >&2
+                exit 1
               fi
             done
             if [[ ${#missing_assets[@]} -eq 0 ]]; then
@@ -350,7 +376,7 @@ jobs:
               echo "cut a new tag for a new build. do not move a published tag."
               exit 1
             fi
-            printf 'uploading missing assets to existing release %s: %s\n' "$TAG" "${missing_assets[*]}"
+            printf 'uploading missing asset groups to existing release %s: %s\n' "$TAG" "${missing_assets[*]}"
             gh release upload "$TAG" "${missing_assets[@]}"
             gh release edit "$TAG" \
               --title "${RELEASE_TITLE:-$TAG}" \

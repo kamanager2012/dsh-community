@@ -28,6 +28,7 @@ function expectedPrimaryNames(tag) {
       linuxAppImage: 'dsh-community-' + version + '.AppImage',
     },
     optionalLegacy: {
+      androidApk: 'dsh-community-' + version + '-android-arm64-v8a.apk',
       macosDmg: 'dsh-community-' + version + '.dmg',
       windowsSetup: 'DSH.Community.Setup.' + version + '.exe',
     },
