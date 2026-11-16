@@ -47,6 +47,14 @@ cosign verify-blob \
 
 第一次打开 Linux AppImage 会解一份官方 Runtime 到用户数据目录，只做一次。对话仍在官方 `~/.dsh`。
 
+## 实机界面预览
+
+以下截图均在本地 Host Gateway + Relay + Headless Chromium 上运行完整 Noise IK 端到端加密会话后实机截取：
+
+| 手机端 Remote Web（Noise IK 端到端加密远程控制） | 桌面端 Remote Console（配对、连接状态与安全控制） |
+| --- | --- |
+| ![DSH Community Remote Web PWA](assets/remote-web-pwa.png) | ![DSH Community Desktop Remote Console](assets/desktop-remote-console.png) |
+
 ## 三十秒一键安装终端（WSL / Linux）与五分钟从源码启动
 
 需要 Node.js 24.9+（官方 `@deepseek-ai/dsh@0.2.2-rc.3` 声明 `engines.node >=24.9.0`；本仓工作区最低要求 22.15，CI 在 Node 22 上通过）、pnpm 和可用的 `DEEPSEEK_API_KEY`（官方 0.1.0-rc.8 起 session JSONL 依赖 `node:zlib` zstd，22.15 才有）。如果只想直接安装 `dsh-community` 与 `dsh-marketplace` 命令：

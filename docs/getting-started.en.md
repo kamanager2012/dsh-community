@@ -47,6 +47,14 @@ cosign verify-blob \
 
 The first desktop launch unpacks the official runtime into user data once. Sessions stay in official `~/.dsh`.
 
+## Live UI Previews
+
+These screenshots are captured from live end-to-end encrypted Noise IK sessions running against the local Host Gateway, Relay, and headless Chromium:
+
+| Mobile Remote Web (Noise IK E2EE remote control) | Desktop Remote Console (pairing, live status, and safety controls) |
+| --- | --- |
+| ![DSH Community Remote Web PWA](assets/remote-web-pwa.png) | ![DSH Community Desktop Remote Console](assets/desktop-remote-console.png) |
+
 ## Install WSL / Linux CLI in 30 Seconds (or Run from Source)
 
 You need Node.js 24.9+ (official `@deepseek-ai/dsh@0.2.2-rc.3` declares `engines.node >=24.9.0`; this workspace requires at least 22.15 and CI passes on Node 22), pnpm, and a working `DEEPSEEK_API_KEY` (official 0.1.0-rc.8+ session JSONL uses `node:zlib` zstd, added in 22.15). Install `dsh-community` and `dsh-marketplace` directly with one command:

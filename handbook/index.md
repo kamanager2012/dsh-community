@@ -20,6 +20,14 @@
 
 DeepSeek Harness Community 不是另一套 Runtime，而是围绕官方 Runtime 的社区增强层。普通用户的正式产品入口只有 [`dsh-community`](https://github.com/kamanager2012/dsh-community/releases/latest)；公开仓库职责、下载边界和已归档 Labs 见[社区生态与产品入口](content/00-overview/community-ecosystem.md)。
 
+## 实机界面预览
+
+以下截图均在本地 Host Gateway + Relay + Headless Chromium 上运行完整 Noise IK 端到端加密会话后实机截取（非静态 Mock 图）：
+
+| 手机端 Remote Web（Noise IK 端到端加密远程控制） | 桌面端 Remote Console（配对、连接状态与安全控制） |
+| --- | --- |
+| ![DSH Community Remote Web PWA](assets/remote-web-pwa.png) | ![DSH Community Desktop Remote Console](assets/desktop-remote-console.png) |
+
 维护者如需查阅冻结 Labs 的历史门禁，可读 [Community Labs handoff](content/11-operations/community-labs-handoff.md)。不要把 README、单元测试或 fallback 成功当成真实 Runtime E2E 证据。不要从归档仓安装。
 
 ## 从这里开始

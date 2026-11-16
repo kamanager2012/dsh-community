@@ -24,6 +24,8 @@ def main() -> None:
     for name in ("index.md", "BOOK.md"):
         shutil.copy2(ROOT / name, OUTPUT / name)
 
+    if (ROOT / "assets").exists():
+        shutil.copytree(ROOT / "assets", OUTPUT / "assets")
     shutil.copytree(ROOT / "content", OUTPUT / "content")
     shutil.copytree(ROOT / "ai", OUTPUT / "ai")
     shutil.copytree(ROOT / "en", OUTPUT / "en")

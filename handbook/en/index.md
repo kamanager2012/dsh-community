@@ -18,6 +18,14 @@ recovering a session, and accepting an agent result with evidence.
 It is therefore a guide to using dsh well, not a promise that a static page is newer
 than the installed version.
 
+## Live UI Previews
+
+These screenshots are captured from live end-to-end encrypted Noise IK sessions running against the local Host Gateway, Relay, and headless Chromium (not static mockups):
+
+| Mobile Remote Web (Noise IK E2EE remote control) | Desktop Remote Console (pairing, live status, and safety controls) |
+| --- | --- |
+| ![DSH Community Remote Web PWA](../assets/remote-web-pwa.png) | ![DSH Community Desktop Remote Console](../assets/desktop-remote-console.png) |
+
 ## Choose a route
 
 | Your goal | Start here |
