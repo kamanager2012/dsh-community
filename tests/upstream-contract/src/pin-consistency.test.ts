@@ -130,6 +130,11 @@ describe('docs/current-release.json', () => {
       'linux-appimage',
       'android',
     ])
+    const androidEndpoint = facts.endpoints.find((endpoint) => endpoint.id === 'android')
+    expect(androidEndpoint?.onLatestDownload).toBe(
+      Boolean(facts.publishedReleaseEvidence.primaryAssets.androidApk),
+    )
+    expect(androidEndpoint?.status).toBe('UNVERIFIED')
     expect(facts.assets.linuxAppImage).toBe(`dsh-community-${publishedVersion}.AppImage`)
     if (facts.assets.macosDmg !== undefined) {
       expect(facts.assets.macosDmg).toBe(`dsh-community-${publishedVersion}.dmg`)

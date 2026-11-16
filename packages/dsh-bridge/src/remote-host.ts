@@ -68,17 +68,41 @@ export function detectLanIpv4Candidates(
   return [...result].sort()
 }
 
+function isLoopbackUrl(raw: unknown): boolean {
+  if (typeof raw !== 'string' || raw.trim().length === 0) return false
+  try {
+    const parsed = new URL(raw.trim())
+    const host = parsed.hostname.toLowerCase()
+    return host === '127.0.0.1' || host === 'localhost' || host === '::1' || host === '[::1]'
+  } catch {
+    return /^(?:ws|wss|http|https):\/\/(?:127\.0\.0\.1|localhost|\[::1\])(?::|\/|$)/iu.test(raw.trim())
+  }
+}
+
 export function buildLoopbackPairingWarning(
   ready: Record<string, unknown>,
   lanCandidates: readonly string[] = detectLanIpv4Candidates(),
 ): string | undefined {
   const endpointUrl = String(ready.endpointUrl ?? ready.lanUrl ?? '')
-  const hasRemoteFallback = Boolean(ready.relayUrl) || Boolean(ready.signalingUrl)
-  const isLoopback = /^ws:\/\/(127\.0\.0\.1|localhost|\[::1\])(?::|\/|$)/iu.test(endpointUrl)
-  if (!isLoopback || hasRemoteFallback) return undefined
+  const hasLoopbackEndpoint = isLoopbackUrl(endpointUrl)
+  if (!hasLoopbackEndpoint) return undefined
+
+  const hasRemoteRelay =
+    typeof ready.relayUrl === 'string' && ready.relayUrl.trim().length > 0 && !isLoopbackUrl(ready.relayUrl)
+  const hasRemoteSignaling =
+    typeof ready.signalingUrl === 'string' &&
+    ready.signalingUrl.trim().length > 0 &&
+    !isLoopbackUrl(ready.signalingUrl)
+  if (hasRemoteRelay || hasRemoteSignaling) return undefined
+
   const lanHint =
     lanCandidates.length > 0 ? `（检测到可用局域网 IP: ${lanCandidates.join(', ')}）` : ''
-  return `  提示: 当前仅监听 loopback${lanHint}；真机局域网配对请改用 --host <局域网IP> --mdns，或配置 --relay-url / --signaling-url。`
+  const hasLoopbackFallback =
+    isLoopbackUrl(ready.relayUrl) || isLoopbackUrl(ready.signalingUrl) || isLoopbackUrl(ready.webUrl)
+  if (hasLoopbackFallback) {
+    return `  提示: 当前 LAN 与中继/信令均为 loopback（127.0.0.1），仅限本机浏览器演示${lanHint}；手机跨设备连接请改用 --host <局域网IP> --mdns，或配合 wss:// 反向代理。`
+  }
+  return `  提示: 当前仅监听 loopback${lanHint}；真机局域网配对请改用 --host <局域网IP> --mdns，或配置公网 wss:// --relay-url / --signaling-url。`
 }
 
 export function liveControlFilePath(configDir: string): string {

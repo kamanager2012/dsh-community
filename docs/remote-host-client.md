@@ -162,12 +162,17 @@ A transport-level TLS/DTLS session is defense in depth, not the application trus
 
 Pairing does not imply unlimited authority.
 
-Initial device capabilities:
+Default capabilities granted automatically on first pairing (`DEFAULT_GRANTED_CAPABILITIES` in `packages/remote-adapter/src/crypto/device-trust.ts`):
 
-- `observe`
-- `prompt`
-- `approve`
-- `answer-question`
+- `observe` (read-only sessions, events, workspace files, and scoped `git diff`; note that uncommitted working-tree secrets in `git diff` remain visible to authorized `observe` clients)
+- `prompt` (submit follow-up prompts and abort turns)
+
+Privileged capabilities remain denied unless the host operator explicitly grants them (via `--allow-caps`, the Desktop confirmation UI, `confirm <id> <caps>`, or post-pairing `dsh-community remote grant <deviceId> <caps>`):
+
+- `approve` (required by `approval.respond` — must be granted explicitly before a phone can approve/reject tool calls)
+- `answer-question` (`question.respond`)
+- `session.manage` (`session.create`, `session.rename`, `session.fork`, `model.select`)
+- `command.execute` / `workspace.write`
 
 Default deny is required. A device may be observe-only.
 

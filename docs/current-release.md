@@ -17,7 +17,7 @@ Source can move to a reviewed candidate before GitHub Latest moves. These are se
 - `assets` / `publishedAssets` describe installers that actually exist for Published Latest; never synthesize filenames from an unpublished candidate.
 - plugin `testedDsh` and user-loop evidence are evidence states, not aliases for Candidate Source. They move only after their own verification.
 
-Candidate Source and Published Latest may coincide after publication, but they are not required to. On the current line, Candidate Source and Published Latest are both aligned to `0.2.2-rc.3` / `v0.2.2-rc.3` (synced directly to pinned official kernel `@deepseek-ai/dsh@0.2.2-rc.3`; Complementary Edition Linux AppImage + Android `arm64-v8a` APK + official-runtime CycloneDX SBOM + Cosign bundles, 12 signed assets total).
+Candidate Source and Published Latest may coincide after publication, but they are not required to. On the current line, Candidate Source and Published Latest are both aligned to `0.2.2-rc.3` / `v0.2.2-rc.3` (release commit `073826c38df4cf246e7ac90b27e0df98569a534d`, synced directly to pinned official kernel `@deepseek-ai/dsh@0.2.2-rc.3`). Uploaded assets total **12 files**: 3 primary artifacts (Linux AppImage + Android `arm64-v8a` APK + official-runtime CycloneDX SBOM) + 3 `.sha256` digests + 6 keyless Cosign `.sigstore.json` bundles (excluding GitHub auto-generated source archives). Later `main` commits (such as `scripts/install-linux.sh`, the Chromium E2EE harness/screenshots, legacy `0.1.1-rc.2` plugin guards, and documentation updates) track post-`rc.3` source changes and are **not** baked into the immutable `v0.2.2-rc.3` release tag artifacts.
 
 ## Current line (2026-11-15)
 
