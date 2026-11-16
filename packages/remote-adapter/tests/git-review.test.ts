@@ -228,4 +228,64 @@ describe('scoped read-only git review helpers', () => {
     expect(bounded.length).toBeLessThan(150)
     expect(bounded.length).toBeGreaterThan(100)
   })
+
+  it('redacts sensitive secret files and inline API/private-key tokens in observe Git diffs', async () => {
+    const repoDir = mkdtempSync(join(tmpdir(), 'dsh-git-redact-'))
+    tempDirs.push(repoDir)
+    initGitRepo(repoDir)
+
+    mkdirSync(join(repoDir, 'config'), { recursive: true })
+    mkdirSync(join(repoDir, 'src'), { recursive: true })
+    writeFileSync(join(repoDir, '.env.example'), 'DEEPSEEK_API_KEY=\n', 'utf8')
+    writeFileSync(join(repoDir, 'config', 'app.ts'), 'export const cfg = {}\n', 'utf8')
+    writeFileSync(join(repoDir, 'config', 'server.pem'), 'PUBLIC_CERT_PLACEHOLDER\n', 'utf8')
+    execFileSync('git', ['add', '.'], { cwd: repoDir, stdio: 'pipe' })
+    execFileSync('git', ['commit', '-m', 'init'], { cwd: repoDir, stdio: 'pipe' })
+
+    const fakeOpenAiKey = 'sk-proj-' + 'AbCdEf1234567890GhIjKlMnOp'
+    const fakeAwsKey = 'AKIA' + 'IOSFODNN7EXAMPLE'
+    const fakeEnvSecret = 'ENV_SUPER_SECRET_TOKEN_987654'
+    const fakePemSecret = 'MIIEowIBAAKCAQEA_FAKE_PRIVATE_KEY_BODY'
+
+    writeFileSync(join(repoDir, '.env.example'), 'DEEPSEEK_API_KEY=your-key\nPORT=3080\n', 'utf8')
+    writeFileSync(join(repoDir, '.env.local'), `API_KEY=${fakeEnvSecret}\n`, 'utf8')
+    writeFileSync(
+      join(repoDir, 'config', 'server.pem'),
+      `-----BEGIN RSA PRIVATE KEY-----\n${fakePemSecret}\n-----END RSA PRIVATE KEY-----\n`,
+      'utf8',
+    )
+    writeFileSync(
+      join(repoDir, 'config', 'app.ts'),
+      [
+        `export const k1 = "${fakeOpenAiKey}"`,
+        `export const k2 = "${fakeAwsKey}"`,
+        'export const dsn = "https://admin:hunter2@db.internal:5432/app"',
+      ].join('\n') + '\n',
+      'utf8',
+    )
+
+    // Single-file inspection of .env.local or .pem refuses plaintext secret leakage
+    const envDiff = await inspectWorkspaceGitDiff({ sessionId: 's-redact', path: '.env.local' }, repoDir)
+    expect(envDiff.diff).toContain('[REDACTED_SENSITIVE_FILE]')
+    expect(envDiff.diff).not.toContain(fakeEnvSecret)
+
+    const pemDiff = await inspectWorkspaceGitDiff({ sessionId: 's-redact', path: 'config/server.pem' }, repoDir)
+    expect(pemDiff.diff).toContain('[REDACTED_SENSITIVE_FILE]')
+    expect(pemDiff.diff).not.toContain(fakePemSecret)
+
+    // Benign .env.example stays readable for onboarding review
+    const exampleDiff = await inspectWorkspaceGitDiff({ sessionId: 's-redact', path: '.env.example' }, repoDir)
+    expect(exampleDiff.diff).toContain('+PORT=3080')
+
+    // Unfiltered unstaged diff redacts both untracked/tracked sensitive files and inline tokens
+    const allDiff = await inspectWorkspaceGitDiff({ sessionId: 's-redact' }, repoDir)
+    expect(allDiff.diff).not.toContain(fakeEnvSecret)
+    expect(allDiff.diff).not.toContain(fakePemSecret)
+    expect(allDiff.diff).not.toContain(fakeOpenAiKey)
+    expect(allDiff.diff).not.toContain(fakeAwsKey)
+    expect(allDiff.diff).not.toContain('hunter2')
+    expect(allDiff.diff).toContain('[REDACTED_SENSITIVE_FILE]')
+    expect(allDiff.diff).toContain('[REDACTED_SECRET]')
+    expect(allDiff.diff).toContain('https://[REDACTED]:[REDACTED]@db.internal:5432/app')
+  })
 })

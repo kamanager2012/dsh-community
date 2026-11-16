@@ -1113,4 +1113,183 @@ rl.on('line', (line) => {
     await new Promise((r) => setTimeout(r, 60))
     expect(seenTexts).not.toContain('MA_BLOCKED_AFTER_CONCURRENT_REVOKE')
   })
+
+  it('clears pending approvals/turns and transparently respawns when Codex or OpenCode ACP crashes mid-approval', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'dsh-ma-crash-recover-'))
+    tempDirs.push(dir)
+
+    // 1) Crashing & respawning Codex CLI subprocess
+    const codexStateFile = join(dir, 'codex-state.json')
+    const codexCrashBin = writeExecutableScript(
+      join(dir, 'codex-crash.mjs'),
+      `
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { createInterface } from 'node:readline'
+
+if (process.argv.includes('--version')) {
+  process.stdout.write('codex-cli 0.118.0-crash\\n')
+  process.exit(0)
+}
+
+const statePath = ${JSON.stringify(codexStateFile)}
+const loadState = () => existsSync(statePath) ? JSON.parse(readFileSync(statePath, 'utf8')) : { spawns: 0, threads: {} }
+const state = loadState()
+state.spawns += 1
+writeFileSync(statePath, JSON.stringify(state))
+const send = (obj) => process.stdout.write(JSON.stringify(obj) + '\\n')
+
+const rl = createInterface({ input: process.stdin, crlfDelay: Infinity })
+rl.on('line', (line) => {
+  if (!line.trim()) return
+  const msg = JSON.parse(line)
+  if (msg.method === 'initialize') { send({ id: msg.id, result: { userAgent: 'codex-crash/1.0' } }); return }
+  if (msg.method === 'initialized') return
+  if (msg.method === 'thread/start') {
+    const cur = loadState()
+    const id = 'thr-crash-1'
+    cur.threads[id] = { id, cwd: msg.params?.cwd || process.cwd(), name: 'Crash Thread', updatedAt: Math.floor(Date.now() / 1000), turns: [] }
+    writeFileSync(statePath, JSON.stringify(cur))
+    send({ id: msg.id, result: { thread: cur.threads[id], model: 'gpt-5.4', modelProvider: 'openai' } })
+    return
+  }
+  if (msg.method === 'thread/resume' || msg.method === 'thread/read') {
+    const cur = loadState()
+    const thr = cur.threads[msg.params?.threadId]
+    if (!thr) { send({ id: msg.id, error: { code: -32001, message: 'missing' } }); return }
+    send({ id: msg.id, result: { thread: thr, model: 'gpt-5.4', modelProvider: 'openai' } })
+    return
+  }
+  if (msg.method === 'thread/name/set') {
+    process.exit(1)
+  }
+  if (msg.method === 'turn/start') {
+    const threadId = msg.params.threadId
+    const promptText = msg.params.input?.[0]?.text || ''
+    const turnId = promptText.includes('CRASH_MID_APPROVAL') ? 'turn-crash-1' : 'turn-recover-2'
+    send({ id: msg.id, result: { turn: { id: turnId, items: [], status: 'inProgress', error: null } } })
+    send({ method: 'turn/started', params: { threadId, turn: { id: turnId, items: [], status: 'inProgress', error: null } } })
+    if (promptText.includes('CRASH_MID_APPROVAL')) {
+      send({ id: 901, method: 'item/commandExecution/requestApproval', params: { threadId, turnId, itemId: 'cmd-crash-1', command: 'echo crash', reason: 'Need approval' } })
+      return
+    }
+    send({ method: 'item/agentMessage/delta', params: { threadId, turnId, itemId: 'msg-r', delta: 'Recovered: ' + promptText } })
+    send({ method: 'turn/completed', params: { threadId, turn: { id: turnId, items: [], status: 'completed', error: null } } })
+  }
+})
+`,
+    )
+
+    const codexBackend = new CodexAgentBackend({ command: codexCrashBin, defaultCwd: dir })
+    activeClosers.push(() => codexBackend.stop())
+    const codexEvents: Array<{ type: string; data: unknown }> = []
+    codexBackend.onEvent((_sid, evs) => {
+      for (const e of evs) codexEvents.push({ type: e.type, data: e.data })
+    })
+
+    const codexSession = await codexBackend.createSession({ cwd: dir })
+    await codexBackend.followup(codexSession.id, 'CRASH_MID_APPROVAL')
+
+    await expect.poll(async () => {
+      const live = await codexBackend.getSessionLiveState(codexSession.id)
+      return live?.pendingApprovals.length ?? 0
+    }, { timeout: 3_000, interval: 15 }).toBe(1)
+
+    // Deterministically crash the subprocess while approval & turn are open
+    await codexBackend.renameSession(codexSession.id, 'TRIGGER_CRASH').catch(() => {})
+
+    // Wait for process exit cleanup to resolve orphan approval and turn cleanly
+    await expect.poll(() => codexEvents.some((e) => e.type === 'approval.resolved'), { timeout: 3_000, interval: 15 }).toBe(true)
+    const afterCodexCrash = await codexBackend.getSessionLiveState(codexSession.id)
+    expect(afterCodexCrash?.status).toBe('idle')
+    expect(afterCodexCrash?.pendingApprovals).toEqual([])
+    expect(
+      codexEvents.some((e) => e.type === 'turn/end' && (e.data as { status?: string })?.status === 'interrupted'),
+    ).toBe(true)
+    await expect(codexBackend.respondApproval('cmd-crash-1', 'approved')).rejects.toThrow(RemoteProtocolError)
+
+    // Subsequent followup transparently respawns and completes on the fresh subprocess
+    await codexBackend.followup(codexSession.id, 'RUN_AFTER_RESPAWN')
+    await expect.poll(() => codexEvents.some((e) =>
+      e.type === 'assistant/chunk' && String((e.data as { text?: string })?.text || '').includes('Recovered: RUN_AFTER_RESPAWN'),
+    ), { timeout: 3_000, interval: 15 }).toBe(true)
+
+    // 2) Crashing & respawning OpenCode ACP subprocess
+    const acpCrashBin = writeExecutableScript(
+      join(dir, 'opencode-crash.mjs'),
+      `
+import { createInterface } from 'node:readline'
+
+if (process.argv.includes('--version')) {
+  process.stdout.write('2.3.0-crash\\n')
+  process.exit(0)
+}
+
+const send = (obj) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...obj }) + '\\n')
+const rl = createInterface({ input: process.stdin, crlfDelay: Infinity })
+rl.on('line', (line) => {
+  if (!line.trim()) return
+  const msg = JSON.parse(line)
+  if (msg.method === 'initialize') {
+    send({ id: msg.id, result: { protocolVersion: 1, agentInfo: { name: 'OpenCode', version: '2.3.0-crash' }, agentCapabilities: { loadSession: true, sessionCapabilities: { list: {} } } } })
+    return
+  }
+  if (msg.method === 'session/list') {
+    send({ id: msg.id, result: { sessions: [{ sessionId: 'oc-crash-1', cwd: ${JSON.stringify(dir)}, title: 'Crash ACP', updatedAt: new Date().toISOString() }], nextCursor: null } })
+    return
+  }
+  if (msg.method === 'session/load') {
+    send({ id: msg.id, result: {} })
+    return
+  }
+  if (msg.method === 'session/set_model') {
+    process.exit(1)
+  }
+  if (msg.method === 'session/prompt') {
+    const text = msg.params?.prompt?.[0]?.text || ''
+    if (text.includes('CRASH_ACP')) {
+      send({
+        id: 801,
+        method: 'session/request_permission',
+        params: {
+          sessionId: msg.params.sessionId,
+          toolCall: { toolCallId: 'acp-call-crash', title: 'Write temp file', kind: 'execute', rawInput: { cmd: 'echo crash' } },
+          options: [{ optionId: 'allow_once', name: 'Allow', kind: 'allow_once' }, { optionId: 'reject_once', name: 'Reject', kind: 'reject_once' }],
+        },
+      })
+      return
+    }
+    send({ method: 'session/update', params: { sessionId: msg.params.sessionId, update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'ACP Recovered: ' + text } } } })
+    send({ id: msg.id, result: { stopReason: 'end_turn' } })
+  }
+})
+`,
+    )
+
+    const acpBackend = new AcpAgentBackend({ command: acpCrashBin, args: ['acp'], defaultCwd: dir })
+    activeClosers.push(() => acpBackend.stop())
+    const acpEvents: Array<{ type: string; data: unknown }> = []
+    acpBackend.onEvent((_sid, evs) => {
+      for (const e of evs) acpEvents.push({ type: e.type, data: e.data })
+    })
+
+    const acpSessions = await acpBackend.listSessions()
+    const acpId = acpSessions[0]!.id
+    await acpBackend.followup(acpId, 'CRASH_ACP')
+
+    await expect.poll(async () => (await acpBackend.getSessionLiveState(acpId))?.pendingApprovals.length ?? 0, { timeout: 3_000, interval: 15 }).toBe(1)
+
+    // Deterministically crash ACP child while permission is pending
+    await acpBackend.selectModel(acpId, { provider: 'opencode', model: 'trigger-crash' }).catch(() => {})
+    await expect.poll(() => acpEvents.some((e) => e.type === 'approval.resolved'), { timeout: 3_000, interval: 15 }).toBe(true)
+
+    const afterAcpCrash = await acpBackend.getSessionLiveState(acpId)
+    expect(afterAcpCrash?.status).toBe('idle')
+    expect(afterAcpCrash?.pendingApprovals).toEqual([])
+    await expect(acpBackend.respondApproval('acp-call-crash', 'approved')).rejects.toThrow(RemoteProtocolError)
+
+    await acpBackend.followup(acpId, 'RUN_ACP_RESPAWN')
+    await expect.poll(() => acpEvents.some((e) =>
+      e.type === 'assistant/chunk' && String((e.data as { text?: string })?.text || '').includes('ACP Recovered: RUN_ACP_RESPAWN'),
+    ), { timeout: 3_000, interval: 15 }).toBe(true)
+  })
 })

@@ -285,20 +285,61 @@ export class CodexAgentBackend implements ManagedAgentBackend {
     await this.ensureRpc()
   }
 
+  private clearLiveProcessState(reason: 'host_stopped' | 'process_exited'): void {
+    this.resumedThreads.clear()
+    for (const [id, entry] of this.pendingApprovals.entries()) {
+      this.pendingApprovals.delete(id)
+      try {
+        entry.resolve({ decision: 'cancel' })
+      } catch {}
+      this.emitter.emit(entry.sessionId, 'approval.resolved', {
+        callId: id,
+        decision: 'rejected',
+        cancelled: true,
+        reason,
+      })
+    }
+    for (const [id, entry] of this.pendingQuestions.entries()) {
+      this.pendingQuestions.delete(id)
+      try {
+        entry.reject(new Error(`codex ${reason}`))
+      } catch {}
+      this.emitter.emit(entry.sessionId, 'question.resolved', {
+        questionId: id,
+        cancelled: true,
+        reason,
+      })
+    }
+    const interruptedThreads = new Set<string>(this.activeTurnByThread.keys())
+    for (const meta of this.sessions.values()) {
+      if (meta.status === 'running') {
+        meta.status = 'idle'
+        meta.updatedAtMs = Date.now()
+        interruptedThreads.add(meta.nativeId)
+      }
+    }
+    for (const nativeId of interruptedThreads) {
+      const turnId = this.activeTurnByThread.get(nativeId)
+      const publicId = formatNamespacedSessionId('codex', nativeId)
+      if (turnId) {
+        this.liveItemIndexByTurn.delete(`${nativeId}:id:${turnId}`)
+        this.emitCanonicalEvent(nativeId, publicId, `turn:id:${turnId}:end`, 'turn/end', {
+          turnId,
+          status: 'interrupted',
+          reason,
+        })
+      } else {
+        this.emitter.emit(publicId, 'turn/end', { status: 'interrupted', reason })
+      }
+    }
+    this.activeTurnByThread.clear()
+  }
+
   async stop(): Promise<void> {
     this.startPromise = undefined
     const active = this.rpc
     this.rpc = undefined
-    this.resumedThreads.clear()
-    this.activeTurnByThread.clear()
-    for (const [id, entry] of this.pendingApprovals.entries()) {
-      this.pendingApprovals.delete(id)
-      entry.resolve({ decision: 'cancel' })
-    }
-    for (const [id, entry] of this.pendingQuestions.entries()) {
-      this.pendingQuestions.delete(id)
-      entry.reject(new Error('codex host stopping'))
-    }
+    this.clearLiveProcessState('host_stopped')
     if (active) {
       await active.stop()
     }
@@ -330,8 +371,7 @@ export class CodexAgentBackend implements ManagedAgentBackend {
         onExit: () => {
           if (this.rpc === proc) {
             this.rpc = undefined
-            this.resumedThreads.clear()
-            this.activeTurnByThread.clear()
+            this.clearLiveProcessState('process_exited')
           }
         },
       })

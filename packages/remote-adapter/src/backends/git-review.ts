@@ -39,6 +39,108 @@ const MAX_WORKSPACE_FILES_RANK_SLACK = 256
 const MAX_WORKSPACE_FILES_TOP_K_CAP = 4_096
 const WORKSPACE_FILES_COLLATOR = new Intl.Collator('en')
 
+function truncateUtf8Buffer(
+  rawBuf: Buffer,
+  maxBytes: number,
+): { text: string; bytes: number; truncated: boolean } {
+  const effectiveMaxBytes = Math.max(1, maxBytes)
+  if (rawBuf.byteLength <= effectiveMaxBytes) {
+    return {
+      text: rawBuf.toString('utf8'),
+      bytes: rawBuf.byteLength,
+      truncated: false,
+    }
+  }
+  let end = effectiveMaxBytes
+  while (end > 0 && (rawBuf[end]! & 0b1100_0000) === 0b1000_0000) {
+    end -= 1
+  }
+  const sliced = rawBuf.subarray(0, end)
+  return {
+    text: sliced.toString('utf8'),
+    bytes: sliced.byteLength,
+    truncated: true,
+  }
+}
+
+const BENIGN_ENV_NAMES = new Set([
+  '.env.example',
+  '.env.sample',
+  '.env.template',
+  '.env.schema',
+  '.env.defaults',
+])
+
+function isSensitiveSecretPath(relPath: string): boolean {
+  const normalized = relPath.replace(/\\/gu, '/').toLowerCase()
+  const base = basename(normalized)
+  if ((base === '.env' || base.startsWith('.env.')) && !BENIGN_ENV_NAMES.has(base)) {
+    return true
+  }
+  if (
+    base === '.npmrc'
+    || base === '.pypirc'
+    || base === '.netrc'
+    || base === '.htpasswd'
+    || base === 'id_rsa'
+    || base === 'id_ed25519'
+    || base === 'id_ecdsa'
+    || base === 'id_dsa'
+  ) {
+    return true
+  }
+  return /\.(?:pem|key|p12|pfx)$/u.test(base)
+}
+
+function formatRedactedSensitiveFileDiff(relPath: string): string {
+  return [
+    `diff --git a/${relPath} b/${relPath}`,
+    `--- a/${relPath}`,
+    `+++ b/${relPath}`,
+    `@@ redacted sensitive file diff (${relPath}) @@`,
+    '+[REDACTED_SENSITIVE_FILE]',
+    '',
+  ].join('\n')
+}
+
+function scrubCredentialLiterals(text: string): string {
+  return text
+    .replace(
+      /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z0-9 ]*PRIVATE KEY-----|$)/gu,
+      '[REDACTED_PRIVATE_KEY]',
+    )
+    .replace(
+      /\bsk-(?:ant-[A-Za-z0-9_-]{12,}|proj-[A-Za-z0-9_-]{16,}|live_[A-Za-z0-9]{16,}|test_[A-Za-z0-9]{16,}|[A-Za-z0-9_-]{20,})\b/gu,
+      '[REDACTED_SECRET]',
+    )
+    .replace(/\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/gu, '[REDACTED_SECRET]')
+    .replace(/\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/gu, '[REDACTED_SECRET]')
+    .replace(/\bxox[baprs]-[A-Za-z0-9-]{10,}\b/gu, '[REDACTED_SECRET]')
+    .replace(
+      /\b(https?|wss?|postgres|mysql|redis|amqp):\/\/([^/\s:@]+):([^/\s@]+)@/giu,
+      '$1://[REDACTED]:[REDACTED]@',
+    )
+}
+
+function redactSensitiveDiffText(diffText: string): string {
+  if (!diffText) return diffText
+  const sections = diffText.split(/(?=^diff --git )/mu)
+  const sanitized = sections.map((section) => {
+    const headerMatch =
+      section.match(/^diff --git a\/(.+?) b\/\1\r?\n/u)
+      ?? section.match(/^diff --git a\/(.+?) b\/(.+?)\r?\n/u)
+    if (headerMatch) {
+      const pathA = headerMatch[1]!
+      const pathB = headerMatch[2] ?? pathA
+      if (isSensitiveSecretPath(pathA) || isSensitiveSecretPath(pathB)) {
+        return formatRedactedSensitiveFileDiff(pathB || pathA)
+      }
+    }
+    return scrubCredentialLiterals(section)
+  })
+  return sanitized.join('')
+}
+
 async function runGit(
   cwd: string,
   args: readonly string[],
@@ -147,22 +249,11 @@ async function runGitBoundedDiff(
       }
 
       const rawBuf = Buffer.concat(stdoutChunks)
-      const truncated = streamTruncated || rawBuf.byteLength > effectiveMaxBytes
-      if (!truncated) {
-        const text = rawBuf.toString('utf8')
-        resolvePromise({ text, bytes: rawBuf.byteLength, truncated: false })
-        return
-      }
-
-      let end = Math.min(effectiveMaxBytes, rawBuf.byteLength)
-      while (end > 0 && (rawBuf[end]! & 0b1100_0000) === 0b1000_0000) {
-        end -= 1
-      }
-      const sliced = rawBuf.subarray(0, end)
+      const sliced = truncateUtf8Buffer(rawBuf, effectiveMaxBytes)
       resolvePromise({
-        text: sliced.toString('utf8'),
-        bytes: sliced.byteLength,
-        truncated: true,
+        text: sliced.text,
+        bytes: sliced.bytes,
+        truncated: streamTruncated || sliced.truncated,
       })
     })
   })
@@ -573,6 +664,23 @@ export async function inspectWorkspaceGitDiff(
   const safePath =
     params.path !== undefined ? assertSafeRepoRelativePath(repoRoot, params.path) : undefined
 
+  if (safePath !== undefined && isSensitiveSecretPath(safePath)) {
+    const finalRedacted = truncateUtf8Buffer(
+      Buffer.from(formatRedactedSensitiveFileDiff(safePath), 'utf8'),
+      maxBytes,
+    )
+    return {
+      sessionId: params.sessionId,
+      repoRoot,
+      branch,
+      staged,
+      path: safePath,
+      diff: finalRedacted.text,
+      bytes: finalRedacted.bytes,
+      truncated: finalRedacted.truncated,
+    }
+  }
+
   const gitArgs = ['diff', '--no-ext-diff']
   if (staged) gitArgs.push('--cached')
   if (safePath !== undefined) {
@@ -635,6 +743,24 @@ export async function inspectWorkspaceGitDiff(
             break
           }
 
+          if (isSensitiveSecretPath(verifiedPath)) {
+            const placeholder = truncateUtf8Buffer(
+              Buffer.from(formatRedactedSensitiveFileDiff(verifiedPath), 'utf8'),
+              remainingBudget,
+            )
+            if (placeholder.bytes === 0) {
+              combinedTruncated = true
+              break
+            }
+            parts.push(placeholder.text)
+            usedBytes += sepBytes + placeholder.bytes
+            if (placeholder.truncated || usedBytes >= maxBytes) {
+              combinedTruncated = true
+              if (usedBytes >= maxBytes) break
+            }
+            continue
+          }
+
           const preview = await runGitBoundedDiff(
             repoRoot,
             ['diff', '--no-index', '--no-ext-diff', '--', '/dev/null', verifiedPath],
@@ -663,15 +789,18 @@ export async function inspectWorkspaceGitDiff(
     } catch {}
   }
 
+  const redactedText = redactSensitiveDiffText(bounded.text)
+  const finalResult = truncateUtf8Buffer(Buffer.from(redactedText, 'utf8'), maxBytes)
+
   return {
     sessionId: params.sessionId,
     repoRoot,
     branch,
     staged,
     ...(safePath !== undefined ? { path: safePath } : {}),
-    diff: bounded.text,
-    bytes: bounded.bytes,
-    truncated: bounded.truncated,
+    diff: finalResult.text,
+    bytes: finalResult.bytes,
+    truncated: bounded.truncated || finalResult.truncated,
   }
 }
 
