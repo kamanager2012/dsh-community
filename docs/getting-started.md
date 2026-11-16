@@ -20,7 +20,7 @@
 
 ## 当前已发布下载资产
 
-在 [`releases/latest`](https://github.com/kamanager2012/dsh-community/releases/latest)（精确文件名与 SHA-256 摘要固定在 [`current-release.json`](current-release.json)），Complementary Edition 每次发行共包含 **12 个已签名文件**（历史 `v0.1.1-rc.2` 之后已将 Windows `.exe` / macOS `.dmg` 交还官方上游）：
+在 [`releases/latest`](https://github.com/kamanager2012/dsh-community/releases/latest)（精确文件名与 SHA-256 摘要固定在 [`current-release.json`](current-release.json)），Complementary Edition 每次发行共上传 **12 个资产（3 个核心文件 + 3 个 `.sha256` + 6 个 keyless `.sigstore.json` 证明，不含 GitHub 自动源码归档；历史 `v0.1.1-rc.2` 之后已将 Windows `.exe` / macOS `.dmg` 交还官方上游）**：
 
 - `dsh-community-<version>.AppImage` — Linux 桌面 AppImage（主程序）
 - `dsh-community-<version>-android-arm64-v8a.apk` — Android Remote Client `arm64-v8a` 安装包（APK Signature Scheme v2/v3 + Keyless Cosign 双签名）
@@ -47,13 +47,31 @@ cosign verify-blob \
 
 第一次打开 Linux AppImage 会解一份官方 Runtime 到用户数据目录，只做一次。对话仍在官方 `~/.dsh`。
 
+## 界面预览（Chromium E2EE 联调与桌面控制台页面）
+
+以下两张截图由无头集成脚本 [`scripts/e2e/remote-web-browser-e2ee.mjs`](../scripts/e2e/remote-web-browser-e2ee.mjs) 自动生成，用于验证前端渲染与 Noise IK 加密链路（左图在真实无头 Chromium 中联调模拟 Claude/Codex 会话、审批与 Git Diff 夹具；右图为 Desktop HTML 视图渲染测试状态与已过期 `*.dsh-community.local` 演示二维码，并非运行独立打包 Electron 与真实外部 CLI 进程的现场截屏）：
+
+| Browser PWA E2EE 联调（Chromium + 模拟多引擎夹具） | Desktop 远程控制台 HTML 预览（测试配对状态） |
+| --- | --- |
+| ![DSH Community Remote Web PWA](assets/remote-web-pwa.png) | ![DSH Community Desktop Remote Console](assets/desktop-remote-console.png) |
+
 ## 三十秒一键安装终端（WSL / Linux）与五分钟从源码启动
 
-需要 Node.js 24.9+（官方 `@deepseek-ai/dsh@0.2.2-rc.3` 声明 `engines.node >=24.9.0`；本仓工作区最低要求 22.15，CI 在 Node 22 上通过）、pnpm 和可用的 `DEEPSEEK_API_KEY`（官方 0.1.0-rc.8 起 session JSONL 依赖 `node:zlib` zstd，22.15 才有）。如果只想直接安装 `dsh-community` 与 `dsh-marketplace` 命令：
+`scripts/install-linux.sh` 是在 `v0.2.2-rc.3` 之后合入 `main` 的源码安装脚本（需要 Node.js 24.9+ / 最低 22.15、pnpm 与 git）。注意官方 `@deepseek-ai/dsh@0.2.2-rc.3` 声明 `engines.node >=24.9.0`（官方 0.1.0-rc.8 起 session JSONL 依赖 `node:zlib` zstd，22.15 才有）。直接安装或锁定精确 tag / commit：
 
 ```sh
+# 跟踪 main 最新源码：
 curl -fsSL https://raw.githubusercontent.com/kamanager2012/dsh-community/main/scripts/install-linux.sh | bash
+
+# 或锁定到已发布 tag 与精确 Commit（v0.2.2-rc.3 = 073826c38df4cf246e7ac90b27e0df98569a534d）：
+curl -fsSL https://raw.githubusercontent.com/kamanager2012/dsh-community/main/scripts/install-linux.sh | \
+  bash -s -- --ref v0.2.2-rc.3 --expected-commit 073826c38df4cf246e7ac90b27e0df98569a534d
 ```
+
+> 远程控制配对注意：
+> - **同机浏览器 vs 手机跨设备**：`127.0.0.1` 只能在同一台机器的桌面浏览器访问（手机扫 `127.0.0.1` 会连回手机本身）；手机 LAN 直连请给 Android APK 使用 `--host <LAN-IP> --mdns`，手机浏览器 PWA 或公网访问请按 [deploy/relay/README.md](../deploy/relay/README.md) 部署 HTTPS/WSS 反向代理与 `--host-secret`，并在启动 `remote start` 时传入 `DSH_REMOTE_RELAY_HOST_SECRET` 与 `DSH_REMOTE_SIGNALING_HOST_SECRET`。
+> - **默认最小权限**：首次配对仅自动授予 `['observe', 'prompt']`（只读会话/Git Diff 与发送 prompt），**不含 `approve`**；`--allow-caps observe,prompt,approve` 仅是配对令牌能力上限，真正授权需配对时在 REPL 执行 `confirm <candidateId> observe,prompt,approve`（或桌面确认勾选），或配对后执行 `dsh-community remote grant <deviceId> approve`。
+> - **安全边界**：Noise IK 保护远控链路密文转发，不替代模型 Provider API 传输边界；`observe` 权限可读未提交 Git Diff；项目尚未完成独立第三方密码学安全审计。
 
 或者手动克隆源码启动：
 

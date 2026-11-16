@@ -7,46 +7,72 @@
 [![Official Core](https://img.shields.io/badge/Official%20Core-%40deepseek--ai%2Fdsh-blue)](https://github.com/deepseek-ai/deepseek-harness)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-> **你在官方 Web 或官方 Win/macOS Desktop 开的对话，在 Linux 终端、Linux AppImage 或手机浏览器 / Android 上无缝接着聊 — 还能通过 Noise IK 端到端加密统一远程操控 DSH、Claude Code、Codex CLI 与 OpenCode，并在离开电脑时手机批权限、看 Git Diff。**  
-> 官方 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（`@deepseek-ai/dsh`）的**不 vendor 官方源码、官方互补社区发行版**（Official Source Ownership = 0）：100% 共用 `~/.dsh` 会话真源，绝不重写第二套 Agent 循环。
+> **在官方 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（`@deepseek-ai/dsh`）运行时之上，提供跨平台、多 Agent、可自托管的统一开发控制面（WSL/Linux 终端、Linux AppImage 与 E2EE 远程控制）：100% 共用 `~/.dsh` 会话真源，不 vendor 官方源码（Official Source Ownership = 0），并可同时纳管 DSH、Claude Code、Codex CLI 与 OpenCode。**
 
-## 实机界面预览
+## 界面预览（Chromium E2EE 联调与桌面控制台页面）
 
-| E2EE 浏览器 PWA 远控（多引擎会话 / `tool_use` 审批 / Git Diff） | Linux Desktop 控制台（Worktree 看板 / QR 配对 / 市场） |
+| Browser PWA E2EE 联调（Chromium + 本地 BlindGateway + 模拟多引擎夹具） | Desktop 远程控制台 HTML 预览（测试配对码 `*.dsh-community.local` 与视图渲染） |
 |---|---|
 | ![DSH Community Remote Web PWA](docs/assets/remote-web-pwa.png) | ![DSH Community Desktop Remote Console](docs/assets/desktop-remote-console.png) |
+
+> **截图证据边界说明**：两张图片由无头集成脚本 [`scripts/e2e/remote-web-browser-e2ee.mjs`](scripts/e2e/remote-web-browser-e2ee.mjs) 自动生成（见 [Workflow Run 43900107856](https://github.com/kamanager2012/dsh-community/actions/runs/43900107856)）——左图在真实无头 Chromium 中运行构建后的 `apps/remote-web` 并通过 `Noise_IK_25519_ChaChaPoly_BLAKE2b` 连接本地 `BlindGatewayServer`，**后端对话、审批与 Git Diff 使用模拟 Claude/Codex 夹具**；右图为 Desktop `renderDesktopRemoteHtml` 视图模板渲染结果（测试状态与已过期演示配对二维码），**并非物理 Electron 客户端运行真实外部 CLI 进程的现场截屏**。
 
 ---
 
 ## 30 秒极速上手
 
-### 1. WSL / Linux 终端一键安装（`dsh-community` & `dsh-marketplace`）
+### 1. WSL / Linux 终端源码安装（`dsh-community` & `dsh-marketplace`）
 
-需要 Node.js 24.9+（官方 `@deepseek-ai/dsh@0.2.2-rc.3` 声明 `engines.node >=24.9.0`；工作区最低支持 `22.15+`，CI 在 Node 22 与 24 上双通）与 `pnpm`：
+`scripts/install-linux.sh` 是 `v0.2.2-rc.3` 发布之后合入 `main` 的源码安装脚本，需要 **Node.js 24.9+**（官方 `@deepseek-ai/dsh@0.2.2-rc.3` 声明 `engines.node >=24.9.0`；工作区最低 `22.15+`，CI 在 Node 22/24 双通）、**`pnpm`** 与 **`git`**（不是零依赖二进制安装）：
 
 ```sh
+# 方式 A：跟踪 main 最新源码（含安装脚本与后续 E2EE/文档修复）
 curl -fsSL https://raw.githubusercontent.com/kamanager2012/dsh-community/main/scripts/install-linux.sh | bash
+
+# 方式 B：锁定到已发布 tag 与精确 Commit（可验证源码来源，v0.2.2-rc.3 = 073826c38df4cf246e7ac90b27e0df98569a534d）
+curl -fsSL https://raw.githubusercontent.com/kamanager2012/dsh-community/main/scripts/install-linux.sh | \
+  bash -s -- --ref v0.2.2-rc.3 --expected-commit 073826c38df4cf246e7ac90b27e0df98569a534d
 ```
 
-装完直接跑（共享官方 `~/.dsh` 会话，或同时纳管本机 Claude Code / Codex CLI / OpenCode）：
+装完直接跑（共享官方 `~/.dsh` 会话）：
 
 ```sh
 export DEEPSEEK_API_KEY=...
 dsh-community                 # 有对话接着聊，没有则新建
 dsh-community doctor          # 自检（不打印任何密钥）
-dsh-marketplace list          # 查看已验证社区插件与内核兼容状态
-
-# 一条命令拉起 E2EE 多引擎远程控制 + 浏览器 PWA / 手机扫码页：
-dsh-community remote gateway --serve-web --port 8787 &
-dsh-community remote start --engines dsh,claude,codex,opencode \
-  --relay-url ws://127.0.0.1:8787/relay \
-  --signaling-url ws://127.0.0.1:8787/signal \
-  --web-url http://127.0.0.1:8787/app/ --qr
+dsh-marketplace list          # 查看已验证社区插件与旧版 0.1.1-rc.2 兼容提示
 ```
 
-### 2. 或直接下载已签名桌面 / 安卓安装包
+#### 远程控制分场景启动与 `approve` 授权边界
 
-在 [`releases/latest`](https://github.com/kamanager2012/dsh-community/releases/latest) 获取 `.AppImage`（Linux 桌面端）或 `-android-arm64-v8a.apk`（Android 8.0+ 预览客户端，CI `x86_64` 模拟器 E2EE 验收通过、物理真机遥测 `[UNVERIFIED]`）：
+- **场景 A｜本机同机浏览器 PWA 演示（`127.0.0.1` 仅本机可达，手机扫 `127.0.0.1` 会连回手机自己）**：
+  ```sh
+  dsh-community remote gateway --serve-web --port 8787 &
+  dsh-community remote start --engines dsh,claude,codex,opencode \
+    --relay-url ws://127.0.0.1:8787/relay \
+    --signaling-url ws://127.0.0.1:8787/signal \
+    --web-url http://127.0.0.1:8787/app/ --qr
+  ```
+- **场景 B｜手机 / 跨设备远程（LAN 直连 Android APK，或 HTTPS/WSS 反向代理驱动手机浏览器 PWA）**：
+  ```sh
+  # 局域网 Android 客户端直连（将 <LAN-IP> 替换为宿主机实际局域网 IP）：
+  dsh-community remote start --engines dsh,claude,codex,opencode --host <LAN-IP> --mdns --qr
+
+  # 跨网络 / 手机浏览器 PWA（先按 deploy/relay/README.md 为 remote gateway 配 Caddy/Nginx HTTPS+WSS 反代与 --host-secret；
+  # 单独拉起的 remote start 必须通过这两个环境变量传入与网关一致的注册密钥）：
+  DSH_REMOTE_RELAY_HOST_SECRET="replace-with-strong-secret" \
+  DSH_REMOTE_SIGNALING_HOST_SECRET="replace-with-strong-secret" \
+  dsh-community remote start --engines dsh,claude,codex,opencode \
+    --relay-url wss://remote.example.com/relay \
+    --signaling-url wss://remote.example.com/signal \
+    --web-url https://remote.example.com/app/ --qr
+  ```
+  > 注意：首次配对设备默认**仅授予 `['observe', 'prompt']`**（只能看会话/状态、发 prompt、读 Git Diff），**不能直接批准工具调用**；`--allow-caps observe,prompt,approve` 仅用于放宽本次配对令牌的**上限能力列表**（不会自动授予 `approve`）。要真正让手机端点击 `Allow Once` / `Reject`（`approval.respond`），须由宿主机明确授权——在配对时于 REPL 输入 `confirm <candidateId> observe,prompt,approve`（需同时在 `--allow-caps` 内并勾选桌面确认框），或配对完成后执行 `dsh-community remote grant <deviceId> approve`。非回环监听 `remote gateway` 未设 `--host-secret` 会 fail-closed 拒绝启动。
+  > 安全边界：`Noise_IK_25519_ChaChaPoly_BLAKE2b` 保护远控链路应用载荷（自托管盲中继只转发密文）；但**不替代**模型 Provider API 传输边界，拥有 `observe` 权限的客户端可查看工作区未提交的 `git diff`（若工作区含未提交密钥需自行防范），且本项目尚未完成独立第三方密码学安全审计。
+
+### 2. 或直接下载已签名 `v0.2.2-rc.3` 桌面 / 安卓安装包
+
+在 [`releases/latest`](https://github.com/kamanager2012/dsh-community/releases/latest) 获取 `v0.2.2-rc.3`（发布 Commit `073826c`）的 `.AppImage`（Linux 桌面端）或 `-android-arm64-v8a.apk`（Android 8.0+ 预览 APK，CI `x86_64` 模拟器 E2EE 验收通过、物理真机遥测 `[UNVERIFIED]`；共上传 **12 个资产**：AppImage / APK / CycloneDX SBOM 3 个核心文件 + 3 个 `.sha256` + 6 个 Keyless Cosign `.sigstore.json` 证明，不含 GitHub 自动生成的源码归档）：
 
 ```sh
 # Linux 桌面 AppImage（内置官方 Runtime，支持断网自愈与市场离线回退）：
@@ -81,8 +107,8 @@ Cosign 无密钥验签与精确文件名见 [`docs/release.md#artifact-signing-k
 ## 核心亮点
 
 - **官方与社区共享同一个 `~/.dsh`，补齐上游缺失的三个互补社区端** — 官方上游提供唯一执行内核、Official Web 及 Windows / macOS Desktop（`win-x64`、`mac-arm64`、`mac-x64`）；本仓专注于上游未提供的 **3 个互补 Community endpoints**：**WSL/Linux 终端（TUI）**、**Linux 桌面 AppImage** 与 **Android Remote Client APK**（`dsh-community-*-android-arm64-v8a.apk` 已在 [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) 正式发布；已通过 CI `x86_64` 模拟器 E2EE 全链路验收，物理 `arm64-v8a` 真机遥测保持 `[UNVERIFIED]`）。
-- **多 Agent（Multi-Agent）端到端加密远程控制面（`packages/remote-adapter`）** — 支持用 Android 已签名 APK 或零安装浏览器 PWA（[`apps/remote-web`](apps/remote-web/)）通过 `Noise_IK_25519_ChaChaPoly_BLAKE2b` 端到端加密、局域网 mDNS、WebRTC P2P 或自部署盲中继（[`deploy/relay/`](deploy/relay/)）远程操控 **DSH、Claude Code、Codex CLI 与 OpenCode ACP**，已通过无头 Chromium 真实浏览器 E2EE 配对、审批与 Git Diff 验收，并支持旧版内核插件兼容警告门禁。
-- **供应链可核验的 12 资产发行与跨端真包门禁** — 每次 Release 同时交付 Linux `.AppImage`、Android `arm64-v8a` `.apk` 与官方运行时 CycloneDX SBOM，并附带 SHA-256 与 Keyless Cosign `.sigstore.json` 签名包，由 GitHub Actions `artifact-smoke` 与 `user-loop-evidence.yml` 拉取真包实测。
+- **多 Agent（Multi-Agent）端到端加密远程控制面（`packages/remote-adapter`）** — 支持用 Android 已签名预览 APK 或零安装浏览器 PWA（[`apps/remote-web`](apps/remote-web/)）经 `Noise_IK_25519_ChaChaPoly_BLAKE2b`、局域网 mDNS、WebRTC P2P 或自部署盲中继（[`deploy/relay/`](deploy/relay/)）远程操控 **DSH、Claude Code、Codex CLI 与 OpenCode ACP**（默认仅授 `observe,prompt`，`approve` 须宿主机显式授予），已通过无头 Chromium + 模拟 Agent 夹具 E2EE 集成测试（真实外部 CLI 跨版本多场景仍在推进），并支持旧版内核插件兼容警告门禁。
+- **供应链可核验的 12 文件发行与跨端真包门禁** — `v0.2.2-rc.3`（`073826c`）每次 Release 上传 **3 个核心资产**（Linux `.AppImage`、Android `arm64-v8a` `.apk`、官方运行时 CycloneDX SBOM）+ **3 个 `.sha256`** + **6 个 Keyless Cosign `.sigstore.json`**（共 12 个发布文件，不含源码自动归档），由 GitHub Actions `artifact-smoke` 与 `user-loop-evidence.yml` 实测；后续 `main` 提交（如 `install-linux.sh`、Chromium E2EE 工作流与文档修正）属于发布后源码演进，不改写已打标的 `v0.2.2-rc.3` 安装包。
 
 ---
 
@@ -110,7 +136,7 @@ Cosign 无密钥验签与精确文件名见 [`docs/release.md#artifact-signing-k
 
 - **补官方的 Linux 空白**：WSL/Linux 终端界面，以及签名的 Linux `.AppImage`。上述三个第三方项目的 README 均未提供 Linux 桌面安装包。
 - **不改官方内核**：不 vendor、不 `patch-package`，Session 与官方共用 `~/.dsh`；终端界面是自研的 `packages/tui`，不挂载第三方 TUI。
-- **发布物可验签**：每个 Release 的 12 个资产都带 SHA-256、Keyless Cosign `.sigstore.json`，并附官方运行时 CycloneDX SBOM；APK 另有 v2/v3 签名。dsh-Go 最新 Release 只提供 APK 与 `SHA256SUMS`。
+- **发布物可验签**：每次 Release 上传 12 个文件（3 个核心文件：AppImage / Android APK / CycloneDX SBOM + 3 个 `.sha256` + 6 个 Keyless Cosign `.sigstore.json` 证明，APK 另有 v2/v3 签名）。dsh-Go 最新 Release 只提供 APK 与 `SHA256SUMS`。
 - **自托管、体积小**：盲中继可自部署（[`deploy/relay/`](deploy/relay/)），不依赖托管服务；Android 客户端约 13 MB，不内置 Node 或 DSH。
 
 **同样要说清楚的短板：**
@@ -158,18 +184,19 @@ pnpm desktop            # 启动桌面壳（含社区市场页与远程二维码
 pnpm marketplace -- list  # 插件发现 CLI
 pnpm run doctor         # 自检（不要裸跑 pnpm doctor，那是 pnpm 自己的）
 
-# 多 Agent E2EE 远程控制面：
-# 1) 先构建一次，再本地托管浏览器 PWA 与单端口盲中继网关
+# 多 Agent E2EE 远程控制面（先构建一次）：
 pnpm build
+# 1) 仅本机同机浏览器 PWA 演示（127.0.0.1 手机无法访问）：
 pnpm start -- remote gateway --serve-web --port 8787 &
-# 2) 启动远程宿主（--web-url 输出浏览器配对二维码；局域网/Android 客户端可追加 --host <LAN-IP> --mdns）
 pnpm start -- remote start --engines claude,codex,opencode \
   --relay-url ws://127.0.0.1:8787/relay \
   --signaling-url ws://127.0.0.1:8787/signal \
   --web-url http://127.0.0.1:8787/app/ --qr
+# 2) 如需手机/远端批权限（默认仅 observe,prompt），配对后在宿主机执行：
+pnpm start -- remote grant <deviceId> approve
 ```
 
-跨设备 / 手机通过 HTTPS 配对 PWA 或使用 Android APK 扫描 `dsh-remote://pair` 二维码时，请按 [`deploy/relay/README.md`](deploy/relay/README.md) 配置 TLS 反向代理并参见 [`docs/remote-host-client.md`](docs/remote-host-client.md)。
+跨设备 / 手机通过 HTTPS 配对 PWA 或使用 Android APK 扫描 `dsh-remote://pair` 二维码时，可用 `--host <LAN-IP> --mdns`（局域网 Android APK），或按 [`deploy/relay/README.md`](deploy/relay/README.md) 配置 TLS 反向代理并参见 [`docs/remote-host-client.md`](docs/remote-host-client.md)。
 
 同一入口也叫 `dsh-community`（`dsh-community-tui` 仍可用），支持子命令：`new`、`resume last`、`sessions`、`doctor`、`version`、`plugins`（只读目录；安装仍走官方 `dsh plugin add` / 桌面市场页）、`desktop`、`remote`。
 

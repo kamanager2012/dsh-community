@@ -55,7 +55,7 @@
     "records": 694,
     "terms": 34,
     "english_documents": 22,
-    "english_records": 136,
+    "english_records": 137,
     "english_terms": 28
   },
   "documents": [
@@ -4020,6 +4020,7 @@
         "en",
         "DeepSeek Harness Handbook",
         "What this handbook adds beyond search",
+        "UI Previews (Chromium E2EE Harness & Desktop Console Page)",
         "Choose a route",
         "Five-minute start",
         "Operating principles",
@@ -4031,6 +4032,13 @@
         "adds",
         "beyond",
         "search",
+        "UI",
+        "Previews",
+        "Chromium",
+        "E2EE",
+        "Desktop",
+        "Console",
+        "Page",
         "Choose",
         "route",
         "Five-minute",
@@ -4040,7 +4048,7 @@
       ],
       "source": "en/index.md",
       "language": "en",
-      "section_count": 5
+      "section_count": 6
     },
     {
       "id": "dsh.en.translation-status",

@@ -44,9 +44,11 @@ docker run --rm -p 127.0.0.1:8787:8787 \
 Trusted-proxy hops are stripped **right-to-left** so spoofed left-side client headers cannot
 bypass `maxConnectionsPerIp`. Wildcard CIDRs (`/0`) and invalid entries fail closed at startup.
 
-Pair your local host with the public TLS URL:
+Pair your local host with the public TLS URL, passing the same registration secret via `DSH_REMOTE_RELAY_HOST_SECRET` and `DSH_REMOTE_SIGNALING_HOST_SECRET` (note `parseAndScrubRemoteHostEnv` reads and scrubs these secrets before spawning agent child processes):
 
 ```bash
+DSH_REMOTE_RELAY_HOST_SECRET="replace-with-strong-secret" \
+DSH_REMOTE_SIGNALING_HOST_SECRET="replace-with-strong-secret" \
 dsh-community remote start \
   --relay-url wss://remote.example.com/relay \
   --signaling-url wss://remote.example.com/signal \

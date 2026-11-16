@@ -30,10 +30,7 @@ The canonical download entry is
 [`dsh-community/releases/latest`](https://github.com/kamanager2012/dsh-community/releases/latest).
 Normal users download [`v0.2.2-rc.3`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3).
 
-Published `v0.2.2-rc.3` ships **12 signed files** under the Complementary Edition policy
-(Linux AppImage + signed Android `arm64-v8a` Remote Client APK + official-runtime CycloneDX SBOM; Windows `.exe` and macOS `.dmg`
-installers were retired after historical `v0.1.1-rc.2` in favor of upstream
-`deepseek-ai/deepseek-harness`):
+Published `v0.2.2-rc.3` (release commit `073826c38df4cf246e7ac90b27e0df98569a534d`) uploads **12 release assets total (3 primary files + 3 `.sha256` digests + 6 keyless Cosign `.sigstore.json` bundles**, excluding GitHub's auto-generated source archives; under the Complementary Edition policy, it ships Linux AppImage + signed Android `arm64-v8a` Remote Client APK + official-runtime CycloneDX SBOM, while Windows `.exe` and macOS `.dmg` installers were retired after historical `v0.1.1-rc.2` in favor of upstream `deepseek-ai/deepseek-harness`):
 
 - `dsh-community-0.2.2-rc.3.AppImage` + `.sha256` + `.sigstore.json` + `.sha256.sigstore.json`
 - `dsh-community-0.2.2-rc.3-android-arm64-v8a.apk` + `.sha256` + `.sigstore.json` + `.sha256.sigstore.json`
@@ -64,8 +61,7 @@ tag
 
 ## Latest vs current main
 
-`v0.2.2-rc.3` is current Published Latest. Later `main` commits may update docs,
-remote control plane features, or smoke checks without altering the published binary assets.
+`v0.2.2-rc.3` (commit `073826c`) is current Published Latest. Later `main` commits (such as `scripts/install-linux.sh`, headless Chromium simulated-agent E2EE workflow/previews, and documentation fixes) live only on `main` and are **not** included in the immutable `v0.2.2-rc.3` tag or its published binary assets.
 
 ## Distribution Reality Gate
 

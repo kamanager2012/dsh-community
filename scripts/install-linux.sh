@@ -9,7 +9,8 @@ set -euo pipefail
 PREFIX="${XDG_DATA_HOME:-$HOME/.local/share}/dsh-community"
 BIN_DIR="$HOME/.local/bin"
 REPO_URL="https://github.com/kamanager2012/dsh-community.git"
-BRANCH="main"
+REF="${DSH_COMMUNITY_REF:-main}"
+EXPECTED_COMMIT="${DSH_COMMUNITY_EXPECTED_COMMIT:-}"
 LOCAL_REPO=""
 DRY_RUN=0
 
@@ -19,15 +20,18 @@ Usage: install-linux.sh [options]
 
 Install the dsh-community WSL/Linux Terminal CLI (dsh-community) and plugin discovery
 CLI (dsh-marketplace) from this repository without cloning manually.
+Requires Node.js (>= 24.9.0 recommended, >= 22.15.0 minimum), pnpm, and git.
 
 Options:
-  --prefix <dir>       Install workspace directory (default: ~/.local/share/dsh-community)
-  --bin-dir <dir>      Directory for dsh-community / dsh-marketplace shims (default: ~/.local/bin)
-  --repo-url <url>     Git clone URL (default: https://github.com/kamanager2012/dsh-community.git)
-  --branch <branch>    Branch or tag to install (default: main)
-  --local-repo <dir>   Copy an existing local checkout instead of cloning from GitHub
-  --dry-run            Print planned steps and exit without writing files
-  -h, --help           Show this help message
+  --prefix <dir>            Install workspace directory (default: ~/.local/share/dsh-community)
+  --bin-dir <dir>           Directory for dsh-community / dsh-marketplace shims (default: ~/.local/bin)
+  --repo-url <url>          Git clone URL (default: https://github.com/kamanager2012/dsh-community.git)
+  --ref <ref>               Branch, immutable tag (e.g. v0.2.2-rc.3), or 40-char commit SHA (default: main)
+  --branch <ref>            Alias for --ref (kept for compatibility)
+  --expected-commit <sha>   Fail closed unless checked-out HEAD matches this 40-char git commit SHA
+  --local-repo <dir>        Copy an existing local checkout instead of fetching from GitHub
+  --dry-run                 Print planned steps and exit without writing files
+  -h, --help                Show this help message
 EOF
 }
 
@@ -48,9 +52,14 @@ while [ "$#" -gt 0 ]; do
       REPO_URL="$2"
       shift 2
       ;;
-    --branch)
-      [ "$#" -ge 2 ] || { echo "ERROR: --branch requires a ref" >&2; exit 1; }
-      BRANCH="$2"
+    --ref|--branch)
+      [ "$#" -ge 2 ] || { echo "ERROR: $1 requires a git branch, tag, or commit SHA" >&2; exit 1; }
+      REF="$2"
+      shift 2
+      ;;
+    --expected-commit)
+      [ "$#" -ge 2 ] || { echo "ERROR: --expected-commit requires a 40-char hex SHA" >&2; exit 1; }
+      EXPECTED_COMMIT="$2"
       shift 2
       ;;
     --local-repo)
@@ -73,6 +82,18 @@ while [ "$#" -gt 0 ]; do
       ;;
   esac
 done
+
+if [ -n "$EXPECTED_COMMIT" ]; then
+  EXPECTED_COMMIT="$(printf '%s' "$EXPECTED_COMMIT" | tr '[:upper:]' '[:lower:]')"
+  case "$EXPECTED_COMMIT" in
+    *[!0-9a-f]*|""|???????????????????????????????????????|?????????????????????????????????????????*)
+      if ! printf '%s' "$EXPECTED_COMMIT" | grep -Eq '^[0-9a-f]{40}$'; then
+        echo "ERROR: --expected-commit must be a 40-character hexadecimal SHA-1 commit hash (got '$EXPECTED_COMMIT')." >&2
+        exit 1
+      fi
+      ;;
+  esac
+fi
 
 case "$(uname -s)" in
   Linux) ;;
@@ -141,11 +162,11 @@ OFFICIAL_BIN_DIR="$INSTALL_REPO/packages/dsh-bridge/node_modules/.bin"
 TUI_OFFICIAL_BIN_DIR="$INSTALL_REPO/apps/tui/node_modules/.bin"
 
 if [ "$DRY_RUN" -eq 1 ]; then
-  echo "[dry-run] node=v$NODE_VER prefix=$PREFIX bin_dir=$BIN_DIR"
+  echo "[dry-run] node=v$NODE_VER prefix=$PREFIX bin_dir=$BIN_DIR ref=$REF expected_commit=${EXPECTED_COMMIT:-none}"
   if [ -n "$LOCAL_REPO" ]; then
     echo "[dry-run] would copy source from $LOCAL_REPO -> $INSTALL_REPO"
   else
-    echo "[dry-run] would clone/update $REPO_URL ($BRANCH) -> $INSTALL_REPO"
+    echo "[dry-run] would fetch $REPO_URL ($REF) -> $INSTALL_REPO"
   fi
   echo "[dry-run] would run pnpm install --frozen-lockfile and build CLI, remote-web PWA, + marketplace packages"
   echo "[dry-run] would write shims in $BIN_DIR: dsh-community, dsh-marketplace"
@@ -161,13 +182,39 @@ if [ -n "$LOCAL_REPO" ]; then
   cp -a "$LOCAL_REPO"/. "$INSTALL_REPO"/
 else
   if [ -d "$INSTALL_REPO/.git" ]; then
-    echo "Updating existing installation at $INSTALL_REPO..."
-    git -C "$INSTALL_REPO" fetch --depth 1 origin "$BRANCH"
-    git -C "$INSTALL_REPO" checkout -q FETCH_HEAD
+    echo "Updating existing installation at $INSTALL_REPO ($REF)..."
+    git -C "$INSTALL_REPO" remote set-url origin "$REPO_URL" >/dev/null 2>&1 || git -C "$INSTALL_REPO" remote add origin "$REPO_URL"
   else
     rm -rf "$INSTALL_REPO"
-    echo "Cloning $REPO_URL ($BRANCH) into $INSTALL_REPO..."
-    git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$INSTALL_REPO"
+    git init -q "$INSTALL_REPO"
+    git -C "$INSTALL_REPO" remote add origin "$REPO_URL"
+  fi
+  echo "Fetching $REPO_URL ($REF) into $INSTALL_REPO..."
+  git -C "$INSTALL_REPO" fetch --depth 1 origin "$REF"
+  git -C "$INSTALL_REPO" checkout -q --force --detach FETCH_HEAD
+  if [ -n "$EXPECTED_COMMIT" ]; then
+    git -C "$INSTALL_REPO" clean -fdq
+  fi
+fi
+
+RESOLVED_COMMIT=""
+if [ -d "$INSTALL_REPO/.git" ] && command -v git >/dev/null 2>&1; then
+  RESOLVED_COMMIT="$(git -C "$INSTALL_REPO" rev-parse HEAD 2>/dev/null | tr '[:upper:]' '[:lower:]' || true)"
+fi
+
+if [ -n "$EXPECTED_COMMIT" ]; then
+  if [ -z "$RESOLVED_COMMIT" ]; then
+    echo "ERROR: --expected-commit was requested, but $INSTALL_REPO does not contain git metadata." >&2
+    exit 1
+  fi
+  if [ "$RESOLVED_COMMIT" != "$EXPECTED_COMMIT" ]; then
+    echo "ERROR: checked-out commit mismatch: expected $EXPECTED_COMMIT, got $RESOLVED_COMMIT (ref=$REF)." >&2
+    exit 1
+  fi
+  DIRTY_TREE="$(git -C "$INSTALL_REPO" status --porcelain=v1 --untracked-files=normal)"
+  if [ -n "$DIRTY_TREE" ]; then
+    echo "ERROR: $INSTALL_REPO has uncommitted or untracked changes while --expected-commit ($EXPECTED_COMMIT) is enforced." >&2
+    exit 1
   fi
 fi
 
@@ -202,6 +249,9 @@ echo
 echo "Installed commands:"
 echo "  $BIN_DIR/dsh-community"
 echo "  $BIN_DIR/dsh-marketplace"
+echo "Source build provenance:"
+echo "  ref=${REF} commit=${RESOLVED_COMMIT:-untracked}"
+echo "  Note: Source installs track git refs (--ref v0.2.2-rc.3 --expected-commit <sha40> to pin). Verify release binaries separately with .sha256 + Cosign."
 
 case ":$PATH:" in
   *":$BIN_DIR:"*) ;;
@@ -217,4 +267,6 @@ echo "Next steps:"
 echo "  export DEEPSEEK_API_KEY=..."
 echo "  dsh-community doctor"
 echo "  dsh-community            # start or resume in ~/.dsh"
-echo "  dsh-community remote start --engines dsh,claude,codex --qr"
+echo "  dsh-community remote start --engines dsh,claude,codex --host <LAN-IP> --mdns --qr"
+echo "  # First-time paired devices receive only observe+prompt; grant approvals explicitly with:"
+echo "  #   dsh-community remote grant <deviceId> approve"

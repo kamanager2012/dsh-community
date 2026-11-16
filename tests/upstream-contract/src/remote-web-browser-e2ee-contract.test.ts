@@ -21,12 +21,32 @@ describe('remote-web browser E2EE workflow & documentation assets', () => {
     expect(wf).toContain('node scripts/e2e/remote-web-browser-e2ee.mjs')
   })
 
-  it('ships valid rendered PNG preview screenshots referenced by README', () => {
+  it('ships valid rendered PNG preview screenshots referenced with honest harness disclosures across READMEs, getting-started, and handbook', () => {
     const pngSignature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
-    for (const rel of ['docs/assets/remote-web-pwa.png', 'docs/assets/desktop-remote-console.png']) {
-      const bytes = readFileSync(join(repoRoot, rel))
-      expect(bytes.length, rel).toBeGreaterThan(10_000)
-      expect(bytes.subarray(0, 8).equals(pngSignature), rel).toBe(true)
+    for (const name of ['remote-web-pwa.png', 'desktop-remote-console.png']) {
+      const docsBytes = readFileSync(join(repoRoot, 'docs/assets', name))
+      expect(docsBytes.length, `docs/assets/${name}`).toBeGreaterThan(10_000)
+      expect(docsBytes.subarray(0, 8).equals(pngSignature), `docs/assets/${name}`).toBe(true)
+
+      const handbookBytes = readFileSync(join(repoRoot, 'handbook/assets', name))
+      expect(handbookBytes.equals(docsBytes), `handbook/assets/${name} must match docs/assets/${name}`).toBe(true)
+    }
+
+    for (const rel of [
+      'README.md',
+      'README.zh-CN.md',
+      'README.en.md',
+      'docs/getting-started.md',
+      'docs/getting-started.en.md',
+      'handbook/index.md',
+      'handbook/en/index.md',
+    ]) {
+      const text = readFileSync(join(repoRoot, rel), 'utf8')
+      expect(text, rel).toContain('remote-web-pwa.png')
+      expect(text, rel).toContain('desktop-remote-console.png')
+      expect(text, rel).not.toContain('非静态 Mock 图')
+      expect(text, rel).not.toContain('not static mockups')
+      expect(text, rel).not.toMatch(/^## 实机界面预览$/mu)
     }
 
     for (const readmeRel of ['README.md', 'README.zh-CN.md', 'README.en.md']) {
@@ -34,6 +54,7 @@ describe('remote-web browser E2EE workflow & documentation assets', () => {
       expect(text, readmeRel).toContain('docs/assets/remote-web-pwa.png')
       expect(text, readmeRel).toContain('docs/assets/desktop-remote-console.png')
       expect(text, readmeRel).toContain('scripts/install-linux.sh')
+      expect(text, readmeRel).toContain('remote grant')
     }
   })
 })

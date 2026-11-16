@@ -129,4 +129,142 @@ describe('Linux/WSL Terminal CLI installer', () => {
     })
     expect(mktOut.trim()).toBe('SHIM_MKT:list:BUNDLED_DSH:--version')
   })
+
+  it('supports pinned tag/commit installation with --ref and fail-closed --expected-commit verification', () => {
+    const workRoot = makeTempDir('dsh-inst-pin-')
+    const srcRepo = join(workRoot, 'origin-src')
+    const bareRemote = join(workRoot, 'remote.git')
+    const fakeToolBin = makeTempDir('dsh-inst-pin-tools-')
+    const outPrefix = join(workRoot, 'prefix')
+    const outBin = join(workRoot, 'bin')
+
+    mkdirSync(join(srcRepo, 'apps/tui/dist'), { recursive: true })
+    mkdirSync(join(srcRepo, 'packages/marketplace/bin'), { recursive: true })
+    mkdirSync(join(srcRepo, 'packages/dsh-bridge/node_modules/.bin'), { recursive: true })
+    writeFileSync(join(srcRepo, 'apps/tui/dist/bin.js'), 'console.log("ok")\n', 'utf8')
+    writeFileSync(join(srcRepo, 'packages/marketplace/bin/dsh-marketplace.js'), 'console.log("ok")\n', 'utf8')
+    writeFileSync(join(srcRepo, 'packages/dsh-bridge/node_modules/.bin/dsh'), '#!/usr/bin/env sh\nexit 0\n', 'utf8')
+    chmodSync(join(srcRepo, 'packages/dsh-bridge/node_modules/.bin/dsh'), 0o755)
+
+    execFileSync('git', ['init', '-b', 'main', srcRepo])
+    execFileSync('git', ['-C', srcRepo, 'config', 'user.email', 'ci@example.invalid'])
+    execFileSync('git', ['-C', srcRepo, 'config', 'user.name', 'CI Test'])
+    execFileSync('git', ['-C', srcRepo, 'add', '.'])
+    execFileSync('git', ['-C', srcRepo, 'commit', '-q', '-m', 'pinned tag commit'])
+    const pinnedSha = execFileSync('git', ['-C', srcRepo, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()
+    execFileSync('git', ['-C', srcRepo, 'tag', 'v0.2.2-rc.3'])
+
+    execFileSync('git', ['clone', '--bare', srcRepo, bareRemote])
+
+    const fakePnpm = join(fakeToolBin, 'pnpm')
+    writeFileSync(fakePnpm, '#!/usr/bin/env bash\nexit 0\n', 'utf8')
+    chmodSync(fakePnpm, 0o755)
+
+    // Bad --expected-commit format fails closed before clone
+    const malformedRes = spawnSync(
+      'bash',
+      [installerPath, '--dry-run', '--expected-commit', 'not-a-sha'],
+      { encoding: 'utf8' },
+    )
+    expect(malformedRes.status).toBe(1)
+    expect(malformedRes.stderr).toContain('40-character hexadecimal')
+
+    // Wrong commit SHA fails closed after fetch
+    const wrongSha = '0'.repeat(40)
+    const mismatchRes = spawnSync(
+      'bash',
+      [
+        installerPath,
+        '--repo-url',
+        `file://${bareRemote}`,
+        '--ref',
+        'v0.2.2-rc.3',
+        '--expected-commit',
+        wrongSha,
+        '--prefix',
+        outPrefix,
+        '--bin-dir',
+        outBin,
+      ],
+      {
+        env: { ...process.env, PATH: `${fakeToolBin}:${process.env.PATH ?? ''}` },
+        encoding: 'utf8',
+      },
+    )
+    expect(mismatchRes.status).toBe(1)
+    expect(mismatchRes.stderr).toContain('checked-out commit mismatch')
+
+    // Exact tag + expected commit passes and prints provenance
+    const matchRes = spawnSync(
+      'bash',
+      [
+        installerPath,
+        '--repo-url',
+        `file://${bareRemote}`,
+        '--ref',
+        'v0.2.2-rc.3',
+        '--expected-commit',
+        pinnedSha,
+        '--prefix',
+        outPrefix,
+        '--bin-dir',
+        outBin,
+      ],
+      {
+        env: { ...process.env, PATH: `${fakeToolBin}:${process.env.PATH ?? ''}` },
+        encoding: 'utf8',
+      },
+    )
+    expect(matchRes.status, matchRes.stderr || matchRes.stdout).toBe(0)
+    expect(matchRes.stdout).toContain(`ref=v0.2.2-rc.3 commit=${pinnedSha}`)
+
+    // Dirty --local-repo fails closed when --expected-commit is requested
+    writeFileSync(join(srcRepo, 'apps/tui/dist/bin.js'), 'console.log("dirty")\n', 'utf8')
+    const dirtyLocalRes = spawnSync(
+      'bash',
+      [
+        installerPath,
+        '--local-repo',
+        srcRepo,
+        '--expected-commit',
+        pinnedSha,
+        '--prefix',
+        join(workRoot, 'dirty-prefix'),
+        '--bin-dir',
+        join(workRoot, 'dirty-bin'),
+      ],
+      {
+        env: { ...process.env, PATH: `${fakeToolBin}:${process.env.PATH ?? ''}` },
+        encoding: 'utf8',
+      },
+    )
+    expect(dirtyLocalRes.status).toBe(1)
+    expect(dirtyLocalRes.stderr).toContain('uncommitted or untracked changes')
+
+    // Re-installing over a modified existing checkout with --ref + --expected-commit resets & cleans to the exact pinned commit
+    writeFileSync(join(outPrefix, 'repo/apps/tui/dist/bin.js'), 'console.log("tampered")\n', 'utf8')
+    writeFileSync(join(outPrefix, 'repo/tamper.txt'), 'stray\n', 'utf8')
+    const cleanedRes = spawnSync(
+      'bash',
+      [
+        installerPath,
+        '--repo-url',
+        `file://${bareRemote}`,
+        '--ref',
+        'v0.2.2-rc.3',
+        '--expected-commit',
+        pinnedSha,
+        '--prefix',
+        outPrefix,
+        '--bin-dir',
+        outBin,
+      ],
+      {
+        env: { ...process.env, PATH: `${fakeToolBin}:${process.env.PATH ?? ''}` },
+        encoding: 'utf8',
+      },
+    )
+    expect(cleanedRes.status, cleanedRes.stderr || cleanedRes.stdout).toBe(0)
+    expect(readFileSync(join(outPrefix, 'repo/apps/tui/dist/bin.js'), 'utf8')).toBe('console.log("ok")\n')
+  })
 })

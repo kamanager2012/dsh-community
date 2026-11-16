@@ -20,6 +20,14 @@
 
 DeepSeek Harness Community 不是另一套 Runtime，而是围绕官方 Runtime 的社区增强层。普通用户的正式产品入口只有 [`dsh-community`](https://github.com/kamanager2012/dsh-community/releases/latest)；公开仓库职责、下载边界和已归档 Labs 见[社区生态与产品入口](content/00-overview/community-ecosystem.md)。
 
+## 界面预览（Chromium E2EE 联调与桌面控制台页面）
+
+以下两张截图由仓库无头集成脚本 [`scripts/e2e/remote-web-browser-e2ee.mjs`](https://github.com/kamanager2012/dsh-community/blob/main/scripts/e2e/remote-web-browser-e2ee.mjs) 自动生成（左图在真实无头 Chromium 中联调构建后的 `apps/remote-web` PWA 与 Noise IK 通道，**后端使用模拟 Claude/Codex 会话、审批与 Git Diff 夹具**；右图为 Desktop HTML 视图渲染测试状态与已过期 `*.dsh-community.local` 演示二维码，**非运行独立打包 Electron 客户端管理真实外部 CLI 进程的物理截屏**）：
+
+| Browser PWA E2EE 联调（Chromium + 模拟多引擎夹具） | Desktop 远程控制台 HTML 预览（测试配对状态） |
+| --- | --- |
+| ![DSH Community Remote Web PWA](assets/remote-web-pwa.png) | ![DSH Community Desktop Remote Console](assets/desktop-remote-console.png) |
+
 维护者如需查阅冻结 Labs 的历史门禁，可读 [Community Labs handoff](content/11-operations/community-labs-handoff.md)。不要把 README、单元测试或 fallback 成功当成真实 Runtime E2E 证据。不要从归档仓安装。
 
 ## 从这里开始

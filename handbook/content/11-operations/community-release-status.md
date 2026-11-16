@@ -24,7 +24,7 @@ DeepSeek Harness Community v0.2.2-rc.3 [Official Core: @deepseek-ai/dsh@0.2.2-rc
 正式入口是 [`dsh-community/releases/latest`](https://github.com/kamanager2012/dsh-community/releases/latest)。
 普通用户下载 [`v0.2.2-rc.3`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3)。
 
-`v0.2.2-rc.3` 已发布资产共 **12 个已签名文件**（Complementary Edition 发行 Linux AppImage + 已签名 Android `arm64-v8a` Remote Client APK + 官方运行时 CycloneDX SBOM；Windows Setup `.exe` 与 macOS `.dmg` 自历史 `v0.1.1-rc.2` 后退役并交还官方 `deepseek-ai/deepseek-harness`）：
+`v0.2.2-rc.3`（发布 Commit `073826c38df4cf246e7ac90b27e0df98569a534d`）共上传 **12 个发行资产（3 个核心文件 + 3 个 `.sha256` 校验文件 + 6 个 keyless Cosign `.sigstore.json` 证明，不含 GitHub 自动源码归档**；Complementary Edition 发行 Linux AppImage + 已签名 Android `arm64-v8a` Remote Client APK + 官方运行时 CycloneDX SBOM，Windows Setup `.exe` 与 macOS `.dmg` 自历史 `v0.1.1-rc.2` 后退役并交还官方 `deepseek-ai/deepseek-harness`）：
 
 - `dsh-community-0.2.2-rc.3.AppImage` + `.sha256` + `.sigstore.json` + `.sha256.sigstore.json`
 - `dsh-community-0.2.2-rc.3-android-arm64-v8a.apk` + `.sha256` + `.sigstore.json` + `.sha256.sigstore.json`
@@ -54,7 +54,7 @@ tag
 
 ## Stable 发布基线与当前 main
 
-`v0.2.2-rc.3` 是当前 Published Latest。`main` 上可以有发布后的文档、控制面或验证修复，那些提交不自动等于已发布安装包内容。
+`v0.2.2-rc.3`（Commit `073826c`）是当前 Published Latest。发布之后的 `main` 提交（例如 `scripts/install-linux.sh` 源码安装器、无头 Chromium 模拟 Agent E2EE 联调工作流、预览图及文档修正）属于源码演进，**不包含**在 `v0.2.2-rc.3` 发布标签与已上传二进制资产内。
 
 ## Distribution Reality Gate
 

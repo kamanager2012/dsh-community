@@ -26,8 +26,10 @@
     {
       "id": "android",
       "name": "Android",
-      "onLatestDownload": false,
-      "status": "UNVERIFIED"
+      "onLatestDownload": true,
+      "status": "UNVERIFIED",
+      "physicalHandsetTelemetry": "UNVERIFIED",
+      "note": "Signed arm64-v8a APK is published on Latest (CI x86_64 emulator E2EE verified); physical arm64-v8a handset telemetry remains UNVERIFIED."
     }
   ],
   "retiredEndpoints": [

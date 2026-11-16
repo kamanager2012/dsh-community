@@ -93,8 +93,19 @@ describe('dsh-bridge shared qr and remote-host helpers', () => {
     expect(detected).toEqual(['100.88.1.7', '192.168.50.10'])
   })
 
-  it('emits loopback pairing warning only when bound to loopback without relay/signaling fallback', () => {
+  it('emits loopback pairing warning when all endpoints are loopback (including loopback-only relay), and stays silent on reachable endpoints', () => {
     expect(buildLoopbackPairingWarning({ lanUrl: 'ws://127.0.0.1:9000' }, ['192.168.1.20'])).toMatch(/192\.168\.1\.20/)
+    expect(
+      buildLoopbackPairingWarning(
+        {
+          lanUrl: 'ws://127.0.0.1:9000',
+          relayUrl: 'ws://127.0.0.1:8787/relay',
+          signalingUrl: 'ws://127.0.0.1:8787/signal',
+          webUrl: 'http://127.0.0.1:8787/app/',
+        },
+        ['192.168.1.20'],
+      ),
+    ).toMatch(/127\.0\.0\.1/)
     expect(buildLoopbackPairingWarning({ lanUrl: 'ws://192.168.1.20:9000' }, ['192.168.1.20'])).toBeUndefined()
     expect(
       buildLoopbackPairingWarning({ lanUrl: 'ws://127.0.0.1:9000', relayUrl: 'wss://relay.example.com' }, ['192.168.1.20']),
