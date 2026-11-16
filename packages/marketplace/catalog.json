@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-11-15T06:00:00Z",
+  "updatedAt": "2026-11-16T14:30:00Z",
   "plugins": [
     {
       "name": "@deepseek-harness-tui/dsh-tui",
@@ -40,7 +40,7 @@
         {
           "version": "0.1.0",
           "testedDsh": "0.1.1-rc.2",
-          "notes": "社区验证线 0.1.1-rc.1:dsh plugin add 安装并合成通过",
+          "notes": "仅旧版 0.1.1-rc.2 通过合成验证；2026-11-16 实测 @deepseek-ai/dsh@0.2.2-rc.3 因依赖 @deepseek-ai/dsh-tools@0.1.0-rc.6 拒绝安装",
           "integrity": "sha512-oJT3Xy8/jpofp5elHmow6+4W2hPSJi35pYPMCHzoQqtSlhMVEmx5iyxTQ1jmPxJB9OsqUA7sTZcJD/MEH9609w==",
           "security": {
             "risk": "low",
@@ -52,8 +52,8 @@
             "processExecution": "无子进程,不拦截或改写其他插件的工具调用",
             "persistence": "本机磁盘缓存(原始输出),随插件自身生命周期管理",
             "manualReviewStatus": "partial",
-            "manualReviewNote": "compose 验证通过(0.1.1-rc.2);README 描述的功能面小,无网络/凭据接触,未做独立代码级安全审计",
-            "lastReviewedAt": "2026-08-28"
+            "manualReviewNote": "compose 仅在旧版 0.1.1-rc.2 通过；2026-11-16 实测 @deepseek-ai/dsh@0.2.2-rc.3 拒绝安装（npm 最新版仍为 0.1.0 且声明 @deepseek-ai/dsh-tools:0.1.0-rc.6，需旧内核或显式 allow-version 才可装载）；无网络/凭据接触,未做独立代码级安全审计",
+            "lastReviewedAt": "2026-11-16"
           }
         }
       ]
@@ -124,7 +124,7 @@
         {
           "version": "0.1.5",
           "testedDsh": "0.1.1-rc.2",
-          "notes": "社区验证线 0.1.1-rc.1:dsh plugin add 安装并合成通过",
+          "notes": "仅旧版 0.1.1-rc.2 通过合成验证；2026-11-16 实测 @deepseek-ai/dsh@0.2.2-rc.3 因依赖 @deepseek-ai/dsh-tools@^0.1.0-rc.6 拒绝安装",
           "integrity": "sha512-EXk51g7F3DXtVXeaqxaMke9V6Du1xWU5qoIAG61KveJQNHyY98eNGH8UVZmmg++y1HkKn8iCCHqvYLSXAWW8FQ==",
           "security": {
             "risk": "medium",
@@ -136,8 +136,8 @@
             "processExecution": "无",
             "persistence": "跨会话持久化是该插件的核心功能;需手动调用 `memory_forget` 清除,没有自动过期机制",
             "manualReviewStatus": "partial",
-            "manualReviewNote": "compose 验证通过(0.1.1-rc.2);单机场景下主要是数据卫生风险(明文存储、自动跨会话注入、无过期),若与 dsh-lan-access 等把 Web UI 暴露到局域网的插件叠加使用,记忆条目的实际可读写范围会扩大到整个局域网,应届时按 high 处理",
-            "lastReviewedAt": "2026-08-28"
+            "manualReviewNote": "compose 仅在旧版 0.1.1-rc.2 通过；2026-11-16 实测 @deepseek-ai/dsh@0.2.2-rc.3 拒绝安装（npm 最新版仍为 0.1.5，声明 ^0.1.0-rc.6 系列依赖，需旧内核或显式 allow-version 才可装载）；单机场景下主要是数据卫生风险(明文存储、自动跨会话注入、无过期),若与 dsh-lan-access 等把 Web UI 暴露到局域网的插件叠加使用,记忆条目的实际可读写范围会扩大到整个局域网,应届时按 high 处理",
+            "lastReviewedAt": "2026-11-16"
           }
         }
       ]
@@ -152,7 +152,7 @@
         {
           "version": "0.1.0",
           "testedDsh": "0.1.1-rc.2",
-          "notes": "社区验证线 0.1.1-rc.1:dsh plugin add 安装并合成通过",
+          "notes": "仅旧版 0.1.1-rc.2 通过合成验证；2026-11-16 实测 @deepseek-ai/dsh@0.2.2-rc.3 因依赖 @deepseek-ai/dsh-tools@^0.0.1-rc.1 拒绝安装",
           "integrity": "sha512-dRN8i4CvUw9iD0XPTae9FfDwFHP1jpFcjY2oSpc6e8RBbJmLYya8hpYgChtohRpv9Fw8o46NRMv919zUMK6Niw==",
           "security": {
             "risk": "low",
@@ -164,8 +164,8 @@
             "processExecution": "无",
             "persistence": "无",
             "manualReviewStatus": "partial",
-            "manualReviewNote": "compose 验证通过(0.1.1-rc.2);README 描述的行为面与源码结构均极小(单一 greet 工具),未做独立代码级安全审计但功能上没有可利用面",
-            "lastReviewedAt": "2026-08-28"
+            "manualReviewNote": "compose 仅在旧版 0.1.1-rc.2 通过；2026-11-16 实测 @deepseek-ai/dsh@0.2.2-rc.3 拒绝安装（npm 最新版仍为 0.1.0 且声明 @deepseek-ai/dsh-tools@^0.0.1-rc.1，需旧内核或显式 allow-version 才可装载）；README 描述的行为面与源码结构均极小(单一 greet 工具),未做独立代码级安全审计但功能上没有可利用面",
+            "lastReviewedAt": "2026-11-16"
           }
         }
       ]

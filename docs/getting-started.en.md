@@ -47,9 +47,15 @@ cosign verify-blob \
 
 The first desktop launch unpacks the official runtime into user data once. Sessions stay in official `~/.dsh`.
 
-## Start from source in five minutes
+## Install WSL / Linux CLI in 30 Seconds (or Run from Source)
 
-You need Node.js 24.9+ (official `@deepseek-ai/dsh@0.2.2-rc.3` declares `engines.node >=24.9.0`; this workspace requires at least 22.15 and CI passes on Node 22), pnpm, and a working `DEEPSEEK_API_KEY` (official 0.1.0-rc.8+ session JSONL uses `node:zlib` zstd, added in 22.15):
+You need Node.js 24.9+ (official `@deepseek-ai/dsh@0.2.2-rc.3` declares `engines.node >=24.9.0`; this workspace requires at least 22.15 and CI passes on Node 22), pnpm, and a working `DEEPSEEK_API_KEY` (official 0.1.0-rc.8+ session JSONL uses `node:zlib` zstd, added in 22.15). Install `dsh-community` and `dsh-marketplace` directly with one command:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/kamanager2012/dsh-community/main/scripts/install-linux.sh | bash
+```
+
+Or clone manually from source:
 
 ```sh
 git clone https://github.com/kamanager2012/dsh-community.git

@@ -954,4 +954,44 @@ describe('shell pages', () => {
     expect(html).not.toContain('<script>alert(1)</script>')
     expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;')
   })
+
+  it('flags legacy plugins that have not been validated on the installed DSH kernel and requires confirmation', () => {
+    const html = renderMarketplacePage({
+      product: 'DSH Community',
+      installedDsh: '0.2.2-rc.3',
+      source: 'live',
+      fetchedAt: '2026-11-16T14:30:00.000Z',
+      registryUrl: 'https://example.com/catalog.json',
+      installed: [],
+      profile: 'web',
+      catalog: {
+        version: 1,
+        updatedAt: '2026-11-16T14:30:00Z',
+        plugins: [
+          {
+            name: 'dsh-context',
+            description: 'Modern plugin',
+            author: 'a',
+            repo: 'https://example.com/a',
+            category: 'ui',
+            versions: [{ version: '0.84.1', testedDsh: '0.2.2-rc.3' }],
+          },
+          {
+            name: 'dsh-compressor',
+            description: 'Legacy plugin',
+            author: 'b',
+            repo: 'https://example.com/b',
+            category: 'tool',
+            versions: [{ version: '0.1.0', testedDsh: '0.1.1-rc.2' }],
+          },
+        ],
+      },
+    })
+    expect(html).toContain('当前内核 @deepseek-ai/dsh@0.2.2-rc.3')
+    expect(html).toContain('仅旧内核 0.1.1-rc.2（未适配当前 0.2.2-rc.3）')
+    expect(html).toContain('data-plugin-name="dsh-compressor" data-plugin-confirm="true" data-plugin-risk="legacy"')
+    expect(html).toContain('尝试安装（旧内核兼容）')
+    expect(html).toContain('data-plugin-name="dsh-context">安装到 web profile')
+    expect(html).not.toMatch(/style="/i)
+  })
 })
