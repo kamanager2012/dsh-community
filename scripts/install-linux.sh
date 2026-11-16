@@ -124,9 +124,21 @@ if [ -z "$LOCAL_REPO" ] && ! command -v git >/dev/null 2>&1; then
   exit 1
 fi
 
+resolve_abs_path() {
+  node -e 'const path = require("node:path"); process.stdout.write(path.resolve(process.argv[1]))' "$1"
+}
+
+PREFIX="$(resolve_abs_path "$PREFIX")"
+BIN_DIR="$(resolve_abs_path "$BIN_DIR")"
+if [ -n "$LOCAL_REPO" ]; then
+  LOCAL_REPO="$(resolve_abs_path "$LOCAL_REPO")"
+fi
+
 INSTALL_REPO="$PREFIX/repo"
 TUI_ENTRY="$INSTALL_REPO/apps/tui/dist/bin.js"
 MARKETPLACE_ENTRY="$INSTALL_REPO/packages/marketplace/bin/dsh-marketplace.js"
+OFFICIAL_BIN_DIR="$INSTALL_REPO/packages/dsh-bridge/node_modules/.bin"
+TUI_OFFICIAL_BIN_DIR="$INSTALL_REPO/apps/tui/node_modules/.bin"
 
 if [ "$DRY_RUN" -eq 1 ]; then
   echo "[dry-run] node=v$NODE_VER prefix=$PREFIX bin_dir=$BIN_DIR"
@@ -135,7 +147,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
   else
     echo "[dry-run] would clone/update $REPO_URL ($BRANCH) -> $INSTALL_REPO"
   fi
-  echo "[dry-run] would run pnpm install --frozen-lockfile and build CLI + marketplace packages"
+  echo "[dry-run] would run pnpm install --frozen-lockfile and build CLI, remote-web PWA, + marketplace packages"
   echo "[dry-run] would write shims in $BIN_DIR: dsh-community, dsh-marketplace"
   exit 0
 fi
@@ -159,7 +171,7 @@ else
   fi
 fi
 
-echo "Installing dependencies and building dsh-community Terminal CLI..."
+echo "Installing dependencies and building dsh-community Terminal CLI + remote-web PWA..."
 cd "$INSTALL_REPO"
 pnpm install --frozen-lockfile
 pnpm \
@@ -168,6 +180,7 @@ pnpm \
   --filter @dsh-community/remote-adapter \
   --filter @dsh-community/tui-surface \
   --filter @dsh-community/tui \
+  --filter @dsh-community/remote-web \
   --filter @dsh-community/marketplace \
   build
 
@@ -179,6 +192,8 @@ chmod 0755 "$BIN_DIR/dsh-community"
 
 cat > "$BIN_DIR/dsh-marketplace" <<EOF
 #!/usr/bin/env sh
+PATH="$OFFICIAL_BIN_DIR:$TUI_OFFICIAL_BIN_DIR:\$PATH"
+export PATH
 exec node "$MARKETPLACE_ENTRY" "\$@"
 EOF
 chmod 0755 "$BIN_DIR/dsh-marketplace"
