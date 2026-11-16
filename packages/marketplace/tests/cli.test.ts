@@ -56,7 +56,7 @@ describe('marketplace cli', () => {
     }))
     assert.equal(result.code, 0)
     assert.match(result.out, /plugin-a/)
-    assert.match(result.out, /未验证/)
+    assert.match(result.out, /未验证（仅旧版 0\.1\.0-rc\.9）/)
   })
 
   it('ignores a lone -- so pnpm extra args still reach the command', async () => {

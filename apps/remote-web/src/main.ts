@@ -1180,8 +1180,8 @@ function renderBannerAndToast(): void {
   }
 }
 
-function renderSidebarBodyOnly(): void {
-  const body = document.getElementById('sidebar-sessions')
+function renderSidebarBodyOnly(targetBody?: HTMLElement): void {
+  const body = targetBody ?? document.getElementById('sidebar-sessions')
   if (!body) return
   body.replaceChildren()
 
@@ -1378,7 +1378,7 @@ function renderSidebar(aside: HTMLElement): void {
   const listWrap = el('div', 'sidebar-list')
   listWrap.id = 'sidebar-sessions'
   aside.appendChild(listWrap)
-  renderSidebarBodyOnly()
+  renderSidebarBodyOnly(listWrap)
 }
 
 function buildNewSessionForm(): HTMLElement {

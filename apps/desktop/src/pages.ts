@@ -84,6 +84,7 @@ export interface DiagnosticsPageModel {
 
 export interface MarketplacePageModel {
   readonly product: string
+  readonly installedDsh?: string
   readonly catalog?: MarketplaceCatalog
   readonly source: MarketplaceSource
   readonly fetchedAt: string
@@ -609,20 +610,38 @@ export function renderMarketplacePage(model: MarketplacePageModel): string {
         const note = version.notes === undefined ? '' : ` · ${escapeHtml(version.notes)}`
         return `<span class="chip">v${escapeHtml(version.version)} · 验证线 ${escapeHtml(version.testedDsh)}${note}</span>`
       }).join('')
+      const installedDsh = model.installedDsh
+      const matchesInstalled = installedDsh === undefined
+        || plugin.versions.some((version) => version.testedDsh === installedDsh)
+      const latestTested = plugin.versions[plugin.versions.length - 1]?.testedDsh
+      const compatBadge = matchesInstalled
+        ? ''
+        : `<span class="chip risk-med">仅旧内核 ${escapeHtml(latestTested ?? '未知')}（未适配当前 ${escapeHtml(installedDsh ?? '')}）</span>`
       const needsConfirm = !installed
-        && latestSecurity !== undefined
-        && (latestSecurity.requiresConfirmation || latestSecurity.risk !== 'low')
+        && (
+          !matchesInstalled
+          || (latestSecurity !== undefined && (latestSecurity.requiresConfirmation || latestSecurity.risk !== 'low'))
+        )
+      const confirmParts: string[] = []
+      if (latestSecurity !== undefined && (latestSecurity.requiresConfirmation || latestSecurity.risk !== 'low')) {
+        confirmParts.push(`风险等级为 ${latestSecurity.risk}`)
+      }
+      if (!matchesInstalled) {
+        confirmParts.push(`尚未在当前 @deepseek-ai/dsh@${installedDsh ?? ''} 上验证兼容（仅适配 ${latestTested ?? '旧版'}，官方 CLI 可能会拒绝安装）`)
+      }
       const confirmAttrs = needsConfirm
-        ? ` data-plugin-confirm="true" data-plugin-risk="${escapeHtml(latestSecurity.risk)}"`
+        ? ` data-plugin-confirm="true" data-plugin-risk="${escapeHtml(latestSecurity?.risk ?? 'legacy')}" data-plugin-confirm-reason="${escapeHtml(confirmParts.join('；'))}"`
         : ''
+      const installLabel = matchesInstalled ? '安装到 web profile' : '尝试安装（旧内核兼容）'
       const actionButton = installed
         ? `<button class="secondary small${disabled}" data-plugin-action="remove" data-plugin-name="${escapeHtml(plugin.name)}">卸载</button>`
-        : `<button class="small${disabled}" data-plugin-action="install" data-plugin-name="${escapeHtml(plugin.name)}"${confirmAttrs}>安装到 web profile</button>`
+        : `<button class="small${disabled}" data-plugin-action="install" data-plugin-name="${escapeHtml(plugin.name)}"${confirmAttrs}>${installLabel}</button>`
       return `<li>
         <div class="plugin-head">
           <code class="plugin-name">${escapeHtml(plugin.name)}</code>
           <span class="author">by ${escapeHtml(plugin.author)}</span>
           ${riskBadge}
+          ${compatBadge}
           ${installed ? '<span class="chip ok">已装</span>' : ''}
         </div>
         <p>${escapeHtml(plugin.description)}</p>
@@ -645,7 +664,7 @@ export function renderMarketplacePage(model: MarketplacePageModel): string {
     `${model.product} · 社区市场`,
     (nonce) => `<h1>社区市场</h1>
      <p>浏览 <a href="${escapeHtml(model.registryUrl)}">插件目录 catalog.json</a>。安装/卸载按钮唤起官方 <code>dsh plugin --profile ${escapeHtml(model.profile)} add|remove</code>（写完 profile 后重启官方运行时生效）；本窗口不自己实现安装器。TUI profile 的安装仍走 <code>dsh-marketplace install &lt;name&gt;</code> 或上面这行官方命令。</p>
-     <p class="meta">${escapeHtml(sourceLine)} · 抓取时间 ${escapeHtml(formatLocalTimestamp(model.fetchedAt))} · 已装 ${String(model.installed.length)} 个（${escapeHtml(model.profile)} profile）</p>
+     <p class="meta">${escapeHtml(sourceLine)} · 抓取时间 ${escapeHtml(formatLocalTimestamp(model.fetchedAt))} · 已装 ${String(model.installed.length)} 个（${escapeHtml(model.profile)} profile${model.installedDsh === undefined ? '' : ` · 当前内核 @deepseek-ai/dsh@${escapeHtml(model.installedDsh)}`}）</p>
      ${errorBlock}
      <div class="row">
        <button id="refresh"${disabled}>刷新目录</button>
@@ -666,8 +685,8 @@ export function renderMarketplacePage(model: MarketplacePageModel): string {
            const name = btn.getAttribute('data-plugin-name') ?? ''
            const action = btn.getAttribute('data-plugin-action') ?? ''
            if (action === 'install' && btn.getAttribute('data-plugin-confirm') === 'true') {
-             const risk = btn.getAttribute('data-plugin-risk') ?? 'medium'
-             if (!window.confirm('插件 ' + name + ' 标记为 ' + risk + ' 风险，确认安装到 web profile？')) return
+             const reason = btn.getAttribute('data-plugin-confirm-reason') || ('风险等级为 ' + (btn.getAttribute('data-plugin-risk') ?? 'medium'))
+             if (!window.confirm('插件 ' + name + '：' + reason + '。确认继续安装到 web profile？')) return
            }
            window.dshCommunity?.pluginAction(name, action)
          })

@@ -130,7 +130,9 @@ export async function runMarketplaceCli(options: MarketplaceCliOptions): Promise
     case 'list': {
       console.log(`社区市场 · 已验证线 ${testedDsh} · ${catalog.plugins.length} 个插件`)
       for (const item of classified) {
-        const mark = item.latest.status === 'tested' ? '' : ' ⚠未验证'
+        const mark = item.latest.status === 'tested'
+          ? ''
+          : ` ⚠未验证（仅旧版 ${item.latest.entry.testedDsh}）`
         const risk = item.latest.entry.security?.risk
         const riskMark = risk !== undefined && risk !== 'low' ? ` [${risk}]` : ''
         console.log(`  ${item.plugin.name}  [${item.plugin.category}]  ${item.plugin.description.slice(0, 60)}${mark}${riskMark}`)
@@ -186,7 +188,9 @@ export async function runMarketplaceCli(options: MarketplaceCliOptions): Promise
       console.log(`  ${item.plugin.description}`)
       console.log(`  仓库: ${item.plugin.repo}`)
       for (const version of item.plugin.versions) {
-        const mark = version.testedDsh === testedDsh ? '' : '(未验证)'
+        const mark = version.testedDsh === testedDsh
+          ? ''
+          : `(未适配 ${testedDsh}，仅验证 ${version.testedDsh})`
         const facts = [
           version.integrity !== undefined ? `digest ${version.integrity.slice(0, 18)}…` : undefined,
           version.provenance === true ? 'provenance ✓' : undefined,
@@ -218,7 +222,9 @@ export async function runMarketplaceCli(options: MarketplaceCliOptions): Promise
       }
       const resolvedVersion = version ?? item.latest.entry.version
       if (item.latest.status === 'untested' && version === undefined) {
-        console.warn(`⚠ ${packageName} 最新版未在 ${testedDsh} 上验证;用 @${item.latest.entry.version} 明确指定仍可安装`)
+        console.warn(
+          `⚠ ${packageName} 最新版未在 ${testedDsh} 上验证（仅验证旧版 ${item.latest.entry.testedDsh}，官方 dsh plugin add 可能拒绝安装）；用 @${item.latest.entry.version} 明确指定仍可安装`,
+        )
       }
       const entry = item.plugin.versions.find(v => v.version === resolvedVersion)
       if (entry?.integrity === undefined) {

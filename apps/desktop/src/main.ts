@@ -397,8 +397,15 @@ function marketplaceCachePath(): string {
 
 function marketplaceModel() {
   const snapshot = marketplace
+  let installedDsh: string | undefined
+  try {
+    installedDsh = resolveOfficialDsh({ from: import.meta.url }).version
+  } catch {
+    installedDsh = undefined
+  }
   return {
     product: COMMUNITY_PRODUCT_NAME,
+    ...(installedDsh === undefined ? {} : { installedDsh }),
     ...(snapshot?.catalog === undefined ? {} : { catalog: snapshot.catalog }),
     source: snapshot?.source ?? 'none',
     fetchedAt: snapshot?.fetchedAt ?? '',

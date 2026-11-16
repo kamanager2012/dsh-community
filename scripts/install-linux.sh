@@ -1,0 +1,205 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# One-command WSL/Linux Terminal installer for dsh-community & dsh-marketplace.
+# Installs a clean source build under $XDG_DATA_HOME/dsh-community and places
+# wrapper shims in ~/.local/bin without npm-publishing private workspace packages
+# or modifying the official @deepseek-ai/dsh kernel.
+
+PREFIX="${XDG_DATA_HOME:-$HOME/.local/share}/dsh-community"
+BIN_DIR="$HOME/.local/bin"
+REPO_URL="https://github.com/kamanager2012/dsh-community.git"
+BRANCH="main"
+LOCAL_REPO=""
+DRY_RUN=0
+
+usage() {
+  cat <<'EOF'
+Usage: install-linux.sh [options]
+
+Install the dsh-community WSL/Linux Terminal CLI (dsh-community) and plugin discovery
+CLI (dsh-marketplace) from this repository without cloning manually.
+
+Options:
+  --prefix <dir>       Install workspace directory (default: ~/.local/share/dsh-community)
+  --bin-dir <dir>      Directory for dsh-community / dsh-marketplace shims (default: ~/.local/bin)
+  --repo-url <url>     Git clone URL (default: https://github.com/kamanager2012/dsh-community.git)
+  --branch <branch>    Branch or tag to install (default: main)
+  --local-repo <dir>   Copy an existing local checkout instead of cloning from GitHub
+  --dry-run            Print planned steps and exit without writing files
+  -h, --help           Show this help message
+EOF
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --prefix)
+      [ "$#" -ge 2 ] || { echo "ERROR: --prefix requires a directory" >&2; exit 1; }
+      PREFIX="$2"
+      shift 2
+      ;;
+    --bin-dir)
+      [ "$#" -ge 2 ] || { echo "ERROR: --bin-dir requires a directory" >&2; exit 1; }
+      BIN_DIR="$2"
+      shift 2
+      ;;
+    --repo-url)
+      [ "$#" -ge 2 ] || { echo "ERROR: --repo-url requires a URL" >&2; exit 1; }
+      REPO_URL="$2"
+      shift 2
+      ;;
+    --branch)
+      [ "$#" -ge 2 ] || { echo "ERROR: --branch requires a ref" >&2; exit 1; }
+      BRANCH="$2"
+      shift 2
+      ;;
+    --local-repo)
+      [ "$#" -ge 2 ] || { echo "ERROR: --local-repo requires a directory" >&2; exit 1; }
+      LOCAL_REPO="$2"
+      shift 2
+      ;;
+    --dry-run)
+      DRY_RUN=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "ERROR: unknown option: $1" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
+case "$(uname -s)" in
+  Linux) ;;
+  *)
+    echo "ERROR: install-linux.sh is for Linux and WSL2 only (detected $(uname -s))." >&2
+    echo "Use official deepseek-harness installers for Windows or macOS." >&2
+    exit 1
+    ;;
+esac
+
+if ! command -v node >/dev/null 2>&1; then
+  echo "ERROR: Node.js is not installed. Install Node.js >= 24.9.0 (minimum 22.15.0) and retry." >&2
+  exit 1
+fi
+
+NODE_VER="$(node -p 'process.versions.node')"
+set +e
+node -e '
+const [major, minor] = process.versions.node.split(".").map(Number);
+if (major < 22 || (major === 22 && minor < 15)) process.exit(2);
+if (major < 24 || (major === 24 && minor < 9)) process.exit(10);
+'
+NODE_CHECK_RC=$?
+set -e
+
+if [ "$NODE_CHECK_RC" -eq 2 ]; then
+  echo "ERROR: Node.js >= 22.15.0 is required for node:zlib zstd session support (found v$NODE_VER)." >&2
+  exit 1
+elif [ "$NODE_CHECK_RC" -eq 10 ]; then
+  echo "WARN: Official @deepseek-ai/dsh recommends Node.js >= 24.9.0; continuing with Node v$NODE_VER (>= 22.15.0)." >&2
+fi
+
+if ! command -v pnpm >/dev/null 2>&1; then
+  if [ "$DRY_RUN" -eq 1 ]; then
+    echo "[dry-run] pnpm not found on PATH; would attempt corepack enable"
+  elif command -v corepack >/dev/null 2>&1; then
+    echo "pnpm not found; activating pnpm via corepack..."
+    corepack enable >/dev/null 2>&1 || true
+  fi
+fi
+
+if ! command -v pnpm >/dev/null 2>&1 && [ "$DRY_RUN" -eq 0 ]; then
+  echo "ERROR: pnpm is required (e.g. npm install -g pnpm@11.21.0 or corepack enable pnpm)." >&2
+  exit 1
+fi
+
+if [ -z "$LOCAL_REPO" ] && ! command -v git >/dev/null 2>&1; then
+  echo "ERROR: git is required unless --local-repo is provided." >&2
+  exit 1
+fi
+
+INSTALL_REPO="$PREFIX/repo"
+TUI_ENTRY="$INSTALL_REPO/apps/tui/dist/bin.js"
+MARKETPLACE_ENTRY="$INSTALL_REPO/packages/marketplace/bin/dsh-marketplace.js"
+
+if [ "$DRY_RUN" -eq 1 ]; then
+  echo "[dry-run] node=v$NODE_VER prefix=$PREFIX bin_dir=$BIN_DIR"
+  if [ -n "$LOCAL_REPO" ]; then
+    echo "[dry-run] would copy source from $LOCAL_REPO -> $INSTALL_REPO"
+  else
+    echo "[dry-run] would clone/update $REPO_URL ($BRANCH) -> $INSTALL_REPO"
+  fi
+  echo "[dry-run] would run pnpm install --frozen-lockfile and build CLI + marketplace packages"
+  echo "[dry-run] would write shims in $BIN_DIR: dsh-community, dsh-marketplace"
+  exit 0
+fi
+
+mkdir -p "$PREFIX" "$BIN_DIR"
+
+if [ -n "$LOCAL_REPO" ]; then
+  [ -d "$LOCAL_REPO" ] || { echo "ERROR: --local-repo does not exist: $LOCAL_REPO" >&2; exit 1; }
+  rm -rf "$INSTALL_REPO"
+  mkdir -p "$INSTALL_REPO"
+  cp -a "$LOCAL_REPO"/. "$INSTALL_REPO"/
+else
+  if [ -d "$INSTALL_REPO/.git" ]; then
+    echo "Updating existing installation at $INSTALL_REPO..."
+    git -C "$INSTALL_REPO" fetch --depth 1 origin "$BRANCH"
+    git -C "$INSTALL_REPO" checkout -q FETCH_HEAD
+  else
+    rm -rf "$INSTALL_REPO"
+    echo "Cloning $REPO_URL ($BRANCH) into $INSTALL_REPO..."
+    git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$INSTALL_REPO"
+  fi
+fi
+
+echo "Installing dependencies and building dsh-community Terminal CLI..."
+cd "$INSTALL_REPO"
+pnpm install --frozen-lockfile
+pnpm \
+  --filter @dsh-community/shared-types \
+  --filter @dsh-community/dsh-bridge \
+  --filter @dsh-community/remote-adapter \
+  --filter @dsh-community/tui-surface \
+  --filter @dsh-community/tui \
+  --filter @dsh-community/marketplace \
+  build
+
+cat > "$BIN_DIR/dsh-community" <<EOF
+#!/usr/bin/env sh
+exec node "$TUI_ENTRY" "\$@"
+EOF
+chmod 0755 "$BIN_DIR/dsh-community"
+
+cat > "$BIN_DIR/dsh-marketplace" <<EOF
+#!/usr/bin/env sh
+exec node "$MARKETPLACE_ENTRY" "\$@"
+EOF
+chmod 0755 "$BIN_DIR/dsh-marketplace"
+
+echo
+echo "Installed commands:"
+echo "  $BIN_DIR/dsh-community"
+echo "  $BIN_DIR/dsh-marketplace"
+
+case ":$PATH:" in
+  *":$BIN_DIR:"*) ;;
+  *)
+    echo
+    echo "NOTE: $BIN_DIR is not currently in your PATH. Add it to your shell profile:"
+    echo "  export PATH=\"$BIN_DIR:\$PATH\""
+    ;;
+esac
+
+echo
+echo "Next steps:"
+echo "  export DEEPSEEK_API_KEY=..."
+echo "  dsh-community doctor"
+echo "  dsh-community            # start or resume in ~/.dsh"
+echo "  dsh-community remote start --engines dsh,claude,codex --qr"

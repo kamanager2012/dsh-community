@@ -7,14 +7,80 @@
 [![Official Core](https://img.shields.io/badge/Official%20Core-%40deepseek--ai%2Fdsh-blue)](https://github.com/deepseek-ai/deepseek-harness)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-> **Start a task in official `dsh web` or official Win/macOS Desktop, resume it seamlessly in Linux Terminal, Linux AppImage, or on your Android phone — and steer DSH, Claude Code, Codex CLI, and OpenCode remotely over E2EE.**  
-> Unvendored complementary community edition for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`@deepseek-ai/dsh`, Official Source Ownership = 0): 100% shared `~/.dsh` session truth, zero duplicate official surfaces, zero second agent loop.
+> **Start a task in official `dsh web` or official Win/macOS Desktop, resume it seamlessly in Linux Terminal, Linux AppImage, or mobile browser / Android — and steer DSH, Claude Code, Codex CLI, and OpenCode remotely over Noise IK E2EE with mobile tool approval and read-only Git diff review.**  
+> Unvendored complementary community edition for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`@deepseek-ai/dsh`, Official Source Ownership = 0): 100% shared `~/.dsh` session truth, zero second agent loop.
+
+## Live UI Previews
+
+| E2EE Browser PWA (Multi-Agent Chat / Approvals / Git Diff) | Linux Desktop Console (Worktree Dashboard / QR Pairing / Marketplace) |
+|---|---|
+| ![DSH Community Remote Web PWA](docs/assets/remote-web-pwa.png) | ![DSH Community Desktop Remote Console](docs/assets/desktop-remote-console.png) |
+
+---
+
+## 30-Second Quick Start
+
+### 1. One-Command WSL / Linux Terminal Install (`dsh-community` & `dsh-marketplace`)
+
+Requires Node.js 24.9+ (official `@deepseek-ai/dsh@0.2.2-rc.3` declares `engines.node >=24.9.0`; workspace minimum is `22.15+`, verified on Node 22 & 24 CI) and `pnpm`:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/kamanager2012/dsh-community/main/scripts/install-linux.sh | bash
+```
+
+Then run directly (shares `~/.dsh` sessions with official `dsh`, or orchestrate Claude Code / Codex CLI / OpenCode alongside it):
+
+```sh
+export DEEPSEEK_API_KEY=...
+dsh-community                 # resume latest ~/.dsh session or start a new one
+dsh-community doctor          # environment preflight (never prints keys)
+dsh-marketplace list          # inspect tested plugins and kernel compatibility warnings
+
+# Boot E2EE Multi-Agent Remote Host + built-in Browser PWA & pairing QR:
+dsh-community remote gateway --serve-web --port 8787 &
+dsh-community remote start --engines dsh,claude,codex,opencode \
+  --relay-url ws://127.0.0.1:8787/relay \
+  --signaling-url ws://127.0.0.1:8787/signal \
+  --web-url http://127.0.0.1:8787/app/ --qr
+```
+
+### 2. Or Download Signed Linux AppImage / Android APK
+
+Grab `.AppImage` (Linux Desktop) or `-android-arm64-v8a.apk` (Android 8.0+ Preview APK; CI `x86_64` emulator E2EE verified, physical `arm64-v8a` handset telemetry `[UNVERIFIED]`) from [`releases/latest`](https://github.com/kamanager2012/dsh-community/releases/latest):
+
+```sh
+chmod +x dsh-community-*.AppImage && sha256sum -c dsh-community-*.AppImage.sha256
+./dsh-community-*.AppImage
+
+sha256sum -c dsh-community-*-android-arm64-v8a.apk.sha256
+adb install dsh-community-*-android-arm64-v8a.apk
+```
+
+<details>
+<summary>Run from source checkout / package AppImage locally / Cosign verification</summary>
+
+```sh
+git clone https://github.com/kamanager2012/dsh-community.git && cd dsh-community
+pnpm install
+export DEEPSEEK_API_KEY=...
+
+pnpm start                    # Terminal TUI (new / resume / sessions / plugins / run doctor)
+pnpm desktop                  # Launch Electron shell from source
+pnpm marketplace -- list      # Plugin discovery CLI
+pnpm desktop:package -- --appimage   # Local Linux AppImage (unsigned preview)
+```
+
+Cosign keyless verification and exact release filenames: [`docs/release.md#artifact-signing-keyless`](docs/release.md#artifact-signing-keyless) · Current release ledger: [`docs/current-release.md`](docs/current-release.md) · Cross-network TLS reverse proxy setup: [`deploy/relay/README.md`](deploy/relay/README.md) & [`docs/remote-host-client.md`](docs/remote-host-client.md).
+
+</details>
+
+---
 
 ## Highlights
 
 - **Shared `~/.dsh` Across Official & Three Complementary Community Endpoints** — Official `deepseek-ai/deepseek-harness` owns the execution kernel, Web UI, and Windows/macOS Desktop (`win-x64`, `mac-arm64`, `mac-x64`). `dsh-community` delivers the **three complementary community endpoints** absent upstream: **WSL/Linux Terminal**, **Linux Desktop AppImage**, and **Android Remote Client APK** (`dsh-community-*-android-arm64-v8a.apk` shipped in [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest); CI `x86_64` emulator E2EE verified, physical `arm64-v8a` handset telemetry `[UNVERIFIED]`).
-- **Multi-Agent E2EE Remote Control Plane** — Steer local **DSH, Claude Code, Codex CLI, and OpenCode ACP** sessions from the signed Android APK, browser PWA, or mobile screen (`dsh-community remote start --engines claude,codex,opencode --qr`) over Noise IK encryption, LAN mDNS, WebRTC P2P, or a self-hosted Blind Relay ([`deploy/relay/`](deploy/relay/)), with read-only scoped Git diff review.
-- **Supply-Chain Verified Releases (12 Signed Assets) & Plugin Catalog** — Every release publishes the Linux `.AppImage`, Android `arm64-v8a` `.apk`, and official-runtime CycloneDX SBOM with SHA-256 digests and Keyless Cosign `.sigstore.json` bundles. [`packages/marketplace/catalog.json`](packages/marketplace/catalog.json) records real `testedDsh`, package integrity digests, and permission disclosures (installation remains on the official `dsh plugin add` chain).
+- **Multi-Agent E2EE Remote Control Plane (`packages/remote-adapter`)** — Steer **DSH, Claude Code, Codex CLI, and OpenCode ACP** from the zero-install Browser PWA ([`apps/remote-web`](apps/remote-web/)) or signed Android APK over `Noise_IK_25519_ChaChaPoly_BLAKE2b`, LAN mDNS, WebRTC P2P, or self-hosted Blind Relay ([`deploy/relay/`](deploy/relay/)), validated end-to-end in headless Chromium for Noise IK pairing, `tool_use` approval, and read-only Git diff inspection.
+- **Supply-Chain Verified Releases (12 Signed Assets) & Legacy Plugin Guardrails** — Every release ships `.AppImage`, `arm64-v8a` `.apk`, and an official-runtime CycloneDX SBOM with SHA-256 digests and Keyless Cosign bundles, tested directly from release artifacts via `artifact-smoke` and `user-loop-evidence.yml`, while Desktop Marketplace & `dsh-marketplace` surface explicit compatibility warnings for legacy `0.1.1-rc.2` plugins.
 
 ---
 
