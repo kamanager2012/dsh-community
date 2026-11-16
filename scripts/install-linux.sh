@@ -191,7 +191,10 @@ else
   fi
   echo "Fetching $REPO_URL ($REF) into $INSTALL_REPO..."
   git -C "$INSTALL_REPO" fetch --depth 1 origin "$REF"
-  git -C "$INSTALL_REPO" checkout -q --detach FETCH_HEAD
+  git -C "$INSTALL_REPO" checkout -q --force --detach FETCH_HEAD
+  if [ -n "$EXPECTED_COMMIT" ]; then
+    git -C "$INSTALL_REPO" clean -fdq
+  fi
 fi
 
 RESOLVED_COMMIT=""
@@ -206,6 +209,11 @@ if [ -n "$EXPECTED_COMMIT" ]; then
   fi
   if [ "$RESOLVED_COMMIT" != "$EXPECTED_COMMIT" ]; then
     echo "ERROR: checked-out commit mismatch: expected $EXPECTED_COMMIT, got $RESOLVED_COMMIT (ref=$REF)." >&2
+    exit 1
+  fi
+  DIRTY_TREE="$(git -C "$INSTALL_REPO" status --porcelain=v1 --untracked-files=normal)"
+  if [ -n "$DIRTY_TREE" ]; then
+    echo "ERROR: $INSTALL_REPO has uncommitted or untracked changes while --expected-commit ($EXPECTED_COMMIT) is enforced." >&2
     exit 1
   fi
 fi

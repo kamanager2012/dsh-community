@@ -69,8 +69,8 @@ curl -fsSL https://raw.githubusercontent.com/kamanager2012/dsh-community/main/sc
 ```
 
 > Remote pairing & security notes:
-> - **Same-machine vs mobile**: `127.0.0.1` only works from a browser on the same host (a phone scanning `127.0.0.1` connects to the phone itself). Use `--host <LAN-IP> --mdns` on LAN for the Android APK, or front `remote gateway` with Caddy/Nginx TLS (`https://`/`wss://` + `--host-secret`) per [deploy/relay/README.md](../deploy/relay/README.md) for cross-network / mobile Browser PWA pairing.
-> - **Least-privilege pairing**: newly paired devices get only `['observe', 'prompt']` by default — **not `approve`**. Grant tool approval explicitly on the host via `--allow-caps observe,prompt,approve`, the Desktop confirmation UI, or `dsh-community remote grant <deviceId> approve`.
+> - **Same-machine vs mobile**: `127.0.0.1` only works from a browser on the same host (a phone scanning `127.0.0.1` connects to the phone itself). Use `--host <LAN-IP> --mdns` on LAN for the Android APK, or front `remote gateway` with Caddy/Nginx TLS (`https://`/`wss://` + `--host-secret`) per [deploy/relay/README.md](../deploy/relay/README.md) and pass matching `DSH_REMOTE_RELAY_HOST_SECRET` and `DSH_REMOTE_SIGNALING_HOST_SECRET` when starting `remote start` for cross-network / mobile Browser PWA pairing.
+> - **Least-privilege pairing**: newly paired devices get only `['observe', 'prompt']` automatically — passing `--allow-caps observe,prompt,approve` sets only the pairing token ceiling (`DSH_REMOTE_ALLOWED_CAPS`), **not** the default grant. Grant tool approval explicitly via `confirm <candidateId> observe,prompt,approve` (or the Desktop confirmation checkbox when allowed by `--allow-caps`) or post-pairing via `dsh-community remote grant <deviceId> approve`.
 > - **E2EE scope**: Noise IK encrypts remote transport payloads against blind relays; it does not cover LLM provider API traffic, authorized `observe` clients can read uncommitted Git diffs, and no third-party cryptographic audit has been published yet.
 
 Or clone manually from source:

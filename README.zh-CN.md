@@ -58,13 +58,16 @@ dsh-marketplace list          # 查看已验证社区插件与旧版 0.1.1-rc.2 
   # 局域网 Android 客户端直连（将 <LAN-IP> 替换为宿主机实际局域网 IP）：
   dsh-community remote start --engines dsh,claude,codex,opencode --host <LAN-IP> --mdns --qr
 
-  # 跨网络 / 手机浏览器 PWA（先按 deploy/relay/README.md 为 remote gateway 配 Caddy/Nginx HTTPS+WSS 反代与 --host-secret）：
+  # 跨网络 / 手机浏览器 PWA（先按 deploy/relay/README.md 为 remote gateway 配 Caddy/Nginx HTTPS+WSS 反代与 --host-secret；
+  # 单独拉起的 remote start 必须通过这两个环境变量传入与网关一致的注册密钥）：
+  DSH_REMOTE_RELAY_HOST_SECRET="replace-with-strong-secret" \
+  DSH_REMOTE_SIGNALING_HOST_SECRET="replace-with-strong-secret" \
   dsh-community remote start --engines dsh,claude,codex,opencode \
     --relay-url wss://remote.example.com/relay \
     --signaling-url wss://remote.example.com/signal \
     --web-url https://remote.example.com/app/ --qr
   ```
-  > 注意：首次配对设备默认**仅授予 `['observe', 'prompt']`**（只能看会话/状态、发 prompt、读 Git Diff），**不能直接批准工具调用**；如需让手机端执行 `Allow Once` / `Reject`（`approval.respond`），须由宿主机显式授权——启动时加 `--allow-caps observe,prompt,approve`，或配对后执行 `dsh-community remote grant <deviceId> approve`（也可以在桌面端「远程」页勾选）。非回环监听 `remote gateway` 未设 `--host-secret` 会 fail-closed 拒绝启动。
+  > 注意：首次配对设备默认**仅授予 `['observe', 'prompt']`**（只能看会话/状态、发 prompt、读 Git Diff），**不能直接批准工具调用**；`--allow-caps observe,prompt,approve` 仅用于放宽本次配对令牌的**上限能力列表**（不会自动授予 `approve`）。要真正让手机端点击 `Allow Once` / `Reject`（`approval.respond`），须由宿主机明确授权——在配对时于 REPL 输入 `confirm <candidateId> observe,prompt,approve`（需同时在 `--allow-caps` 内并勾选桌面确认框），或配对完成后执行 `dsh-community remote grant <deviceId> approve`。非回环监听 `remote gateway` 未设 `--host-secret` 会 fail-closed 拒绝启动。
   > 安全边界：`Noise_IK_25519_ChaChaPoly_BLAKE2b` 保护远控链路应用载荷（自托管盲中继只转发密文）；但**不替代**模型 Provider API 传输边界，拥有 `observe` 权限的客户端可查看工作区未提交的 `git diff`（若工作区含未提交密钥需自行防范），且本项目尚未完成独立第三方密码学安全审计。
 
 ### 2. 或直接下载已签名 `v0.2.2-rc.3` 桌面 / 安卓安装包

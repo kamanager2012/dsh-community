@@ -58,13 +58,16 @@ dsh-marketplace list          # inspect tested plugins and 0.1.1-rc.2 compatibil
   # Direct LAN pairing for the Android client APK (replace <LAN-IP> with your host LAN IP):
   dsh-community remote start --engines dsh,claude,codex,opencode --host <LAN-IP> --mdns --qr
 
-  # Cross-network or mobile browser PWA (front `remote gateway` with Caddy/Nginx TLS + `--host-secret` per deploy/relay/README.md):
+  # Cross-network or mobile browser PWA (front `remote gateway` with Caddy/Nginx TLS + `--host-secret` per deploy/relay/README.md;
+  # the separately launched host requires matching registration credentials in both env vars):
+  DSH_REMOTE_RELAY_HOST_SECRET="replace-with-strong-secret" \
+  DSH_REMOTE_SIGNALING_HOST_SECRET="replace-with-strong-secret" \
   dsh-community remote start --engines dsh,claude,codex,opencode \
     --relay-url wss://remote.example.com/relay \
     --signaling-url wss://remote.example.com/signal \
     --web-url https://remote.example.com/app/ --qr
   ```
-  > Note: newly paired devices receive **only `['observe', 'prompt']`** by default (read sessions/files/Git diff and send prompts) — they **cannot** approve tool calls (`Allow Once` / `Reject` via `approval.respond`) until the host explicitly grants `approve` via `--allow-caps observe,prompt,approve`, the Desktop confirmation dialog, or `dsh-community remote grant <deviceId> approve`. Binding `remote gateway` to non-loopback/wildcard addresses fails closed without `--host-secret`.
+  > Note: newly paired devices receive **only `['observe', 'prompt']`** by default (read sessions/files/Git diff and send prompts) — passing `--allow-caps observe,prompt,approve` only raises the pairing token's **maximum capability ceiling** (`DSH_REMOTE_ALLOWED_CAPS`); it does **not** automatically grant `approve`. To allow tool approvals (`Allow Once` / `Reject` via `approval.respond`), the host must explicitly confirm with `confirm <candidateId> observe,prompt,approve` (or check `approve` in Desktop UI, when included in `--allow-caps`), or grant post-pairing via `dsh-community remote grant <deviceId> approve`. Binding `remote gateway` to non-loopback/wildcard addresses fails closed without `--host-secret`.
   > Security boundary: `Noise_IK_25519_ChaChaPoly_BLAKE2b` encrypts application payloads over the remote transport link so the self-hosted blind relay forwards opaque ciphertext. It does **not** encrypt or alter model provider API calls (DeepSeek / Anthropic / OpenAI), authorized `observe` clients can read uncommitted working-tree `git diff`s (keep accidental secrets out of dirty worktrees), and no independent third-party cryptographic security audit has been completed yet.
 
 ### 2. Or Download Signed `v0.2.2-rc.3` Linux AppImage / Android APK

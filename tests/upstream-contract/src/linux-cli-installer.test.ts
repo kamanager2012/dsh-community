@@ -217,5 +217,54 @@ describe('Linux/WSL Terminal CLI installer', () => {
     )
     expect(matchRes.status, matchRes.stderr || matchRes.stdout).toBe(0)
     expect(matchRes.stdout).toContain(`ref=v0.2.2-rc.3 commit=${pinnedSha}`)
+
+    // Dirty --local-repo fails closed when --expected-commit is requested
+    writeFileSync(join(srcRepo, 'apps/tui/dist/bin.js'), 'console.log("dirty")\n', 'utf8')
+    const dirtyLocalRes = spawnSync(
+      'bash',
+      [
+        installerPath,
+        '--local-repo',
+        srcRepo,
+        '--expected-commit',
+        pinnedSha,
+        '--prefix',
+        join(workRoot, 'dirty-prefix'),
+        '--bin-dir',
+        join(workRoot, 'dirty-bin'),
+      ],
+      {
+        env: { ...process.env, PATH: `${fakeToolBin}:${process.env.PATH ?? ''}` },
+        encoding: 'utf8',
+      },
+    )
+    expect(dirtyLocalRes.status).toBe(1)
+    expect(dirtyLocalRes.stderr).toContain('uncommitted or untracked changes')
+
+    // Re-installing over a modified existing checkout with --ref + --expected-commit resets & cleans to the exact pinned commit
+    writeFileSync(join(outPrefix, 'repo/apps/tui/dist/bin.js'), 'console.log("tampered")\n', 'utf8')
+    writeFileSync(join(outPrefix, 'repo/tamper.txt'), 'stray\n', 'utf8')
+    const cleanedRes = spawnSync(
+      'bash',
+      [
+        installerPath,
+        '--repo-url',
+        `file://${bareRemote}`,
+        '--ref',
+        'v0.2.2-rc.3',
+        '--expected-commit',
+        pinnedSha,
+        '--prefix',
+        outPrefix,
+        '--bin-dir',
+        outBin,
+      ],
+      {
+        env: { ...process.env, PATH: `${fakeToolBin}:${process.env.PATH ?? ''}` },
+        encoding: 'utf8',
+      },
+    )
+    expect(cleanedRes.status, cleanedRes.stderr || cleanedRes.stdout).toBe(0)
+    expect(readFileSync(join(outPrefix, 'repo/apps/tui/dist/bin.js'), 'utf8')).toBe('console.log("ok")\n')
   })
 })

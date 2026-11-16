@@ -69,8 +69,8 @@ curl -fsSL https://raw.githubusercontent.com/kamanager2012/dsh-community/main/sc
 ```
 
 > 远程控制配对注意：
-> - **同机浏览器 vs 手机跨设备**：`127.0.0.1` 只能在同一台机器的桌面浏览器访问（手机扫 `127.0.0.1` 会连回手机本身）；手机 LAN 直连请给 Android APK 使用 `--host <LAN-IP> --mdns`，手机浏览器 PWA 或公网访问请按 [deploy/relay/README.md](../deploy/relay/README.md) 部署 HTTPS/WSS 反向代理与 `--host-secret`。
-> - **默认最小权限**：首次配对仅授 `['observe', 'prompt']`（只读会话/Git Diff 与发送 prompt），**不含 `approve`**；需远程批准工具调用时，在宿主机启动时加 `--allow-caps observe,prompt,approve` 或配对后执行 `dsh-community remote grant <deviceId> approve`。
+> - **同机浏览器 vs 手机跨设备**：`127.0.0.1` 只能在同一台机器的桌面浏览器访问（手机扫 `127.0.0.1` 会连回手机本身）；手机 LAN 直连请给 Android APK 使用 `--host <LAN-IP> --mdns`，手机浏览器 PWA 或公网访问请按 [deploy/relay/README.md](../deploy/relay/README.md) 部署 HTTPS/WSS 反向代理与 `--host-secret`，并在启动 `remote start` 时传入 `DSH_REMOTE_RELAY_HOST_SECRET` 与 `DSH_REMOTE_SIGNALING_HOST_SECRET`。
+> - **默认最小权限**：首次配对仅自动授予 `['observe', 'prompt']`（只读会话/Git Diff 与发送 prompt），**不含 `approve`**；`--allow-caps observe,prompt,approve` 仅是配对令牌能力上限，真正授权需配对时在 REPL 执行 `confirm <candidateId> observe,prompt,approve`（或桌面确认勾选），或配对后执行 `dsh-community remote grant <deviceId> approve`。
 > - **安全边界**：Noise IK 保护远控链路密文转发，不替代模型 Provider API 传输边界；`observe` 权限可读未提交 Git Diff；项目尚未完成独立第三方密码学安全审计。
 
 或者手动克隆源码启动：

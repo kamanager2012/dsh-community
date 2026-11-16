@@ -167,7 +167,7 @@ Default capabilities granted automatically on first pairing (`DEFAULT_GRANTED_CA
 - `observe` (read-only sessions, events, workspace files, and scoped `git diff`; note that uncommitted working-tree secrets in `git diff` remain visible to authorized `observe` clients)
 - `prompt` (submit follow-up prompts and abort turns)
 
-Privileged capabilities remain denied unless the host operator explicitly grants them (via `--allow-caps`, the Desktop confirmation UI, `confirm <id> <caps>`, or post-pairing `dsh-community remote grant <deviceId> <caps>`):
+Privileged capabilities remain denied unless the host operator explicitly grants them at confirmation time (`confirm <candidateId> <caps>` / checking capabilities in the Desktop confirmation UI, within the `--allow-caps` / `DSH_REMOTE_ALLOWED_CAPS` pairing token ceiling) or post-pairing via `dsh-community remote grant <deviceId> <caps>` (`--allow-caps` alone only configures the token ceiling and does not auto-grant beyond `observe,prompt`):
 
 - `approve` (required by `approval.respond` — must be granted explicitly before a phone can approve/reject tool calls)
 - `answer-question` (`question.respond`)
