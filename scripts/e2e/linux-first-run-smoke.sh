@@ -76,10 +76,19 @@ if [[ -n "$ALTERNATE_GID" ]]; then
     || fail "could not set existing repo to an available secondary group"
 fi
 EXPECTED_GID="$(stat -c '%g' "$WORK/installed/repo")"
+set +e
 (
   umask 027
   bash "$ROOT/scripts/install-linux.sh" "${args[@]}" >"$WORK/shared-reinstall.log" 2>&1
-) || fail "real shared-setgid reinstall failed"
+)
+SHARED_REINSTALL_RC=$?
+set -e
+if [[ "$SHARED_REINSTALL_RC" -ne 0 ]]; then
+  echo "Shared-setgid reinstall exit code: $SHARED_REINSTALL_RC" >&2
+  echo "Installer diagnostic (last 140 lines; redact before sharing):" >&2
+  tail -n 140 "$WORK/shared-reinstall.log" >&2
+  fail "real shared-setgid reinstall failed (exit $SHARED_REINSTALL_RC)"
+fi
 [[ "$(stat -c '%g' "$WORK/installed/repo")" = "$EXPECTED_GID" ]] \
   || fail "staged upgrade changed group of the active repo"
 for rel in apps apps/tui apps/tui/dist apps/tui/dist/bin.js packages/marketplace/bin/dsh-marketplace.js; do
