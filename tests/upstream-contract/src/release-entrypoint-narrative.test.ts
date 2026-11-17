@@ -19,7 +19,7 @@ describe('release channel onboarding accuracy', () => {
       const body = read(name)
       expect(body, name).toContain('github/v/release/kamanager2012/dsh-community?label=Published%20Latest')
       expect(body, name).not.toContain('include_prereleases&label=Published%20Latest')
-      const badgeVersion = preview.tag.slice(1).replaceAll('-', '--')
+      const badgeVersion = preview.tag.replaceAll('-', '--')
       expect(body, name).toContain('img.shields.io/badge/Community%20Preview-' + badgeVersion + '-blue')
       expect(body, name).not.toContain('include_prereleases&label=Community%20Preview')
       expect(body, name).toContain(preview.url)
