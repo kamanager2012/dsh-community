@@ -101,6 +101,30 @@ grep -Fq "another dsh-community installation" "$WORK/concurrent.log" \
 [[ "$(sha256sum "$WORK/installed/repo/apps/tui/dist/bin.js" | awk '{print $1}')" = "$original_hash" ]] \
   || fail "concurrent rejection modified active CLI"
 
+# Two independently staged prefixes must serialize on their shared bin dir.
+# This second install runs a real source build before reaching the bin-dir lock.
+exec 7>>"$WORK/bin/.dsh-community.install.lock"
+flock -x 7
+set +e
+bash "$ROOT/scripts/install-linux.sh" \
+  --repo-url "file://$WORK/origin.git" \
+  --ref acceptance \
+  --expected-commit "$SOURCE_SHA" \
+  --prefix "$WORK/second-prefix" \
+  --bin-dir "$WORK/bin" \
+  >"$WORK/shared-bin-lock.log" 2>&1
+shared_bin_rc=$?
+set -e
+flock -u 7
+exec 7>&-
+[[ "$shared_bin_rc" -ne 0 ]] || fail "different-prefix installer bypassed shared bin lock"
+grep -Fq "another dsh-community installation is publishing to" "$WORK/shared-bin-lock.log" \
+  || fail "shared bin lock failure was not explained"
+[[ "$(sha256sum "$WORK/installed/repo/apps/tui/dist/bin.js" | awk '{print $1}')" = "$original_hash" ]] \
+  || fail "different-prefix lock failure altered active CLI"
+run_cli "$WORK/bin/dsh-community" version >"$WORK/after-shared-lock.txt" \
+  || fail "working CLI was lost after shared bin lock refusal"
+
 if [[ -n "$EVIDENCE_OUT" ]]; then
   mkdir -p "$(dirname "$EVIDENCE_OUT")"
   SOURCE_SHA="$SOURCE_SHA" EVIDENCE_OUT="$EVIDENCE_OUT" node <<'NODE'
@@ -121,7 +145,8 @@ const evidence = {
     marketplaceHelp: 'PASS',
     remoteHelp: 'PASS',
     failedReinstallPreservesWorkingCLI: 'PASS',
-    concurrentInstallFailClosed: 'PASS'
+    concurrentInstallFailClosed: 'PASS',
+    crossPrefixSharedBinLock: 'PASS'
   },
   providerCalls: 0,
   actualAgentTurn: false,
