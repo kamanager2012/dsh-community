@@ -1,6 +1,6 @@
 # Current Community release status
 
-> Snapshot date: 2026-11-15. Machine-readable source of truth:
+> Snapshot date: 2026-11-17. Machine-readable source of truth:
 > [`dsh-community/docs/current-release.json`](https://github.com/kamanager2012/dsh-community/blob/main/docs/current-release.json).
 > This page summarizes the operational status; it does not invent a second Latest or
 > kernel pin and does not replace GitHub Releases, Actions runs, or user-loop checks.
@@ -14,14 +14,14 @@ as independent states.
 | Layer | Current value | Meaning |
 |---|---|---|
 | Official core pin | `@deepseek-ai/dsh@0.2.2-rc.3` | Official kernel |
-| Candidate community product | `0.2.2-rc.3` | 1:1 mirror of the official kernel |
-| Published Latest | `v0.2.2-rc.3` | GitHub Latest; only canonical user download |
+| Candidate community product | `0.2.2-rc.3-community.1` | Community patch Pre-release ([`v0.2.2-rc.3-community.1`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1); does not displace Latest) |
+| Published Latest | `v0.2.2-rc.3` | GitHub Latest; canonical user download entry |
 | Historical tags | `v0.1.2`–`v0.1.6`, `v0.1.1-rc.2`, `v0.2.2-rc.2`, `v0.2.2-rc.2-community.1` | Superseded by `v0.2.2-rc.3` |
 
-Desktop and TUI show the Dual-Badge identity:
+Desktop and TUI show the Dual-Badge identity (current Candidate Source / Pre-release):
 
 ```text
-DeepSeek Harness Community v0.2.2-rc.3 [Official Core: @deepseek-ai/dsh@0.2.2-rc.3]
+DeepSeek Harness Community v0.2.2-rc.3-community.1 [Official Core: @deepseek-ai/dsh@0.2.2-rc.3]
 ```
 
 ## User choice
@@ -48,8 +48,8 @@ Observed for this snapshot:
 | Gate | Status | Evidence boundary |
 |---|---|---|
 | Normal `dsh-community` CI | `[REAL]` | `pnpm typecheck` and Vitest pass on `main`, but main CI does not prove installer readiness |
-| Release assets & signing | `[REAL]` | `v0.2.2-rc.3` (`releaseId=445732060`) published 12 assets with SHA-256 and keyless cosign bundles |
-| `artifact-smoke` | `[REAL]` | [Run 43696414193](https://github.com/kamanager2012/dsh-community/actions/runs/43696414193) passed `resolve`, `linux-appimage`, `android-apk`, `linux-terminal`, and `verify-signatures` across all 12 assets |
+| Release assets & signing | `[REAL]` | `v0.2.2-rc.3` (`releaseId=445732060`) and Pre-release [`v0.2.2-rc.3-community.1`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1) (`releaseId=448012716`, `release` [Run 44004421253](https://github.com/kamanager2012/dsh-community/actions/runs/44004421253)) each published 12 assets with SHA-256 and keyless cosign bundles |
+| `artifact-smoke` | `[REAL]` | Both `v0.2.2-rc.3` ([Run 43696414193](https://github.com/kamanager2012/dsh-community/actions/runs/43696414193)) and Candidate Pre-release `v0.2.2-rc.3-community.1` ([Run 44005955539](https://github.com/kamanager2012/dsh-community/actions/runs/44005955539)) passed `resolve`, `linux-appimage`, `android-apk`, `linux-terminal`, and `verify-signatures` across all 12 assets |
 | Full user loop | `[PARTIAL]` | [Run 43729024796](https://github.com/kamanager2012/dsh-community/actions/runs/43729024796) passed `.github/workflows/user-loop-evidence.yml` 3-way `dsh-community` TUI ↔ official `dsh --profile headless` ↔ Linux AppImage bundled runtime (`official-dsh.tar`) Session continuation roundtrip, packaged AppImage Electron GUI (`AppRun`) Session visibility/Runtime/Marketplace checks, plus all 4 lifecycle recovery checks (prior runs [43713641736](https://github.com/kamanager2012/dsh-community/actions/runs/43713641736), [43709890408](https://github.com/kamanager2012/dsh-community/actions/runs/43709890408), [43688556931](https://github.com/kamanager2012/dsh-community/actions/runs/43688556931)); interactive packaged GUI / Official Web turn-submission continuation and physical Android handset loops remain pending |
 
 ```text
@@ -59,9 +59,9 @@ tag
   → publish 12 signed assets to GitHub Release
 ```
 
-## Latest vs current main
+## Latest vs current Pre-release
 
-`v0.2.2-rc.3` (commit `073826c`) is current Published Latest. Later `main` commits (such as `scripts/install-linux.sh`, headless Chromium simulated-agent E2EE workflow/previews, and documentation fixes) live only on `main` and are **not** included in the immutable `v0.2.2-rc.3` tag or its published binary assets.
+`v0.2.2-rc.3` (commit `073826c`) remains Published Latest. Post-`rc.3` hardening and fixes (`scripts/install-linux.sh`, headless Chromium E2EE acceptance, fail-closed `observe` Git diff secret redaction, and Codex/ACP crash recovery) were tagged and published on `2026-11-17` as signed GitHub Pre-release [`v0.2.2-rc.3-community.1`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1) (`release` [Run 44004421253](https://github.com/kamanager2012/dsh-community/actions/runs/44004421253), `artifact-smoke` [Run 44005955539](https://github.com/kamanager2012/dsh-community/actions/runs/44005955539)) without displacing `v0.2.2-rc.3`.
 
 ## Distribution Reality Gate
 

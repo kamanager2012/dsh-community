@@ -1,6 +1,6 @@
 # Community 当前发行状态
 
-> 事实快照日期：2026-11-15。机器可读真源是 [`dsh-community/docs/current-release.json`](https://github.com/kamanager2012/dsh-community/blob/main/docs/current-release.json)。本页只补充说明，不另造 Latest / 内核 pin。本文不替代 GitHub Release、Actions 结果或用户闭环实测。
+> 事实快照日期：2026-11-17。机器可读真源是 [`dsh-community/docs/current-release.json`](https://github.com/kamanager2012/dsh-community/blob/main/docs/current-release.json)。本页只补充说明，不另造 Latest / 内核 pin。本文不替代 GitHub Release、Actions 结果或用户闭环实测。
 
 ## 版本模型
 
@@ -9,14 +9,14 @@
 | 层级 | 当前值 | 应如何理解 |
 |---|---|---|
 | Official core pin | `@deepseek-ai/dsh@0.2.2-rc.3` | 官方内核 |
-| Candidate community product | `0.2.2-rc.3` | 与官方内核 1:1 同号 |
-| Published Latest | `v0.2.2-rc.3` | GitHub Latest；普通用户只从这里下 |
+| Candidate community product | `0.2.2-rc.3-community.1` | 社区补丁 Pre-release（[`v0.2.2-rc.3-community.1`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1)，不覆盖 Latest） |
+| Published Latest | `v0.2.2-rc.3` | GitHub Latest；普通用户主下载入口 |
 | Historical tags | `v0.1.2`–`v0.1.6`, `v0.1.1-rc.2`, `v0.2.2-rc.2`, `v0.2.2-rc.2-community.1` | 已被 `v0.2.2-rc.3` 替代 |
 
-Desktop 与 TUI 的版本身份必须同时显示 Dual-Badge：
+Desktop 与 TUI 的版本身份必须同时显示 Dual-Badge（当前 Candidate Source / Pre-release）：
 
 ```text
-DeepSeek Harness Community v0.2.2-rc.3 [Official Core: @deepseek-ai/dsh@0.2.2-rc.3]
+DeepSeek Harness Community v0.2.2-rc.3-community.1 [Official Core: @deepseek-ai/dsh@0.2.2-rc.3]
 ```
 
 ## 用户选择
@@ -39,8 +39,8 @@ DeepSeek Harness Community v0.2.2-rc.3 [Official Core: @deepseek-ai/dsh@0.2.2-rc
 | Gate | 状态 | 事实 |
 |---|---|---|
 | 普通 `dsh-community` CI | `[REAL]` | 主线 typecheck（8 projects）与全量 Vitest 在 `main` 通过；但普通 CI 不替代发行包验收 |
-| Release assets & signing | `[REAL]` | `v0.2.2-rc.3`（`releaseId=445732060`）发布 12 个带 SHA-256 与 keyless cosign bundle 的资产 |
-| `artifact-smoke` | `[REAL]` | [Run 43696414193](https://github.com/kamanager2012/dsh-community/actions/runs/43696414193) 通过 `resolve`、`linux-appimage`、`android-apk`、`linux-terminal` 与 `verify-signatures`（cosign 12 文件全验） |
+| Release assets & signing | `[REAL]` | `v0.2.2-rc.3`（`releaseId=445732060`）与 Pre-release [`v0.2.2-rc.3-community.1`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1)（`releaseId=448012716`，`release` [Run 44004421253](https://github.com/kamanager2012/dsh-community/actions/runs/44004421253)）均发布 12 个带 SHA-256 与 keyless cosign bundle 的资产 |
+| `artifact-smoke` | `[REAL]` | `v0.2.2-rc.3`（[Run 43696414193](https://github.com/kamanager2012/dsh-community/actions/runs/43696414193)）及 Candidate Pre-release `v0.2.2-rc.3-community.1`（[Run 44005955539](https://github.com/kamanager2012/dsh-community/actions/runs/44005955539)）均通过 `resolve`、`linux-appimage`、`android-apk`、`linux-terminal` 与 `verify-signatures`（cosign 12 文件全验） |
 | Full user loop | `[PARTIAL]` | [Run 43729024796](https://github.com/kamanager2012/dsh-community/actions/runs/43729024796) 通过 `.github/workflows/user-loop-evidence.yml` 社区 TUI ↔ 官方 `dsh --profile headless` ↔ Linux AppImage 内置运行时（`official-dsh.tar`）三方跨端 Session 接续、AppImage Electron GUI（`AppRun`）Session 可见性/Runtime/Marketplace 验证与全部 4 项生命周期恢复（前序 [Run 43713641736](https://github.com/kamanager2012/dsh-community/actions/runs/43713641736)、[Run 43709890408](https://github.com/kamanager2012/dsh-community/actions/runs/43709890408)、[Run 43688556931](https://github.com/kamanager2012/dsh-community/actions/runs/43688556931)）；通过打包交互式 GUI / 官方 Web 提交对话轮次的接续与物理 Android 真机闭环仍待复核 |
 
 目标链路是：
@@ -52,9 +52,9 @@ tag
   → publish 12 signed assets to GitHub Release
 ```
 
-## Stable 发布基线与当前 main
+## Stable 发布基线与当前 Pre-release
 
-`v0.2.2-rc.3`（Commit `073826c`）是当前 Published Latest。发布之后的 `main` 提交（例如 `scripts/install-linux.sh` 源码安装器、无头 Chromium 模拟 Agent E2EE 联调工作流、预览图及文档修正）属于源码演进，**不包含**在 `v0.2.2-rc.3` 发布标签与已上传二进制资产内。
+`v0.2.2-rc.3`（Commit `073826c`）仍是当前 Published Latest；发布之后的加固与修复（`scripts/install-linux.sh` 源码安装器、无头 Chromium E2EE 验收、`observe` Git Diff 脱敏及 Codex/ACP 崩溃恢复等）已于 `2026-11-17` 打标并签发为 GitHub Pre-release [`v0.2.2-rc.3-community.1`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1)（`release` [Run 44004421253](https://github.com/kamanager2012/dsh-community/actions/runs/44004421253)、`artifact-smoke` [Run 44005955539](https://github.com/kamanager2012/dsh-community/actions/runs/44005955539)），同时保持 `v0.2.2-rc.3` 的 Latest 推荐位不变。
 
 ## Distribution Reality Gate
 

@@ -1,6 +1,6 @@
 # DeepSeek Harness Community 生态与产品入口
 
-> 本页是 DeepSeek Harness Community 生态的项目 handoff。基线日期：2026-11-15（Published Latest: `v0.2.2-rc.3`）。
+> 本页是 DeepSeek Harness Community 生态的项目 handoff。基线日期：2026-11-17（Published Latest: `v0.2.2-rc.3`；Candidate Pre-release: `v0.2.2-rc.3-community.1`）。
 
 本项目不是 DeepSeek Harness 的 fork，也不是另一套 Agent Runtime。唯一的执行核心仍然是官方 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)；社区仓库围绕官方 Runtime 提供互补发行、多 Agent E2EE 远程控制面、兼容契约、插件目录、知识手册与安全验证能力。
 
@@ -23,7 +23,7 @@
         └── Android Remote Client（apps/android，[UNVERIFIED]）
 ```
 
-正式软件入口统一指向 [`dsh-community/releases/latest`](https://github.com/kamanager2012/dsh-community/releases/latest)。当前 Published Latest 与 Candidate Source 均同步为 `v0.2.2-rc.3`（1:1 镜像官方内核 `@deepseek-ai/dsh@0.2.2-rc.3`；详细状态与分离真源见 [`docs/current-release.json`](https://github.com/kamanager2012/dsh-community/blob/main/docs/current-release.json) 与[当前发行状态](../11-operations/community-release-status.md)）。
+正式软件入口统一指向 [`dsh-community/releases/latest`](https://github.com/kamanager2012/dsh-community/releases/latest)。当前 Published Latest 保持为 `v0.2.2-rc.3`（1:1 镜像官方内核 `@deepseek-ai/dsh@0.2.2-rc.3`），Candidate Source 与社区补丁 Pre-release 已推进至 [`v0.2.2-rc.3-community.1`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1)（不覆盖 Latest；详细状态与分离真源见 [`docs/current-release.json`](https://github.com/kamanager2012/dsh-community/blob/main/docs/current-release.json) 与[当前发行状态](../11-operations/community-release-status.md)）。
 
 按照 **Complementary Edition** 边界：
 
@@ -70,7 +70,7 @@ dsh-community/packages/marketplace
 
 当前证据快照：注册表有 9 个验证插件；CI 检查 shape、npm 存在性/版本、`dist.integrity`、provenance 和仓库可达性，`catalog.json` 中 6/9 个插件已完成 `@deepseek-ai/dsh@0.2.2-rc.3` 合成验证（其余 3 个旧插件保持 `0.1.1-rc.2`）。Marketplace CLI 提供 `list` / `search` / `info` / `install`。
 
-当前发布边界：GitHub Actions `artifact-smoke` [Run 43696414193](https://github.com/kamanager2012/dsh-community/actions/runs/43696414193) 已从 `v0.2.2-rc.3` Release 页面下载真实资产，完成 `resolve`、`linux-appimage`、`android-apk`、`linux-terminal` 与 `verify-signatures`（cosign keyless 12 文件校验）；WSL/Linux 真实模型首对话与恢复闭环已通过 [Run 43688556931](https://github.com/kamanager2012/dsh-community/actions/runs/43688556931) 验收 `[REAL]`，物理 `arm64-v8a` Android 真机遥测仍标为 `[UNVERIFIED]`。
+当前发布边界：GitHub Actions `artifact-smoke` [Run 43696414193](https://github.com/kamanager2012/dsh-community/actions/runs/43696414193)（`v0.2.2-rc.3` Latest）与 [Run 44005955539](https://github.com/kamanager2012/dsh-community/actions/runs/44005955539)（`v0.2.2-rc.3-community.1` Pre-release）已从各自 Release 页面下载真实资产，完成 `resolve`、`linux-appimage`、`android-apk`、`linux-terminal` 与 `verify-signatures`（cosign keyless 12 文件校验）；WSL/Linux 真实模型首对话与恢复闭环已通过 [Run 43688556931](https://github.com/kamanager2012/dsh-community/actions/runs/43688556931) / [Run 43729024796](https://github.com/kamanager2012/dsh-community/actions/runs/43729024796) 验收 `[REAL]`，物理 `arm64-v8a` Android 真机遥测仍标为 `[UNVERIFIED]`。
 
 ## 面向维护者的阅读入口
 
