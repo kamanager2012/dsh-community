@@ -25,7 +25,8 @@ Windows and macOS Desktop installers (`DSH Community Setup *.exe`, `dsh-communit
 
 ```sh
 pnpm typecheck && pnpm test          # gate
-node scripts/release.mjs v0.1.1-rc.2
+: "${REVIEWED_NEW_TAG:?Set a newly approved and unpublished release tag}"
+node scripts/release.mjs "$REVIEWED_NEW_TAG"
 ```
 
 Replace the example tag with the next intended community version. If the change

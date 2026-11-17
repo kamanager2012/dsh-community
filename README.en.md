@@ -3,7 +3,8 @@
 [简体中文](README.md) | **English**
 
 [![CI](https://github.com/kamanager2012/dsh-community/actions/workflows/ci.yml/badge.svg)](https://github.com/kamanager2012/dsh-community/actions/workflows/ci.yml)
-[![Published Latest](https://img.shields.io/github/v/release/kamanager2012/dsh-community?include_prereleases&label=Published%20Latest)](https://github.com/kamanager2012/dsh-community/releases/latest)
+[![Published Latest](https://img.shields.io/github/v/release/kamanager2012/dsh-community?label=Published%20Latest)](https://github.com/kamanager2012/dsh-community/releases/latest)
+[![Community Preview](https://img.shields.io/github/v/release/kamanager2012/dsh-community?include_prereleases&label=Community%20Preview)](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1)
 [![Official Core](https://img.shields.io/badge/Official%20Core-%40deepseek--ai%2Fdsh-blue)](https://github.com/deepseek-ai/deepseek-harness)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
@@ -44,13 +45,19 @@ Multi-agent dashboards, E2EE, remote approvals and Git diff are **not exclusive*
 `scripts/install-linux.sh` landed on `main` **after** the `v0.2.2-rc.3` release tag; it is a source-build helper requiring **Node.js 24.9+** (official `@deepseek-ai/dsh@0.2.2-rc.3` declares `engines.node >=24.9.0`; workspace minimum is `22.15+`, passing CI on Node 22 & 24), **`pnpm`**, **`git`**, and **`flock`** (util-linux; not a zero-dependency binary):
 
 ```sh
-# Option A: track latest main source (includes the installer & post-rc.3 fixes)
-curl -fsSL https://raw.githubusercontent.com/kamanager2012/dsh-community/main/scripts/install-linux.sh | bash
+# Recommended: download and inspect a pinned installer commit
+curl -fsSLo install-linux.sh \
+  https://raw.githubusercontent.com/kamanager2012/dsh-community/afe0514e9da98174ac117e70d7e9fb30aa48de2b/scripts/install-linux.sh
+less install-linux.sh
+bash install-linux.sh \
+  --ref v0.2.2-rc.3-community.1 \
+  --expected-commit 13cc4c382ec36eeeede443c78687b117285c24cc
 
-# Option B: pin an immutable tag & verified commit SHA (v0.2.2-rc.3 = 073826c38df4cf246e7ac90b27e0df98569a534d)
-curl -fsSL https://raw.githubusercontent.com/kamanager2012/dsh-community/main/scripts/install-linux.sh | \
-  bash -s -- --ref v0.2.2-rc.3 --expected-commit 073826c38df4cf246e7ac90b27e0df98569a534d
+# Development only: explicitly opt into mutable main (not a signed Release)
+# bash install-linux.sh --ref main
 ```
+
+> **Provenance boundary:** This example pins the installer script commit and the target Git tag/SHA separately. A source installer is **not** a signed AppImage/APK. To verify the binary, download the [Community Pre-release](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1) with its `.sha256` and `.sigstore.json` files.
 
 > **Upgrade safety:** source validation and build complete in a sibling staging directory before activating `$PREFIX/repo`; `flock` rejects concurrent installers and handled errors restore the prior CLI. Power loss or `SIGKILL` across directory renames is **not** guaranteed crash-atomic. See [first-run and upgrade acceptance](docs/first-run-smoke.md).
 
