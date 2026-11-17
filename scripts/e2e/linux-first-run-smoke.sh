@@ -66,6 +66,37 @@ grep -Fq "marketplace list" "$WORK/marketplace.txt" || fail "marketplace command
 run_cli "$WORK/bin/dsh-community" remote --help >"$WORK/remote.txt" || fail "remote help"
 grep -Fq "remote start" "$WORK/remote.txt" || fail "remote command absent"
 
+# Real shared-group/setgid reinstall under restrictive umask. This exercises
+# pnpm's copy import mode, not just the fake-pnpm installer unit tests.
+chmod 2750 "$WORK/installed/repo"
+PRIMARY_GID="$(id -g)"
+ALTERNATE_GID="$(id -G | tr ' ' '\n' | awk -v current="$PRIMARY_GID" '$1 != current { print $1; exit }')"
+if [[ -n "$ALTERNATE_GID" ]]; then
+  chgrp "$ALTERNATE_GID" "$WORK/installed/repo" \
+    || fail "could not set existing repo to an available secondary group"
+fi
+EXPECTED_GID="$(stat -c '%g' "$WORK/installed/repo")"
+(
+  umask 027
+  bash "$ROOT/scripts/install-linux.sh" "${args[@]}" >"$WORK/shared-reinstall.log" 2>&1
+) || fail "real shared-setgid reinstall failed"
+[[ "$(stat -c '%g' "$WORK/installed/repo")" = "$EXPECTED_GID" ]] \
+  || fail "staged upgrade changed group of the active repo"
+for rel in apps apps/tui apps/tui/dist apps/tui/dist/bin.js packages/marketplace/bin/dsh-marketplace.js; do
+  staged_path="$WORK/installed/repo/$rel"
+  [[ "$(stat -c '%g' "$staged_path")" = "$EXPECTED_GID" ]] \
+    || fail "shared-group upgrade changed descendant group at $rel"
+  if [[ -d "$staged_path" ]]; then
+    [[ $(( 8#$(stat -c '%a' "$staged_path") & 0010 )) -eq 8 ]] \
+      || fail "shared-group upgrade lost group traversal at $rel"
+  else
+    [[ $(( 8#$(stat -c '%a' "$staged_path") & 0040 )) -eq 32 ]] \
+      || fail "shared-group upgrade lost group read access at $rel"
+  fi
+done
+run_cli "$WORK/bin/dsh-community" version >"$WORK/shared-upgrade-version.txt" \
+  || fail "CLI did not start after real shared-group upgrade"
+
 # A failed upgrade must not affect the already installed CLI.
 mkdir -p "$WORK/fail-tools"
 cat > "$WORK/fail-tools/pnpm" <<'SH'
@@ -146,7 +177,8 @@ const evidence = {
     remoteHelp: 'PASS',
     failedReinstallPreservesWorkingCLI: 'PASS',
     concurrentInstallFailClosed: 'PASS',
-    crossPrefixSharedBinLock: 'PASS'
+    crossPrefixSharedBinLock: 'PASS',
+    sharedSetgidRealPnpmCopyAndDescendantAccess: 'PASS'
   },
   providerCalls: 0,
   actualAgentTurn: false,
