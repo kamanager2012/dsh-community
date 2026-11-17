@@ -175,51 +175,96 @@ fi
 
 mkdir -p "$PREFIX" "$BIN_DIR"
 
+# Existing CLI must remain runnable until the new source and build are verified.
+if ! command -v flock >/dev/null 2>&1; then
+  echo "ERROR: flock (util-linux) is required for safe Linux upgrades." >&2
+  exit 1
+fi
+exec 9>"$PREFIX/.install.lock"
+if ! flock -n 9; then
+  echo "ERROR: another dsh-community installation is running at $PREFIX." >&2
+  exit 1
+fi
+
+# Staging and active repository share a filesystem for fast directory rename.
+STAGE_REPO="$(mktemp -d "$PREFIX/.repo.stage.XXXXXXXX")"
+BACKUP_REPO=""
+SWAP_ATTEMPTED=0
+HAD_PREVIOUS=0
+TUI_SHIM_TMP=""
+MARKETPLACE_SHIM_TMP=""
+
+install_cleanup() {
+  local status="$?"
+  trap - EXIT
+  if [ "$status" -ne 0 ] && [ "$SWAP_ATTEMPTED" -eq 1 ]; then
+    if [ -e "$INSTALL_REPO" ] || [ -L "$INSTALL_REPO" ]; then
+      rm -rf -- "$INSTALL_REPO"
+    fi
+    if [ "$HAD_PREVIOUS" -eq 1 ] && { [ -e "$BACKUP_REPO" ] || [ -L "$BACKUP_REPO" ]; }; then
+      if mv -- "$BACKUP_REPO" "$INSTALL_REPO"; then
+        BACKUP_REPO=""
+        echo "Previous dsh-community installation restored after failed upgrade." >&2
+      else
+        echo "CRITICAL: restore failed; previous installation preserved at $BACKUP_REPO" >&2
+      fi
+    fi
+  fi
+  if [ -n "$STAGE_REPO" ] && [ -d "$STAGE_REPO" ]; then
+    rm -rf -- "$STAGE_REPO"
+  fi
+  if [ -n "$TUI_SHIM_TMP" ] && [ -e "$TUI_SHIM_TMP" ]; then
+    rm -f -- "$TUI_SHIM_TMP"
+  fi
+  if [ -n "$MARKETPLACE_SHIM_TMP" ] && [ -e "$MARKETPLACE_SHIM_TMP" ]; then
+    rm -f -- "$MARKETPLACE_SHIM_TMP"
+  fi
+  if [ "$status" -eq 0 ] && [ -n "$BACKUP_REPO" ] && [ -e "$BACKUP_REPO" ]; then
+    rm -rf -- "$BACKUP_REPO"
+  fi
+}
+trap install_cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
+
 if [ -n "$LOCAL_REPO" ]; then
   [ -d "$LOCAL_REPO" ] || { echo "ERROR: --local-repo does not exist: $LOCAL_REPO" >&2; exit 1; }
-  rm -rf "$INSTALL_REPO"
-  mkdir -p "$INSTALL_REPO"
-  cp -a "$LOCAL_REPO"/. "$INSTALL_REPO"/
+  case "$PREFIX/" in
+    "$LOCAL_REPO/"*) echo "ERROR: --local-repo cannot contain destination prefix." >&2; exit 1 ;;
+  esac
+  cp -a "$LOCAL_REPO"/. "$STAGE_REPO"/
 else
-  if [ -d "$INSTALL_REPO/.git" ]; then
-    echo "Updating existing installation at $INSTALL_REPO ($REF)..."
-    git -C "$INSTALL_REPO" remote set-url origin "$REPO_URL" >/dev/null 2>&1 || git -C "$INSTALL_REPO" remote add origin "$REPO_URL"
-  else
-    rm -rf "$INSTALL_REPO"
-    git init -q "$INSTALL_REPO"
-    git -C "$INSTALL_REPO" remote add origin "$REPO_URL"
-  fi
-  echo "Fetching $REPO_URL ($REF) into $INSTALL_REPO..."
-  git -C "$INSTALL_REPO" fetch --depth 1 origin "$REF"
-  git -C "$INSTALL_REPO" checkout -q --force --detach FETCH_HEAD
-  if [ -n "$EXPECTED_COMMIT" ]; then
-    git -C "$INSTALL_REPO" clean -fdq
-  fi
+  git init -q "$STAGE_REPO"
+  git -C "$STAGE_REPO" remote add origin "$REPO_URL"
+  echo "Fetching $REPO_URL ($REF) into temporary staging..."
+  git -C "$STAGE_REPO" fetch --depth 1 origin "$REF"
+  git -C "$STAGE_REPO" checkout -q --force --detach FETCH_HEAD
 fi
 
 RESOLVED_COMMIT=""
-if [ -d "$INSTALL_REPO/.git" ] && command -v git >/dev/null 2>&1; then
-  RESOLVED_COMMIT="$(git -C "$INSTALL_REPO" rev-parse HEAD 2>/dev/null | tr '[:upper:]' '[:lower:]' || true)"
+if [ -d "$STAGE_REPO/.git" ] && command -v git >/dev/null 2>&1; then
+  RESOLVED_COMMIT="$(git -C "$STAGE_REPO" rev-parse HEAD 2>/dev/null | tr '[:upper:]' '[:lower:]' || true)"
 fi
 
 if [ -n "$EXPECTED_COMMIT" ]; then
   if [ -z "$RESOLVED_COMMIT" ]; then
-    echo "ERROR: --expected-commit was requested, but $INSTALL_REPO does not contain git metadata." >&2
+    echo "ERROR: --expected-commit requires Git metadata in staged source." >&2
     exit 1
   fi
   if [ "$RESOLVED_COMMIT" != "$EXPECTED_COMMIT" ]; then
     echo "ERROR: checked-out commit mismatch: expected $EXPECTED_COMMIT, got $RESOLVED_COMMIT (ref=$REF)." >&2
     exit 1
   fi
-  DIRTY_TREE="$(git -C "$INSTALL_REPO" status --porcelain=v1 --untracked-files=normal)"
+  DIRTY_TREE="$(git -C "$STAGE_REPO" status --porcelain=v1 --untracked-files=normal)"
   if [ -n "$DIRTY_TREE" ]; then
-    echo "ERROR: $INSTALL_REPO has uncommitted or untracked changes while --expected-commit ($EXPECTED_COMMIT) is enforced." >&2
+    echo "ERROR: staged source has uncommitted or untracked changes while --expected-commit ($EXPECTED_COMMIT) is enforced." >&2
     exit 1
   fi
 fi
 
-echo "Installing dependencies and building dsh-community Terminal CLI + remote-web PWA..."
-cd "$INSTALL_REPO"
+echo "Installing dependencies and building dsh-community in temporary staging..."
+cd "$STAGE_REPO"
 pnpm install --frozen-lockfile
 pnpm \
   --filter @dsh-community/shared-types \
@@ -231,19 +276,46 @@ pnpm \
   --filter @dsh-community/marketplace \
   build
 
-cat > "$BIN_DIR/dsh-community" <<EOF
+[ -s "$STAGE_REPO/apps/tui/dist/bin.js" ] || {
+  echo "ERROR: staged TUI entrypoint is missing; existing installation unchanged." >&2
+  exit 1
+}
+[ -s "$STAGE_REPO/packages/marketplace/bin/dsh-marketplace.js" ] || {
+  echo "ERROR: staged marketplace entrypoint is missing; existing installation unchanged." >&2
+  exit 1
+}
+
+# Stable wrapper target remains $PREFIX/repo for backward compatibility.
+if [ -e "$INSTALL_REPO" ] || [ -L "$INSTALL_REPO" ]; then
+  BACKUP_REPO="$(mktemp -d "$PREFIX/.repo.previous.XXXXXXXX")"
+  rmdir "$BACKUP_REPO"
+  mv -- "$INSTALL_REPO" "$BACKUP_REPO"
+  HAD_PREVIOUS=1
+fi
+SWAP_ATTEMPTED=1
+mv -- "$STAGE_REPO" "$INSTALL_REPO"
+STAGE_REPO=""
+
+# Stage wrappers and rename, never truncate an existing working executable.
+TUI_SHIM_TMP="$(mktemp "$BIN_DIR/.dsh-community.XXXXXXXX")"
+cat > "$TUI_SHIM_TMP" <<EOF
 #!/usr/bin/env sh
 exec node "$TUI_ENTRY" "\$@"
 EOF
-chmod 0755 "$BIN_DIR/dsh-community"
+chmod 0755 "$TUI_SHIM_TMP"
+mv -f -- "$TUI_SHIM_TMP" "$BIN_DIR/dsh-community"
+TUI_SHIM_TMP=""
 
-cat > "$BIN_DIR/dsh-marketplace" <<EOF
+MARKETPLACE_SHIM_TMP="$(mktemp "$BIN_DIR/.dsh-marketplace.XXXXXXXX")"
+cat > "$MARKETPLACE_SHIM_TMP" <<EOF
 #!/usr/bin/env sh
 PATH="$OFFICIAL_BIN_DIR:$TUI_OFFICIAL_BIN_DIR:\$PATH"
 export PATH
 exec node "$MARKETPLACE_ENTRY" "\$@"
 EOF
-chmod 0755 "$BIN_DIR/dsh-marketplace"
+chmod 0755 "$MARKETPLACE_SHIM_TMP"
+mv -f -- "$MARKETPLACE_SHIM_TMP" "$BIN_DIR/dsh-marketplace"
+MARKETPLACE_SHIM_TMP=""
 
 echo
 echo "Installed commands:"
