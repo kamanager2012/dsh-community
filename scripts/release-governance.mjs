@@ -62,9 +62,9 @@ export function verifyTagProtection(rulesets, tag) {
       if (rs.target !== 'tag' || rs.enforcement !== 'active' || !applies(rs, ref)) return false
       const types = new Set(Array.isArray(rs.rules) ? rs.rules.map((r) => r.type) : [])
       if (!types.has('update') || !types.has('deletion')) return false
-      // Reject any visible bypass actor; GitHub may omit this field for
-      // read-only API callers. Admins must independently verify no bypasses.
-      if (Array.isArray(rs.bypass_actors) && rs.bypass_actors.length > 0) return false
+      // A missing bypass-actor field is UNKNOWN, not proof of no bypass.
+      // Fail closed until GitHub confirms an explicit empty actor list.
+      if (!Array.isArray(rs.bypass_actors) || rs.bypass_actors.length !== 0) return false
       return true
     })
     if (!match) throw new Error('missing active update/deletion protection for ' + ref)
