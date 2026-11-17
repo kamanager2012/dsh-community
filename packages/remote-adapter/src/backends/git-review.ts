@@ -191,11 +191,30 @@ function decodeGitQuotedToken(quoted: string): { path: string; nextIndex: number
   return undefined
 }
 
-function stripDiffSidePrefix(rawPath: string, prefix: 'a/' | 'b/'): string {
-  return rawPath.startsWith(prefix) ? rawPath.slice(prefix.length) : rawPath
+function stripAnsiSgr(text: string): string {
+  return text.replace(/\x1b\[[0-9;]*m/gu, '')
 }
 
-function parseGitDiffHeaderPaths(headerLine: string): { pathA: string; pathB: string } | undefined {
+function stripDiffSidePrefix(rawPath: string, canonicalPrefix: 'a/' | 'b/'): string {
+  if (rawPath.startsWith(canonicalPrefix)) return rawPath.slice(canonicalPrefix.length)
+  // Fallback for mnemonicPrefix (i/w/c/o) or custom single-letter prefixes if encountered outside canonical flags.
+  if (
+    canonicalPrefix === 'a/'
+    && (rawPath.startsWith('i/') || rawPath.startsWith('c/') || rawPath.startsWith('o/'))
+  ) {
+    return rawPath.slice(2)
+  }
+  if (
+    canonicalPrefix === 'b/'
+    && (rawPath.startsWith('w/') || rawPath.startsWith('i/') || rawPath.startsWith('o/'))
+  ) {
+    return rawPath.slice(2)
+  }
+  return rawPath
+}
+
+function parseGitDiffHeaderPaths(rawHeaderLine: string): { pathA: string; pathB: string } | undefined {
+  const headerLine = stripAnsiSgr(rawHeaderLine)
   if (!headerLine.startsWith('diff --git ')) return undefined
   const rest = headerLine.slice('diff --git '.length)
 
@@ -219,23 +238,31 @@ function parseGitDiffHeaderPaths(headerLine: string): { pathA: string; pathB: st
     }
   }
 
-  const identicalMatch = rest.match(/^a\/(.+?) b\/\1$/u)
-  if (identicalMatch) {
-    return { pathA: identicalMatch[1]!, pathB: identicalMatch[1]! }
+  const identicalPrefixedMatch = rest.match(/^(?:[abciwo]\/)(.+?) (?:[abciwo]\/)\1$/u)
+  if (identicalPrefixedMatch) {
+    return { pathA: identicalPrefixedMatch[1]!, pathB: identicalPrefixedMatch[1]! }
   }
-  const secondQuotedMatch = rest.match(/^a\/(.+?) "b\/(.+)"$/u)
+  const identicalNoPrefixMatch = rest.match(/^(.+?) \1$/u)
+  if (identicalNoPrefixMatch) {
+    return { pathA: identicalNoPrefixMatch[1]!, pathB: identicalNoPrefixMatch[1]! }
+  }
+  const secondQuotedMatch = rest.match(/^(?:[abciwo]\/)?(.+?) "(?:[abciwo]\/)?(.+)"$/u)
   if (secondQuotedMatch) {
-    const decoded = decodeGitQuotedToken(`"b/${secondQuotedMatch[2]!}"`)
+    const decoded = decodeGitQuotedToken(`"${secondQuotedMatch[2]!}"`)
     if (decoded) {
       return {
-        pathA: secondQuotedMatch[1]!,
-        pathB: stripDiffSidePrefix(decoded.path, 'b/'),
+        pathA: stripDiffSidePrefix(secondQuotedMatch[1]!, 'a/'),
+        pathB: decoded.path,
       }
     }
   }
-  const splitMatch = rest.match(/^a\/(.+?) b\/(.+)$/u)
-  if (splitMatch) {
-    return { pathA: splitMatch[1]!, pathB: splitMatch[2]! }
+  const splitPrefixedMatch = rest.match(/^(?:[abciwo]\/)(.+?) (?:[abciwo]\/)(.+)$/u)
+  if (splitPrefixedMatch) {
+    return { pathA: splitPrefixedMatch[1]!, pathB: splitPrefixedMatch[2]! }
+  }
+  const splitPlainMatch = rest.match(/^(\S+) (\S+)$/u)
+  if (splitPlainMatch) {
+    return { pathA: splitPlainMatch[1]!, pathB: splitPlainMatch[2]! }
   }
   return undefined
 }
@@ -246,7 +273,7 @@ export function redactSensitiveDiffText(
 ): string {
   if (!diffText) return diffText
   const allowTail = options?.allowTruncatedTail === true
-  const sections = diffText.split(/(?=^diff --git )/mu)
+  const sections = diffText.split(/(?=^(?:\x1b\[[0-9;]*m)*diff --git )/mu)
   const sanitized = sections.map((section, idx) => {
     const isLast = idx === sections.length - 1
     const firstNewline = section.indexOf('\n')
@@ -260,13 +287,28 @@ export function redactSensitiveDiffText(
   return sanitized.join('')
 }
 
+const CANONICAL_GIT_CONFIG_FLAGS = [
+  '-c',
+  'core.quotePath=false',
+  '-c',
+  'diff.noprefix=false',
+  '-c',
+  'diff.mnemonicPrefix=false',
+  '-c',
+  'color.ui=false',
+  '-c',
+  'color.diff=never',
+] as const
+
+const CANONICAL_DIFF_FLAGS = ['--no-ext-diff', '--no-color', '--default-prefix'] as const
+
 async function runGit(
   cwd: string,
   args: readonly string[],
   maxBuffer = 2 * 1024 * 1024,
   timeoutMs = GIT_TIMEOUT_MS,
 ): Promise<{ stdout: string; stderr: string }> {
-  return execFileAsync('git', ['-c', 'core.quotePath=false', '-C', cwd, ...args], {
+  return execFileAsync('git', [...CANONICAL_GIT_CONFIG_FLAGS, '-C', cwd, ...args], {
     env: sanitizeSubprocessEnv(),
     timeout: timeoutMs,
     maxBuffer,
@@ -284,7 +326,7 @@ async function runGitBoundedDiff(
   const effectiveMaxBytes = Math.max(1, maxBytes)
   const captureCap = effectiveMaxBytes + 4
   return new Promise((resolvePromise, rejectPromise) => {
-    const child = spawn('git', ['-c', 'core.quotePath=false', '-C', cwd, ...args], {
+    const child = spawn('git', [...CANONICAL_GIT_CONFIG_FLAGS, '-C', cwd, ...args], {
       env: sanitizeSubprocessEnv(),
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
@@ -800,7 +842,7 @@ export async function inspectWorkspaceGitDiff(
     }
   }
 
-  const gitArgs = ['diff', '--no-ext-diff']
+  const gitArgs = ['diff', ...CANONICAL_DIFF_FLAGS]
   if (staged) gitArgs.push('--cached')
   if (safePath !== undefined) {
     gitArgs.push('--', safePath)
@@ -828,7 +870,7 @@ export async function inspectWorkspaceGitDiff(
         if (untrackedCheck.stdout.trim() === safePath) {
           bounded = await runGitBoundedDiff(
             repoRoot,
-            ['diff', '--no-index', '--no-ext-diff', '--', '/dev/null', safePath],
+            ['diff', '--no-index', ...CANONICAL_DIFF_FLAGS, '--', '/dev/null', safePath],
             captureMaxBytes,
             { allowExitOne: true },
           )
@@ -890,7 +932,7 @@ export async function inspectWorkspaceGitDiff(
 
           const preview = await runGitBoundedDiff(
             repoRoot,
-            ['diff', '--no-index', '--no-ext-diff', '--', '/dev/null', verifiedPath],
+            ['diff', '--no-index', ...CANONICAL_DIFF_FLAGS, '--', '/dev/null', verifiedPath],
             remainingBudget + CREDENTIAL_LOOKAHEAD_BYTES,
             { allowExitOne: true },
           )

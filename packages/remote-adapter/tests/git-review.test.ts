@@ -309,11 +309,17 @@ describe('scoped read-only git review helpers', () => {
       'utf8',
     )
 
-    // 1. Tracked non-ASCII path `.env.local` in unfiltered diff MUST be redacted cleanly
+    // 1. Tracked non-ASCII path `.env.local` in unfiltered diff MUST be redacted cleanly,
+    // even when repo enables noprefix, mnemonicPrefix, and color.ui=always
+    execFileSync('git', ['config', 'diff.noprefix', 'true'], { cwd: repoDir, stdio: 'pipe' })
+    execFileSync('git', ['config', 'diff.mnemonicPrefix', 'true'], { cwd: repoDir, stdio: 'pipe' })
+    execFileSync('git', ['config', 'color.ui', 'always'], { cwd: repoDir, stdio: 'pipe' })
+
     const nonAsciiAll = await inspectWorkspaceGitDiff({ sessionId: 's-nonascii' }, repoDir)
     expect(nonAsciiAll.diff).toContain('[REDACTED_SENSITIVE_FILE]')
     expect(nonAsciiAll.diff).not.toContain(newPass)
     expect(nonAsciiAll.diff).not.toContain(oldPass)
+    expect(nonAsciiAll.diff).not.toContain('\x1b[')
 
     // 2. Directly decode C-escaped octal quoted git diff headers too
     const quotedHeaderDiff = [
