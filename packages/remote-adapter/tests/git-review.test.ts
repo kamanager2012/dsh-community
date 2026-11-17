@@ -3,6 +3,7 @@ import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import { redactSensitiveDiffText } from '../src/backends/git-review.js'
 import {
   boundSessionListPayload,
   enrichSessionsWithWorkspaceSummaries,
@@ -227,5 +228,205 @@ describe('scoped read-only git review helpers', () => {
     expect(bounded.some((s) => s.id === 'codex:sess-149')).toBe(true)
     expect(bounded.length).toBeLessThan(150)
     expect(bounded.length).toBeGreaterThan(100)
+  })
+
+  it('redacts sensitive secret files and inline API/private-key tokens in observe Git diffs', async () => {
+    const repoDir = mkdtempSync(join(tmpdir(), 'dsh-git-redact-'))
+    tempDirs.push(repoDir)
+    initGitRepo(repoDir)
+
+    mkdirSync(join(repoDir, 'config'), { recursive: true })
+    mkdirSync(join(repoDir, 'src'), { recursive: true })
+    writeFileSync(join(repoDir, '.env.example'), 'DEEPSEEK_API_KEY=\n', 'utf8')
+    writeFileSync(join(repoDir, 'config', 'app.ts'), 'export const cfg = {}\n', 'utf8')
+    writeFileSync(join(repoDir, 'config', 'server.pem'), 'PUBLIC_CERT_PLACEHOLDER\n', 'utf8')
+    execFileSync('git', ['add', '.'], { cwd: repoDir, stdio: 'pipe' })
+    execFileSync('git', ['commit', '-m', 'init'], { cwd: repoDir, stdio: 'pipe' })
+
+    const fakeOpenAiKey = 'sk-proj-' + 'AbCdEf1234567890GhIjKlMnOp'
+    const fakeAwsKey = 'AKIA' + 'IOSFODNN7EXAMPLE'
+    const fakeEnvSecret = 'ENV_SUPER_SECRET_TOKEN_987654'
+    const fakePemSecret = 'MIIEowIBAAKCAQEA_FAKE_PRIVATE_KEY_BODY'
+
+    writeFileSync(join(repoDir, '.env.example'), 'DEEPSEEK_API_KEY=your-key\nPORT=3080\n', 'utf8')
+    writeFileSync(join(repoDir, '.env.local'), `API_KEY=${fakeEnvSecret}\n`, 'utf8')
+    writeFileSync(join(repoDir, '.envrc'), 'export DEPLOY_PASSWORD=DIRENV_SECRET_777\n', 'utf8')
+    writeFileSync(join(repoDir, '.env-production'), 'DEPLOY_PASSWORD=PROD_SECRET_888\n', 'utf8')
+    writeFileSync(
+      join(repoDir, 'config', 'server.pem'),
+      `-----BEGIN RSA PRIVATE KEY-----\n${fakePemSecret}\n-----END RSA PRIVATE KEY-----\n`,
+      'utf8',
+    )
+    writeFileSync(
+      join(repoDir, 'config', 'app.ts'),
+      [
+        `export const k1 = "${fakeOpenAiKey}"`,
+        `export const k2 = "${fakeAwsKey}"`,
+        'export const dsn = "https://admin:hunter2@db.internal:5432/app"',
+      ].join('\n') + '\n',
+      'utf8',
+    )
+
+    // Single-file inspection of .env.local, .envrc, .env-production, or .pem refuses plaintext secret leakage
+    const envDiff = await inspectWorkspaceGitDiff({ sessionId: 's-redact', path: '.env.local' }, repoDir)
+    expect(envDiff.diff).toContain('[REDACTED_SENSITIVE_FILE]')
+    expect(envDiff.diff).not.toContain(fakeEnvSecret)
+
+    const envrcDiff = await inspectWorkspaceGitDiff({ sessionId: 's-redact', path: '.envrc' }, repoDir)
+    expect(envrcDiff.diff).toContain('[REDACTED_SENSITIVE_FILE]')
+    expect(envrcDiff.diff).not.toContain('DIRENV_SECRET_777')
+
+    const envProdDiff = await inspectWorkspaceGitDiff({ sessionId: 's-redact', path: '.env-production' }, repoDir)
+    expect(envProdDiff.diff).toContain('[REDACTED_SENSITIVE_FILE]')
+    expect(envProdDiff.diff).not.toContain('PROD_SECRET_888')
+
+    const pemDiff = await inspectWorkspaceGitDiff({ sessionId: 's-redact', path: 'config/server.pem' }, repoDir)
+    expect(pemDiff.diff).toContain('[REDACTED_SENSITIVE_FILE]')
+    expect(pemDiff.diff).not.toContain(fakePemSecret)
+
+    // Benign .env.example stays readable for onboarding review
+    const exampleDiff = await inspectWorkspaceGitDiff({ sessionId: 's-redact', path: '.env.example' }, repoDir)
+    expect(exampleDiff.diff).toContain('+PORT=3080')
+
+    // Unfiltered unstaged diff redacts all non-example .env* files, keys, and inline tokens
+    const allDiff = await inspectWorkspaceGitDiff({ sessionId: 's-redact' }, repoDir)
+    expect(allDiff.diff).not.toContain(fakeEnvSecret)
+    expect(allDiff.diff).not.toContain('DIRENV_SECRET_777')
+    expect(allDiff.diff).not.toContain('PROD_SECRET_888')
+    expect(allDiff.diff).not.toContain(fakePemSecret)
+    expect(allDiff.diff).not.toContain(fakeOpenAiKey)
+    expect(allDiff.diff).not.toContain(fakeAwsKey)
+    expect(allDiff.diff).not.toContain('hunter2')
+    expect(allDiff.diff).toContain('[REDACTED_SENSITIVE_FILE]')
+    expect(allDiff.diff).toContain('[REDACTED_SECRET]')
+    expect(allDiff.diff).toContain('https://[REDACTED]:[REDACTED]@db.internal:5432/app')
+  })
+
+  it('redacts non-ASCII/quoted sensitive paths (配置/.env.local) and credentials straddling the maxBytes truncation boundary', async () => {
+    const repoDir = mkdtempSync(join(tmpdir(), 'dsh-git-quoted-truncate-'))
+    tempDirs.push(repoDir)
+    initGitRepo(repoDir)
+
+    mkdirSync(join(repoDir, '配置'), { recursive: true })
+    writeFileSync(join(repoDir, '配置', '.env.local'), 'DB_PASS=old-arbitrary-password-1\n', 'utf8')
+    writeFileSync(join(repoDir, 'boundary.ts'), 'export const header = "ok"\n', 'utf8')
+    execFileSync('git', ['add', '.'], { cwd: repoDir, stdio: 'pipe' })
+    execFileSync('git', ['commit', '-m', 'init non-ascii and boundary'], { cwd: repoDir, stdio: 'pipe' })
+
+    const oldPass = 'ARBITRARY_OLD_PASSWORD_XYZ'
+    const newPass = 'ARBITRARY_NEW_PASSWORD_XYZ'
+    writeFileSync(
+      join(repoDir, '配置', '.env.local'),
+      `DB_PASS=${newPass}\nPREV_NOTE=${oldPass}\n`,
+      'utf8',
+    )
+    writeFileSync(join(repoDir, 'boundary.ts'), 'export const header = "ok"\nexport const check = 1\n', 'utf8')
+
+    // 1. Tracked non-ASCII path `.env.local` in unfiltered diff MUST be redacted cleanly,
+    // even when repo enables noprefix, mnemonicPrefix, and color.ui=always
+    execFileSync('git', ['config', 'diff.noprefix', 'true'], { cwd: repoDir, stdio: 'pipe' })
+    execFileSync('git', ['config', 'diff.mnemonicPrefix', 'true'], { cwd: repoDir, stdio: 'pipe' })
+    execFileSync('git', ['config', 'color.ui', 'always'], { cwd: repoDir, stdio: 'pipe' })
+
+    const nonAsciiAll = await inspectWorkspaceGitDiff({ sessionId: 's-nonascii' }, repoDir)
+    expect(nonAsciiAll.diff).toContain('[REDACTED_SENSITIVE_FILE]')
+    expect(nonAsciiAll.diff).toContain('diff --git a/boundary.ts b/boundary.ts')
+    expect(nonAsciiAll.diff).not.toContain(newPass)
+    expect(nonAsciiAll.diff).not.toContain(oldPass)
+    expect(nonAsciiAll.diff).not.toContain('\x1b[')
+
+    // 2. Directly decode C-escaped octal quoted git diff headers too
+    const quotedHeaderDiff = [
+      'diff --git "a/\\351\\205\\215\\347\\275\\256/.env.local" "b/\\351\\205\\215\\347\\275\\256/.env.local"',
+      'index 1111111..2222222 100644',
+      '--- "a/\\351\\205\\215\\347\\275\\256/.env.local"',
+      '+++ "b/\\351\\205\\215\\347\\275\\256/.env.local"',
+      '@@ -1 +1 @@',
+      `-DB_PASS=${oldPass}`,
+      `+DB_PASS=${newPass}`,
+    ].join('\n')
+    const decodedRedacted = redactSensitiveDiffText(quotedHeaderDiff)
+    expect(decodedRedacted).toContain('[REDACTED_SENSITIVE_FILE]')
+    expect(decodedRedacted).not.toContain(oldPass)
+    expect(decodedRedacted).not.toContain(newPass)
+
+    // 3. Credentials straddling the 1,024-byte truncation cut MUST be scrubbed BEFORE truncating
+    // Restore clean `.env.local` first so boundary.ts fills the exact 1,024-byte budget
+    execFileSync('git', ['checkout', '--', '配置/.env.local'], { cwd: repoDir, stdio: 'pipe' })
+    const padLines = Array.from({ length: 14 }, (_, i) => `export const line_${i} = "${'x'.repeat(50)}"`)
+    const straddleAwsKey = 'AKIA' + 'IOSFODNN7EXAMPLE'
+    writeFileSync(
+      join(repoDir, 'boundary.ts'),
+      [...padLines, `export const key = "${straddleAwsKey}"`, 'export const tail = true'].join('\n') + '\n',
+      'utf8',
+    )
+    const straddleRes = await inspectWorkspaceGitDiff(
+      { sessionId: 's-straddle', path: 'boundary.ts', maxBytes: 1024 },
+      repoDir,
+    )
+    expect(straddleRes.truncated).toBe(true)
+    expect(straddleRes.bytes).toBeLessThanOrEqual(1024)
+    expect(straddleRes.diff).not.toContain('AKIAIOS')
+    expect(straddleRes.diff).not.toContain('AKIA')
+
+    // 4. Oversized credential (>512-byte lookahead) cut mid-token MUST still scrub trailing prefix
+    const hugeToken = 'sk-proj-' + 'A'.repeat(700)
+    writeFileSync(
+      join(repoDir, 'boundary.ts'),
+      [...padLines, `export const huge = "${hugeToken}"`].join('\n') + '\n',
+      'utf8',
+    )
+    const hugeRes = await inspectWorkspaceGitDiff(
+      { sessionId: 's-huge-tok', path: 'boundary.ts', maxBytes: 1024 },
+      repoDir,
+    )
+    expect(hugeRes.truncated).toBe(true)
+    expect(hugeRes.diff).not.toContain('sk-proj-AAAA')
+  })
+
+  it('redacts sensitive files in unresolved merge-conflict combined diffs (diff --cc)', async () => {
+    const repoDir = mkdtempSync(join(tmpdir(), 'dsh-git-conflict-'))
+    tempDirs.push(repoDir)
+    initGitRepo(repoDir)
+
+    mkdirSync(join(repoDir, '配置'), { recursive: true })
+    writeFileSync(join(repoDir, '.env.local'), 'DB_PASSWORD=base-secret\n', 'utf8')
+    writeFileSync(join(repoDir, '配置', '.env.local'), 'DB_PASSWORD=cn-base-secret\n', 'utf8')
+    writeFileSync(join(repoDir, 'ok.ts'), 'export const v = 0\n', 'utf8')
+    execFileSync('git', ['add', '.'], { cwd: repoDir, stdio: 'pipe' })
+    execFileSync('git', ['commit', '-m', 'base'], { cwd: repoDir, stdio: 'pipe' })
+
+    execFileSync('git', ['checkout', '-b', 'branch-theirs'], { cwd: repoDir, stdio: 'pipe' })
+    writeFileSync(join(repoDir, '.env.local'), 'DB_PASSWORD=THEIRS_PASSWORD_111\n', 'utf8')
+    writeFileSync(join(repoDir, '配置', '.env.local'), 'DB_PASSWORD=CN_THEIRS_222\n', 'utf8')
+    execFileSync('git', ['add', '.'], { cwd: repoDir, stdio: 'pipe' })
+    execFileSync('git', ['commit', '-m', 'theirs change'], { cwd: repoDir, stdio: 'pipe' })
+
+    execFileSync('git', ['checkout', 'main'], { cwd: repoDir, stdio: 'pipe' })
+    writeFileSync(join(repoDir, '.env.local'), 'DB_PASSWORD=OURS_PASSWORD_333\n', 'utf8')
+    writeFileSync(join(repoDir, '配置', '.env.local'), 'DB_PASSWORD=CN_OURS_444\n', 'utf8')
+    writeFileSync(join(repoDir, 'ok.ts'), 'export const v = 1\n', 'utf8')
+    execFileSync('git', ['add', '.'], { cwd: repoDir, stdio: 'pipe' })
+    execFileSync('git', ['commit', '-m', 'ours change'], { cwd: repoDir, stdio: 'pipe' })
+
+    // Trigger genuine unresolved merge conflicts emitting `diff --cc`
+    try {
+      execFileSync('git', ['merge', 'branch-theirs'], { cwd: repoDir, stdio: 'pipe' })
+    } catch {
+      // Merge conflict exit code 1 expected
+    }
+    writeFileSync(join(repoDir, 'ok.ts'), 'export const v = 2\n', 'utf8')
+
+    // Sanity-check that raw `git diff` actually emits `diff --cc`
+    const rawGitDiff = execFileSync('git', ['diff'], { cwd: repoDir, encoding: 'utf8' })
+    expect(rawGitDiff).toContain('diff --cc .env.local')
+
+    const res = await inspectWorkspaceGitDiff({ sessionId: 's-conflict' }, repoDir)
+    expect(res.diff).toContain('[REDACTED_SENSITIVE_FILE]')
+    expect(res.diff).toContain('+export const v = 2')
+    expect(res.diff).not.toContain('THEIRS_PASSWORD_111')
+    expect(res.diff).not.toContain('CN_THEIRS_222')
+    expect(res.diff).not.toContain('OURS_PASSWORD_333')
+    expect(res.diff).not.toContain('CN_OURS_444')
   })
 })

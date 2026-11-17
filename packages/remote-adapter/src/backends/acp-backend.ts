@@ -139,15 +139,34 @@ export class AcpAgentBackend implements ManagedAgentBackend {
     await this.ensureRpc()
   }
 
+  private clearLiveProcessState(reason: 'host_stopped' | 'process_exited'): void {
+    this.loadedSessions.clear()
+    for (const [id, entry] of this.pendingPermissions.entries()) {
+      this.pendingPermissions.delete(id)
+      try {
+        entry.resolve({ outcome: { outcome: 'cancelled' } })
+      } catch {}
+      this.emitter.emit(entry.sessionId, 'approval.resolved', {
+        callId: id,
+        decision: 'rejected',
+        cancelled: true,
+        reason,
+      })
+    }
+    for (const meta of this.sessions.values()) {
+      if (meta.status === 'running') {
+        meta.status = 'idle'
+        meta.updatedAtMs = Date.now()
+        this.emitter.emit(meta.sessionId, 'agent/status', { status: 'idle', reason })
+      }
+    }
+  }
+
   async stop(): Promise<void> {
     this.startPromise = undefined
     const active = this.rpc
     this.rpc = undefined
-    this.loadedSessions.clear()
-    for (const [id, entry] of this.pendingPermissions.entries()) {
-      this.pendingPermissions.delete(id)
-      entry.resolve({ outcome: { outcome: 'cancelled' } })
-    }
+    this.clearLiveProcessState('host_stopped')
     if (active) {
       await active.stop()
     }
@@ -178,7 +197,7 @@ export class AcpAgentBackend implements ManagedAgentBackend {
         onExit: () => {
           if (this.rpc === proc) {
             this.rpc = undefined
-            this.loadedSessions.clear()
+            this.clearLiveProcessState('process_exited')
           }
         },
       })

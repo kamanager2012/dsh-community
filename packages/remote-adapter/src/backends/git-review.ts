@@ -39,13 +39,312 @@ const MAX_WORKSPACE_FILES_RANK_SLACK = 256
 const MAX_WORKSPACE_FILES_TOP_K_CAP = 4_096
 const WORKSPACE_FILES_COLLATOR = new Intl.Collator('en')
 
+function truncateUtf8Buffer(
+  rawBuf: Buffer,
+  maxBytes: number,
+): { text: string; bytes: number; truncated: boolean } {
+  const effectiveMaxBytes = Math.max(1, maxBytes)
+  if (rawBuf.byteLength <= effectiveMaxBytes) {
+    return {
+      text: rawBuf.toString('utf8'),
+      bytes: rawBuf.byteLength,
+      truncated: false,
+    }
+  }
+  let end = effectiveMaxBytes
+  while (end > 0 && (rawBuf[end]! & 0b1100_0000) === 0b1000_0000) {
+    end -= 1
+  }
+  const sliced = rawBuf.subarray(0, end)
+  return {
+    text: sliced.toString('utf8'),
+    bytes: sliced.byteLength,
+    truncated: true,
+  }
+}
+
+const BENIGN_ENV_NAMES = new Set([
+  '.env.example',
+  '.env.sample',
+  '.env.template',
+  '.env.schema',
+  '.env.defaults',
+])
+
+const BENIGN_ENV_TEMPLATE_RE =
+  /^\.env(?:rc)?(?:[._-][a-z0-9-]+)*[._-](?:example|sample|template|schema|defaults)$/u
+
+function isSensitiveSecretPath(relPath: string): boolean {
+  const normalized = relPath.replace(/\\/gu, '/').toLowerCase()
+  const base = basename(normalized)
+  if (base.startsWith('.env') && !BENIGN_ENV_NAMES.has(base) && !BENIGN_ENV_TEMPLATE_RE.test(base)) {
+    return true
+  }
+  if (
+    base === '.npmrc'
+    || base === '.pypirc'
+    || base === '.netrc'
+    || base === '.htpasswd'
+    || (!base.endsWith('.pub') && /^id_(?:rsa|ed25519|ecdsa|dsa)(?:$|[._-])/u.test(base))
+  ) {
+    return true
+  }
+  return /\.(?:pem|key|p12|pfx|jks|keystore)$/u.test(base)
+}
+
+function formatRedactedSensitiveFileDiff(relPath: string): string {
+  return [
+    `diff --git a/${relPath} b/${relPath}`,
+    `--- a/${relPath}`,
+    `+++ b/${relPath}`,
+    `@@ redacted sensitive file diff (${relPath}) @@`,
+    '+[REDACTED_SENSITIVE_FILE]',
+    '',
+  ].join('\n')
+}
+
+const CREDENTIAL_LOOKAHEAD_BYTES = 512
+
+function scrubCredentialLiterals(text: string, allowTruncatedTail = false): string {
+  let out = text
+    .replace(
+      /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z0-9 ]*PRIVATE KEY-----|$)/gu,
+      '[REDACTED_PRIVATE_KEY]',
+    )
+    .replace(
+      /\bsk-(?:ant-[A-Za-z0-9_-]{12,}|proj-[A-Za-z0-9_-]{16,}|live_[A-Za-z0-9]{16,}|test_[A-Za-z0-9]{16,}|[A-Za-z0-9_-]{20,})\b/gu,
+      '[REDACTED_SECRET]',
+    )
+    .replace(/\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/gu, '[REDACTED_SECRET]')
+    .replace(/\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/gu, '[REDACTED_SECRET]')
+    .replace(/\bxox[baprs]-[A-Za-z0-9-]{10,}\b/gu, '[REDACTED_SECRET]')
+    .replace(
+      /\b(https?|wss?|postgres|mysql|redis|amqp):\/\/([^/\s:@]+):([^/\s@]+)@/giu,
+      '$1://[REDACTED]:[REDACTED]@',
+    )
+
+  if (allowTruncatedTail) {
+    out = out
+      .replace(
+        /(?:\bsk-(?:ant-[A-Za-z0-9_-]*|proj-[A-Za-z0-9_-]*|live_[A-Za-z0-9]*|test_[A-Za-z0-9]*|[A-Za-z0-9_-]{6,})|\b(?:AKIA|ASIA)[0-9A-Z]{2,}|\b(?:gh[pousr]_|github_pat_)[A-Za-z0-9_]*|\bxox[baprs]-[A-Za-z0-9-]*)$/gu,
+        '[REDACTED_SECRET]',
+      )
+      .replace(/\b(https?|wss?|postgres|mysql|redis|amqp):\/\/[^/\s:@]+:[^/\s@]*$/iu, '$1://[REDACTED]:[REDACTED]')
+  }
+
+  return out
+}
+
+function decodeGitQuotedToken(quoted: string): { path: string; nextIndex: number } | undefined {
+  if (!quoted.startsWith('"')) return undefined
+  const bytes: number[] = []
+  let i = 1
+  while (i < quoted.length) {
+    const ch = quoted[i]!
+    if (ch === '"') {
+      return {
+        path: Buffer.from(bytes).toString('utf8'),
+        nextIndex: i + 1,
+      }
+    }
+    if (ch === '\\') {
+      i += 1
+      if (i >= quoted.length) break
+      const esc = quoted[i]!
+      if (esc >= '0' && esc <= '7') {
+        let octal = esc
+        for (let k = 0; k < 2 && i + 1 < quoted.length; k += 1) {
+          const d = quoted[i + 1]!
+          if (d >= '0' && d <= '7') {
+            octal += d
+            i += 1
+          } else {
+            break
+          }
+        }
+        bytes.push(parseInt(octal, 8))
+      } else {
+        const escapeMap: Record<string, number> = {
+          a: 0x07,
+          b: 0x08,
+          t: 0x09,
+          n: 0x0a,
+          v: 0x0b,
+          f: 0x0c,
+          r: 0x0d,
+          '"': 0x22,
+          '\\': 0x5c,
+        }
+        const mapped = escapeMap[esc]
+        if (mapped !== undefined) {
+          bytes.push(mapped)
+        } else {
+          for (const b of Buffer.from(esc, 'utf8')) bytes.push(b)
+        }
+      }
+      i += 1
+      continue
+    }
+    for (const b of Buffer.from(ch, 'utf8')) bytes.push(b)
+    i += 1
+  }
+  return undefined
+}
+
+function stripAnsiSgr(text: string): string {
+  return text.replace(/\x1b\[[0-9;]*m/gu, '')
+}
+
+function stripDiffSidePrefix(rawPath: string, canonicalPrefix: 'a/' | 'b/'): string {
+  if (rawPath.startsWith(canonicalPrefix)) return rawPath.slice(canonicalPrefix.length)
+  // Fallback for mnemonicPrefix (i/w/c/o) or custom single-letter prefixes if encountered outside canonical flags.
+  if (
+    canonicalPrefix === 'a/'
+    && (rawPath.startsWith('i/') || rawPath.startsWith('c/') || rawPath.startsWith('o/'))
+  ) {
+    return rawPath.slice(2)
+  }
+  if (
+    canonicalPrefix === 'b/'
+    && (rawPath.startsWith('w/') || rawPath.startsWith('i/') || rawPath.startsWith('o/'))
+  ) {
+    return rawPath.slice(2)
+  }
+  return rawPath
+}
+
+function parseGitDiffHeaderPaths(rawHeaderLine: string): { pathA: string; pathB: string } | undefined {
+  const headerLine = stripAnsiSgr(rawHeaderLine)
+  const combinedMatch = headerLine.match(/^diff --(?:cc|combined|remerge) (.+)$/u)
+  if (combinedMatch) {
+    const rest = combinedMatch[1]!.trim()
+    let pathVal = rest
+    if (rest.startsWith('"')) {
+      const decoded = decodeGitQuotedToken(rest)
+      if (!decoded) return undefined
+      pathVal = decoded.path
+    }
+    const cleanPath = stripDiffSidePrefix(stripDiffSidePrefix(pathVal, 'a/'), 'b/')
+    return { pathA: cleanPath, pathB: cleanPath }
+  }
+  if (!headerLine.startsWith('diff --git ')) return undefined
+  const rest = headerLine.slice('diff --git '.length)
+
+  if (rest.startsWith('"')) {
+    const first = decodeGitQuotedToken(rest)
+    if (!first) return undefined
+    const afterFirst = rest.slice(first.nextIndex)
+    if (!afterFirst.startsWith(' ')) return undefined
+    const secondRaw = afterFirst.slice(1)
+    let secondPath: string
+    if (secondRaw.startsWith('"')) {
+      const second = decodeGitQuotedToken(secondRaw)
+      if (!second) return undefined
+      secondPath = second.path
+    } else {
+      secondPath = secondRaw
+    }
+    return {
+      pathA: stripDiffSidePrefix(first.path, 'a/'),
+      pathB: stripDiffSidePrefix(secondPath, 'b/'),
+    }
+  }
+
+  const identicalPrefixedMatch = rest.match(/^(?:[abciwo]\/)(.+?) (?:[abciwo]\/)\1$/u)
+  if (identicalPrefixedMatch) {
+    return { pathA: identicalPrefixedMatch[1]!, pathB: identicalPrefixedMatch[1]! }
+  }
+  const identicalNoPrefixMatch = rest.match(/^(.+?) \1$/u)
+  if (identicalNoPrefixMatch) {
+    return { pathA: identicalNoPrefixMatch[1]!, pathB: identicalNoPrefixMatch[1]! }
+  }
+  const secondQuotedMatch = rest.match(/^(?:[abciwo]\/)?(.+?) "(?:[abciwo]\/)?(.+)"$/u)
+  if (secondQuotedMatch) {
+    const decoded = decodeGitQuotedToken(`"${secondQuotedMatch[2]!}"`)
+    if (decoded) {
+      return {
+        pathA: stripDiffSidePrefix(secondQuotedMatch[1]!, 'a/'),
+        pathB: decoded.path,
+      }
+    }
+  }
+  const splitPrefixedMatch = rest.match(/^(?:[abciwo]\/)(.+?) (?:[abciwo]\/)(.+)$/u)
+  if (splitPrefixedMatch) {
+    return { pathA: splitPrefixedMatch[1]!, pathB: splitPrefixedMatch[2]! }
+  }
+  const splitPlainMatch = rest.match(/^(\S+) (\S+)$/u)
+  if (splitPlainMatch) {
+    return { pathA: splitPlainMatch[1]!, pathB: splitPlainMatch[2]! }
+  }
+  return undefined
+}
+
+function findSensitiveHeaderMarkerPath(section: string): string | undefined {
+  const lines = section.split(/\r?\n/u)
+  for (const rawLine of lines) {
+    const line = stripAnsiSgr(rawLine)
+    if (line.startsWith('@@')) break
+    const markerMatch = line.match(/^(?:---|\+\+\+) (.+)$/u)
+    if (!markerMatch) continue
+    let rawPath = markerMatch[1]!.trim()
+    if (rawPath === '/dev/null') continue
+    if (rawPath.startsWith('"')) {
+      const decoded = decodeGitQuotedToken(rawPath)
+      if (!decoded) continue
+      rawPath = decoded.path
+    }
+    const clean = stripDiffSidePrefix(stripDiffSidePrefix(rawPath, 'a/'), 'b/')
+    if (isSensitiveSecretPath(clean)) return clean
+  }
+  return undefined
+}
+
+export function redactSensitiveDiffText(
+  diffText: string,
+  options?: { allowTruncatedTail?: boolean },
+): string {
+  if (!diffText) return diffText
+  const allowTail = options?.allowTruncatedTail === true
+  const sections = diffText.split(/(?=^(?:\x1b\[[0-9;]*m)*diff --(?:git|cc|combined|remerge) )/mu)
+  const sanitized = sections.map((section, idx) => {
+    const isLast = idx === sections.length - 1
+    const firstNewline = section.indexOf('\n')
+    const headerLine = (firstNewline === -1 ? section : section.slice(0, firstNewline)).replace(/\r$/u, '')
+    const paths = parseGitDiffHeaderPaths(headerLine)
+    if (paths && (isSensitiveSecretPath(paths.pathA) || isSensitiveSecretPath(paths.pathB))) {
+      return formatRedactedSensitiveFileDiff(paths.pathB || paths.pathA)
+    }
+    const markerSensitivePath = findSensitiveHeaderMarkerPath(section)
+    if (markerSensitivePath) {
+      return formatRedactedSensitiveFileDiff(markerSensitivePath)
+    }
+    return scrubCredentialLiterals(section, allowTail && isLast)
+  })
+  return sanitized.join('')
+}
+
+const CANONICAL_GIT_CONFIG_FLAGS = [
+  '-c',
+  'core.quotePath=false',
+  '-c',
+  'diff.noprefix=false',
+  '-c',
+  'diff.mnemonicPrefix=false',
+  '-c',
+  'color.ui=false',
+  '-c',
+  'color.diff=never',
+] as const
+
+const CANONICAL_DIFF_FLAGS = ['--no-ext-diff', '--no-color', '--src-prefix=a/', '--dst-prefix=b/'] as const
+
 async function runGit(
   cwd: string,
   args: readonly string[],
   maxBuffer = 2 * 1024 * 1024,
   timeoutMs = GIT_TIMEOUT_MS,
 ): Promise<{ stdout: string; stderr: string }> {
-  return execFileAsync('git', ['-C', cwd, ...args], {
+  return execFileAsync('git', [...CANONICAL_GIT_CONFIG_FLAGS, '-C', cwd, ...args], {
     env: sanitizeSubprocessEnv(),
     timeout: timeoutMs,
     maxBuffer,
@@ -63,7 +362,7 @@ async function runGitBoundedDiff(
   const effectiveMaxBytes = Math.max(1, maxBytes)
   const captureCap = effectiveMaxBytes + 4
   return new Promise((resolvePromise, rejectPromise) => {
-    const child = spawn('git', ['-C', cwd, ...args], {
+    const child = spawn('git', [...CANONICAL_GIT_CONFIG_FLAGS, '-C', cwd, ...args], {
       env: sanitizeSubprocessEnv(),
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
@@ -147,22 +446,11 @@ async function runGitBoundedDiff(
       }
 
       const rawBuf = Buffer.concat(stdoutChunks)
-      const truncated = streamTruncated || rawBuf.byteLength > effectiveMaxBytes
-      if (!truncated) {
-        const text = rawBuf.toString('utf8')
-        resolvePromise({ text, bytes: rawBuf.byteLength, truncated: false })
-        return
-      }
-
-      let end = Math.min(effectiveMaxBytes, rawBuf.byteLength)
-      while (end > 0 && (rawBuf[end]! & 0b1100_0000) === 0b1000_0000) {
-        end -= 1
-      }
-      const sliced = rawBuf.subarray(0, end)
+      const sliced = truncateUtf8Buffer(rawBuf, effectiveMaxBytes)
       resolvePromise({
-        text: sliced.toString('utf8'),
-        bytes: sliced.byteLength,
-        truncated: true,
+        text: sliced.text,
+        bytes: sliced.bytes,
+        truncated: streamTruncated || sliced.truncated,
       })
     })
   })
@@ -573,13 +861,35 @@ export async function inspectWorkspaceGitDiff(
   const safePath =
     params.path !== undefined ? assertSafeRepoRelativePath(repoRoot, params.path) : undefined
 
-  const gitArgs = ['diff', '--no-ext-diff']
+  if (safePath !== undefined && isSensitiveSecretPath(safePath)) {
+    const finalRedacted = truncateUtf8Buffer(
+      Buffer.from(formatRedactedSensitiveFileDiff(safePath), 'utf8'),
+      maxBytes,
+    )
+    return {
+      sessionId: params.sessionId,
+      repoRoot,
+      branch,
+      staged,
+      path: safePath,
+      diff: finalRedacted.text,
+      bytes: finalRedacted.bytes,
+      truncated: finalRedacted.truncated,
+    }
+  }
+
+  const gitArgs = ['diff', ...CANONICAL_DIFF_FLAGS]
   if (staged) gitArgs.push('--cached')
   if (safePath !== undefined) {
     gitArgs.push('--', safePath)
   }
 
-  let bounded = await runGitBoundedDiff(repoRoot, gitArgs, maxBytes)
+  // Capture a lookahead window past maxBytes so credentials straddling the truncation boundary are scrubbed intact first.
+  const captureMaxBytes = maxBytes + CREDENTIAL_LOOKAHEAD_BYTES
+  let bounded = await runGitBoundedDiff(repoRoot, gitArgs, captureMaxBytes)
+  let capturedTruncated = bounded.truncated
+  let redactedBase = redactSensitiveDiffText(bounded.text, { allowTruncatedTail: capturedTruncated })
+  let redactedBaseBytes = Buffer.byteLength(redactedBase, 'utf8')
 
   // If requesting an unstaged single-file diff for a new untracked regular file, synthesize unified diff safely.
   if (bounded.bytes === 0 && !staged && safePath !== undefined) {
@@ -596,14 +906,17 @@ export async function inspectWorkspaceGitDiff(
         if (untrackedCheck.stdout.trim() === safePath) {
           bounded = await runGitBoundedDiff(
             repoRoot,
-            ['diff', '--no-index', '--no-ext-diff', '--', '/dev/null', safePath],
-            maxBytes,
+            ['diff', '--no-index', ...CANONICAL_DIFF_FLAGS, '--', '/dev/null', safePath],
+            captureMaxBytes,
             { allowExitOne: true },
           )
+          capturedTruncated = bounded.truncated
+          redactedBase = redactSensitiveDiffText(bounded.text, { allowTruncatedTail: capturedTruncated })
+          redactedBaseBytes = Buffer.byteLength(redactedBase, 'utf8')
         }
       } catch {}
     }
-  } else if (!staged && safePath === undefined && !bounded.truncated) {
+  } else if (!staged && safePath === undefined && !capturedTruncated && redactedBaseBytes < maxBytes) {
     // Include bounded untracked file previews in unfiltered unstaged diffs so "all files" matches status.
     try {
       const untrackedList = await runGit(repoRoot, [
@@ -614,8 +927,8 @@ export async function inspectWorkspaceGitDiff(
       ])
       const untrackedPaths = untrackedList.stdout.split('\0').filter((p) => p.length > 0)
       if (untrackedPaths.length > 0) {
-        const parts: string[] = bounded.text ? [bounded.text] : []
-        let usedBytes = bounded.bytes
+        const parts: string[] = redactedBase ? [redactedBase] : []
+        let usedBytes = redactedBaseBytes
         let combinedTruncated = false
 
         for (const rawRel of untrackedPaths) {
@@ -635,33 +948,56 @@ export async function inspectWorkspaceGitDiff(
             break
           }
 
+          if (isSensitiveSecretPath(verifiedPath)) {
+            const placeholder = truncateUtf8Buffer(
+              Buffer.from(formatRedactedSensitiveFileDiff(verifiedPath), 'utf8'),
+              remainingBudget,
+            )
+            if (placeholder.bytes === 0) {
+              combinedTruncated = true
+              break
+            }
+            parts.push(placeholder.text)
+            usedBytes += sepBytes + placeholder.bytes
+            if (placeholder.truncated || usedBytes >= maxBytes) {
+              combinedTruncated = true
+              if (usedBytes >= maxBytes) break
+            }
+            continue
+          }
+
           const preview = await runGitBoundedDiff(
             repoRoot,
-            ['diff', '--no-index', '--no-ext-diff', '--', '/dev/null', verifiedPath],
-            remainingBudget,
+            ['diff', '--no-index', ...CANONICAL_DIFF_FLAGS, '--', '/dev/null', verifiedPath],
+            remainingBudget + CREDENTIAL_LOOKAHEAD_BYTES,
             { allowExitOne: true },
           )
           if (preview.bytes === 0) continue
 
-          parts.push(preview.text)
-          usedBytes += sepBytes + preview.bytes
-          if (preview.truncated || usedBytes >= maxBytes) {
+          const redactedPreviewText = redactSensitiveDiffText(preview.text, {
+            allowTruncatedTail: preview.truncated,
+          })
+          const slicedPreview = truncateUtf8Buffer(
+            Buffer.from(redactedPreviewText, 'utf8'),
+            remainingBudget,
+          )
+          parts.push(slicedPreview.text)
+          usedBytes += sepBytes + slicedPreview.bytes
+          if (preview.truncated || slicedPreview.truncated || usedBytes >= maxBytes) {
             combinedTruncated = true
             if (usedBytes >= maxBytes) break
           }
         }
 
-        if (parts.length > (bounded.text ? 1 : 0) || combinedTruncated) {
-          const text = parts.join('\n')
-          bounded = {
-            text,
-            bytes: Buffer.byteLength(text, 'utf8'),
-            truncated: combinedTruncated,
-          }
+        if (parts.length > (redactedBase ? 1 : 0) || combinedTruncated) {
+          redactedBase = parts.join('\n')
+          capturedTruncated = capturedTruncated || combinedTruncated
         }
       }
     } catch {}
   }
+
+  const finalResult = truncateUtf8Buffer(Buffer.from(redactedBase, 'utf8'), maxBytes)
 
   return {
     sessionId: params.sessionId,
@@ -669,9 +1005,9 @@ export async function inspectWorkspaceGitDiff(
     branch,
     staged,
     ...(safePath !== undefined ? { path: safePath } : {}),
-    diff: bounded.text,
-    bytes: bounded.bytes,
-    truncated: bounded.truncated,
+    diff: finalResult.text,
+    bytes: finalResult.bytes,
+    truncated: capturedTruncated || finalResult.truncated,
   }
 }
 
