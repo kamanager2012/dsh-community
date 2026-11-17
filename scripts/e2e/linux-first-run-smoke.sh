@@ -9,7 +9,7 @@ if [[ "$(uname -s)" != "Linux" ]]; then
   echo "ERROR: Linux or WSL2 required" >&2
   exit 2
 fi
-for tool in bash git node pnpm; do
+for tool in bash git node pnpm flock; do
   command -v "$tool" >/dev/null 2>&1 || { echo "ERROR: missing $tool" >&2; exit 2; }
 done
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/dsh-first-run.XXXXXXXX")"
@@ -66,6 +66,41 @@ grep -Fq "marketplace list" "$WORK/marketplace.txt" || fail "marketplace command
 run_cli "$WORK/bin/dsh-community" remote --help >"$WORK/remote.txt" || fail "remote help"
 grep -Fq "remote start" "$WORK/remote.txt" || fail "remote command absent"
 
+# A failed upgrade must not affect the already installed CLI.
+mkdir -p "$WORK/fail-tools"
+cat > "$WORK/fail-tools/pnpm" <<'SH'
+#!/bin/sh
+exit 47
+SH
+chmod 0755 "$WORK/fail-tools/pnpm"
+original_hash="$(sha256sum "$WORK/installed/repo/apps/tui/dist/bin.js" | awk '{print $1}')"
+set +e
+PATH="$WORK/fail-tools:$PATH" bash "$ROOT/scripts/install-linux.sh" "${args[@]}" >"$WORK/fail-upgrade.log" 2>&1
+fail_rc=$?
+set -e
+[[ "$fail_rc" -ne 0 ]] || fail "deliberately failed upgrade unexpectedly succeeded"
+after_hash="$(sha256sum "$WORK/installed/repo/apps/tui/dist/bin.js" | awk '{print $1}')"
+[[ "$original_hash" = "$after_hash" ]] || fail "failed upgrade changed the working CLI"
+run_cli "$WORK/bin/dsh-community" version >"$WORK/after-failure.txt" \
+  || fail "CLI could not run after failed upgrade"
+grep -Fq "@deepseek-ai/dsh" "$WORK/after-failure.txt" \
+  || fail "official Runtime identity lost after failed upgrade"
+
+# Another installer must refuse immediately under the same prefix lock.
+exec 8>"$WORK/installed/.install.lock"
+flock -x 8
+set +e
+bash "$ROOT/scripts/install-linux.sh" "${args[@]}" >"$WORK/concurrent.log" 2>&1
+concurrent_rc=$?
+set -e
+flock -u 8
+exec 8>&-
+[[ "$concurrent_rc" -ne 0 ]] || fail "concurrent installation unexpectedly succeeded"
+grep -Fq "another dsh-community installation" "$WORK/concurrent.log" \
+  || fail "lock refusal did not explain the concurrent installation"
+[[ "$(sha256sum "$WORK/installed/repo/apps/tui/dist/bin.js" | awk '{print $1}')" = "$original_hash" ]] \
+  || fail "concurrent rejection modified active CLI"
+
 if [[ -n "$EVIDENCE_OUT" ]]; then
   mkdir -p "$(dirname "$EVIDENCE_OUT")"
   SOURCE_SHA="$SOURCE_SHA" EVIDENCE_OUT="$EVIDENCE_OUT" node <<'NODE'
@@ -84,7 +119,9 @@ const evidence = {
     emptyOfficialSessions: 'PASS',
     doctorNoKeyFailClosed: 'PASS',
     marketplaceHelp: 'PASS',
-    remoteHelp: 'PASS'
+    remoteHelp: 'PASS',
+    failedReinstallPreservesWorkingCLI: 'PASS',
+    concurrentInstallFailClosed: 'PASS'
   },
   providerCalls: 0,
   actualAgentTurn: false,
