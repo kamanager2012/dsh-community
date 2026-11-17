@@ -194,6 +194,20 @@ describe('Linux/WSL Terminal CLI installer', () => {
       'utf8',
     )
     chmodSync(fakeMv, 0o755)
+    // Send SIGTERM while rollback is executing rm(candidate repo).
+    const fakeRm = join(fakeTools, 'rm')
+    writeFileSync(
+      fakeRm,
+      '#!/usr/bin/env bash\n' +
+      'last="${@: -1}"\n' +
+      '/usr/bin/rm "$@"\n' +
+      'rc=$?\n' +
+      'if [ "$rc" -eq 0 ] && [ -n "${DSH_TEST_SIGNAL_ON_RM:-}" ] && [ "$last" = "$DSH_TEST_SIGNAL_ON_RM" ] && [ ! -e "${DSH_TEST_CLEANUP_MARKER:-/nonexistent}" ]; then touch "$DSH_TEST_CLEANUP_MARKER"; kill -TERM "$PPID"; fi\n' +
+      'exit "$rc"\n',
+      'utf8',
+    )
+    chmodSync(fakeRm, 0o755)
+
 
     const terminated = spawnSync('bash', [installerPath, ...args], {
       env: { ...env, DSH_TEST_SIGTERM_SOURCE: join(prefix, 'repo') },
@@ -223,6 +237,47 @@ describe('Linux/WSL Terminal CLI installer', () => {
     expect(existsSync(join(otherPrefix, 'repo'))).toBe(false)
     expect(execFileSync(join(bin, 'dsh-community'), ['version'], { encoding: 'utf8' }).trim()).toBe(stable)
     expect(execFileSync(join(bin, 'dsh-marketplace'), [], { encoding: 'utf8' }).trim()).toBe('MARKETPLACE')
+
+    // A failed marketplace shim publication begins rollback. Deliver a second
+    // SIGTERM after cleanup removed the candidate but before it restores old repo.
+    const rollbackShimMarker = join(workRoot, 'rollback-shim.marker')
+    const rollbackSignalMarker = join(workRoot, 'rollback-signal.marker')
+    const interruptedRollback = spawnSync('bash', [installerPath, ...args], {
+      env: {
+        ...env,
+        DSH_TEST_FAIL_MARKETPLACE_SHIM: join(bin, 'dsh-marketplace'),
+        DSH_TEST_MARKER: rollbackShimMarker,
+        DSH_TEST_SIGNAL_ON_RM: join(prefix, 'repo'),
+        DSH_TEST_CLEANUP_MARKER: rollbackSignalMarker,
+      },
+      encoding: 'utf8',
+    })
+    expect(interruptedRollback.status).not.toBe(0)
+    expect(existsSync(rollbackShimMarker)).toBe(true)
+    expect(existsSync(rollbackSignalMarker)).toBe(true)
+    expect(interruptedRollback.stderr).toContain('Previous dsh-community installation restored')
+    expect(execFileSync(join(bin, 'dsh-community'), ['version'], { encoding: 'utf8' }).trim()).toBe(stable)
+    expect(readFileSync(join(prefix, 'repo/apps/tui/dist/bin.js'), 'utf8')).toContain('STABLE_CLI')
+
+    // A different prefix cannot take over the shared bin-dir while this
+    // process holds its flock lock. Test uses the same OFD across subprocess.
+    const binLock = openSync(join(bin, '.dsh-community.install.lock'), 'a')
+    try {
+      const locked = spawnSync('flock', ['-x', '3'], {
+        stdio: ['ignore', 'pipe', 'pipe', binLock], encoding: 'utf8',
+      })
+      expect(locked.status, locked.stderr).toBe(0)
+      const competingPrefix = join(workRoot, 'third-prefix')
+      const competing = spawnSync('bash', [
+        installerPath, '--local-repo', fixture, '--prefix', competingPrefix, '--bin-dir', bin,
+      ], { env, encoding: 'utf8' })
+      expect(competing.status).not.toBe(0)
+      expect(competing.stderr).toContain('another dsh-community installation is publishing to')
+      expect(execFileSync(join(bin, 'dsh-community'), ['version'], { encoding: 'utf8' }).trim()).toBe(stable)
+      expect(existsSync(join(competingPrefix, 'repo'))).toBe(false)
+    } finally {
+      closeSync(binLock)
+    }
 
     // A directory occupying a shim path must fail before any activation.
     const marketplaceShim = join(bin, 'dsh-marketplace')
