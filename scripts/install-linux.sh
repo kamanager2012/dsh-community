@@ -188,6 +188,19 @@ fi
 
 # Staging and active repository share a filesystem for fast directory rename.
 STAGE_REPO="$(mktemp -d "$PREFIX/.repo.stage.XXXXXXXX")"
+# Existing shared (setgid + group-rx) installations must retain the group
+# of *descendants*, not just the published repo directory. Set group/setgid
+# before git checkout or build creates children. Keep stage private (2700)
+# until activation, so there is no early group access to unfinished content.
+SHARED_SETGID=0
+if [ -d "$INSTALL_REPO" ]; then
+  OLD_REPO_MODE="$(stat -c '%a' "$INSTALL_REPO")"
+  if [[ "$OLD_REPO_MODE" =~ ^[0-7]{3,4}$ ]] && (( (8#$OLD_REPO_MODE & 02050) == 02050 )); then
+    SHARED_SETGID=1
+    chgrp --reference="$INSTALL_REPO" "$STAGE_REPO"
+    chmod 2700 "$STAGE_REPO"
+  fi
+fi
 BACKUP_REPO=""
 SWAP_ATTEMPTED=0
 HAD_PREVIOUS=0
@@ -290,6 +303,17 @@ if [ -n "$LOCAL_REPO" ]; then
     "$LOCAL_REPO/"*) echo "ERROR: --local-repo cannot contain destination prefix." >&2; exit 1 ;;
   esac
   cp -a "$LOCAL_REPO"/. "$STAGE_REPO"/
+  if [ "$SHARED_SETGID" -eq 1 ]; then
+    # cp -a preserves source ownership/modes (and can reset stage root attrs).
+    # For an explicitly shared target, normalize staged ownership groups and
+    # setgid directories before pnpm builds more nested dependencies. Do not
+    # expand any file's read permissions: 0600 inputs remain 0600.
+    chgrp -R --reference="$INSTALL_REPO" "$STAGE_REPO"
+    find "$STAGE_REPO" -type d -exec chmod g+s -- {} +
+    chmod 2700 "$STAGE_REPO"
+  else
+    chmod 0700 "$STAGE_REPO"
+  fi
 else
   git init -q "$STAGE_REPO"
   git -C "$STAGE_REPO" remote add origin "$REPO_URL"
@@ -341,8 +365,10 @@ pnpm \
   exit 1
 }
 
-# mktemp creates 0700 directories. Before publishing, preserve the old
-# install's traversal mode, or honor umask for a first installation.
+# Before publishing, restore the original top-level mode. For an existing
+# setgid shared installation, group ownership and directory inheritance were
+# established *before* staging was populated, not only here.
+# For a first installation, honor the caller's umask.
 if [ -d "$INSTALL_REPO" ]; then
   # chmod --reference copies mode only; chgrp must precede chmod so that
   # previously accessible shared-group installs remain accessible.
