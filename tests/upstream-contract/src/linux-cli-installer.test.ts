@@ -177,10 +177,11 @@ describe('Linux/WSL Terminal CLI installer', () => {
     writeFileSync(
       fakeMv,
       '#!/usr/bin/env bash\n' +
-      'if [ -n "${DSH_TEST_FAIL_MARKETPLACE_SHIM:-}" ] && [ "${4:-}" = "$DSH_TEST_FAIL_MARKETPLACE_SHIM" ] && [ ! -e "${DSH_TEST_MARKER:-/nonexistent}" ]; then touch "$DSH_TEST_MARKER"; exit 79; fi\n' +
+      'dest="${@: -1}"; src="${@: -2:1}"\n' +
+      'if [ -n "${DSH_TEST_FAIL_MARKETPLACE_SHIM:-}" ] && [ "$dest" = "$DSH_TEST_FAIL_MARKETPLACE_SHIM" ] && [ ! -e "${DSH_TEST_MARKER:-/nonexistent}" ]; then touch "$DSH_TEST_MARKER"; exit 79; fi\n' +
       '/usr/bin/mv "$@"\n' +
       'rc=$?\n' +
-      'if [ "$rc" -eq 0 ] && [ -n "${DSH_TEST_SIGTERM_SOURCE:-}" ] && [ "${3:-}" = "$DSH_TEST_SIGTERM_SOURCE" ] && [[ "${4:-}" == *".repo.previous."* ]]; then kill -TERM "$PPID"; fi\n' +
+      'if [ "$rc" -eq 0 ] && [ -n "${DSH_TEST_SIGTERM_SOURCE:-}" ] && [ "$src" = "$DSH_TEST_SIGTERM_SOURCE" ] && [[ "$dest" == *".repo.previous."* ]]; then kill -TERM "$PPID"; fi\n' +
       'exit "$rc"\n',
       'utf8',
     )
