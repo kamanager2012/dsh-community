@@ -3,6 +3,7 @@ import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import { redactSensitiveDiffText } from '../src/backends/git-review.js'
 import {
   boundSessionListPayload,
   enrichSessionsWithWorkspaceSummaries,
@@ -287,5 +288,79 @@ describe('scoped read-only git review helpers', () => {
     expect(allDiff.diff).toContain('[REDACTED_SENSITIVE_FILE]')
     expect(allDiff.diff).toContain('[REDACTED_SECRET]')
     expect(allDiff.diff).toContain('https://[REDACTED]:[REDACTED]@db.internal:5432/app')
+  })
+
+  it('redacts non-ASCII/quoted sensitive paths (配置/.env.local) and credentials straddling the maxBytes truncation boundary', async () => {
+    const repoDir = mkdtempSync(join(tmpdir(), 'dsh-git-quoted-truncate-'))
+    tempDirs.push(repoDir)
+    initGitRepo(repoDir)
+
+    mkdirSync(join(repoDir, '配置'), { recursive: true })
+    writeFileSync(join(repoDir, '配置', '.env.local'), 'DB_PASS=old-arbitrary-password-1\n', 'utf8')
+    writeFileSync(join(repoDir, 'boundary.ts'), 'export const header = "ok"\n', 'utf8')
+    execFileSync('git', ['add', '.'], { cwd: repoDir, stdio: 'pipe' })
+    execFileSync('git', ['commit', '-m', 'init non-ascii and boundary'], { cwd: repoDir, stdio: 'pipe' })
+
+    const oldPass = 'ARBITRARY_OLD_PASSWORD_XYZ'
+    const newPass = 'ARBITRARY_NEW_PASSWORD_XYZ'
+    writeFileSync(
+      join(repoDir, '配置', '.env.local'),
+      `DB_PASS=${newPass}\nPREV_NOTE=${oldPass}\n`,
+      'utf8',
+    )
+
+    // 1. Tracked non-ASCII path `.env.local` in unfiltered diff MUST be redacted cleanly
+    const nonAsciiAll = await inspectWorkspaceGitDiff({ sessionId: 's-nonascii' }, repoDir)
+    expect(nonAsciiAll.diff).toContain('[REDACTED_SENSITIVE_FILE]')
+    expect(nonAsciiAll.diff).not.toContain(newPass)
+    expect(nonAsciiAll.diff).not.toContain(oldPass)
+
+    // 2. Directly decode C-escaped octal quoted git diff headers too
+    const quotedHeaderDiff = [
+      'diff --git "a/\\351\\205\\215\\347\\275\\256/.env.local" "b/\\351\\205\\215\\347\\275\\256/.env.local"',
+      'index 1111111..2222222 100644',
+      '--- "a/\\351\\205\\215\\347\\275\\256/.env.local"',
+      '+++ "b/\\351\\205\\215\\347\\275\\256/.env.local"',
+      '@@ -1 +1 @@',
+      `-DB_PASS=${oldPass}`,
+      `+DB_PASS=${newPass}`,
+    ].join('\n')
+    const decodedRedacted = redactSensitiveDiffText(quotedHeaderDiff)
+    expect(decodedRedacted).toContain('[REDACTED_SENSITIVE_FILE]')
+    expect(decodedRedacted).not.toContain(oldPass)
+    expect(decodedRedacted).not.toContain(newPass)
+
+    // 3. Credentials straddling the 1,024-byte truncation cut MUST be scrubbed BEFORE truncating
+    // Restore clean `.env.local` first so boundary.ts fills the exact 1,024-byte budget
+    execFileSync('git', ['checkout', '--', '配置/.env.local'], { cwd: repoDir, stdio: 'pipe' })
+    const padLines = Array.from({ length: 14 }, (_, i) => `export const line_${i} = "${'x'.repeat(50)}"`)
+    const straddleAwsKey = 'AKIA' + 'IOSFODNN7EXAMPLE'
+    writeFileSync(
+      join(repoDir, 'boundary.ts'),
+      [...padLines, `export const key = "${straddleAwsKey}"`, 'export const tail = true'].join('\n') + '\n',
+      'utf8',
+    )
+    const straddleRes = await inspectWorkspaceGitDiff(
+      { sessionId: 's-straddle', path: 'boundary.ts', maxBytes: 1024 },
+      repoDir,
+    )
+    expect(straddleRes.truncated).toBe(true)
+    expect(straddleRes.bytes).toBeLessThanOrEqual(1024)
+    expect(straddleRes.diff).not.toContain('AKIAIOS')
+    expect(straddleRes.diff).not.toContain('AKIA')
+
+    // 4. Oversized credential (>512-byte lookahead) cut mid-token MUST still scrub trailing prefix
+    const hugeToken = 'sk-proj-' + 'A'.repeat(700)
+    writeFileSync(
+      join(repoDir, 'boundary.ts'),
+      [...padLines, `export const huge = "${hugeToken}"`].join('\n') + '\n',
+      'utf8',
+    )
+    const hugeRes = await inspectWorkspaceGitDiff(
+      { sessionId: 's-huge-tok', path: 'boundary.ts', maxBytes: 1024 },
+      repoDir,
+    )
+    expect(hugeRes.truncated).toBe(true)
+    expect(hugeRes.diff).not.toContain('sk-proj-AAAA')
   })
 })
