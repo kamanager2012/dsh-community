@@ -6,6 +6,7 @@
  */
 
 import { spawnSync } from 'node:child_process'
+import { verifyReleaseProvenance } from './release-provenance.mjs'
 
 const tag = process.argv[2]
 if (tag === undefined || !/^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(tag)) {
@@ -22,10 +23,12 @@ function run(command, args) {
 }
 
 const status = spawnSync('git', ['status', '--porcelain'], { encoding: 'utf8' })
+if (status.status !== 0) throw new Error('git status failed; refusing to tag')
 if (status.stdout.trim() !== '') {
   throw new Error('working tree is not clean; commit or stash before releasing')
 }
 const hasTag = spawnSync('git', ['tag', '--list', tag], { encoding: 'utf8' })
+if (hasTag.status !== 0) throw new Error('git tag list failed; refusing to tag')
 if (hasTag.stdout.trim() === tag) {
   throw new Error(`tag ${tag} already exists`)
 }
@@ -51,6 +54,10 @@ function productRemote() {
 
 const remote = productRemote()
 
+// Verify both ends of the provenance chain before expensive tests.
+// A tag must be created from the current, reviewed remote main HEAD only.
+verifyReleaseProvenance({ mode: 'candidate', tag, remote })
+
 process.stdout.write('2/6 typecheck + test\n')
 run('pnpm', ['install', '--frozen-lockfile'])
 run('pnpm', ['typecheck'])
@@ -59,6 +66,9 @@ run('pnpm', ['test'])
 process.stdout.write('3/6 build AppImage locally (sanity check)\n')
 run('pnpm', ['desktop:package', '--', '--appimage'])
 
+// Recheck immediately before any remote mutation; a contributor may have
+// moved main or published this tag while the test/packaging jobs were running.
+verifyReleaseProvenance({ mode: 'candidate', tag, remote })
 process.stdout.write('4/6 tag\n')
 run('git', ['tag', tag])
 

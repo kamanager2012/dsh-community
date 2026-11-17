@@ -21,7 +21,81 @@ matrix. See [Version and identity policy](version-policy.md).
 
 Windows and macOS Desktop installers (`DSH Community Setup *.exe`, `dsh-community-*.dmg`) are **retired** after historical `v0.1.1-rc.2` under the **Complementary Edition** policy — official `deepseek-ai/deepseek-harness` owns Windows (`win-x64`) and macOS (`mac-arm64`, `mac-x64`) Desktop releases. Future `dsh-community` releases build Linux (`ubuntu-latest`) AppImage + CycloneDX SBOM only.
 
+## Fail-closed, create-only release provenance
+
+Release publication must be a **new immutable version**, not a backfill of missing assets
+to an existing Release. The tagged workflow does not run `gh release upload` or
+`gh release edit` on an existing tag. It refuses to proceed if a Release already
+exists and uses `gh release create --verify-tag`; the GitHub API remains the
+final arbiter if another publisher races the preflight.
+
+**GitHub CLI atomicity boundary:** `gh release create` with assets uses
+separate Draft → upload → publish API requests. Only a *published* release is
+locked by GitHub's immutable release setting; a failed command may leave a
+Draft behind. Keep such drafts quarantined for review. Never treat a retry
+that appends to an existing Draft/Release as an immutable new publication;
+review a fresh version and unused Tag for recovery. Do not claim that
+workflow-level duplicate detection makes all asset uploads atomic.
+
+**P1/P2 tag and Draft-window defense:** The tagged workflow now requires
+active tag-update/deletion Ruleset protection for **both** `refs/tags/v*`
+and `refs/tags/release-attempt-v*` during the Draft upload window, not
+only a point-in-time Git SHA check. GitHub repository Release Immutability
+should also be enabled before the next release; it becomes effective only
+after publication.
+
+Before `gh release create`, the publish job creates
+`refs/tags/release-attempt-<TAG>` using the Git References create-only API.
+The marker is **independent of the Draft**: if a partial upload fails and
+GitHub CLI deletes the Draft, the marker remains and replay of the same
+version fails closed. Do not delete or retarget the marker to retry; audit
+the failure and cut a fresh version.
+
+**Policy inspection credential gate (required, not yet configured by this code):** GitHub
+does not disclose `bypass_actors` to the built-in read-only `github.token`.
+The tagged pipeline mints a one-hour, repository-scoped **GitHub App installation
+token** (pinned `actions/create-github-app-token@v3.3.0`), requesting only
+`Administration: write` (GitHub's required access for ruleset bypass details)
+and `Contents: read` (for attempt-ref inspection). The token is used **only**
+by the two governance API checks, not checkout, publishing or signing; the
+action revokes it when each job exits.
+
+Before release, an administrator must set up an installed GitHub App **restricted
+to `kamanager2012/dsh-community`**, set the variable
+`DSH_RELEASE_POLICY_APP_CLIENT_ID` and the private-key secret
+`DSH_RELEASE_POLICY_APP_PRIVATE_KEY` in a protected GitHub Actions environment
+named `release-policy-audit`. Configure **required human reviewers**, prevent
+self-approval, restrict deployments to reviewed/protected tags, and verify
+`refs/tags/v*` and `refs/tags/release-attempt-v*` have nonbypassable update
+and deletion protection. Both `release-identity` and `publish` jobs use that
+environment, so release is fail-closed when the credential or approval is
+absent. The App's administrative write permission is powerful; never grant it
+repository Contents write or general workflow access, and do not make the
+private key a broadly accessible repository secret.
+
+GitHub ruleset API omits `bypass_actors` for insufficient credentials; our
+parser rejects **missing** as well as nonempty bypass lists rather than
+pretending that omitted actors mean an empty list.
+See [Issue #181](https://github.com/kamanager2012/dsh-community/issues/181)
+for the server-side setup and approval checklist.
+
+The local `scripts/release.mjs` now independently checks that the working branch
+is `main`, its exact HEAD equals the current remote `main`, and neither local
+nor remote already contains the requested tag. It runs this check **before**
+installation/tests and **again immediately before** tagging and pushing.
+The tagged GitHub Actions build verifies that its `GITHUB_SHA`, the peeled remote
+tag commit, and current reviewed remote `main` are the same at the start and
+again immediately before publication. A moved tag, stale branch, duplicate tag,
+or release replay fails closed. Multiple runs on the same tag are serialized.
+
+These guards do not by themselves activate GitHub repository-level immutable
+release settings or a protected-tag ruleset. Maintainers must enforce those
+settings separately; a repository administrator can otherwise edit a Release
+outside this workflow. If the reviewed `main` moves before the tag builds,
+review a new candidate and cut a fresh unused tag rather than moving an old one.
+
 ## Cut a release
+
 
 ```sh
 pnpm typecheck && pnpm test          # gate
