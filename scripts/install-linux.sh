@@ -202,7 +202,7 @@ install_cleanup() {
       rm -rf -- "$INSTALL_REPO"
     fi
     if [ "$HAD_PREVIOUS" -eq 1 ] && { [ -e "$BACKUP_REPO" ] || [ -L "$BACKUP_REPO" ]; }; then
-      if mv -- "$BACKUP_REPO" "$INSTALL_REPO"; then
+      if mv -T -- "$BACKUP_REPO" "$INSTALL_REPO"; then
         BACKUP_REPO=""
         echo "Previous dsh-community installation restored after failed upgrade." >&2
       else
@@ -289,11 +289,11 @@ pnpm \
 if [ -e "$INSTALL_REPO" ] || [ -L "$INSTALL_REPO" ]; then
   BACKUP_REPO="$(mktemp -d "$PREFIX/.repo.previous.XXXXXXXX")"
   rmdir "$BACKUP_REPO"
-  mv -- "$INSTALL_REPO" "$BACKUP_REPO"
+  mv -T -- "$INSTALL_REPO" "$BACKUP_REPO"
   HAD_PREVIOUS=1
 fi
 SWAP_ATTEMPTED=1
-mv -- "$STAGE_REPO" "$INSTALL_REPO"
+mv -T -- "$STAGE_REPO" "$INSTALL_REPO"
 STAGE_REPO=""
 
 # Stage wrappers and rename, never truncate an existing working executable.
@@ -303,7 +303,7 @@ cat > "$TUI_SHIM_TMP" <<EOF
 exec node "$TUI_ENTRY" "\$@"
 EOF
 chmod 0755 "$TUI_SHIM_TMP"
-mv -f -- "$TUI_SHIM_TMP" "$BIN_DIR/dsh-community"
+mv -T -f -- "$TUI_SHIM_TMP" "$BIN_DIR/dsh-community"
 TUI_SHIM_TMP=""
 
 MARKETPLACE_SHIM_TMP="$(mktemp "$BIN_DIR/.dsh-marketplace.XXXXXXXX")"
@@ -314,7 +314,7 @@ export PATH
 exec node "$MARKETPLACE_ENTRY" "\$@"
 EOF
 chmod 0755 "$MARKETPLACE_SHIM_TMP"
-mv -f -- "$MARKETPLACE_SHIM_TMP" "$BIN_DIR/dsh-marketplace"
+mv -T -f -- "$MARKETPLACE_SHIM_TMP" "$BIN_DIR/dsh-marketplace"
 MARKETPLACE_SHIM_TMP=""
 
 echo
