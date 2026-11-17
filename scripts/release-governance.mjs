@@ -12,12 +12,26 @@ import { fileURLToPath } from 'node:url'
 const TAG = /^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u
 const REPO = /^kamanager2012\/dsh-community$/u
 
+// GitHub ruleset patterns support fnmatch constructs beyond our narrow
+// matcher. An unknown exclusion MUST fail closed; treating it as false would
+// incorrectly claim that a release tag is protected when GitHub excludes it.
+function assertSupportedTagPatterns(rs) {
+  const names = rs.conditions?.ref_name
+  if (!names || !Array.isArray(names.include) || !Array.isArray(names.exclude)) {
+    throw new Error('missing or malformed tag ruleset include/exclude conditions')
+  }
+  for (const pattern of [...names.include, ...names.exclude]) {
+    if (pattern === '~ALL') continue
+    if (typeof pattern !== 'string' || !/^refs\/tags\/[A-Za-z0-9.\-_/*?]+$/u.test(pattern)) {
+      throw new Error('unsupported GitHub tag ruleset pattern: ' + String(pattern))
+    }
+  }
+}
+
 function patternMatches(pattern, ref) {
   if (pattern === '~ALL') return true
-  if (typeof pattern !== 'string' || !pattern.startsWith('refs/tags/')) return false
-  // Conservative GitHub tag patterns. Reject other glob syntax rather than
-  // guessing whether a ruleset applies to a security-sensitive release tag.
-  if (!/^refs\/tags\/[A-Za-z0-9.\-_/*?]+$/u.test(pattern)) return false
+  // Call only after assertSupportedTagPatterns has validated both include AND
+  // exclude lists of all active tag rulesets, not merely matching includes.
   const escaped = pattern.replace(/[.+^${}()|[\]\\]/gu, '\\$&')
     .replace(/\*/gu, '[^/]*').replace(/\?/gu, '[^/]')
   return new RegExp('^' + escaped + '$', 'u').test(ref)
@@ -34,6 +48,13 @@ function applies(rule, ref) {
 export function verifyTagProtection(rulesets, tag) {
   if (!TAG.test(tag ?? '')) throw new Error('invalid protected release tag')
   if (!Array.isArray(rulesets)) throw new Error('GitHub tag ruleset data missing')
+  // Validate every ACTIVE tag ruleset before calculating coverage. A matching
+  // include with an unrecognized exclusion could otherwise bypass protection.
+  for (const rs of rulesets) {
+    if (rs.target === 'tag' && rs.enforcement === 'active') {
+      assertSupportedTagPatterns(rs)
+    }
+  }
   const refs = ['refs/tags/' + tag, 'refs/tags/release-attempt-' + tag]
   const matchedIds = []
   for (const ref of refs) {

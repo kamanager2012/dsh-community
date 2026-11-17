@@ -24,7 +24,7 @@ function run(rulesets: unknown) {
     'const x = JSON.parse(process.env.DSH_TEST_RULESETS || "null")',
     'try { const ids = verifyTagProtection(x, ' + JSON.stringify(tag) + '); console.log("OK:" + ids.join(",")) }',
     'catch(e) { console.error(e.message); process.exitCode = 1 }',
-  ].join('; ')
+  ].join('\n')
   return spawnSync(process.execPath, ['--input-type=module', '-e', code], {
     encoding: 'utf8', env: { ...process.env, DSH_TEST_RULESETS: JSON.stringify(rulesets) },
   })
@@ -70,6 +70,29 @@ describe('GitHub protected-tag release governance', () => {
       include: ['refs/tags/*'], exclude: ['refs/tags/release-attempt-*'],
     } } })])
     expect(r.status).toBe(1)
+  })
+
+  it('fails closed when a covering ruleset excludes v* via a GitHub character class', () => {
+    const r = run([rule(['refs/tags/*'], { conditions: { ref_name: {
+      include: ['refs/tags/*'], exclude: ['refs/tags/v[0-9]*'],
+    } } })])
+    expect(r.status).toBe(1)
+    expect(r.stderr).toContain('unsupported GitHub tag ruleset pattern')
+    expect(r.stderr).toContain('refs/tags/v[0-9]*')
+  })
+
+  it('fails closed when a tag ruleset include uses unsupported fnmatch syntax', () => {
+    const r = run([rule(['refs/tags/v[0-9]*', 'refs/tags/release-attempt-*'])])
+    expect(r.status).toBe(1)
+    expect(r.stderr).toContain('unsupported GitHub tag ruleset pattern')
+  })
+
+  it('fails closed on malformed exclusion structure rather than ignoring it', () => {
+    const r = run([rule(['refs/tags/*'], { conditions: { ref_name: {
+      include: ['refs/tags/*'], exclude: 'refs/tags/v*',
+    } } })])
+    expect(r.status).toBe(1)
+    expect(r.stderr).toContain('missing or malformed tag ruleset include/exclude')
   })
 
   it('retains the extra create-only remote Git marker in the workflow after policy validation', () => {
