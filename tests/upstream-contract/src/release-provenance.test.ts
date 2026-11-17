@@ -89,6 +89,19 @@ describe('immutable release source provenance', () => {
     expect(r.stdout).toContain(head)
   })
 
+  it('quarantines a failed publication even if gh deletes the partial Draft', () => {
+    const { work, head } = fixture()
+    git(work, 'tag', tag)
+    git(work, 'push', '-q', 'origin', 'refs/tags/' + tag)
+    expect(verify(work, 'tagged', head).status).toBe(0)
+    // gh release create can clean up its Draft after an asset-upload error.
+    // The independent attempt ref survives; no GitHub Release is required.
+    git(work, 'tag', 'release-attempt-' + tag)
+    git(work, 'push', '-q', 'origin', 'refs/tags/release-attempt-' + tag)
+    const retry = verify(work, 'tagged', head)
+    expect(retry.status).toBe(1)
+    expect(retry.stderr).toContain('release attempt already recorded')
+  })
   it('peels an annotated Git tag to its commit and rejects a forged GITHUB_SHA', () => {
     const { work, head } = fixture()
     git(work, 'tag', '-a', tag, '-m', 'signed-off test annotation')
