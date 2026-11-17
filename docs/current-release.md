@@ -25,7 +25,8 @@ Candidate Source and Published Latest may coincide after publication, but they a
 |---|---|
 | Candidate official kernel | `@deepseek-ai/dsh@0.2.2-rc.3` |
 | Candidate community product | `0.2.2-rc.3-community.2` |
-| Candidate tag | `v0.2.2-rc.3-community.2` (**unpublished**) |
+| Candidate tag | `v0.2.2-rc.3-community.2` |
+| Candidate publication state | **[UNPUBLISHED]** — this is a source-only candidate until the immutable tag, signatures and exact-tag artifact-smoke exist. |
 | Candidate scope | Linux-first positioning (#174); real Linux first-run gate (#175); staged upgrade, rollback and shared-group integrity (#176); release channel and pinned installer documentation (#177). No newly signed assets yet. |
 | Last published Community Pre-release | [`v0.2.2-rc.3-community.1`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1) (`releaseId=448012716`, published `2026-11-17T02:43:22Z`; does **not** displace Latest `v0.2.2-rc.3`): `release` [run 44004421253](https://github.com/kamanager2012/dsh-community/actions/runs/44004421253) + `artifact-smoke` [run 44005955539](https://github.com/kamanager2012/dsh-community/actions/runs/44005955539) `PASS` across 12 signed assets |
 | GitHub Latest | [`v0.2.2-rc.3`](https://github.com/kamanager2012/dsh-community/releases/latest) |
