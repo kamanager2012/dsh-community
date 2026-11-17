@@ -193,33 +193,87 @@ SWAP_ATTEMPTED=0
 HAD_PREVIOUS=0
 TUI_SHIM_TMP=""
 MARKETPLACE_SHIM_TMP=""
+TUI_SHIM_BACKUP=""
+MARKETPLACE_SHIM_BACKUP=""
+TUI_SHIM_PREEXISTED=0
+MARKETPLACE_SHIM_PREEXISTED=0
+SHIMS_ARMED=0
 
 install_cleanup() {
   local status="$?"
   trap - EXIT
+  # Backup path existence, not a post-mv flag assignment, proves that the
+  # original repo has moved. A signal may arrive immediately after mv returns.
   if [ "$status" -ne 0 ] && [ "$SWAP_ATTEMPTED" -eq 1 ]; then
-    if [ -e "$INSTALL_REPO" ] || [ -L "$INSTALL_REPO" ]; then
-      rm -rf -- "$INSTALL_REPO"
-    fi
-    if [ "$HAD_PREVIOUS" -eq 1 ] && { [ -e "$BACKUP_REPO" ] || [ -L "$BACKUP_REPO" ]; }; then
-      if mv -T -- "$BACKUP_REPO" "$INSTALL_REPO"; then
-        BACKUP_REPO=""
-        echo "Previous dsh-community installation restored after failed upgrade." >&2
-      else
-        echo "CRITICAL: restore failed; previous installation preserved at $BACKUP_REPO" >&2
+    if [ "$HAD_PREVIOUS" -eq 1 ]; then
+      if [ -e "$BACKUP_REPO" ] || [ -L "$BACKUP_REPO" ]; then
+        if [ -e "$INSTALL_REPO" ] || [ -L "$INSTALL_REPO" ]; then
+          if ! rm -rf -- "$INSTALL_REPO"; then
+            echo "CRITICAL: cannot remove failed upgrade from $INSTALL_REPO" >&2
+          fi
+        fi
+        if mv -T -- "$BACKUP_REPO" "$INSTALL_REPO"; then
+          BACKUP_REPO=""
+          echo "Previous dsh-community installation restored after failed upgrade." >&2
+        else
+          echo "CRITICAL: restore failed; previous installation preserved at $BACKUP_REPO" >&2
+        fi
+      fi
+    elif [ -e "$INSTALL_REPO" ] || [ -L "$INSTALL_REPO" ]; then
+      if ! rm -rf -- "$INSTALL_REPO"; then
+        echo "CRITICAL: cannot remove failed first install at $INSTALL_REPO" >&2
       fi
     fi
   fi
-  if [ -n "$STAGE_REPO" ] && [ -d "$STAGE_REPO" ]; then
-    rm -rf -- "$STAGE_REPO"
+
+  # The shims can refer to a completely different --prefix. Restore both
+  # original paths if any shim publication was attempted, even if a signal
+  # arrives after the first rename and before control returns to Bash.
+  if [ "$status" -ne 0 ] && [ "$SHIMS_ARMED" -eq 1 ]; then
+    if [ "$TUI_SHIM_PREEXISTED" -eq 1 ]; then
+      if [ -e "$TUI_SHIM_BACKUP" ] || [ -L "$TUI_SHIM_BACKUP" ]; then
+        if mv -T -f -- "$TUI_SHIM_BACKUP" "$BIN_DIR/dsh-community"; then
+          TUI_SHIM_BACKUP=""
+        else
+          echo "CRITICAL: old dsh-community shim preserved at $TUI_SHIM_BACKUP" >&2
+        fi
+      fi
+    elif [ -e "$BIN_DIR/dsh-community" ] || [ -L "$BIN_DIR/dsh-community" ]; then
+      if ! rm -f -- "$BIN_DIR/dsh-community"; then
+        echo "CRITICAL: could not remove failed new dsh-community shim" >&2
+      fi
+    fi
+
+    if [ "$MARKETPLACE_SHIM_PREEXISTED" -eq 1 ]; then
+      if [ -e "$MARKETPLACE_SHIM_BACKUP" ] || [ -L "$MARKETPLACE_SHIM_BACKUP" ]; then
+        if mv -T -f -- "$MARKETPLACE_SHIM_BACKUP" "$BIN_DIR/dsh-marketplace"; then
+          MARKETPLACE_SHIM_BACKUP=""
+        else
+          echo "CRITICAL: old marketplace shim preserved at $MARKETPLACE_SHIM_BACKUP" >&2
+        fi
+      fi
+    elif [ -e "$BIN_DIR/dsh-marketplace" ] || [ -L "$BIN_DIR/dsh-marketplace" ]; then
+      if ! rm -f -- "$BIN_DIR/dsh-marketplace"; then
+        echo "CRITICAL: could not remove failed new marketplace shim" >&2
+      fi
+    fi
   fi
-  if [ -n "$TUI_SHIM_TMP" ] && [ -e "$TUI_SHIM_TMP" ]; then
-    rm -f -- "$TUI_SHIM_TMP"
+
+  if [ -n "$STAGE_REPO" ] && [ -d "$STAGE_REPO" ]; then rm -rf -- "$STAGE_REPO"; fi
+  if [ -n "$TUI_SHIM_TMP" ] && [ -e "$TUI_SHIM_TMP" ]; then rm -f -- "$TUI_SHIM_TMP"; fi
+  if [ -n "$MARKETPLACE_SHIM_TMP" ] && [ -e "$MARKETPLACE_SHIM_TMP" ]; then rm -f -- "$MARKETPLACE_SHIM_TMP"; fi
+
+  # Snapshot files are temporary only when publication succeeded or never
+  # started. On a failed restoration keep the backup for manual recovery.
+  if [ "$status" -eq 0 ] || [ "$SHIMS_ARMED" -eq 0 ]; then
+    if [ -n "$TUI_SHIM_BACKUP" ] && { [ -e "$TUI_SHIM_BACKUP" ] || [ -L "$TUI_SHIM_BACKUP" ]; }; then
+      rm -f -- "$TUI_SHIM_BACKUP"
+    fi
+    if [ -n "$MARKETPLACE_SHIM_BACKUP" ] && { [ -e "$MARKETPLACE_SHIM_BACKUP" ] || [ -L "$MARKETPLACE_SHIM_BACKUP" ]; }; then
+      rm -f -- "$MARKETPLACE_SHIM_BACKUP"
+    fi
   fi
-  if [ -n "$MARKETPLACE_SHIM_TMP" ] && [ -e "$MARKETPLACE_SHIM_TMP" ]; then
-    rm -f -- "$MARKETPLACE_SHIM_TMP"
-  fi
-  if [ "$status" -eq 0 ] && [ -n "$BACKUP_REPO" ] && [ -e "$BACKUP_REPO" ]; then
+  if [ "$status" -eq 0 ] && [ -n "$BACKUP_REPO" ] && { [ -e "$BACKUP_REPO" ] || [ -L "$BACKUP_REPO" ]; }; then
     rm -rf -- "$BACKUP_REPO"
   fi
 }
@@ -285,26 +339,49 @@ pnpm \
   exit 1
 }
 
-# Stable wrapper target remains $PREFIX/repo for backward compatibility.
-if [ -e "$INSTALL_REPO" ] || [ -L "$INSTALL_REPO" ]; then
-  BACKUP_REPO="$(mktemp -d "$PREFIX/.repo.previous.XXXXXXXX")"
-  rmdir "$BACKUP_REPO"
-  mv -T -- "$INSTALL_REPO" "$BACKUP_REPO"
-  HAD_PREVIOUS=1
+# mktemp creates 0700 directories. Before publishing, preserve the old
+# install's traversal mode, or honor umask for a first installation.
+if [ -d "$INSTALL_REPO" ]; then
+  chmod --reference="$INSTALL_REPO" "$STAGE_REPO"
+else
+  MASK="$(umask)"
+  if [[ ! "$MASK" =~ ^[0-7]{3,4}$ ]]; then
+    echo "ERROR: cannot derive installation mode from umask: $MASK" >&2
+    exit 1
+  fi
+  FINAL_MODE="$(printf '%o' "$(( 0777 & ~(8#$MASK) ))")"
+  chmod "$FINAL_MODE" "$STAGE_REPO"
 fi
-SWAP_ATTEMPTED=1
-mv -T -- "$STAGE_REPO" "$INSTALL_REPO"
-STAGE_REPO=""
 
-# Stage wrappers and rename, never truncate an existing working executable.
+# Existing shims may point to a different --prefix. Snapshot both before
+# publishing either one. Never replace a directory masquerading as a shim.
+if [ -e "$BIN_DIR/dsh-community" ] || [ -L "$BIN_DIR/dsh-community" ]; then
+  if [ -d "$BIN_DIR/dsh-community" ]; then
+    echo "ERROR: cannot replace a directory at $BIN_DIR/dsh-community." >&2
+    exit 1
+  fi
+  TUI_SHIM_BACKUP="$(mktemp "$BIN_DIR/.dsh-community.previous.XXXXXXXX")"
+  rm -f -- "$TUI_SHIM_BACKUP"
+  cp -a -- "$BIN_DIR/dsh-community" "$TUI_SHIM_BACKUP"
+  TUI_SHIM_PREEXISTED=1
+fi
+if [ -e "$BIN_DIR/dsh-marketplace" ] || [ -L "$BIN_DIR/dsh-marketplace" ]; then
+  if [ -d "$BIN_DIR/dsh-marketplace" ]; then
+    echo "ERROR: cannot replace a directory at $BIN_DIR/dsh-marketplace." >&2
+    exit 1
+  fi
+  MARKETPLACE_SHIM_BACKUP="$(mktemp "$BIN_DIR/.dsh-marketplace.previous.XXXXXXXX")"
+  rm -f -- "$MARKETPLACE_SHIM_BACKUP"
+  cp -a -- "$BIN_DIR/dsh-marketplace" "$MARKETPLACE_SHIM_BACKUP"
+  MARKETPLACE_SHIM_PREEXISTED=1
+fi
+
 TUI_SHIM_TMP="$(mktemp "$BIN_DIR/.dsh-community.XXXXXXXX")"
 cat > "$TUI_SHIM_TMP" <<EOF
 #!/usr/bin/env sh
 exec node "$TUI_ENTRY" "\$@"
 EOF
 chmod 0755 "$TUI_SHIM_TMP"
-mv -T -f -- "$TUI_SHIM_TMP" "$BIN_DIR/dsh-community"
-TUI_SHIM_TMP=""
 
 MARKETPLACE_SHIM_TMP="$(mktemp "$BIN_DIR/.dsh-marketplace.XXXXXXXX")"
 cat > "$MARKETPLACE_SHIM_TMP" <<EOF
@@ -314,6 +391,24 @@ export PATH
 exec node "$MARKETPLACE_ENTRY" "\$@"
 EOF
 chmod 0755 "$MARKETPLACE_SHIM_TMP"
+
+# Rollback intent is armed BEFORE moving the old active repo. If TERM arrives
+# immediately after a successful rename, backup existence directs recovery.
+if [ -e "$INSTALL_REPO" ] || [ -L "$INSTALL_REPO" ]; then
+  BACKUP_REPO="$(mktemp -d "$PREFIX/.repo.previous.XXXXXXXX")"
+  rmdir "$BACKUP_REPO"
+  HAD_PREVIOUS=1
+  SWAP_ATTEMPTED=1
+  mv -T -- "$INSTALL_REPO" "$BACKUP_REPO"
+else
+  SWAP_ATTEMPTED=1
+fi
+mv -T -- "$STAGE_REPO" "$INSTALL_REPO"
+STAGE_REPO=""
+
+SHIMS_ARMED=1
+mv -T -f -- "$TUI_SHIM_TMP" "$BIN_DIR/dsh-community"
+TUI_SHIM_TMP=""
 mv -T -f -- "$MARKETPLACE_SHIM_TMP" "$BIN_DIR/dsh-marketplace"
 MARKETPLACE_SHIM_TMP=""
 
