@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from 'node:child_process'
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -152,6 +152,9 @@ describe('Linux/WSL Terminal CLI installer', () => {
     expect(first.status, first.stderr).toBe(0)
     const stable = execFileSync(join(bin, 'dsh-community'), ['version'], { encoding: 'utf8' }).trim()
     expect(stable).toBe('STABLE_CLI')
+    // mktemp's 0700 staging permissions must not leak into a public install.
+    expect(statSync(join(prefix, 'repo')).mode & 0o777).toBe(statSync(prefix).mode & 0o777)
+    chmodSync(join(prefix, 'repo'), 0o750)
 
     writeFileSync(join(fixture, 'apps/tui/dist/bin.js'), 'console.log("NEW_VERSION")\n', 'utf8')
     const badInstall = spawnSync('bash', [installerPath, ...args], {
@@ -168,8 +171,48 @@ describe('Linux/WSL Terminal CLI installer', () => {
     expect(badBuild.status).not.toBe(0)
     expect(execFileSync(join(bin, 'dsh-community'), ['version'], { encoding: 'utf8' }).trim()).toBe(stable)
 
-    // Source built successfully, but a directory hijacks the marketplace
-    // wrapper target. mv -T must refuse and restore the old active tree.
+    // Simulate SIGTERM immediately after mv(repo, backup) has succeeded,
+    // BEFORE the installer shell can resume after its child process exits.
+    const fakeMv = join(fakeTools, 'mv')
+    writeFileSync(
+      fakeMv,
+      '#!/usr/bin/env bash\n' +
+      'if [ -n "${DSH_TEST_FAIL_MARKETPLACE_SHIM:-}" ] && [ "${4:-}" = "$DSH_TEST_FAIL_MARKETPLACE_SHIM" ] && [ ! -e "${DSH_TEST_MARKER:-/nonexistent}" ]; then touch "$DSH_TEST_MARKER"; exit 79; fi\n' +
+      '/usr/bin/mv "$@"\n' +
+      'rc=$?\n' +
+      'if [ "$rc" -eq 0 ] && [ -n "${DSH_TEST_SIGTERM_SOURCE:-}" ] && [ "${3:-}" = "$DSH_TEST_SIGTERM_SOURCE" ] && [[ "${4:-}" == *".repo.previous."* ]]; then kill -TERM "$PPID"; fi\n' +
+      'exit "$rc"\n',
+      'utf8',
+    )
+    chmodSync(fakeMv, 0o755)
+
+    const terminated = spawnSync('bash', [installerPath, ...args], {
+      env: { ...env, DSH_TEST_SIGTERM_SOURCE: join(prefix, 'repo') },
+      encoding: 'utf8',
+    })
+    expect(terminated.status).not.toBe(0)
+    expect(execFileSync(join(bin, 'dsh-community'), ['version'], { encoding: 'utf8' }).trim()).toBe(stable)
+    expect(readFileSync(join(prefix, 'repo/apps/tui/dist/bin.js'), 'utf8')).toContain('STABLE_CLI')
+
+    // Replacing shims for a DIFFERENT prefix is a separate transaction.
+    // Fail the marketplace rename once, after the new TUI shim was written.
+    const otherPrefix = join(workRoot, 'alternate-prefix')
+    const markerFile = join(workRoot, 'fail-shim-once.marker')
+    const badCrossPrefix = spawnSync('bash', [
+      installerPath, '--local-repo', fixture, '--prefix', otherPrefix, '--bin-dir', bin,
+    ], {
+      env: {
+        ...env,
+        DSH_TEST_FAIL_MARKETPLACE_SHIM: join(bin, 'dsh-marketplace'),
+        DSH_TEST_MARKER: markerFile,
+      },
+      encoding: 'utf8',
+    })
+    expect(badCrossPrefix.status).not.toBe(0)
+    expect(execFileSync(join(bin, 'dsh-community'), ['version'], { encoding: 'utf8' }).trim()).toBe(stable)
+    expect(execFileSync(join(bin, 'dsh-marketplace'), [], { encoding: 'utf8' }).trim()).toBe('MARKETPLACE')
+
+    // A directory occupying a shim path must fail before any activation.
     const marketplaceShim = join(bin, 'dsh-marketplace')
     rmSync(marketplaceShim)
     mkdirSync(marketplaceShim)
@@ -183,6 +226,7 @@ describe('Linux/WSL Terminal CLI installer', () => {
     expect(success.status, success.stderr).toBe(0)
     expect(execFileSync(join(bin, 'dsh-community'), ['version'], { encoding: 'utf8' }).trim()).toBe('NEW_VERSION')
     expect(readFileSync(join(prefix, 'repo/apps/tui/dist/bin.js'), 'utf8')).toContain('NEW_VERSION')
+    expect(statSync(join(prefix, 'repo')).mode & 0o777).toBe(0o750)
   })
 
   it('supports pinned tag/commit installation with --ref and fail-closed --expected-commit verification', () => {
