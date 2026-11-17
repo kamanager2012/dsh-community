@@ -24,6 +24,9 @@ SOURCE_SHA="$(git -C "$ROOT" rev-parse --verify HEAD)"
 
 # Local bare origin tests --ref and --expected-commit, not a moving main ref.
 git init -q --bare "$WORK/origin.git"
+# Actions checkout is shallow by default. Permit that shallow boundary only in
+# this disposable local bare origin; verified git fetch --depth 1 still works.
+git -C "$WORK/origin.git" config receive.shallowUpdate true
 git -C "$ROOT" push -q "$WORK/origin.git" HEAD:refs/heads/acceptance
 args=(
   --repo-url "file://$WORK/origin.git"
