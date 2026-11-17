@@ -168,6 +168,17 @@ describe('Linux/WSL Terminal CLI installer', () => {
     expect(badBuild.status).not.toBe(0)
     expect(execFileSync(join(bin, 'dsh-community'), ['version'], { encoding: 'utf8' }).trim()).toBe(stable)
 
+    // Source built successfully, but a directory hijacks the marketplace
+    // wrapper target. mv -T must refuse and restore the old active tree.
+    const marketplaceShim = join(bin, 'dsh-marketplace')
+    rmSync(marketplaceShim)
+    mkdirSync(marketplaceShim)
+    const blockedShim = spawnSync('bash', [installerPath, ...args], { env, encoding: 'utf8' })
+    expect(blockedShim.status).not.toBe(0)
+    expect(execFileSync(join(bin, 'dsh-community'), ['version'], { encoding: 'utf8' }).trim()).toBe(stable)
+    expect(readFileSync(join(prefix, 'repo/apps/tui/dist/bin.js'), 'utf8')).toContain('STABLE_CLI')
+    rmSync(marketplaceShim, { recursive: true })
+
     const success = spawnSync('bash', [installerPath, ...args], { env, encoding: 'utf8' })
     expect(success.status, success.stderr).toBe(0)
     expect(execFileSync(join(bin, 'dsh-community'), ['version'], { encoding: 'utf8' }).trim()).toBe('NEW_VERSION')
