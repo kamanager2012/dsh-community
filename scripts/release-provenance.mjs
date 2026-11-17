@@ -73,6 +73,11 @@ export function verifyReleaseProvenance({ mode, tag, remote = 'origin', cwd = pr
     }
     if (local.status === 0 || tagState.present) throw new Error('release tag already exists; never reuse it')
   } else {
+    // This tag has only one chance to publish. The publish job atomically
+    // creates a separate attempt ref BEFORE gh release create; gh CLI can
+    // delete a failed Draft, but the marker must survive and deny replay.
+    const attempt = remoteTag(remote, 'release-attempt-' + tag, cwd)
+    if (attempt.present) throw new Error('release attempt already recorded; cut a new version')
     if (!SHA_RE.test(expectedCommit ?? '')) throw new Error('tagged verification requires full GITHUB_SHA')
     if (expectedCommit.toLowerCase() !== head) throw new Error('tagged workflow checkout SHA does not match GITHUB_SHA')
     if (!tagState.present || tagState.commit !== head) {
