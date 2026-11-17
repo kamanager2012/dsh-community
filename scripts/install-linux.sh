@@ -345,7 +345,15 @@ fi
 
 echo "Installing dependencies and building dsh-community in temporary staging..."
 cd "$STAGE_REPO"
-pnpm install --frozen-lockfile
+if [ "$SHARED_SETGID" -eq 1 ]; then
+  # On Linux pnpm 'auto' may hardlink cached package inodes: these retain the
+  # cache GID, bypassing setgid directory inheritance. Force copies only for
+  # an existing explicitly group-shared installation (mode 2xxx + g+rx).
+  # See pnpm packageImportMethod: copy.
+  pnpm install --frozen-lockfile --package-import-method=copy
+else
+  pnpm install --frozen-lockfile
+fi
 pnpm \
   --filter @dsh-community/shared-types \
   --filter @dsh-community/dsh-bridge \
@@ -364,6 +372,19 @@ pnpm \
   echo "ERROR: staged marketplace entrypoint is missing; existing installation unchanged." >&2
   exit 1
 }
+
+# Fail closed before activation if a setgid/shared upgrade silently imported
+# cache-owned descendant inodes. Do not chgrp hardlinks (which would mutate
+# pnpm's shared store); copy imports above ensure stage owns its file inodes.
+if [ "$SHARED_SETGID" -eq 1 ]; then
+  EXPECTED_GID="$(stat -c '%g' "$INSTALL_REPO")"
+  GROUP_MISMATCH="$(find "$STAGE_REPO" -xdev \( -type f -o -type d \) ! -gid "$EXPECTED_GID" -print -quit)"
+  if [ -n "$GROUP_MISMATCH" ]; then
+    echo "ERROR: staged shared installation has a group mismatch at $GROUP_MISMATCH; leaving installed CLI unchanged." >&2
+    exit 1
+  fi
+fi
+
 
 # Before publishing, restore the original top-level mode. For an existing
 # setgid shared installation, group ownership and directory inheritance were
