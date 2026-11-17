@@ -20,7 +20,7 @@ Usage: install-linux.sh [options]
 
 Install the dsh-community WSL/Linux Terminal CLI (dsh-community) and plugin discovery
 CLI (dsh-marketplace) from this repository without cloning manually.
-Requires Node.js (>= 24.9.0 recommended, >= 22.15.0 minimum), pnpm, and git.
+Requires Node.js (>= 24.9.0 recommended, >= 22.15.0 minimum), pnpm, git, and flock (util-linux).
 
 Options:
   --prefix <dir>            Install workspace directory (default: ~/.local/share/dsh-community)
