@@ -1,0 +1,60 @@
+name: linux-first-run-smoke
+
+# Builds and launches the actual pinned source installer on disposable Ubuntu.
+# Does not claim live Agent/provider or physical WSL2/Android acceptance.
+on:
+  pull_request:
+    paths:
+      - 'scripts/install-linux.sh'
+      - 'scripts/e2e/linux-first-run-smoke.sh'
+      - '.github/workflows/linux-first-run-smoke.yml'
+      - 'apps/tui/**'
+      - 'packages/dsh-bridge/**'
+      - 'packages/marketplace/**'
+      - 'packages/remote-adapter/**'
+      - 'apps/remote-web/**'
+      - 'pnpm-lock.yaml'
+  push:
+    branches: [main, master]
+    paths:
+      - 'scripts/install-linux.sh'
+      - 'scripts/e2e/linux-first-run-smoke.sh'
+      - '.github/workflows/linux-first-run-smoke.yml'
+      - 'apps/tui/**'
+      - 'packages/dsh-bridge/**'
+      - 'packages/marketplace/**'
+      - 'packages/remote-adapter/**'
+      - 'apps/remote-web/**'
+      - 'pnpm-lock.yaml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pinned-source-install:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6
+        with:
+          version: 11.21.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Validate shell syntax
+        run: bash -n scripts/e2e/linux-first-run-smoke.sh scripts/install-linux.sh
+      - name: Install actual pinned source and test isolated CLI
+        run: bash scripts/e2e/linux-first-run-smoke.sh "$RUNNER_TEMP/first-run-evidence.json"
+      - name: Upload limited proof
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: linux-first-run-evidence
+          path: ${{ runner.temp }}/first-run-evidence.json
+          if-no-files-found: warn
+          retention-days: 7
