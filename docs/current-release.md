@@ -17,18 +17,18 @@ Source can move to a reviewed candidate before GitHub Latest moves. These are se
 - `assets` / `publishedAssets` describe installers that actually exist for Published Latest; never synthesize filenames from an unpublished candidate.
 - plugin `testedDsh` and user-loop evidence are evidence states, not aliases for Candidate Source. They move only after their own verification.
 
-Candidate Source and Published Latest may coincide after publication, but they are not required to. On the current line, Candidate Source and Published Latest are both aligned to `0.2.2-rc.3` / `v0.2.2-rc.3` (release commit `073826c38df4cf246e7ac90b27e0df98569a534d`, synced directly to pinned official kernel `@deepseek-ai/dsh@0.2.2-rc.3`). Uploaded assets total **12 files**: 3 primary artifacts (Linux AppImage + Android `arm64-v8a` APK + official-runtime CycloneDX SBOM) + 3 `.sha256` digests + 6 keyless Cosign `.sigstore.json` bundles (excluding GitHub auto-generated source archives). Later `main` commits (such as `scripts/install-linux.sh`, the Chromium E2EE harness/screenshots, legacy `0.1.1-rc.2` plugin guards, and documentation updates) track post-`rc.3` source changes and are **not** baked into the immutable `v0.2.2-rc.3` release tag artifacts.
+Candidate Source and Published Latest may coincide after publication, but they are not required to. On the current line, Candidate Source advances to `0.2.2-rc.3-community.1` / `v0.2.2-rc.3-community.1` (community pre-release on pinned official kernel `@deepseek-ai/dsh@0.2.2-rc.3`), while GitHub Published Latest remains `v0.2.2-rc.3` (release commit `073826c38df4cf246e7ac90b27e0df98569a534d`; **12 uploaded files**: 3 primary artifacts — Linux AppImage, Android `arm64-v8a` APK, and official-runtime CycloneDX SBOM — plus 3 `.sha256` digests and 6 keyless Cosign `.sigstore.json` bundles, excluding GitHub auto-generated source archives).
 
-## Current line (2026-11-15)
+## Current line (2026-11-17)
 
 | Fact | Value |
 |---|---|
 | Candidate official kernel | `@deepseek-ai/dsh@0.2.2-rc.3` |
-| Candidate community product | `0.2.2-rc.3` |
-| Candidate tag | `v0.2.2-rc.3` |
+| Candidate community product | `0.2.2-rc.3-community.1` |
+| Candidate tag | `v0.2.2-rc.3-community.1` |
 | GitHub Latest | [`v0.2.2-rc.3`](https://github.com/kamanager2012/dsh-community/releases/latest) |
 | Published release evidence | GitHub release ID `445732060`; published `2026-11-15T08:39:25Z`; primary AppImage + Android APK asset IDs/digests pinned in `current-release.json` |
-| Candidate Dual-Badge | `DeepSeek Harness Community v0.2.2-rc.3 [Official Core: @deepseek-ai/dsh@0.2.2-rc.3]` |
+| Candidate Dual-Badge | `DeepSeek Harness Community v0.2.2-rc.3-community.1 [Official Core: @deepseek-ai/dsh@0.2.2-rc.3]` |
 | Latest tested | `0.2.2-rc.3` — consolidated local acceptance PASS on commit `12e343a` and replay PASS on commit `69f647c` (runtime-lock attested by CI [run 43661345685](https://github.com/kamanager2012/dsh-community/actions/runs/43661345685)); published by `release` [run 43696033054](https://github.com/kamanager2012/dsh-community/actions/runs/43696033054) |
 | Active Complementary endpoints (2 shipped + Android APK) | WSL/Linux Terminal, Linux AppImage, and signed Android `arm64-v8a` Remote Client APK (official `deepseek-harness` covers Win/macOS Desktop & Web) |
 | Active unpublished endpoint | Android `apps/android` `[UNVERIFIED]` for physical `arm64-v8a` handset telemetry (CI `x86_64` emulator E2EE acceptance `PASS`, signed APK on Latest download page) |
