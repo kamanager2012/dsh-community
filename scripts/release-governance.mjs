@@ -22,7 +22,7 @@ function assertSupportedTagPatterns(rs) {
   }
   for (const pattern of [...names.include, ...names.exclude]) {
     if (pattern === '~ALL') continue
-    if (typeof pattern !== 'string' || !/^refs\/tags\/[A-Za-z0-9.\-_/*?]+$/u.test(pattern)) {
+    if (typeof pattern !== 'string' || pattern.includes('**') || !/^refs\/tags\/[A-Za-z0-9.\-_/*?]+$/u.test(pattern)) {
       throw new Error('unsupported GitHub tag ruleset pattern: ' + String(pattern))
     }
   }

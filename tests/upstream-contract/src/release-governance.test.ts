@@ -87,6 +87,21 @@ describe('GitHub protected-tag release governance', () => {
     expect(r.stderr).toContain('refs/tags/v[0-9]*')
   })
 
+  it('rejects recursive double-star exclusions that match zero directories in GitHub fnmatch', () => {
+    const r = run([rule(['refs/tags/*'], { conditions: { ref_name: {
+      include: ['refs/tags/*'], exclude: ['refs/tags/**/v*'],
+    } } })])
+    expect(r.status).toBe(1)
+    expect(r.stderr).toContain('unsupported GitHub tag ruleset pattern')
+    expect(r.stderr).toContain('refs/tags/**/v*')
+  })
+
+  it('rejects any recursive double-star include pattern instead of guessing coverage', () => {
+    const r = run([rule(['refs/tags/**/v*', 'refs/tags/release-attempt-*'])])
+    expect(r.status).toBe(1)
+    expect(r.stderr).toContain('unsupported GitHub tag ruleset pattern')
+  })
+
   it('fails closed when a tag ruleset include uses unsupported fnmatch syntax', () => {
     const r = run([rule(['refs/tags/v[0-9]*', 'refs/tags/release-attempt-*'])])
     expect(r.status).toBe(1)
