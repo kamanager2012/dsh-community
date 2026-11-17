@@ -35,6 +35,8 @@ Multi-agent dashboards, E2EE, remote approvals and Git diff are **not exclusive*
 
 ---
 
+> **Real Linux first-run evidence:** [CI workflow](.github/workflows/linux-first-run-smoke.yml) and [scope guide](docs/first-run-smoke.md) test a pinned source installation and CLI startup without a model key; not proof of physical WSL2 or live Agent execution.
+
 ## 30-Second Quick Start
 
 ### 1. WSL / Linux Terminal Source Installer (`dsh-community` & `dsh-marketplace`)
