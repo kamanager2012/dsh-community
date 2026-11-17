@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from 'node:child_process'
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { chmodSync, closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -155,6 +155,14 @@ describe('Linux/WSL Terminal CLI installer', () => {
     // mktemp's 0700 staging permissions must not leak into a public install.
     expect(statSync(join(prefix, 'repo')).mode & 0o777).toBe(statSync(prefix).mode & 0o777)
     chmodSync(join(prefix, 'repo'), 0o750)
+    const initialGid = statSync(join(prefix, 'repo')).gid
+    const alternateGid = process.getgroups?.().find(gid => gid !== initialGid)
+    if (alternateGid !== undefined && process.platform === 'linux') {
+      // Emulate an existing shared install under a secondary runner group.
+      execFileSync('chgrp', [String(alternateGid), join(prefix, 'repo')])
+      expect(statSync(join(prefix, 'repo')).gid).toBe(alternateGid)
+    }
+    const preservedGid = statSync(join(prefix, 'repo')).gid
 
     writeFileSync(join(fixture, 'apps/tui/dist/bin.js'), 'console.log("NEW_VERSION")\n', 'utf8')
     const badInstall = spawnSync('bash', [installerPath, ...args], {
@@ -231,6 +239,7 @@ describe('Linux/WSL Terminal CLI installer', () => {
     expect(execFileSync(join(bin, 'dsh-community'), ['version'], { encoding: 'utf8' }).trim()).toBe('NEW_VERSION')
     expect(readFileSync(join(prefix, 'repo/apps/tui/dist/bin.js'), 'utf8')).toContain('NEW_VERSION')
     expect(statSync(join(prefix, 'repo')).mode & 0o777).toBe(0o750)
+    expect(statSync(join(prefix, 'repo')).gid).toBe(preservedGid)
   })
 
   it('supports pinned tag/commit installation with --ref and fail-closed --expected-commit verification', () => {
