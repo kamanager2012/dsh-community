@@ -250,6 +250,8 @@ describe('scoped read-only git review helpers', () => {
 
     writeFileSync(join(repoDir, '.env.example'), 'DEEPSEEK_API_KEY=your-key\nPORT=3080\n', 'utf8')
     writeFileSync(join(repoDir, '.env.local'), `API_KEY=${fakeEnvSecret}\n`, 'utf8')
+    writeFileSync(join(repoDir, '.envrc'), 'export DEPLOY_PASSWORD=DIRENV_SECRET_777\n', 'utf8')
+    writeFileSync(join(repoDir, '.env-production'), 'DEPLOY_PASSWORD=PROD_SECRET_888\n', 'utf8')
     writeFileSync(
       join(repoDir, 'config', 'server.pem'),
       `-----BEGIN RSA PRIVATE KEY-----\n${fakePemSecret}\n-----END RSA PRIVATE KEY-----\n`,
@@ -265,10 +267,18 @@ describe('scoped read-only git review helpers', () => {
       'utf8',
     )
 
-    // Single-file inspection of .env.local or .pem refuses plaintext secret leakage
+    // Single-file inspection of .env.local, .envrc, .env-production, or .pem refuses plaintext secret leakage
     const envDiff = await inspectWorkspaceGitDiff({ sessionId: 's-redact', path: '.env.local' }, repoDir)
     expect(envDiff.diff).toContain('[REDACTED_SENSITIVE_FILE]')
     expect(envDiff.diff).not.toContain(fakeEnvSecret)
+
+    const envrcDiff = await inspectWorkspaceGitDiff({ sessionId: 's-redact', path: '.envrc' }, repoDir)
+    expect(envrcDiff.diff).toContain('[REDACTED_SENSITIVE_FILE]')
+    expect(envrcDiff.diff).not.toContain('DIRENV_SECRET_777')
+
+    const envProdDiff = await inspectWorkspaceGitDiff({ sessionId: 's-redact', path: '.env-production' }, repoDir)
+    expect(envProdDiff.diff).toContain('[REDACTED_SENSITIVE_FILE]')
+    expect(envProdDiff.diff).not.toContain('PROD_SECRET_888')
 
     const pemDiff = await inspectWorkspaceGitDiff({ sessionId: 's-redact', path: 'config/server.pem' }, repoDir)
     expect(pemDiff.diff).toContain('[REDACTED_SENSITIVE_FILE]')
@@ -278,9 +288,11 @@ describe('scoped read-only git review helpers', () => {
     const exampleDiff = await inspectWorkspaceGitDiff({ sessionId: 's-redact', path: '.env.example' }, repoDir)
     expect(exampleDiff.diff).toContain('+PORT=3080')
 
-    // Unfiltered unstaged diff redacts both untracked/tracked sensitive files and inline tokens
+    // Unfiltered unstaged diff redacts all non-example .env* files, keys, and inline tokens
     const allDiff = await inspectWorkspaceGitDiff({ sessionId: 's-redact' }, repoDir)
     expect(allDiff.diff).not.toContain(fakeEnvSecret)
+    expect(allDiff.diff).not.toContain('DIRENV_SECRET_777')
+    expect(allDiff.diff).not.toContain('PROD_SECRET_888')
     expect(allDiff.diff).not.toContain(fakePemSecret)
     expect(allDiff.diff).not.toContain(fakeOpenAiKey)
     expect(allDiff.diff).not.toContain(fakeAwsKey)

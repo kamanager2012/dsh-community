@@ -71,10 +71,13 @@ const BENIGN_ENV_NAMES = new Set([
   '.env.defaults',
 ])
 
+const BENIGN_ENV_TEMPLATE_RE =
+  /^\.env(?:rc)?(?:[._-][a-z0-9-]+)*[._-](?:example|sample|template|schema|defaults)$/u
+
 function isSensitiveSecretPath(relPath: string): boolean {
   const normalized = relPath.replace(/\\/gu, '/').toLowerCase()
   const base = basename(normalized)
-  if ((base === '.env' || base.startsWith('.env.')) && !BENIGN_ENV_NAMES.has(base)) {
+  if (base.startsWith('.env') && !BENIGN_ENV_NAMES.has(base) && !BENIGN_ENV_TEMPLATE_RE.test(base)) {
     return true
   }
   if (
@@ -82,14 +85,11 @@ function isSensitiveSecretPath(relPath: string): boolean {
     || base === '.pypirc'
     || base === '.netrc'
     || base === '.htpasswd'
-    || base === 'id_rsa'
-    || base === 'id_ed25519'
-    || base === 'id_ecdsa'
-    || base === 'id_dsa'
+    || (!base.endsWith('.pub') && /^id_(?:rsa|ed25519|ecdsa|dsa)(?:$|[._-])/u.test(base))
   ) {
     return true
   }
-  return /\.(?:pem|key|p12|pfx)$/u.test(base)
+  return /\.(?:pem|key|p12|pfx|jks|keystore)$/u.test(base)
 }
 
 function formatRedactedSensitiveFileDiff(relPath: string): string {
