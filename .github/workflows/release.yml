@@ -365,7 +365,10 @@ jobs:
           RELEASE_TITLE=$(head -n 1 release-title.txt)
           # Strict create-only semantics: never append, edit, clobber, or repair
           # an already published release. A partial release requires a NEW tag.
-          # gh release create is the atomic second check if the view races.
+          # gh release create performs separate Draft, upload and publish API calls.
+          # It rejects a duplicate release if the view raced, but these phases
+          # are NOT an atomic all-or-nothing transaction. Failed partial drafts
+          # require operator review and a NEW version, not asset backfill.
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "::error::release already exists; immutable tag requires a new version"
             exit 1
