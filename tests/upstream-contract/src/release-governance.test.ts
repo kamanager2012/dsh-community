@@ -65,6 +65,12 @@ describe('GitHub protected-tag release governance', () => {
     expect(r.status).toBe(1)
   })
 
+  it('rejects tag protection when bypass actor visibility is unknown', () => {
+    const r = run([rule(['refs/tags/*'], { bypass_actors: undefined })])
+    expect(r.status).toBe(1)
+    expect(r.stderr).toContain('missing active update/deletion protection')
+  })
+
   it('rejects an explicit release-attempt exclusion', () => {
     const r = run([rule(['refs/tags/*'], { conditions: { ref_name: {
       include: ['refs/tags/*'], exclude: ['refs/tags/release-attempt-*'],
