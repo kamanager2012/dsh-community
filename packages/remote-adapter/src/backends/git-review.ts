@@ -215,6 +215,18 @@ function stripDiffSidePrefix(rawPath: string, canonicalPrefix: 'a/' | 'b/'): str
 
 function parseGitDiffHeaderPaths(rawHeaderLine: string): { pathA: string; pathB: string } | undefined {
   const headerLine = stripAnsiSgr(rawHeaderLine)
+  const combinedMatch = headerLine.match(/^diff --(?:cc|combined|remerge) (.+)$/u)
+  if (combinedMatch) {
+    const rest = combinedMatch[1]!.trim()
+    let pathVal = rest
+    if (rest.startsWith('"')) {
+      const decoded = decodeGitQuotedToken(rest)
+      if (!decoded) return undefined
+      pathVal = decoded.path
+    }
+    const cleanPath = stripDiffSidePrefix(stripDiffSidePrefix(pathVal, 'a/'), 'b/')
+    return { pathA: cleanPath, pathB: cleanPath }
+  }
   if (!headerLine.startsWith('diff --git ')) return undefined
   const rest = headerLine.slice('diff --git '.length)
 
@@ -267,13 +279,33 @@ function parseGitDiffHeaderPaths(rawHeaderLine: string): { pathA: string; pathB:
   return undefined
 }
 
+function findSensitiveHeaderMarkerPath(section: string): string | undefined {
+  const lines = section.split(/\r?\n/u)
+  for (const rawLine of lines) {
+    const line = stripAnsiSgr(rawLine)
+    if (line.startsWith('@@')) break
+    const markerMatch = line.match(/^(?:---|\+\+\+) (.+)$/u)
+    if (!markerMatch) continue
+    let rawPath = markerMatch[1]!.trim()
+    if (rawPath === '/dev/null') continue
+    if (rawPath.startsWith('"')) {
+      const decoded = decodeGitQuotedToken(rawPath)
+      if (!decoded) continue
+      rawPath = decoded.path
+    }
+    const clean = stripDiffSidePrefix(stripDiffSidePrefix(rawPath, 'a/'), 'b/')
+    if (isSensitiveSecretPath(clean)) return clean
+  }
+  return undefined
+}
+
 export function redactSensitiveDiffText(
   diffText: string,
   options?: { allowTruncatedTail?: boolean },
 ): string {
   if (!diffText) return diffText
   const allowTail = options?.allowTruncatedTail === true
-  const sections = diffText.split(/(?=^(?:\x1b\[[0-9;]*m)*diff --git )/mu)
+  const sections = diffText.split(/(?=^(?:\x1b\[[0-9;]*m)*diff --(?:git|cc|combined|remerge) )/mu)
   const sanitized = sections.map((section, idx) => {
     const isLast = idx === sections.length - 1
     const firstNewline = section.indexOf('\n')
@@ -281,6 +313,10 @@ export function redactSensitiveDiffText(
     const paths = parseGitDiffHeaderPaths(headerLine)
     if (paths && (isSensitiveSecretPath(paths.pathA) || isSensitiveSecretPath(paths.pathB))) {
       return formatRedactedSensitiveFileDiff(paths.pathB || paths.pathA)
+    }
+    const markerSensitivePath = findSensitiveHeaderMarkerPath(section)
+    if (markerSensitivePath) {
+      return formatRedactedSensitiveFileDiff(markerSensitivePath)
     }
     return scrubCredentialLiterals(section, allowTail && isLast)
   })

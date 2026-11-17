@@ -369,4 +369,50 @@ describe('scoped read-only git review helpers', () => {
     expect(hugeRes.truncated).toBe(true)
     expect(hugeRes.diff).not.toContain('sk-proj-AAAA')
   })
+
+  it('redacts sensitive files in unresolved merge-conflict combined diffs (diff --cc)', async () => {
+    const repoDir = mkdtempSync(join(tmpdir(), 'dsh-git-conflict-'))
+    tempDirs.push(repoDir)
+    initGitRepo(repoDir)
+
+    mkdirSync(join(repoDir, '配置'), { recursive: true })
+    writeFileSync(join(repoDir, '.env.local'), 'DB_PASSWORD=base-secret\n', 'utf8')
+    writeFileSync(join(repoDir, '配置', '.env.local'), 'DB_PASSWORD=cn-base-secret\n', 'utf8')
+    writeFileSync(join(repoDir, 'ok.ts'), 'export const v = 0\n', 'utf8')
+    execFileSync('git', ['add', '.'], { cwd: repoDir, stdio: 'pipe' })
+    execFileSync('git', ['commit', '-m', 'base'], { cwd: repoDir, stdio: 'pipe' })
+
+    execFileSync('git', ['checkout', '-b', 'branch-theirs'], { cwd: repoDir, stdio: 'pipe' })
+    writeFileSync(join(repoDir, '.env.local'), 'DB_PASSWORD=THEIRS_PASSWORD_111\n', 'utf8')
+    writeFileSync(join(repoDir, '配置', '.env.local'), 'DB_PASSWORD=CN_THEIRS_222\n', 'utf8')
+    execFileSync('git', ['add', '.'], { cwd: repoDir, stdio: 'pipe' })
+    execFileSync('git', ['commit', '-m', 'theirs change'], { cwd: repoDir, stdio: 'pipe' })
+
+    execFileSync('git', ['checkout', 'main'], { cwd: repoDir, stdio: 'pipe' })
+    writeFileSync(join(repoDir, '.env.local'), 'DB_PASSWORD=OURS_PASSWORD_333\n', 'utf8')
+    writeFileSync(join(repoDir, '配置', '.env.local'), 'DB_PASSWORD=CN_OURS_444\n', 'utf8')
+    writeFileSync(join(repoDir, 'ok.ts'), 'export const v = 1\n', 'utf8')
+    execFileSync('git', ['add', '.'], { cwd: repoDir, stdio: 'pipe' })
+    execFileSync('git', ['commit', '-m', 'ours change'], { cwd: repoDir, stdio: 'pipe' })
+
+    // Trigger genuine unresolved merge conflicts emitting `diff --cc`
+    try {
+      execFileSync('git', ['merge', 'branch-theirs'], { cwd: repoDir, stdio: 'pipe' })
+    } catch {
+      // Merge conflict exit code 1 expected
+    }
+    writeFileSync(join(repoDir, 'ok.ts'), 'export const v = 2\n', 'utf8')
+
+    // Sanity-check that raw `git diff` actually emits `diff --cc`
+    const rawGitDiff = execFileSync('git', ['diff'], { cwd: repoDir, encoding: 'utf8' })
+    expect(rawGitDiff).toContain('diff --cc .env.local')
+
+    const res = await inspectWorkspaceGitDiff({ sessionId: 's-conflict' }, repoDir)
+    expect(res.diff).toContain('[REDACTED_SENSITIVE_FILE]')
+    expect(res.diff).toContain('+export const v = 2')
+    expect(res.diff).not.toContain('THEIRS_PASSWORD_111')
+    expect(res.diff).not.toContain('CN_THEIRS_222')
+    expect(res.diff).not.toContain('OURS_PASSWORD_333')
+    expect(res.diff).not.toContain('CN_OURS_444')
+  })
 })
