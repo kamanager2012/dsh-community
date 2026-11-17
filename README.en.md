@@ -7,7 +7,23 @@
 [![Official Core](https://img.shields.io/badge/Official%20Core-%40deepseek--ai%2Fdsh-blue)](https://github.com/deepseek-ai/deepseek-harness)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-> **Cross-platform, multi-agent, self-hostable control plane layered above the official [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`@deepseek-ai/dsh`) runtime (WSL/Linux Terminal, Linux AppImage, and Noise IK E2EE remote control): 100% shared `~/.dsh` session truth, zero vendored official source (`Official Source Ownership = 0`), orchestrating DSH, Claude Code, Codex CLI, and OpenCode from one workbench.**
+> **DSH Community is the Linux / WSL2 complementary distribution and compatibility layer for the official [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).** We ship a TUI, signed Linux AppImage, exact upstream Runtime pin and optional E2EE multi-agent remote. **We do not fork the official kernel. Only DSH sessions live in official `~/.dsh`; Claude Code, Codex and OpenCode keep their native session stores.**
+
+**Try the current community changes:** [v0.2.2-rc.3-community.1 (Pre-release)](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1). **Official-core-mirrored Latest:** [v0.2.2-rc.3](https://github.com/kamanager2012/dsh-community/releases/latest). These are separate release channels; the pre-release does not replace Latest.
+
+## Choose by the job, not a feature checklist
+
+| Your main need | Start here | Why |
+|---|---|---|
+| **Official DSH** on Linux / WSL2: TUI, AppImage, native session continuity | **DSH Community** | Linux complementary distribution, upstream compatibility and verifiable builds |
+| Durable terminal panes, SSH and many CLI agents | [Herdr](https://github.com/herdrdev/herdr) | Terminal multiplexing and persistent processes |
+| General mobile/desktop multi-agent workflows | [Happier](https://github.com/happier-dev/happier), [Paseo](https://github.com/getpaseo/paseo), [T3 Code](https://github.com/pingdotgg/t3code) | Existing mobile, worktree and PR-oriented alternatives |
+| Native DSH Desktop remote workflows | [DS Harness Remote](https://github.com/liguobao/ds-harness-remote) | Official DSH plugin-first remote model |
+
+Multi-agent dashboards, E2EE, remote approvals and Git diff are **not exclusive** to us. See [**sourced positioning and alternatives**](docs/competitive-positioning.en.md) (public docs as of 2026-11-17; not a hands-on benchmark).
+
+---
+
 
 ## UI Previews (Chromium E2EE Harness & Desktop Console Page)
 
@@ -121,27 +137,25 @@ First, what the official project ships (from the upstream `deepseek-ai/deepseek-
 | `dsh` launcher | Boots profiles such as `web` / `headless` / `sdk` / `acp`; **ships no terminal UI of its own**, and upstream has no TUI package |
 | Python SDK, ACP server | For programmatic use, not interactive UIs |
 
-Several third-party projects already work on these gaps and around the official kernel. The comparison below uses only each project's own README and release page (stars as of 2026-11-15):
+Multi-agent dashboards, mobile approvals, E2EE and Git diffs already have strong alternatives. **We do not claim exclusivity, count features as a benchmark, or use static Star rankings.** A missing README mention is not proof a competitor lacks a feature.
 
-| Project | What it does | License | Stars |
-|---|---|---|---|
-| [`ccch1mneyyy/dsh-Go`](https://github.com/ccch1mneyyy/dsh-Go) | Flutter Android client: runs DSH on the phone in a built-in Ubuntu + Node environment (latest APK ~231 MB, plus ~1 GB runtime), or remote-controls a computer over SSH / DSHarness Remote; also phone control, desktop pets, native plugin UI | AGPL-3.0 | 23,280 |
-| [`liguobao/ds-harness-remote`](https://github.com/liguobao/ds-harness-remote) | E2EE P2P remote access shipped as an official-style plugin (TURN / relay fallback); reaches DSH, Codex, Cursor, Antigravity, OpenCode, Claude Code and more over ACP; Android, Web, iOS (beta) clients | MIT | 2,941 |
-| [`ccch1mneyyy/dsh-TUI`](https://github.com/ccch1mneyyy/dsh-TUI) | Third-party terminal UI plugin with a rich feature set | MIT | 7,735 |
-| **DSH Community (this repo)** | Linux / WSL terminal UI, signed Linux AppImage, a runtime-free Android remote client, multi-agent E2EE remote control plane | MIT | 0 |
+| Project | When it is a better starting point |
+|---|---|
+| [Herdr](https://github.com/herdrdev/herdr) | Persistent panes, SSH and terminal-native CLI agent coordination |
+| [Happier](https://github.com/happier-dev/happier) | General multi-agent mobile/desktop orchestration, E2EE and self-hosting |
+| [Paseo](https://github.com/getpaseo/paseo) | Integrated worktrees, editor, terminal, diffs and PR workflow |
+| [T3 Code](https://github.com/pingdotgg/t3code) | Multi-agent sessions flowing to branches and GitHub PRs |
+| [DS Harness Remote](https://github.com/liguobao/ds-harness-remote) | Native DSH plugin-based remote workflows, P2P/TURN and additional ACP providers |
+| [dsh-Go](https://github.com/ccch1mneyyy/dsh-Go) | Running DSH locally on an Android phone rather than using a thin remote client |
+| [dsh-TUI](https://github.com/ccch1mneyyy/dsh-TUI) | A rich independent DSH terminal UI |
+| **DSH Community** | Unmodified official DSH Runtime on Linux/WSL2: TUI, signed AppImage, official session continuity, precise upstream pins and verifiable releases |
 
-**Differences we can verify:**
+**Our substantiated difference:** official `@deepseek-ai/dsh` owns execution and DSH Sessions (`~/.dsh`); Community owns Linux distribution, compatibility and optional remote. Claude Code, Codex CLI and OpenCode **retain their own native Session stores**; a shared UI does not imply a shared session database.
 
-- **Fills the official Linux gap**: a WSL/Linux terminal UI and a signed Linux `.AppImage`. None of the three projects above lists a Linux desktop installer in its README.
-- **No changes to the official kernel**: nothing vendored, no `patch-package`; sessions are shared with the official `~/.dsh`. The terminal UI is our own `packages/tui`, and we never mount a third-party TUI.
-- **Verifiable releases**: each release uploads 12 files (3 primary files — AppImage, Android APK, CycloneDX SBOM — plus 3 `.sha256` digests and 6 Keyless Cosign `.sigstore.json` bundles; the APK is also v2/v3-signed). The latest dsh-Go release ships only the APK and `SHA256SUMS`.
-- **Self-hostable and small**: the blind relay can be self-deployed ([`deploy/relay/`](deploy/relay/)), so no hosted service is required; the Android client is ~13 MB and embeds neither Node nor DSH.
+**Unverified limits:** Android physical `arm64-v8a` remains `[UNVERIFIED]`, with no native iOS client. Broader real third-party CLI and network combinations require field evidence. E2EE does not cover model-provider boundaries or imply an independent security audit.
 
-**Weaknesses, stated just as plainly:**
+For AppImage/APK/CycloneDX SBOM, SHA-256 and Cosign evidence see [release facts](docs/current-release.md). For methods and source links see [competitive positioning](docs/competitive-positioning.en.md). Submit redacted [first-run feedback](https://github.com/kamanager2012/dsh-community/issues/new?template=first-run-feedback.yml).
 
-- The project is new (0 stars); community size, documentation, and polish are far behind the three projects above.
-- Android has passed only CI `x86_64` emulator E2EE acceptance; physical `arm64-v8a` handsets remain `[UNVERIFIED]`, and there is no iOS client.
-- If you want to **run DSH on the phone itself** or use **phone control**, use dsh-Go; for **iOS, a hosted web client, or more agents (such as Cursor)**, look at DSHarness Remote; for a richer terminal UI, look at dsh-TUI. Our multi-agent plane covers only DSH, Claude Code, Codex CLI, and OpenCode.
 
 ---
 

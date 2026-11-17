@@ -1,0 +1,64 @@
+name: First-run feedback
+description: Share a redacted Linux/WSL2 or remote-control onboarding result so we can improve the real user experience.
+title: '[First-run] '
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Never post API keys, tokens, pairing codes, .env files, private paths, source diffs or complete Session transcripts.
+        Security vulnerabilities belong in private SECURITY.md reporting, not in public issues.
+  - type: dropdown
+    id: surface
+    attributes:
+      label: First task attempted
+      options:
+        - WSL2 / Linux Terminal
+        - Linux AppImage
+        - Official DSH session resume
+        - Browser PWA remote control
+        - Android Remote Client (preview/emulator)
+        - Multi-agent CLI integration
+    validations:
+      required: true
+  - type: dropdown
+    id: outcome
+    attributes:
+      label: Result
+      options:
+        - Completed
+        - Partially completed
+        - Blocked
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: dsh-community tag or commit
+      placeholder: v0.2.2-rc.3-community.1
+    validations:
+      required: true
+  - type: input
+    id: upstream
+    attributes:
+      label: Official DSH version, if used
+      placeholder: 0.2.2-rc.3 / not applicable
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment (redacted)
+      description: OS/WSL2, Node/pnpm versions, install mode and LAN/HTTPS/WSS. Omit usernames and network addresses.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Minimal steps and actual result (redacted)
+      description: Include relevant exit code and expected outcome, without sharing private code or credentials.
+    validations:
+      required: true
+  - type: textarea
+    id: alternative
+    attributes:
+      label: Would you keep using this? What alternative would you otherwise choose?
+      description: Optional feedback, e.g. Herdr, Happier, Paseo, T3 Code, DS Harness Remote.

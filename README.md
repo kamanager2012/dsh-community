@@ -7,7 +7,23 @@
 [![Official Core](https://img.shields.io/badge/Official%20Core-%40deepseek--ai%2Fdsh-blue)](https://github.com/deepseek-ai/deepseek-harness)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-> **在官方 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（`@deepseek-ai/dsh`）运行时之上，提供跨平台、多 Agent、可自托管的统一开发控制面（WSL/Linux 终端、Linux AppImage 与 E2EE 远程控制）：100% 共用 `~/.dsh` 会话真源，不 vendor 官方源码（Official Source Ownership = 0），并可同时纳管 DSH、Claude Code、Codex CLI 与 OpenCode。**
+> **DSH Community 是围绕官方 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的 Linux / WSL2 社区发行与兼容层**：提供 TUI、签名 Linux AppImage、官方 Runtime 精确锁定和可选 E2EE 多 Agent 远控。**不修改官方执行内核；只有 DSH 会话使用官方 `~/.dsh`，Claude Code / Codex / OpenCode 使用各自原生会话存储。**
+
+**试用本轮社区更新：** [v0.2.2-rc.3-community.1（Pre-release）](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1)；**官方内核对齐的 Latest：** [v0.2.2-rc.3](https://github.com/kamanager2012/dsh-community/releases/latest)。两条发布频道独立，前者不会覆盖 Latest。
+
+## 选工具先看你的主要任务
+
+| 你最需要 | 推荐起点 | 原因 |
+|---|---|---|
+| Linux / WSL2 使用**官方 DSH Runtime**，要 TUI、AppImage、官方会话接续 | **DSH Community** | 专注 Linux 互补发行、官方兼容性和可核验安装包 |
+| 管理持久终端、SSH、多 Agent pane | [Herdr](https://github.com/herdrdev/herdr) | 主攻终端复用与持久进程 |
+| 手机跨端管理多个 Agent | [Happier](https://github.com/happier-dev/happier)、[Paseo](https://github.com/getpaseo/paseo) 或 [T3 Code](https://github.com/pingdotgg/t3code) | 已有跨设备编排、Worktree、PR 等不同深度的方案 |
+| 已经使用官方 DSH Desktop，重点是远程访问 | [DS Harness Remote](https://github.com/liguobao/ds-harness-remote) | DSH 原生插件与远控方向更直接 |
+
+这里不把多 Agent、E2EE、手机审批或 Git Diff 当作独占卖点。完整竞品依据与限制：[**选型与竞争定位**](docs/competitive-positioning.md)（2026-11-17，公开文档核对，非实机对抗测试）。
+
+---
+
 
 ## 界面预览（Chromium E2EE 联调与桌面控制台页面）
 
@@ -123,27 +139,25 @@ Cosign 无密钥验签与精确文件名见 [`docs/release.md#artifact-signing-k
 | `dsh` 启动器 | 按 profile 启动 `web` / `headless` / `sdk` / `acp`；**自身不带终端界面**，上游也没有 TUI 包 |
 | Python SDK、ACP server | 供程序化调用，不是交互界面 |
 
-这些空白，以及围绕官方内核的其他需求，已有几个第三方项目在做。以下对比只取自各项目自己的 README 与发布页（星数为 2026-11-15 当日数据）：
+多 Agent 同屏、手机审批、E2EE、Git Diff 已经有多种成熟实现。**我们不以功能堆砌或静态 Stars 排名宣传独特性**，也不因竞品 README 没提某功能就断言它不支持。
 
-| 项目 | 做什么 | 许可 | Stars |
-|---|---|---|---|
-| [`ccch1mneyyy/dsh-Go`](https://github.com/ccch1mneyyy/dsh-Go) | Flutter 写的 Android 客户端：手机内置 Ubuntu + Node + DSH 本机运行（最新 APK 约 231 MB，另需约 1 GB 运行环境），或经 SSH / DSHarness Remote 遥控电脑；另有手机操控、桌宠、插件原生界面 | AGPL-3.0 | 23,280 |
-| [`liguobao/ds-harness-remote`](https://github.com/liguobao/ds-harness-remote) | 官方插件形态的端到端加密 P2P 远程访问（TURN / 中继回退）；经 ACP 接入 DSH、Codex、Cursor、Antigravity、OpenCode、Claude Code 等；Android、Web、iOS（beta）客户端 | MIT | 2,941 |
-| [`ccch1mneyyy/dsh-TUI`](https://github.com/ccch1mneyyy/dsh-TUI) | 第三方终端 UI 插件，功能丰富的 TUI | MIT | 7,735 |
-| **DSH Community（本仓）** | Linux / WSL 终端界面、签名 Linux AppImage、不内置运行时的 Android 遥控端、多 Agent E2EE 远程控制面 | MIT | 0 |
+| 产品 | 重点方向 / 什么时候更适合 |
+|---|---|
+| [Herdr](https://github.com/herdrdev/herdr) | 持久终端、SSH、pane 与大量 CLI Agent 的状态管理 |
+| [Happier](https://github.com/happier-dev/happier) | 多 Agent 跨设备协作、手机端、E2EE、自托管 |
+| [Paseo](https://github.com/getpaseo/paseo) | 完整的 Agent 开发环境、Worktree、Diff、编辑器、PR |
+| [T3 Code](https://github.com/pingdotgg/t3code) | 多 Agent 会话到分支与 GitHub PR 的交付闭环 |
+| [DS Harness Remote](https://github.com/liguobao/ds-harness-remote) | 官方 DSH 插件路径的跨端远程、P2P / TURN 及更多 ACP 后端 |
+| [dsh-Go](https://github.com/ccch1mneyyy/dsh-Go) | 在 Android 手机上本地运行 DSH（与我们的轻量远程客户端不同） |
+| [dsh-TUI](https://github.com/ccch1mneyyy/dsh-TUI) | 独立、功能丰富的 DSH 终端 UI |
+| **DSH Community** | 未修改的官方 DSH Runtime + Linux TUI/AppImage + 官方 Session 接续 + 精确内核版本锁定和发布验证 |
 
-**我们能核实的差异：**
+**我们的已验证定位：** 官方 `@deepseek-ai/dsh` 负责执行与 DSH Session（`~/.dsh`）；社区负责 Linux 发行、兼容性和可选远控。Claude Code、Codex CLI、OpenCode **保留各自的原生 Session 存储**，统一界面不等于统一会话数据库。
 
-- **补官方的 Linux 空白**：WSL/Linux 终端界面，以及签名的 Linux `.AppImage`。上述三个第三方项目的 README 均未提供 Linux 桌面安装包。
-- **不改官方内核**：不 vendor、不 `patch-package`，Session 与官方共用 `~/.dsh`；终端界面是自研的 `packages/tui`，不挂载第三方 TUI。
-- **发布物可验签**：每次 Release 上传 12 个文件（3 个核心文件：AppImage / Android APK / CycloneDX SBOM + 3 个 `.sha256` + 6 个 Keyless Cosign `.sigstore.json` 证明，APK 另有 v2/v3 签名）。dsh-Go 最新 Release 只提供 APK 与 `SHA256SUMS`。
-- **自托管、体积小**：盲中继可自部署（[`deploy/relay/`](deploy/relay/)），不依赖托管服务；Android 客户端约 13 MB，不内置 Node 或 DSH。
+**尚未宣称完成的部分：** Android `arm64-v8a` 物理真机 `[UNVERIFIED]`、无 iOS 原生客户端；真实外部 CLI 与复杂网络组合仍需要用户证据。E2EE 不覆盖模型 Provider API 边界，也不是第三方安全审计证书。
 
-**同样要说清楚的短板：**
+发行可核验的 AppImage、APK、CycloneDX SBOM、SHA-256 与 Cosign 证据请看 [发行事实](docs/current-release.md)。完整竞品依据及对外口径见 [竞争定位](docs/competitive-positioning.md)。欢迎提交不含密钥的 [首次试用反馈](https://github.com/kamanager2012/dsh-community/issues/new?template=first-run-feedback.yml)。
 
-- 项目很新（0 star），社区规模、文档与打磨程度都远不及上面三个项目。
-- Android 只经过 CI `x86_64` 模拟器 E2EE 验收，物理 `arm64-v8a` 真机仍是 `[UNVERIFIED]`；没有 iOS。
-- 想在**手机上直接运行 DSH**或使用**手机操控**，请用 dsh-Go；想要 **iOS、托管 Web 客户端或更多 Agent（如 Cursor）**，请看 DSHarness Remote；想要功能更丰富的终端 UI，请看 dsh-TUI。我们的多 Agent 目前只覆盖 DSH、Claude Code、Codex CLI、OpenCode。
 
 ---
 

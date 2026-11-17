@@ -13,6 +13,23 @@ that published Runtime.**
 This repository does not ship a second Agent Runtime, a second Session store,
 or a forked tool-execution pipeline.
 
+## Linux-first positioning versus generic multi-agent workbenches
+
+Herdr, Happier, Paseo, T3 Code and DS Harness Remote already cover terminal
+multiplexing, mobile approvals, E2EE, multi-agent control, worktrees or PR review.
+These are **not** unique claims of this project.
+
+Our main contract is a **Linux / WSL2 companion distribution for the official
+DeepSeek Harness Runtime**: TUI, signed AppImage, upstream pin/contract checks,
+the official DSH `~/.dsh` Session store and verifiable release artifacts.
+The multi-agent E2EE remote layer is optional, not our category monopoly.
+External Claude Code, Codex CLI and OpenCode sessions stay native to their tools.
+
+Public comparisons must follow [sourced competitive positioning](docs/competitive-positioning.en.md):
+no static Stars, no unsupported competitor-absence claims and distinct mock,
+emulator, real runtime and hardware acceptance evidence.
+
+
 ## Current product reality
 
 This repository follows a **Complementary Edition** boundary: we build and distribute only the endpoints missing from official `deepseek-ai/deepseek-harness`.
