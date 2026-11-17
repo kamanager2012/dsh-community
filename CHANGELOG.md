@@ -74,6 +74,15 @@
 - 冻结的 Agent Governance Stack 三仓曾以完整代码与提交历史并入本仓 `archive/`，独立仓于 2026-09-13 删除；**2026-09-14 回退**：AIOS 是独立项目，与 dsh 无技术依赖——`aios-core` 已在独立仓 [`kamanager2012/aios-core`](https://github.com/kamanager2012/aios-core) 恢复（原始提交 SHA 与全部分支不变），`governor-core` 与 `agent-constraint-system` 的完整历史现保留为该仓 `legacy/governor-core`、`legacy/agent-constraint-system` 分支，本仓 `archive/` 中的三个副本已移除。手册实验固定的 workspace 版本 `aios-core@6af8968` 改从独立仓检出。
 - 安全修复：通过 `pnpm-workspace.yaml` 的 `overrides` 修补官方传递依赖新披露的高危漏洞——`@xmldom/xmldom` 0.8.14→0.8.15（electron 打包链，plist 现解析 0.9.12）、`js-yaml` 4.3.1→4.3.2（官方 cordis-plugin-include 传递依赖）、`sharp` 0.35.3→0.35.4（官方 dsh-attachment-local 传递依赖，与 Android 裁决同版本）。`pnpm audit --audit-level high` 恢复通过：8 high + 9 moderate → 0 high + 7 moderate。
 
+## 0.2.2-rc.3-community.1 — Community Prerelease (2026-11-17)
+
+Community prerelease built on the pinned official kernel `@deepseek-ai/dsh@0.2.2-rc.3`. GitHub Published Latest remains `v0.2.2-rc.3`; Android `apps/android` carries CI `x86_64` emulator E2EE verification (`pass`) while physical `arm64-v8a` handset telemetry stays `UNVERIFIED`.
+
+- **Fail-closed `observe` Git diff secret redaction (#171)**: `packages/remote-adapter` (`git-review.ts`) now redacts all non-example `.env*` files, private keys/keystores (`.pem`, `.key`, `.p12`, `.pfx`, `.jks`, `.keystore`, SSH keys, `.npmrc`, `.netrc`), decodes C-quoted octal diff headers, enforces canonical Git diff flags (`core.quotePath=false`, `noprefix=false`, `mnemonicPrefix=false`, `--src-prefix=a/`, `--dst-prefix=b/`), redacts `diff --cc`/`--combined`/`--remerge` and pre-hunk lines, and scans with lookahead before UTF-8 `maxBytes` truncation.
+- **Crashed Codex & ACP backend recovery (#171)**: Extracted `clearLiveProcessState` in `codex-backend.ts` and `acp-backend.ts` so mid-approval process crashes cancel pending interactions, reset status to `idle`, fail-closed stale approvals, and transparently respawn on the next turn.
+- **1-command Linux CLI installer with immutable pinning (#169, #170)**: Added `scripts/install-linux.sh` with `--ref` and fail-closed `--expected-commit` (clean force-checkout) plus Chromium Web Browser E2EE Playwright acceptance workflow (`remote-web-browser-e2ee.yml`) and legacy `0.1.1-rc.2` plugin guards.
+- **Pairing boundary clarity, CI Node 24 alignment & handbook sync (#161, #168, #170)**: Clarified `--allow-caps` vs `confirm`/`grant` `approve` capability escalation and loopback vs LAN/WAN `remote host` relay secrets (`DSH_REMOTE_RELAY_HOST_SECRET` / `DSH_REMOTE_SIGNALING_HOST_SECRET`), aligned screenshot disclosures & `handbook/assets/*.png` Pages assets, aligned CI to Node 24, and verified cross-surface `v0.2.2-rc.3` AppImage/TUI user-loop & lifecycle recovery (run `43729024796`).
+
 ## 0.2.2-rc.3 — Official Kernel 1:1 Mirror & Control Plane Release (2026-11-15)
 
 This release aligns **Community Product Version** 1:1 with the pinned official kernel (`@deepseek-ai/dsh@0.2.2-rc.3`), bringing all multi-agent remote control-plane, Web PWA, and interactive TUI upgrades since `v0.2.2-rc.2` into a signed `Latest` release.
