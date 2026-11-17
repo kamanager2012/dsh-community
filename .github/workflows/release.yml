@@ -18,7 +18,10 @@ permissions:
 jobs:
   release-identity:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
+    # Environment must require human reviewers, protected tags, and hold the
+    # policy App private key. Review the exact tag commit before approval.
+    environment: release-policy-audit
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -32,10 +35,20 @@ jobs:
       - name: Verify immutable tag points to the reviewed current main
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         run: node scripts/release-provenance.mjs tagged "$GITHUB_REF_NAME" origin "$GITHUB_SHA"
+      - name: Create short-lived, repository-scoped policy inspection token
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        id: policy-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.DSH_RELEASE_POLICY_APP_CLIENT_ID }}
+          private-key: ${{ secrets.DSH_RELEASE_POLICY_APP_PRIVATE_KEY }}
+          repositories: dsh-community
+          permission-administration: write
+          permission-contents: read
       - name: Verify protected tags and absence of previous release attempts
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ steps.policy-token.outputs.token }}
         run: node scripts/release-governance.mjs "$GITHUB_REF_NAME" "$GITHUB_REPOSITORY"
       - name: Refuse an already-published release before any expensive build
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
@@ -276,6 +289,7 @@ jobs:
     needs: [build-linux, build-android, runtime-sbom, sign]
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    environment: release-policy-audit
     # Sole writer in this workflow: creates the GitHub Release and uploads assets.
     permissions:
       contents: write
@@ -326,9 +340,19 @@ jobs:
           done
       - name: Recheck reviewed source and tag immediately before publishing
         run: node scripts/release-provenance.mjs tagged "$GITHUB_REF_NAME" origin "$GITHUB_SHA"
+      - name: Create fresh release policy inspection token
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        id: policy-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.DSH_RELEASE_POLICY_APP_CLIENT_ID }}
+          private-key: ${{ secrets.DSH_RELEASE_POLICY_APP_PRIVATE_KEY }}
+          repositories: dsh-community
+          permission-administration: write
+          permission-contents: read
       - name: Recheck tag protection and absent attempt marker before publish
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ steps.policy-token.outputs.token }}
         run: node scripts/release-governance.mjs "$GITHUB_REF_NAME" "$GITHUB_REPOSITORY"
       - name: Prepare notes
         run: |
