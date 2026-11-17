@@ -29,6 +29,14 @@ to an existing Release. The tagged workflow does not run `gh release upload` or
 exists and uses `gh release create --verify-tag`; the GitHub API remains the
 final arbiter if another publisher races the preflight.
 
+**GitHub CLI atomicity boundary:** `gh release create` with assets uses
+separate Draft → upload → publish API requests. Only a *published* release is
+locked by GitHub's immutable release setting; a failed command may leave a
+Draft behind. Keep such drafts quarantined for review. Never treat a retry
+that appends to an existing Draft/Release as an immutable new publication;
+review a fresh version and unused Tag for recovery. Do not claim that
+workflow-level duplicate detection makes all asset uploads atomic.
+
 The local `scripts/release.mjs` now independently checks that the working branch
 is `main`, its exact HEAD equals the current remote `main`, and neither local
 nor remote already contains the requested tag. It runs this check **before**
