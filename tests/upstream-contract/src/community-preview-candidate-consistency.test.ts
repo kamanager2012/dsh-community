@@ -55,7 +55,7 @@ describe('community preview candidate identity', () => {
       expect(content, name).toContain(facts.candidateTag)
       expect(content, name).toContain(facts.evidence.candidatePrerelease.tag)
       if (facts.evidence.candidatePrerelease.tag !== facts.candidateTag) {
-        expect(content, name).toMatch(/unpublished|未发布|待发布/u)
+        expect(content, name).toMatch(/unpublished|未发布|待发布/iu)
       }
     }
     expect(read('CHANGELOG.md')).toContain('## ' + facts.communityProduct.version)
