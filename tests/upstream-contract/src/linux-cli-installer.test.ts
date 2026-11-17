@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from 'node:child_process'
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -111,7 +111,7 @@ describe('Linux/WSL Terminal CLI installer', () => {
     expect(res.stdout).toContain(join(absBinDir, 'dsh-marketplace'))
 
     const logContent = readFileSync(pnpmLog, 'utf8')
-    expect(logContent).toContain(`${join(absPrefix, 'repo')}|install --frozen-lockfile`)
+    expect(logContent).toMatch(/\.repo\.stage\.[^|]+\|install --frozen-lockfile/u)
     expect(logContent).toContain('@dsh-community/tui')
     expect(logContent).toContain('@dsh-community/remote-web')
     expect(logContent).toContain('@dsh-community/marketplace')
@@ -128,6 +128,188 @@ describe('Linux/WSL Terminal CLI installer', () => {
       encoding: 'utf8',
     })
     expect(mktOut.trim()).toBe('SHIM_MKT:list:BUNDLED_DSH:--version')
+  })
+
+  it('keeps the old executable intact when a staged reinstall fails and replaces it only after success', () => {
+    const workRoot = makeTempDir('dsh-inst-rollback-')
+    const fixture = join(workRoot, 'source')
+    const prefix = join(workRoot, 'prefix')
+    const bin = join(workRoot, 'bin')
+    const fakeTools = makeTempDir('dsh-inst-fail-tools-')
+    const pnpmArgsLog = join(workRoot, 'pnpm-args.log')
+    mkdirSync(join(fixture, 'apps/tui/dist'), { recursive: true })
+    mkdirSync(join(fixture, 'packages/marketplace/bin'), { recursive: true })
+    mkdirSync(join(fixture, 'packages/dsh-bridge/node_modules/.bin'), { recursive: true })
+    writeFileSync(join(fixture, 'apps/tui/dist/bin.js'), 'console.log("STABLE_CLI")\n', 'utf8')
+    writeFileSync(join(fixture, 'packages/marketplace/bin/dsh-marketplace.js'), 'console.log("MARKETPLACE")\n', 'utf8')
+    writeFileSync(join(fixture, 'packages/dsh-bridge/node_modules/.bin/dsh'), '#!/bin/sh\nexit 0\n', 'utf8')
+
+    const pnpm = join(fakeTools, 'pnpm')
+    writeFileSync(pnpm, '#!/usr/bin/env bash\nif [ -n "${PNPM_ARGS_LOG:-}" ]; then echo "$*" >> "$PNPM_ARGS_LOG"; fi\nif [ "${FAIL_INSTALL:-}" = "1" ] && [ "$1" = "install" ]; then exit 37; fi\nif [ "${FAIL_BUILD:-}" = "1" ] && [ "$1" != "install" ]; then exit 38; fi\nexit 0\n', 'utf8')
+    chmodSync(pnpm, 0o755)
+    const env = { ...process.env, PATH: fakeTools + ':' + (process.env.PATH ?? ''), PNPM_ARGS_LOG: pnpmArgsLog }
+    const args = ['--local-repo', fixture, '--prefix', prefix, '--bin-dir', bin]
+    const first = spawnSync('bash', [installerPath, ...args], { env, encoding: 'utf8' })
+    expect(first.status, first.stderr).toBe(0)
+    const stable = execFileSync(join(bin, 'dsh-community'), ['version'], { encoding: 'utf8' }).trim()
+    expect(stable).toBe('STABLE_CLI')
+    // mktemp's 0700 staging permissions must not leak into a public install.
+    expect(statSync(join(prefix, 'repo')).mode & 0o777).toBe(statSync(prefix).mode & 0o777)
+    chmodSync(join(prefix, 'repo'), 0o2750)
+    const initialGid = statSync(join(prefix, 'repo')).gid
+    const alternateGid = process.getgroups?.().find(gid => gid !== initialGid)
+    if (alternateGid !== undefined && process.platform === 'linux') {
+      // Emulate an existing shared install under a secondary runner group.
+      execFileSync('chgrp', [String(alternateGid), join(prefix, 'repo')])
+      expect(statSync(join(prefix, 'repo')).gid).toBe(alternateGid)
+    }
+    const preservedGid = statSync(join(prefix, 'repo')).gid
+
+    writeFileSync(join(fixture, 'apps/tui/dist/bin.js'), 'console.log("NEW_VERSION")\n', 'utf8')
+    const badInstall = spawnSync('bash', [installerPath, ...args], {
+      env: { ...env, FAIL_INSTALL: '1' },
+      encoding: 'utf8',
+    })
+    expect(badInstall.status).not.toBe(0)
+    expect(execFileSync(join(bin, 'dsh-community'), ['version'], { encoding: 'utf8' }).trim()).toBe(stable)
+
+    const badBuild = spawnSync('bash', [installerPath, ...args], {
+      env: { ...env, FAIL_BUILD: '1' },
+      encoding: 'utf8',
+    })
+    expect(badBuild.status).not.toBe(0)
+    expect(execFileSync(join(bin, 'dsh-community'), ['version'], { encoding: 'utf8' }).trim()).toBe(stable)
+
+    // Simulate SIGTERM immediately after mv(repo, backup) has succeeded,
+    // BEFORE the installer shell can resume after its child process exits.
+    const fakeMv = join(fakeTools, 'mv')
+    writeFileSync(
+      fakeMv,
+      '#!/usr/bin/env bash\n' +
+      'dest="${@: -1}"; src="${@: -2:1}"\n' +
+      'if [ -n "${DSH_TEST_FAIL_MARKETPLACE_SHIM:-}" ] && [ "$dest" = "$DSH_TEST_FAIL_MARKETPLACE_SHIM" ] && [ ! -e "${DSH_TEST_MARKER:-/nonexistent}" ]; then touch "$DSH_TEST_MARKER"; exit 79; fi\n' +
+      '/usr/bin/mv "$@"\n' +
+      'rc=$?\n' +
+      'if [ "$rc" -eq 0 ] && [ -n "${DSH_TEST_SIGTERM_SOURCE:-}" ] && [ "$src" = "$DSH_TEST_SIGTERM_SOURCE" ] && [[ "$dest" == *".repo.previous."* ]]; then kill -TERM "$PPID"; fi\n' +
+      'exit "$rc"\n',
+      'utf8',
+    )
+    chmodSync(fakeMv, 0o755)
+    // Send SIGTERM while rollback is executing rm(candidate repo).
+    const fakeRm = join(fakeTools, 'rm')
+    writeFileSync(
+      fakeRm,
+      '#!/usr/bin/env bash\n' +
+      'last="${@: -1}"\n' +
+      '/usr/bin/rm "$@"\n' +
+      'rc=$?\n' +
+      'if [ "$rc" -eq 0 ] && [ -n "${DSH_TEST_SIGNAL_ON_RM:-}" ] && [ "$last" = "$DSH_TEST_SIGNAL_ON_RM" ] && [ ! -e "${DSH_TEST_CLEANUP_MARKER:-/nonexistent}" ]; then touch "$DSH_TEST_CLEANUP_MARKER"; kill -TERM "$PPID"; fi\n' +
+      'exit "$rc"\n',
+      'utf8',
+    )
+    chmodSync(fakeRm, 0o755)
+
+
+    const terminated = spawnSync('bash', [installerPath, ...args], {
+      env: { ...env, DSH_TEST_SIGTERM_SOURCE: join(prefix, 'repo') },
+      encoding: 'utf8',
+    })
+    expect(terminated.status).not.toBe(0)
+    expect(terminated.stderr).toContain('Previous dsh-community installation restored')
+    expect(execFileSync(join(bin, 'dsh-community'), ['version'], { encoding: 'utf8' }).trim()).toBe(stable)
+    expect(readFileSync(join(prefix, 'repo/apps/tui/dist/bin.js'), 'utf8')).toContain('STABLE_CLI')
+
+    // Replacing shims for a DIFFERENT prefix is a separate transaction.
+    // Fail the marketplace rename once, after the new TUI shim was written.
+    const otherPrefix = join(workRoot, 'alternate-prefix')
+    const markerFile = join(workRoot, 'fail-shim-once.marker')
+    const badCrossPrefix = spawnSync('bash', [
+      installerPath, '--local-repo', fixture, '--prefix', otherPrefix, '--bin-dir', bin,
+    ], {
+      env: {
+        ...env,
+        DSH_TEST_FAIL_MARKETPLACE_SHIM: join(bin, 'dsh-marketplace'),
+        DSH_TEST_MARKER: markerFile,
+      },
+      encoding: 'utf8',
+    })
+    expect(badCrossPrefix.status).not.toBe(0)
+    expect(existsSync(markerFile)).toBe(true)
+    expect(existsSync(join(otherPrefix, 'repo'))).toBe(false)
+    expect(execFileSync(join(bin, 'dsh-community'), ['version'], { encoding: 'utf8' }).trim()).toBe(stable)
+    expect(execFileSync(join(bin, 'dsh-marketplace'), [], { encoding: 'utf8' }).trim()).toBe('MARKETPLACE')
+
+    // A failed marketplace shim publication begins rollback. Deliver a second
+    // SIGTERM after cleanup removed the candidate but before it restores old repo.
+    const rollbackShimMarker = join(workRoot, 'rollback-shim.marker')
+    const rollbackSignalMarker = join(workRoot, 'rollback-signal.marker')
+    const interruptedRollback = spawnSync('bash', [installerPath, ...args], {
+      env: {
+        ...env,
+        DSH_TEST_FAIL_MARKETPLACE_SHIM: join(bin, 'dsh-marketplace'),
+        DSH_TEST_MARKER: rollbackShimMarker,
+        DSH_TEST_SIGNAL_ON_RM: join(prefix, 'repo'),
+        DSH_TEST_CLEANUP_MARKER: rollbackSignalMarker,
+      },
+      encoding: 'utf8',
+    })
+    expect(interruptedRollback.status).not.toBe(0)
+    expect(existsSync(rollbackShimMarker)).toBe(true)
+    expect(existsSync(rollbackSignalMarker)).toBe(true)
+    expect(interruptedRollback.stderr).toContain('Previous dsh-community installation restored')
+    expect(execFileSync(join(bin, 'dsh-community'), ['version'], { encoding: 'utf8' }).trim()).toBe(stable)
+    expect(readFileSync(join(prefix, 'repo/apps/tui/dist/bin.js'), 'utf8')).toContain('STABLE_CLI')
+
+    // A different prefix cannot take over the shared bin-dir while this
+    // process holds its flock lock. Test uses the same OFD across subprocess.
+    const binLock = openSync(join(bin, '.dsh-community.install.lock'), 'a')
+    try {
+      const locked = spawnSync('flock', ['-x', '3'], {
+        stdio: ['ignore', 'pipe', 'pipe', binLock], encoding: 'utf8',
+      })
+      expect(locked.status, locked.stderr).toBe(0)
+      const competingPrefix = join(workRoot, 'third-prefix')
+      const competing = spawnSync('bash', [
+        installerPath, '--local-repo', fixture, '--prefix', competingPrefix, '--bin-dir', bin,
+      ], { env, encoding: 'utf8' })
+      expect(competing.status).not.toBe(0)
+      expect(competing.stderr).toContain('another dsh-community installation is publishing to')
+      expect(execFileSync(join(bin, 'dsh-community'), ['version'], { encoding: 'utf8' }).trim()).toBe(stable)
+      expect(existsSync(join(competingPrefix, 'repo'))).toBe(false)
+    } finally {
+      closeSync(binLock)
+    }
+
+    // A directory occupying a shim path must fail before any activation.
+    const marketplaceShim = join(bin, 'dsh-marketplace')
+    rmSync(marketplaceShim)
+    mkdirSync(marketplaceShim)
+    const blockedShim = spawnSync('bash', [installerPath, ...args], { env, encoding: 'utf8' })
+    expect(blockedShim.status).not.toBe(0)
+    expect(execFileSync(join(bin, 'dsh-community'), ['version'], { encoding: 'utf8' }).trim()).toBe(stable)
+    expect(readFileSync(join(prefix, 'repo/apps/tui/dist/bin.js'), 'utf8')).toContain('STABLE_CLI')
+    rmSync(marketplaceShim, { recursive: true })
+
+    const success = spawnSync('bash', [installerPath, ...args], { env, encoding: 'utf8' })
+    expect(success.status, success.stderr).toBe(0)
+    expect(execFileSync(join(bin, 'dsh-community'), ['version'], { encoding: 'utf8' }).trim()).toBe('NEW_VERSION')
+    expect(readFileSync(join(prefix, 'repo/apps/tui/dist/bin.js'), 'utf8')).toContain('NEW_VERSION')
+    expect(statSync(join(prefix, 'repo')).mode & 0o2777).toBe(0o2750)
+    expect(statSync(join(prefix, 'repo')).gid).toBe(preservedGid)
+    expect(readFileSync(pnpmArgsLog, 'utf8')).toContain('install --frozen-lockfile --package-import-method=copy')
+    // Preserve access on descendants: root directory GID alone is insufficient.
+    for (const relative of [
+      'apps',
+      'apps/tui',
+      'apps/tui/dist',
+      'apps/tui/dist/bin.js',
+      'packages/marketplace/bin/dsh-marketplace.js',
+    ]) {
+      const item = statSync(join(prefix, 'repo', relative))
+      expect(item.gid, relative).toBe(preservedGid)
+      expect(item.mode & 0o040, relative).toBe(0o040)
+      if (item.isDirectory()) expect(item.mode & 0o010, relative).toBe(0o010)
+    }
   })
 
   it('supports pinned tag/commit installation with --ref and fail-closed --expected-commit verification', () => {
@@ -217,6 +399,60 @@ describe('Linux/WSL Terminal CLI installer', () => {
     )
     expect(matchRes.status, matchRes.stderr || matchRes.stdout).toBe(0)
     expect(matchRes.stdout).toContain(`ref=v0.2.2-rc.3 commit=${pinnedSha}`)
+
+    // Fetched-source shared upgrade with a 027 umask: Git checkout/build
+    // must inherit the existing setgid installation group in descendants.
+    // This reproduces the reported root:shared-group -> root:root regression.
+    chmodSync(join(outPrefix, 'repo'), 0o2750)
+    const prevGid = statSync(join(outPrefix, 'repo')).gid
+    const sharedGid = process.getgroups?.().find(gid => gid !== prevGid)
+    if (sharedGid !== undefined && process.platform === 'linux') {
+      execFileSync('chgrp', [String(sharedGid), join(outPrefix, 'repo')])
+    }
+    const expectedGid = statSync(join(outPrefix, 'repo')).gid
+    const sharedUpgrade = spawnSync('bash', [
+      '-c',
+      'umask 027; exec bash "$@"',
+      'dsh-test',
+      installerPath,
+      '--repo-url', `file://${bareRemote}`,
+      '--ref', 'v0.2.2-rc.3',
+      '--expected-commit', pinnedSha,
+      '--prefix', outPrefix,
+      '--bin-dir', outBin,
+    ], {
+      env: { ...process.env, PATH: `${fakeToolBin}:${process.env.PATH ?? ''}` },
+      encoding: 'utf8',
+    })
+    expect(sharedUpgrade.status, sharedUpgrade.stderr || sharedUpgrade.stdout).toBe(0)
+    expect(statSync(join(outPrefix, 'repo')).mode & 0o2777).toBe(0o2750)
+    for (const rel of ['apps', 'apps/tui', 'apps/tui/dist', 'apps/tui/dist/bin.js']) {
+      const entry = statSync(join(outPrefix, 'repo', rel))
+      expect(entry.gid, rel).toBe(expectedGid)
+      expect(entry.mode & 0o040, rel).toBe(0o040)
+      if (entry.isDirectory()) expect(entry.mode & 0o010, rel).toBe(0o010)
+    }
+
+    // A rejected pin must not destroy a previously successful installation.
+    const pinMismatchAfterInstall = spawnSync(
+      'bash',
+      [
+        installerPath,
+        '--repo-url', 'file://' + bareRemote,
+        '--ref', 'v0.2.2-rc.3',
+        '--expected-commit', wrongSha,
+        '--prefix', outPrefix,
+        '--bin-dir', outBin,
+      ],
+      {
+        env: { ...process.env, PATH: fakeToolBin + ':' + (process.env.PATH ?? '') },
+        encoding: 'utf8',
+      },
+    )
+    expect(pinMismatchAfterInstall.status).toBe(1)
+    expect(pinMismatchAfterInstall.stderr).toContain('checked-out commit mismatch')
+    expect(readFileSync(join(outPrefix, 'repo/apps/tui/dist/bin.js'), 'utf8')).toBe('console.log("ok")\n')
+
 
     // Dirty --local-repo fails closed when --expected-commit is requested
     writeFileSync(join(srcRepo, 'apps/tui/dist/bin.js'), 'console.log("dirty")\n', 'utf8')

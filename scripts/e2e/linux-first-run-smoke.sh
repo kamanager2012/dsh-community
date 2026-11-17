@@ -9,7 +9,7 @@ if [[ "$(uname -s)" != "Linux" ]]; then
   echo "ERROR: Linux or WSL2 required" >&2
   exit 2
 fi
-for tool in bash git node pnpm; do
+for tool in bash git node pnpm flock; do
   command -v "$tool" >/dev/null 2>&1 || { echo "ERROR: missing $tool" >&2; exit 2; }
 done
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/dsh-first-run.XXXXXXXX")"
@@ -66,6 +66,105 @@ grep -Fq "marketplace list" "$WORK/marketplace.txt" || fail "marketplace command
 run_cli "$WORK/bin/dsh-community" remote --help >"$WORK/remote.txt" || fail "remote help"
 grep -Fq "remote start" "$WORK/remote.txt" || fail "remote command absent"
 
+# Real shared-group/setgid reinstall under restrictive umask. This exercises
+# pnpm's copy import mode, not just the fake-pnpm installer unit tests.
+chmod 2750 "$WORK/installed/repo"
+PRIMARY_GID="$(id -g)"
+ALTERNATE_GID="$(id -G | tr ' ' '\n' | awk -v current="$PRIMARY_GID" '$1 != current { print $1; exit }')"
+if [[ -n "$ALTERNATE_GID" ]]; then
+  chgrp "$ALTERNATE_GID" "$WORK/installed/repo" \
+    || fail "could not set existing repo to an available secondary group"
+fi
+EXPECTED_GID="$(stat -c '%g' "$WORK/installed/repo")"
+set +e
+(
+  umask 027
+  bash "$ROOT/scripts/install-linux.sh" "${args[@]}" >"$WORK/shared-reinstall.log" 2>&1
+)
+SHARED_REINSTALL_RC=$?
+set -e
+if [[ "$SHARED_REINSTALL_RC" -ne 0 ]]; then
+  echo "Shared-setgid reinstall exit code: $SHARED_REINSTALL_RC" >&2
+  echo "Installer diagnostic (last 140 lines; redact before sharing):" >&2
+  tail -n 140 "$WORK/shared-reinstall.log" >&2
+  fail "real shared-setgid reinstall failed (exit $SHARED_REINSTALL_RC)"
+fi
+[[ "$(stat -c '%g' "$WORK/installed/repo")" = "$EXPECTED_GID" ]] \
+  || fail "staged upgrade changed group of the active repo"
+for rel in apps apps/tui apps/tui/dist apps/tui/dist/bin.js packages/marketplace/bin/dsh-marketplace.js; do
+  staged_path="$WORK/installed/repo/$rel"
+  [[ "$(stat -c '%g' "$staged_path")" = "$EXPECTED_GID" ]] \
+    || fail "shared-group upgrade changed descendant group at $rel"
+  if [[ -d "$staged_path" ]]; then
+    [[ $(( 8#$(stat -c '%a' "$staged_path") & 0010 )) -eq 8 ]] \
+      || fail "shared-group upgrade lost group traversal at $rel"
+  else
+    [[ $(( 8#$(stat -c '%a' "$staged_path") & 0040 )) -eq 32 ]] \
+      || fail "shared-group upgrade lost group read access at $rel"
+  fi
+done
+run_cli "$WORK/bin/dsh-community" version >"$WORK/shared-upgrade-version.txt" \
+  || fail "CLI did not start after real shared-group upgrade"
+
+# A failed upgrade must not affect the already installed CLI.
+mkdir -p "$WORK/fail-tools"
+cat > "$WORK/fail-tools/pnpm" <<'SH'
+#!/bin/sh
+exit 47
+SH
+chmod 0755 "$WORK/fail-tools/pnpm"
+original_hash="$(sha256sum "$WORK/installed/repo/apps/tui/dist/bin.js" | awk '{print $1}')"
+set +e
+PATH="$WORK/fail-tools:$PATH" bash "$ROOT/scripts/install-linux.sh" "${args[@]}" >"$WORK/fail-upgrade.log" 2>&1
+fail_rc=$?
+set -e
+[[ "$fail_rc" -ne 0 ]] || fail "deliberately failed upgrade unexpectedly succeeded"
+after_hash="$(sha256sum "$WORK/installed/repo/apps/tui/dist/bin.js" | awk '{print $1}')"
+[[ "$original_hash" = "$after_hash" ]] || fail "failed upgrade changed the working CLI"
+run_cli "$WORK/bin/dsh-community" version >"$WORK/after-failure.txt" \
+  || fail "CLI could not run after failed upgrade"
+grep -Fq "@deepseek-ai/dsh" "$WORK/after-failure.txt" \
+  || fail "official Runtime identity lost after failed upgrade"
+
+# Another installer must refuse immediately under the same prefix lock.
+exec 8>"$WORK/installed/.install.lock"
+flock -x 8
+set +e
+bash "$ROOT/scripts/install-linux.sh" "${args[@]}" >"$WORK/concurrent.log" 2>&1
+concurrent_rc=$?
+set -e
+flock -u 8
+exec 8>&-
+[[ "$concurrent_rc" -ne 0 ]] || fail "concurrent installation unexpectedly succeeded"
+grep -Fq "another dsh-community installation" "$WORK/concurrent.log" \
+  || fail "lock refusal did not explain the concurrent installation"
+[[ "$(sha256sum "$WORK/installed/repo/apps/tui/dist/bin.js" | awk '{print $1}')" = "$original_hash" ]] \
+  || fail "concurrent rejection modified active CLI"
+
+# Two independently staged prefixes must serialize on their shared bin dir.
+# This second install runs a real source build before reaching the bin-dir lock.
+exec 7>>"$WORK/bin/.dsh-community.install.lock"
+flock -x 7
+set +e
+bash "$ROOT/scripts/install-linux.sh" \
+  --repo-url "file://$WORK/origin.git" \
+  --ref acceptance \
+  --expected-commit "$SOURCE_SHA" \
+  --prefix "$WORK/second-prefix" \
+  --bin-dir "$WORK/bin" \
+  >"$WORK/shared-bin-lock.log" 2>&1
+shared_bin_rc=$?
+set -e
+flock -u 7
+exec 7>&-
+[[ "$shared_bin_rc" -ne 0 ]] || fail "different-prefix installer bypassed shared bin lock"
+grep -Fq "another dsh-community installation is publishing to" "$WORK/shared-bin-lock.log" \
+  || fail "shared bin lock failure was not explained"
+[[ "$(sha256sum "$WORK/installed/repo/apps/tui/dist/bin.js" | awk '{print $1}')" = "$original_hash" ]] \
+  || fail "different-prefix lock failure altered active CLI"
+run_cli "$WORK/bin/dsh-community" version >"$WORK/after-shared-lock.txt" \
+  || fail "working CLI was lost after shared bin lock refusal"
+
 if [[ -n "$EVIDENCE_OUT" ]]; then
   mkdir -p "$(dirname "$EVIDENCE_OUT")"
   SOURCE_SHA="$SOURCE_SHA" EVIDENCE_OUT="$EVIDENCE_OUT" node <<'NODE'
@@ -84,7 +183,11 @@ const evidence = {
     emptyOfficialSessions: 'PASS',
     doctorNoKeyFailClosed: 'PASS',
     marketplaceHelp: 'PASS',
-    remoteHelp: 'PASS'
+    remoteHelp: 'PASS',
+    failedReinstallPreservesWorkingCLI: 'PASS',
+    concurrentInstallFailClosed: 'PASS',
+    crossPrefixSharedBinLock: 'PASS',
+    sharedSetgidRealPnpmCopyAndDescendantAccess: 'PASS'
   },
   providerCalls: 0,
   actualAgentTurn: false,

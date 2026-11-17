@@ -20,7 +20,7 @@ Usage: install-linux.sh [options]
 
 Install the dsh-community WSL/Linux Terminal CLI (dsh-community) and plugin discovery
 CLI (dsh-marketplace) from this repository without cloning manually.
-Requires Node.js (>= 24.9.0 recommended, >= 22.15.0 minimum), pnpm, and git.
+Requires Node.js (>= 24.9.0 recommended, >= 22.15.0 minimum), pnpm, git, and flock (util-linux).
 
 Options:
   --prefix <dir>            Install workspace directory (default: ~/.local/share/dsh-community)
@@ -175,52 +175,185 @@ fi
 
 mkdir -p "$PREFIX" "$BIN_DIR"
 
+# Existing CLI must remain runnable until the new source and build are verified.
+if ! command -v flock >/dev/null 2>&1; then
+  echo "ERROR: flock (util-linux) is required for safe Linux upgrades." >&2
+  exit 1
+fi
+exec 9>"$PREFIX/.install.lock"
+if ! flock -n 9; then
+  echo "ERROR: another dsh-community installation is running at $PREFIX." >&2
+  exit 1
+fi
+
+# Staging and active repository share a filesystem for fast directory rename.
+STAGE_REPO="$(mktemp -d "$PREFIX/.repo.stage.XXXXXXXX")"
+# Existing shared (setgid + group-rx) installations must retain the group
+# of *descendants*, not just the published repo directory. Set group/setgid
+# before git checkout or build creates children. Keep stage private (2700)
+# until activation, so there is no early group access to unfinished content.
+SHARED_SETGID=0
+if [ -d "$INSTALL_REPO" ]; then
+  OLD_REPO_MODE="$(stat -c '%a' "$INSTALL_REPO")"
+  if [[ "$OLD_REPO_MODE" =~ ^[0-7]{3,4}$ ]] && (( (8#$OLD_REPO_MODE & 02050) == 02050 )); then
+    SHARED_SETGID=1
+    chgrp --reference="$INSTALL_REPO" "$STAGE_REPO"
+    chmod 2700 "$STAGE_REPO"
+  fi
+fi
+BACKUP_REPO=""
+SWAP_ATTEMPTED=0
+HAD_PREVIOUS=0
+TUI_SHIM_TMP=""
+MARKETPLACE_SHIM_TMP=""
+TUI_SHIM_BACKUP=""
+MARKETPLACE_SHIM_BACKUP=""
+TUI_SHIM_PREEXISTED=0
+MARKETPLACE_SHIM_PREEXISTED=0
+SHIMS_ARMED=0
+
+install_cleanup() {
+  local status="$?"
+  # Once rollback has begun, a second handled signal must not abort recovery.
+  trap '' INT TERM HUP
+  trap - EXIT
+  # Backup path existence, not a post-mv flag assignment, proves that the
+  # original repo has moved. A signal may arrive immediately after mv returns.
+  if [ "$status" -ne 0 ] && [ "$SWAP_ATTEMPTED" -eq 1 ]; then
+    if [ "$HAD_PREVIOUS" -eq 1 ]; then
+      if [ -e "$BACKUP_REPO" ] || [ -L "$BACKUP_REPO" ]; then
+        if [ -e "$INSTALL_REPO" ] || [ -L "$INSTALL_REPO" ]; then
+          if ! rm -rf -- "$INSTALL_REPO"; then
+            echo "CRITICAL: cannot remove failed upgrade from $INSTALL_REPO" >&2
+          fi
+        fi
+        if mv -T -- "$BACKUP_REPO" "$INSTALL_REPO"; then
+          BACKUP_REPO=""
+          echo "Previous dsh-community installation restored after failed upgrade." >&2
+        else
+          echo "CRITICAL: restore failed; previous installation preserved at $BACKUP_REPO" >&2
+        fi
+      fi
+    elif [ -e "$INSTALL_REPO" ] || [ -L "$INSTALL_REPO" ]; then
+      if ! rm -rf -- "$INSTALL_REPO"; then
+        echo "CRITICAL: cannot remove failed first install at $INSTALL_REPO" >&2
+      fi
+    fi
+  fi
+
+  # The shims can refer to a completely different --prefix. Restore both
+  # original paths if any shim publication was attempted, even if a signal
+  # arrives after the first rename and before control returns to Bash.
+  if [ "$status" -ne 0 ] && [ "$SHIMS_ARMED" -eq 1 ]; then
+    if [ "$TUI_SHIM_PREEXISTED" -eq 1 ]; then
+      if [ -e "$TUI_SHIM_BACKUP" ] || [ -L "$TUI_SHIM_BACKUP" ]; then
+        if mv -T -f -- "$TUI_SHIM_BACKUP" "$BIN_DIR/dsh-community"; then
+          TUI_SHIM_BACKUP=""
+        else
+          echo "CRITICAL: old dsh-community shim preserved at $TUI_SHIM_BACKUP" >&2
+        fi
+      fi
+    elif [ -e "$BIN_DIR/dsh-community" ] || [ -L "$BIN_DIR/dsh-community" ]; then
+      if ! rm -f -- "$BIN_DIR/dsh-community"; then
+        echo "CRITICAL: could not remove failed new dsh-community shim" >&2
+      fi
+    fi
+
+    if [ "$MARKETPLACE_SHIM_PREEXISTED" -eq 1 ]; then
+      if [ -e "$MARKETPLACE_SHIM_BACKUP" ] || [ -L "$MARKETPLACE_SHIM_BACKUP" ]; then
+        if mv -T -f -- "$MARKETPLACE_SHIM_BACKUP" "$BIN_DIR/dsh-marketplace"; then
+          MARKETPLACE_SHIM_BACKUP=""
+        else
+          echo "CRITICAL: old marketplace shim preserved at $MARKETPLACE_SHIM_BACKUP" >&2
+        fi
+      fi
+    elif [ -e "$BIN_DIR/dsh-marketplace" ] || [ -L "$BIN_DIR/dsh-marketplace" ]; then
+      if ! rm -f -- "$BIN_DIR/dsh-marketplace"; then
+        echo "CRITICAL: could not remove failed new marketplace shim" >&2
+      fi
+    fi
+  fi
+
+  if [ -n "$STAGE_REPO" ] && [ -d "$STAGE_REPO" ]; then rm -rf -- "$STAGE_REPO"; fi
+  if [ -n "$TUI_SHIM_TMP" ] && [ -e "$TUI_SHIM_TMP" ]; then rm -f -- "$TUI_SHIM_TMP"; fi
+  if [ -n "$MARKETPLACE_SHIM_TMP" ] && [ -e "$MARKETPLACE_SHIM_TMP" ]; then rm -f -- "$MARKETPLACE_SHIM_TMP"; fi
+
+  # Snapshot files are temporary only when publication succeeded or never
+  # started. On a failed restoration keep the backup for manual recovery.
+  if [ "$status" -eq 0 ] || [ "$SHIMS_ARMED" -eq 0 ]; then
+    if [ -n "$TUI_SHIM_BACKUP" ] && { [ -e "$TUI_SHIM_BACKUP" ] || [ -L "$TUI_SHIM_BACKUP" ]; }; then
+      rm -f -- "$TUI_SHIM_BACKUP"
+    fi
+    if [ -n "$MARKETPLACE_SHIM_BACKUP" ] && { [ -e "$MARKETPLACE_SHIM_BACKUP" ] || [ -L "$MARKETPLACE_SHIM_BACKUP" ]; }; then
+      rm -f -- "$MARKETPLACE_SHIM_BACKUP"
+    fi
+  fi
+  if [ "$status" -eq 0 ] && [ -n "$BACKUP_REPO" ] && { [ -e "$BACKUP_REPO" ] || [ -L "$BACKUP_REPO" ]; }; then
+    rm -rf -- "$BACKUP_REPO"
+  fi
+}
+trap install_cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
+
 if [ -n "$LOCAL_REPO" ]; then
   [ -d "$LOCAL_REPO" ] || { echo "ERROR: --local-repo does not exist: $LOCAL_REPO" >&2; exit 1; }
-  rm -rf "$INSTALL_REPO"
-  mkdir -p "$INSTALL_REPO"
-  cp -a "$LOCAL_REPO"/. "$INSTALL_REPO"/
-else
-  if [ -d "$INSTALL_REPO/.git" ]; then
-    echo "Updating existing installation at $INSTALL_REPO ($REF)..."
-    git -C "$INSTALL_REPO" remote set-url origin "$REPO_URL" >/dev/null 2>&1 || git -C "$INSTALL_REPO" remote add origin "$REPO_URL"
+  case "$PREFIX/" in
+    "$LOCAL_REPO/"*) echo "ERROR: --local-repo cannot contain destination prefix." >&2; exit 1 ;;
+  esac
+  cp -a "$LOCAL_REPO"/. "$STAGE_REPO"/
+  if [ "$SHARED_SETGID" -eq 1 ]; then
+    # cp -a preserves source ownership/modes (and can reset stage root attrs).
+    # For an explicitly shared target, normalize staged ownership groups and
+    # setgid directories before pnpm builds more nested dependencies. Do not
+    # expand any file's read permissions: 0600 inputs remain 0600.
+    chgrp -R --reference="$INSTALL_REPO" "$STAGE_REPO"
+    find "$STAGE_REPO" -type d -exec chmod g+s -- {} +
+    chmod 2700 "$STAGE_REPO"
   else
-    rm -rf "$INSTALL_REPO"
-    git init -q "$INSTALL_REPO"
-    git -C "$INSTALL_REPO" remote add origin "$REPO_URL"
+    chmod 0700 "$STAGE_REPO"
   fi
-  echo "Fetching $REPO_URL ($REF) into $INSTALL_REPO..."
-  git -C "$INSTALL_REPO" fetch --depth 1 origin "$REF"
-  git -C "$INSTALL_REPO" checkout -q --force --detach FETCH_HEAD
-  if [ -n "$EXPECTED_COMMIT" ]; then
-    git -C "$INSTALL_REPO" clean -fdq
-  fi
+else
+  git init -q "$STAGE_REPO"
+  git -C "$STAGE_REPO" remote add origin "$REPO_URL"
+  echo "Fetching $REPO_URL ($REF) into temporary staging..."
+  git -C "$STAGE_REPO" fetch --depth 1 origin "$REF"
+  git -C "$STAGE_REPO" checkout -q --force --detach FETCH_HEAD
 fi
 
 RESOLVED_COMMIT=""
-if [ -d "$INSTALL_REPO/.git" ] && command -v git >/dev/null 2>&1; then
-  RESOLVED_COMMIT="$(git -C "$INSTALL_REPO" rev-parse HEAD 2>/dev/null | tr '[:upper:]' '[:lower:]' || true)"
+if [ -d "$STAGE_REPO/.git" ] && command -v git >/dev/null 2>&1; then
+  RESOLVED_COMMIT="$(git -C "$STAGE_REPO" rev-parse HEAD 2>/dev/null | tr '[:upper:]' '[:lower:]' || true)"
 fi
 
 if [ -n "$EXPECTED_COMMIT" ]; then
   if [ -z "$RESOLVED_COMMIT" ]; then
-    echo "ERROR: --expected-commit was requested, but $INSTALL_REPO does not contain git metadata." >&2
+    echo "ERROR: --expected-commit requires Git metadata in staged source." >&2
     exit 1
   fi
   if [ "$RESOLVED_COMMIT" != "$EXPECTED_COMMIT" ]; then
     echo "ERROR: checked-out commit mismatch: expected $EXPECTED_COMMIT, got $RESOLVED_COMMIT (ref=$REF)." >&2
     exit 1
   fi
-  DIRTY_TREE="$(git -C "$INSTALL_REPO" status --porcelain=v1 --untracked-files=normal)"
+  DIRTY_TREE="$(git -C "$STAGE_REPO" status --porcelain=v1 --untracked-files=normal)"
   if [ -n "$DIRTY_TREE" ]; then
-    echo "ERROR: $INSTALL_REPO has uncommitted or untracked changes while --expected-commit ($EXPECTED_COMMIT) is enforced." >&2
+    echo "ERROR: staged source has uncommitted or untracked changes while --expected-commit ($EXPECTED_COMMIT) is enforced." >&2
     exit 1
   fi
 fi
 
-echo "Installing dependencies and building dsh-community Terminal CLI + remote-web PWA..."
-cd "$INSTALL_REPO"
-pnpm install --frozen-lockfile
+echo "Installing dependencies and building dsh-community in temporary staging..."
+cd "$STAGE_REPO"
+if [ "$SHARED_SETGID" -eq 1 ]; then
+  # On Linux pnpm 'auto' may hardlink cached package inodes: these retain the
+  # cache GID, bypassing setgid directory inheritance. Force copies only for
+  # an existing explicitly group-shared installation (mode 2xxx + g+rx).
+  # See pnpm packageImportMethod: copy.
+  pnpm install --frozen-lockfile --package-import-method=copy
+else
+  pnpm install --frozen-lockfile
+fi
 pnpm \
   --filter @dsh-community/shared-types \
   --filter @dsh-community/dsh-bridge \
@@ -231,19 +364,119 @@ pnpm \
   --filter @dsh-community/marketplace \
   build
 
-cat > "$BIN_DIR/dsh-community" <<EOF
+[ -s "$STAGE_REPO/apps/tui/dist/bin.js" ] || {
+  echo "ERROR: staged TUI entrypoint is missing; existing installation unchanged." >&2
+  exit 1
+}
+[ -s "$STAGE_REPO/packages/marketplace/bin/dsh-marketplace.js" ] || {
+  echo "ERROR: staged marketplace entrypoint is missing; existing installation unchanged." >&2
+  exit 1
+}
+
+# Normalize imported package file groups only *after* build, while stage
+# remains unpublished and private. Even pnpm copy imports can preserve a
+# cached package's GID; --package-import-method=copy keeps these new inodes
+# independent of pnpm's content-addressable store, so this does not chgrp
+# the shared cache. Preserve read bits (do not make 0600 files group-readable).
+# Restore setgid on directories for future descendants, then verify all GIDs.
+if [ "$SHARED_SETGID" -eq 1 ]; then
+  chgrp -R --reference="$INSTALL_REPO" "$STAGE_REPO"
+  find "$STAGE_REPO" -xdev -type d -exec chmod g+s -- {} +
+  chmod 2700 "$STAGE_REPO"
+  EXPECTED_GID="$(stat -c '%g' "$INSTALL_REPO")"
+  GROUP_MISMATCH="$(find "$STAGE_REPO" -xdev \( -type f -o -type d \) ! -gid "$EXPECTED_GID" -print -quit)"
+  if [ -n "$GROUP_MISMATCH" ]; then
+    echo "ERROR: staged shared installation has a group mismatch at $GROUP_MISMATCH; leaving installed CLI unchanged." >&2
+    exit 1
+  fi
+fi
+
+
+# Before publishing, restore the original top-level mode. For an existing
+# setgid shared installation, group ownership and directory inheritance were
+# established *before* staging was populated, not only here.
+# For a first installation, honor the caller's umask.
+if [ -d "$INSTALL_REPO" ]; then
+  # chmod --reference copies mode only; chgrp must precede chmod so that
+  # previously accessible shared-group installs remain accessible.
+  chgrp --reference="$INSTALL_REPO" "$STAGE_REPO"
+  chmod --reference="$INSTALL_REPO" "$STAGE_REPO"
+else
+  MASK="$(umask)"
+  if [[ ! "$MASK" =~ ^[0-7]{3,4}$ ]]; then
+    echo "ERROR: cannot derive installation mode from umask: $MASK" >&2
+    exit 1
+  fi
+  FINAL_MODE="$(printf '%o' "$(( 0777 & ~(8#$MASK) ))")"
+  chmod "$FINAL_MODE" "$STAGE_REPO"
+fi
+
+# Prefix locks do not serialize installs with different --prefix but shared
+# --bin-dir. Hold this second lock from snapshots through publish/rollback.
+exec 8>>"$BIN_DIR/.dsh-community.install.lock"
+if ! flock -n 8; then
+  echo "ERROR: another dsh-community installation is publishing to $BIN_DIR." >&2
+  exit 1
+fi
+
+# Existing shims may point to a different --prefix. Snapshot both before
+# publishing either one. Never replace a directory masquerading as a shim.
+if [ -e "$BIN_DIR/dsh-community" ] || [ -L "$BIN_DIR/dsh-community" ]; then
+  if [ -d "$BIN_DIR/dsh-community" ]; then
+    echo "ERROR: cannot replace a directory at $BIN_DIR/dsh-community." >&2
+    exit 1
+  fi
+  TUI_SHIM_BACKUP="$(mktemp "$BIN_DIR/.dsh-community.previous.XXXXXXXX")"
+  rm -f -- "$TUI_SHIM_BACKUP"
+  cp -a -- "$BIN_DIR/dsh-community" "$TUI_SHIM_BACKUP"
+  TUI_SHIM_PREEXISTED=1
+fi
+if [ -e "$BIN_DIR/dsh-marketplace" ] || [ -L "$BIN_DIR/dsh-marketplace" ]; then
+  if [ -d "$BIN_DIR/dsh-marketplace" ]; then
+    echo "ERROR: cannot replace a directory at $BIN_DIR/dsh-marketplace." >&2
+    exit 1
+  fi
+  MARKETPLACE_SHIM_BACKUP="$(mktemp "$BIN_DIR/.dsh-marketplace.previous.XXXXXXXX")"
+  rm -f -- "$MARKETPLACE_SHIM_BACKUP"
+  cp -a -- "$BIN_DIR/dsh-marketplace" "$MARKETPLACE_SHIM_BACKUP"
+  MARKETPLACE_SHIM_PREEXISTED=1
+fi
+
+TUI_SHIM_TMP="$(mktemp "$BIN_DIR/.dsh-community.XXXXXXXX")"
+cat > "$TUI_SHIM_TMP" <<EOF
 #!/usr/bin/env sh
 exec node "$TUI_ENTRY" "\$@"
 EOF
-chmod 0755 "$BIN_DIR/dsh-community"
+chmod 0755 "$TUI_SHIM_TMP"
 
-cat > "$BIN_DIR/dsh-marketplace" <<EOF
+MARKETPLACE_SHIM_TMP="$(mktemp "$BIN_DIR/.dsh-marketplace.XXXXXXXX")"
+cat > "$MARKETPLACE_SHIM_TMP" <<EOF
 #!/usr/bin/env sh
 PATH="$OFFICIAL_BIN_DIR:$TUI_OFFICIAL_BIN_DIR:\$PATH"
 export PATH
 exec node "$MARKETPLACE_ENTRY" "\$@"
 EOF
-chmod 0755 "$BIN_DIR/dsh-marketplace"
+chmod 0755 "$MARKETPLACE_SHIM_TMP"
+
+# Rollback intent is armed BEFORE moving the old active repo. If TERM arrives
+# immediately after a successful rename, backup existence directs recovery.
+if [ -e "$INSTALL_REPO" ] || [ -L "$INSTALL_REPO" ]; then
+  BACKUP_REPO="$(mktemp -d "$PREFIX/.repo.previous.XXXXXXXX")"
+  rmdir "$BACKUP_REPO"
+  HAD_PREVIOUS=1
+  SWAP_ATTEMPTED=1
+  mv -T -- "$INSTALL_REPO" "$BACKUP_REPO"
+else
+  SWAP_ATTEMPTED=1
+fi
+mv -T -- "$STAGE_REPO" "$INSTALL_REPO"
+STAGE_REPO=""
+
+SHIMS_ARMED=1
+mv -T -f -- "$TUI_SHIM_TMP" "$BIN_DIR/dsh-community"
+TUI_SHIM_TMP=""
+mv -T -f -- "$MARKETPLACE_SHIM_TMP" "$BIN_DIR/dsh-marketplace"
+MARKETPLACE_SHIM_TMP=""
 
 echo
 echo "Installed commands:"

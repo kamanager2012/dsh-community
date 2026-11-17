@@ -57,7 +57,7 @@ cosign verify-blob \
 
 ## 三十秒一键安装终端（WSL / Linux）与五分钟从源码启动
 
-`scripts/install-linux.sh` 是在 `v0.2.2-rc.3` 之后合入 `main` 的源码安装脚本（需要 Node.js 24.9+ / 最低 22.15、pnpm 与 git）。注意官方 `@deepseek-ai/dsh@0.2.2-rc.3` 声明 `engines.node >=24.9.0`（官方 0.1.0-rc.8 起 session JSONL 依赖 `node:zlib` zstd，22.15 才有）。直接安装或锁定精确 tag / commit：
+`scripts/install-linux.sh` 是在 `v0.2.2-rc.3` 之后合入 `main` 的源码安装脚本（需要 Node.js 24.9+ / 最低 22.15、pnpm、git 与 `flock`（util-linux））。注意官方 `@deepseek-ai/dsh@0.2.2-rc.3` 声明 `engines.node >=24.9.0`（官方 0.1.0-rc.8 起 session JSONL 依赖 `node:zlib` zstd，22.15 才有）。直接安装或锁定精确 tag / commit：
 
 ```sh
 # 跟踪 main 最新源码：
