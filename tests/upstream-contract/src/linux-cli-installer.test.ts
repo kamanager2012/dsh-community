@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from 'node:child_process'
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -192,6 +192,7 @@ describe('Linux/WSL Terminal CLI installer', () => {
       encoding: 'utf8',
     })
     expect(terminated.status).not.toBe(0)
+    expect(terminated.stderr).toContain('Previous dsh-community installation restored')
     expect(execFileSync(join(bin, 'dsh-community'), ['version'], { encoding: 'utf8' }).trim()).toBe(stable)
     expect(readFileSync(join(prefix, 'repo/apps/tui/dist/bin.js'), 'utf8')).toContain('STABLE_CLI')
 
@@ -210,6 +211,8 @@ describe('Linux/WSL Terminal CLI installer', () => {
       encoding: 'utf8',
     })
     expect(badCrossPrefix.status).not.toBe(0)
+    expect(existsSync(markerFile)).toBe(true)
+    expect(existsSync(join(otherPrefix, 'repo'))).toBe(false)
     expect(execFileSync(join(bin, 'dsh-community'), ['version'], { encoding: 'utf8' }).trim()).toBe(stable)
     expect(execFileSync(join(bin, 'dsh-marketplace'), [], { encoding: 'utf8' }).trim()).toBe('MARKETPLACE')
 
