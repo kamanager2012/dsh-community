@@ -261,6 +261,26 @@ describe('Linux/WSL Terminal CLI installer', () => {
     )
     expect(matchRes.status, matchRes.stderr || matchRes.stdout).toBe(0)
     expect(matchRes.stdout).toContain(`ref=v0.2.2-rc.3 commit=${pinnedSha}`)
+    // A rejected pin must not destroy a previously successful installation.
+    const pinMismatchAfterInstall = spawnSync(
+      'bash',
+      [
+        installerPath,
+        '--repo-url', 'file://' + bareRemote,
+        '--ref', 'v0.2.2-rc.3',
+        '--expected-commit', wrongSha,
+        '--prefix', outPrefix,
+        '--bin-dir', outBin,
+      ],
+      {
+        env: { ...process.env, PATH: fakeToolBin + ':' + (process.env.PATH ?? '') },
+        encoding: 'utf8',
+      },
+    )
+    expect(pinMismatchAfterInstall.status).toBe(1)
+    expect(pinMismatchAfterInstall.stderr).toContain('checked-out commit mismatch')
+    expect(readFileSync(join(outPrefix, 'repo/apps/tui/dist/bin.js'), 'utf8')).toBe('console.log("ok")\n')
+
 
     // Dirty --local-repo fails closed when --expected-commit is requested
     writeFileSync(join(srcRepo, 'apps/tui/dist/bin.js'), 'console.log("dirty")\n', 'utf8')
