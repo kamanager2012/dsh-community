@@ -3,7 +3,8 @@
 **简体中文** | [English](README.en.md)
 
 [![CI](https://github.com/kamanager2012/dsh-community/actions/workflows/ci.yml/badge.svg)](https://github.com/kamanager2012/dsh-community/actions/workflows/ci.yml)
-[![Published Latest](https://img.shields.io/github/v/release/kamanager2012/dsh-community?include_prereleases&label=Published%20Latest)](https://github.com/kamanager2012/dsh-community/releases/latest)
+[![Published Latest](https://img.shields.io/github/v/release/kamanager2012/dsh-community?label=Published%20Latest)](https://github.com/kamanager2012/dsh-community/releases/latest)
+[![Community Preview](https://img.shields.io/badge/Community%20Preview-v0.2.2--rc.3--community.1-blue)](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1)
 [![Official Core](https://img.shields.io/badge/Official%20Core-%40deepseek--ai%2Fdsh-blue)](https://github.com/deepseek-ai/deepseek-harness)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
@@ -44,13 +45,19 @@
 `scripts/install-linux.sh` 是 `v0.2.2-rc.3` 发布之后合入 `main` 的源码安装脚本，需要 **Node.js 24.9+**（官方 `@deepseek-ai/dsh@0.2.2-rc.3` 声明 `engines.node >=24.9.0`；工作区最低 `22.15+`，CI 在 Node 22/24 双通）、**`pnpm`**、**`git`** 与 **`flock`**（util-linux；不是零依赖二进制安装）：
 
 ```sh
-# 方式 A：跟踪 main 最新源码（含安装脚本与后续 E2EE/文档修复）
-curl -fsSL https://raw.githubusercontent.com/kamanager2012/dsh-community/main/scripts/install-linux.sh | bash
+# 推荐：固定安装器 Commit，检查脚本后再安装已发布的社区预览源码
+curl -fsSLo install-linux.sh \
+  https://raw.githubusercontent.com/kamanager2012/dsh-community/afe0514e9da98174ac117e70d7e9fb30aa48de2b/scripts/install-linux.sh
+less install-linux.sh
+bash install-linux.sh \
+  --ref v0.2.2-rc.3-community.1 \
+  --expected-commit 13cc4c382ec36eeeede443c78687b117285c24cc
 
-# 方式 B：锁定到已发布 tag 与精确 Commit（可验证源码来源，v0.2.2-rc.3 = 073826c38df4cf246e7ac90b27e0df98569a534d）
-curl -fsSL https://raw.githubusercontent.com/kamanager2012/dsh-community/main/scripts/install-linux.sh | \
-  bash -s -- --ref v0.2.2-rc.3 --expected-commit 073826c38df4cf246e7ac90b27e0df98569a534d
+# 仅开发用途：主动选择可变 main（不等于已签名 Release）
+# bash install-linux.sh --ref main
 ```
+
+> **来源验证边界：** 安装器脚本 Commit 与目标 Git Tag/SHA 分别固定；源码安装**不等于**已验签的 AppImage/APK。需验证发行包时，请从 [Community Pre-release](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1) 获取对应 `.sha256`、`.sigstore.json` 并核验。
 
 > **升级安全性：** 安装器先在临时目录完成源码校验和构建，成功后才切换 `$PREFIX/repo`；`flock` 拒绝并发安装，安装错误会尝试恢复旧版本。系统断电或 `SIGKILL` 等非正常中断不保证跨目录切换的绝对原子性。详见 [首次安装与失败恢复验收](docs/first-run-smoke.md)。
 
