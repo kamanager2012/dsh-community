@@ -37,6 +37,24 @@ that appends to an existing Draft/Release as an immutable new publication;
 review a fresh version and unused Tag for recovery. Do not claim that
 workflow-level duplicate detection makes all asset uploads atomic.
 
+**P1/P2 tag and Draft-window defense:** The tagged workflow now requires
+active tag-update/deletion Ruleset protection for **both** `refs/tags/v*`
+and `refs/tags/release-attempt-v*` during the Draft upload window, not
+only a point-in-time Git SHA check. GitHub repository Release Immutability
+should also be enabled before the next release; it becomes effective only
+after publication.
+
+Before `gh release create`, the publish job creates
+`refs/tags/release-attempt-<TAG>` using the Git References create-only API.
+The marker is **independent of the Draft**: if a partial upload fails and
+GitHub CLI deletes the Draft, the marker remains and replay of the same
+version fails closed. Do not delete or retarget the marker to retry; audit
+the failure and cut a fresh version.
+
+A read-only GitHub API token may not see ruleset bypass actors. This workflow
+rejects any visible bypass, but **admin verification of all bypass permissions
+remains mandatory**; see [Issue #181](https://github.com/kamanager2012/dsh-community/issues/181).
+
 The local `scripts/release.mjs` now independently checks that the working branch
 is `main`, its exact HEAD equals the current remote `main`, and neither local
 nor remote already contains the requested tag. It runs this check **before**

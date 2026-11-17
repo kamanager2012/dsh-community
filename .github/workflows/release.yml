@@ -32,6 +32,11 @@ jobs:
       - name: Verify immutable tag points to the reviewed current main
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         run: node scripts/release-provenance.mjs tagged "$GITHUB_REF_NAME" origin "$GITHUB_SHA"
+      - name: Verify protected tags and absence of previous release attempts
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/release-governance.mjs "$GITHUB_REF_NAME" "$GITHUB_REPOSITORY"
       - name: Refuse an already-published release before any expensive build
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         env:
@@ -321,6 +326,10 @@ jobs:
           done
       - name: Recheck reviewed source and tag immediately before publishing
         run: node scripts/release-provenance.mjs tagged "$GITHUB_REF_NAME" origin "$GITHUB_SHA"
+      - name: Recheck tag protection and absent attempt marker before publish
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/release-governance.mjs "$GITHUB_REF_NAME" "$GITHUB_REPOSITORY"
       - name: Prepare notes
         run: |
           node scripts/release-notes.mjs "${GITHUB_REF_NAME}" > release-notes.md
@@ -329,6 +338,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           TAG="${GITHUB_REF_NAME}"
           EXTRA=()
           # Only plain semver and -rc.N mirrors may become GitHub Latest.
@@ -373,6 +383,11 @@ jobs:
             echo "::error::release already exists; immutable tag requires a new version"
             exit 1
           fi
+          # Durable create-only attempt ledger, independent of gh CLI's Draft.
+          # A failed asset upload can DELETE its Draft; the ref must survive.
+          gh api -X POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+            -f "ref=refs/tags/release-attempt-${TAG}" \
+            -f "sha=${GITHUB_SHA}" > /dev/null
           gh release create "$TAG" --verify-tag \
             --title "${RELEASE_TITLE:-$TAG}" \
             --notes-file release-notes.md \
