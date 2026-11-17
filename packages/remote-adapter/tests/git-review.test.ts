@@ -308,6 +308,7 @@ describe('scoped read-only git review helpers', () => {
       `DB_PASS=${newPass}\nPREV_NOTE=${oldPass}\n`,
       'utf8',
     )
+    writeFileSync(join(repoDir, 'boundary.ts'), 'export const header = "ok"\nexport const check = 1\n', 'utf8')
 
     // 1. Tracked non-ASCII path `.env.local` in unfiltered diff MUST be redacted cleanly,
     // even when repo enables noprefix, mnemonicPrefix, and color.ui=always
@@ -317,6 +318,7 @@ describe('scoped read-only git review helpers', () => {
 
     const nonAsciiAll = await inspectWorkspaceGitDiff({ sessionId: 's-nonascii' }, repoDir)
     expect(nonAsciiAll.diff).toContain('[REDACTED_SENSITIVE_FILE]')
+    expect(nonAsciiAll.diff).toContain('diff --git a/boundary.ts b/boundary.ts')
     expect(nonAsciiAll.diff).not.toContain(newPass)
     expect(nonAsciiAll.diff).not.toContain(oldPass)
     expect(nonAsciiAll.diff).not.toContain('\x1b[')

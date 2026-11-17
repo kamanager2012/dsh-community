@@ -336,7 +336,7 @@ const CANONICAL_GIT_CONFIG_FLAGS = [
   'color.diff=never',
 ] as const
 
-const CANONICAL_DIFF_FLAGS = ['--no-ext-diff', '--no-color', '--default-prefix'] as const
+const CANONICAL_DIFF_FLAGS = ['--no-ext-diff', '--no-color', '--src-prefix=a/', '--dst-prefix=b/'] as const
 
 async function runGit(
   cwd: string,
