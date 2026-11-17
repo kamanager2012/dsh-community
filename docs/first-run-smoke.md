@@ -8,7 +8,7 @@ This is a **real source installation and CLI startup** check on a disposable Lin
 2. Run the actual `scripts/install-linux.sh` with `--ref acceptance --expected-commit <SHA>` and frozen dependency installation/build. This does not trust a mutable branch for its source identity.
 3. Execute installed `dsh-community version`, `--help`, `sessions --porcelain`, `dsh-marketplace --help`, and `remote --help` from an isolated working directory.
 4. Isolate `HOME` and `DSH_HOME`; unset `DEEPSEEK_API_KEY`. Verify the session store is empty and `doctor` exits **2** with a missing-key warning (expected safe refusal).
-5. Simulate a failed reinstall and verify the original CLI remains runnable and byte-identical; reject concurrent installation while the prefix lock is held.
+5. Simulate a failed reinstall and verify the original CLI remains runnable and byte-identical; reject concurrent installation while either the prefix lock or the shared bin-dir lock is held.
 6. Emit a small JSON evidence file recording the commit, Node version, and checks. **No source contents, credentials, QR links, Git diff or conversation transcript** are uploaded.
 
 Run [linux-first-run-smoke](../.github/workflows/linux-first-run-smoke.yml) on relevant PRs / main pushes, or dispatch it manually. It runs on Ubuntu CI with Node 24.
@@ -23,6 +23,8 @@ bash scripts/e2e/linux-first-run-smoke.sh /tmp/first-run-evidence.json
 
 The script installs into an isolated temporary directory and deletes it on exit. It does not touch the existing official `~/.dsh`, but real `pnpm install` downloads packages from configured registries and may run dependency lifecycle scripts. Use a throwaway runner for untrusted repository content.
 
+The shell installer also preserves the prior repository's group ownership on an upgrade, and ignores secondary INT/TERM/HUP during handled-error rollback. These edges have fault-injection **unit tests**. They are not evidence of power-loss/SIGKILL atomicity.
+
 ## Acceptance levels
 
 | Claim | Verified by this workflow? |
@@ -31,6 +33,7 @@ The script installs into an isolated temporary directory and deletes it on exit.
 | Frozen pnpm build produces runnable CLI | Yes, on Ubuntu CI |
 | Failed reinstall preserves the previously working CLI | Yes, injected pnpm failure in CI |
 | Concurrent install refuses without touching active repo | Yes, held `flock` lock in CI |
+| Different prefixes sharing bin-dir serialize shim publication | Yes, held shared bin lock while second real build reaches publish |
 | Missing-key safe failure and empty official sessions | Yes, isolated home |
 | Live model calls and true DSH Session continuation | **No**; see user-loop-evidence |
 | Real WSL2, physical arm64 Android or cross-network | **No** |
