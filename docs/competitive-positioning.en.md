@@ -37,7 +37,7 @@
 | Pair phone, approve and revoke | Phone OS, LAN or HTTPS/WSS transport, granted capabilities, result | Network / pairing / authorization / idempotency |
 | Prefer DSH Community over an alternative? | Voluntary workflow, blockers, alternative used | Product fit / onboarding |
 
-Collect **voluntary, redacted** [first-run feedback](../.github/ISSUE_TEMPLATE/first-run-feedback.yml). No default tracking or upload of local sessions.
+Collect **voluntary, redacted** [first-run feedback](https://github.com/kamanager2012/dsh-community/issues/new?template=first-run-feedback.yml). No default tracking or upload of local sessions.
 
 ## Public one-liner
 

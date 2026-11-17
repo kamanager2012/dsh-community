@@ -36,7 +36,7 @@
 | 手机远程配对与工具审批 | 客户端 OS、LAN 或 HTTPS/WSS、实际已授予能力及结果 | 网络 / 配对 / 权限 / 幂等 |
 | 是否比现有工具更适合 | 自愿描述工作流、阻碍、原本使用的替代产品 | 产品定位 / 首次体验 |
 
-收集用户**自愿且去敏**的 [首次试用反馈](../.github/ISSUE_TEMPLATE/first-run-feedback.yml)，不要求默认遥测，不上传源码、密钥或完整会话。
+收集用户**自愿且去敏**的 [首次试用反馈](https://github.com/kamanager2012/dsh-community/issues/new?template=first-run-feedback.yml)，不要求默认遥测，不上传源码、密钥或完整会话。
 
 ## 对外一句话
 

@@ -9,6 +9,8 @@
 
 > **DSH Community is the Linux / WSL2 complementary distribution and compatibility layer for the official [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).** We ship a TUI, signed Linux AppImage, exact upstream Runtime pin and optional E2EE multi-agent remote. **We do not fork the official kernel. Only DSH sessions live in official `~/.dsh`; Claude Code, Codex and OpenCode keep their native session stores.**
 
+**Try the current community changes:** [v0.2.2-rc.3-community.1 (Pre-release)](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1). **Official-core-mirrored Latest:** [v0.2.2-rc.3](https://github.com/kamanager2012/dsh-community/releases/latest). These are separate release channels; the pre-release does not replace Latest.
+
 ## Choose by the job, not a feature checklist
 
 | Your main need | Start here | Why |
@@ -152,7 +154,7 @@ Multi-agent dashboards, mobile approvals, E2EE and Git diffs already have strong
 
 **Unverified limits:** Android physical `arm64-v8a` remains `[UNVERIFIED]`, with no native iOS client. Broader real third-party CLI and network combinations require field evidence. E2EE does not cover model-provider boundaries or imply an independent security audit.
 
-For AppImage/APK/CycloneDX SBOM, SHA-256 and Cosign evidence see [release facts](docs/current-release.md). For methods and source links see [competitive positioning](docs/competitive-positioning.en.md). Submit redacted [first-run feedback](.github/ISSUE_TEMPLATE/first-run-feedback.yml).
+For AppImage/APK/CycloneDX SBOM, SHA-256 and Cosign evidence see [release facts](docs/current-release.md). For methods and source links see [competitive positioning](docs/competitive-positioning.en.md). Submit redacted [first-run feedback](https://github.com/kamanager2012/dsh-community/issues/new?template=first-run-feedback.yml).
 
 
 ---

@@ -9,6 +9,8 @@
 
 > **DSH Community 是围绕官方 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的 Linux / WSL2 社区发行与兼容层**：提供 TUI、签名 Linux AppImage、官方 Runtime 精确锁定和可选 E2EE 多 Agent 远控。**不修改官方执行内核；只有 DSH 会话使用官方 `~/.dsh`，Claude Code / Codex / OpenCode 使用各自原生会话存储。**
 
+**试用本轮社区更新：** [v0.2.2-rc.3-community.1（Pre-release）](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1)；**官方内核对齐的 Latest：** [v0.2.2-rc.3](https://github.com/kamanager2012/dsh-community/releases/latest)。两条发布频道独立，前者不会覆盖 Latest。
+
 ## 选工具先看你的主要任务
 
 | 你最需要 | 推荐起点 | 原因 |
@@ -154,7 +156,7 @@ Cosign 无密钥验签与精确文件名见 [`docs/release.md#artifact-signing-k
 
 **尚未宣称完成的部分：** Android `arm64-v8a` 物理真机 `[UNVERIFIED]`、无 iOS 原生客户端；真实外部 CLI 与复杂网络组合仍需要用户证据。E2EE 不覆盖模型 Provider API 边界，也不是第三方安全审计证书。
 
-发行可核验的 AppImage、APK、CycloneDX SBOM、SHA-256 与 Cosign 证据请看 [发行事实](docs/current-release.md)。完整竞品依据及对外口径见 [竞争定位](docs/competitive-positioning.md)。欢迎提交不含密钥的 [首次试用反馈](.github/ISSUE_TEMPLATE/first-run-feedback.yml)。
+发行可核验的 AppImage、APK、CycloneDX SBOM、SHA-256 与 Cosign 证据请看 [发行事实](docs/current-release.md)。完整竞品依据及对外口径见 [竞争定位](docs/competitive-positioning.md)。欢迎提交不含密钥的 [首次试用反馈](https://github.com/kamanager2012/dsh-community/issues/new?template=first-run-feedback.yml)。
 
 
 ---
