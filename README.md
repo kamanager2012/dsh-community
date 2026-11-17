@@ -41,7 +41,7 @@
 
 ### 1. WSL / Linux 终端源码安装（`dsh-community` & `dsh-marketplace`）
 
-`scripts/install-linux.sh` 是 `v0.2.2-rc.3` 发布之后合入 `main` 的源码安装脚本，需要 **Node.js 24.9+**（官方 `@deepseek-ai/dsh@0.2.2-rc.3` 声明 `engines.node >=24.9.0`；工作区最低 `22.15+`，CI 在 Node 22/24 双通）、**`pnpm`** 与 **`git`**（不是零依赖二进制安装）：
+`scripts/install-linux.sh` 是 `v0.2.2-rc.3` 发布之后合入 `main` 的源码安装脚本，需要 **Node.js 24.9+**（官方 `@deepseek-ai/dsh@0.2.2-rc.3` 声明 `engines.node >=24.9.0`；工作区最低 `22.15+`，CI 在 Node 22/24 双通）、**`pnpm`**、**`git`** 与 **`flock`**（util-linux；不是零依赖二进制安装）：
 
 ```sh
 # 方式 A：跟踪 main 最新源码（含安装脚本与后续 E2EE/文档修复）
@@ -51,6 +51,8 @@ curl -fsSL https://raw.githubusercontent.com/kamanager2012/dsh-community/main/sc
 curl -fsSL https://raw.githubusercontent.com/kamanager2012/dsh-community/main/scripts/install-linux.sh | \
   bash -s -- --ref v0.2.2-rc.3 --expected-commit 073826c38df4cf246e7ac90b27e0df98569a534d
 ```
+
+> **升级安全性：** 安装器先在临时目录完成源码校验和构建，成功后才切换 `$PREFIX/repo`；`flock` 拒绝并发安装，安装错误会尝试恢复旧版本。系统断电或 `SIGKILL` 等非正常中断不保证跨目录切换的绝对原子性。详见 [首次安装与失败恢复验收](docs/first-run-smoke.md)。
 
 装完直接跑（共享官方 `~/.dsh` 会话）：
 
