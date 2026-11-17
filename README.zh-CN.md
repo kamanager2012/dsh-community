@@ -35,6 +35,8 @@
 
 ---
 
+> **Linux 首次安装真实验收：** [CI 工作流](.github/workflows/linux-first-run-smoke.yml) · [证据边界说明](docs/first-run-smoke.md)。验证固定 Commit 的源码安装与 CLI 启动，不调用模型；不等同于 WSL2 真机或 Android 物理设备验收。
+
 ## 30 秒极速上手
 
 ### 1. WSL / Linux 终端源码安装（`dsh-community` & `dsh-marketplace`）
