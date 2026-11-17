@@ -1,6 +1,6 @@
 {
   "name": "@dsh-community/marketplace",
-  "version": "0.2.2-rc.3-community.1",
+  "version": "0.2.2-rc.3-community.2",
   "private": true,
   "type": "module",
   "description": "Community plugin discovery CLI. Catalog is packages/marketplace/catalog.json; install still goes through official dsh plugin add.",

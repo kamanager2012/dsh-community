@@ -1,6 +1,6 @@
 {
   "name": "@dsh-community/dsh-bridge",
-  "version": "0.2.2-rc.3-community.1",
+  "version": "0.2.2-rc.3-community.2",
   "private": true,
   "type": "module",
   "exports": {

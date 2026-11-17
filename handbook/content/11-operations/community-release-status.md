@@ -9,14 +9,15 @@
 | 层级 | 当前值 | 应如何理解 |
 |---|---|---|
 | Official core pin | `@deepseek-ai/dsh@0.2.2-rc.3` | 官方内核 |
-| Candidate community product | `0.2.2-rc.3-community.1` | 社区补丁 Pre-release（[`v0.2.2-rc.3-community.1`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1)，不覆盖 Latest） |
+| Candidate community product | `0.2.2-rc.3-community.2` | **待发布的源码候选；尚无该版本签名资产** |
+| Last signed Community Pre-release | [`v0.2.2-rc.3-community.1`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1) | 2026-11-17 已发布，并通过 exact-tag artifact-smoke；与候选 `.2` 分离 |
 | Published Latest | `v0.2.2-rc.3` | GitHub Latest；普通用户主下载入口 |
 | Historical tags | `v0.1.2`–`v0.1.6`, `v0.1.1-rc.2`, `v0.2.2-rc.2`, `v0.2.2-rc.2-community.1` | 已被 `v0.2.2-rc.3` 替代 |
 
 Desktop 与 TUI 的版本身份必须同时显示 Dual-Badge（当前 Candidate Source / Pre-release）：
 
 ```text
-DeepSeek Harness Community v0.2.2-rc.3-community.1 [Official Core: @deepseek-ai/dsh@0.2.2-rc.3]
+DeepSeek Harness Community v0.2.2-rc.3-community.2 [Official Core: @deepseek-ai/dsh@0.2.2-rc.3]
 ```
 
 ## 用户选择
