@@ -373,10 +373,16 @@ pnpm \
   exit 1
 }
 
-# Fail closed before activation if a setgid/shared upgrade silently imported
-# cache-owned descendant inodes. Do not chgrp hardlinks (which would mutate
-# pnpm's shared store); copy imports above ensure stage owns its file inodes.
+# Normalize imported package file groups only *after* build, while stage
+# remains unpublished and private. Even pnpm copy imports can preserve a
+# cached package's GID; --package-import-method=copy keeps these new inodes
+# independent of pnpm's content-addressable store, so this does not chgrp
+# the shared cache. Preserve read bits (do not make 0600 files group-readable).
+# Restore setgid on directories for future descendants, then verify all GIDs.
 if [ "$SHARED_SETGID" -eq 1 ]; then
+  chgrp -R --reference="$INSTALL_REPO" "$STAGE_REPO"
+  find "$STAGE_REPO" -xdev -type d -exec chmod g+s -- {} +
+  chmod 2700 "$STAGE_REPO"
   EXPECTED_GID="$(stat -c '%g' "$INSTALL_REPO")"
   GROUP_MISMATCH="$(find "$STAGE_REPO" -xdev \( -type f -o -type d \) ! -gid "$EXPECTED_GID" -print -quit)"
   if [ -n "$GROUP_MISMATCH" ]; then
