@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/kamanager2012/dsh-community/actions/workflows/ci.yml/badge.svg)](https://github.com/kamanager2012/dsh-community/actions/workflows/ci.yml)
 [![Published Latest](https://img.shields.io/github/v/release/kamanager2012/dsh-community?label=Published%20Latest)](https://github.com/kamanager2012/dsh-community/releases/latest)
-[![Community Preview](https://img.shields.io/github/v/release/kamanager2012/dsh-community?include_prereleases&label=Community%20Preview)](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1)
+[![Community Preview](https://img.shields.io/badge/Community%20Preview-v0.2.2--rc.3--community.1-blue)](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1)
 [![Official Core](https://img.shields.io/badge/Official%20Core-%40deepseek--ai%2Fdsh-blue)](https://github.com/deepseek-ai/deepseek-harness)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
