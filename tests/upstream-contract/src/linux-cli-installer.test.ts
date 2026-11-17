@@ -111,7 +111,7 @@ describe('Linux/WSL Terminal CLI installer', () => {
     expect(res.stdout).toContain(join(absBinDir, 'dsh-marketplace'))
 
     const logContent = readFileSync(pnpmLog, 'utf8')
-    expect(logContent).toContain(`${join(absPrefix, 'repo')}|install --frozen-lockfile`)
+    expect(logContent).toMatch(/\.repo\.stage\.[^|]+\|install --frozen-lockfile/u)
     expect(logContent).toContain('@dsh-community/tui')
     expect(logContent).toContain('@dsh-community/remote-web')
     expect(logContent).toContain('@dsh-community/marketplace')
@@ -128,6 +128,50 @@ describe('Linux/WSL Terminal CLI installer', () => {
       encoding: 'utf8',
     })
     expect(mktOut.trim()).toBe('SHIM_MKT:list:BUNDLED_DSH:--version')
+  })
+
+  it('keeps the old executable intact when a staged reinstall fails and replaces it only after success', () => {
+    const workRoot = makeTempDir('dsh-inst-rollback-')
+    const fixture = join(workRoot, 'source')
+    const prefix = join(workRoot, 'prefix')
+    const bin = join(workRoot, 'bin')
+    const fakeTools = makeTempDir('dsh-inst-fail-tools-')
+    mkdirSync(join(fixture, 'apps/tui/dist'), { recursive: true })
+    mkdirSync(join(fixture, 'packages/marketplace/bin'), { recursive: true })
+    mkdirSync(join(fixture, 'packages/dsh-bridge/node_modules/.bin'), { recursive: true })
+    writeFileSync(join(fixture, 'apps/tui/dist/bin.js'), 'console.log("STABLE_CLI")\n', 'utf8')
+    writeFileSync(join(fixture, 'packages/marketplace/bin/dsh-marketplace.js'), 'console.log("MARKETPLACE")\n', 'utf8')
+    writeFileSync(join(fixture, 'packages/dsh-bridge/node_modules/.bin/dsh'), '#!/bin/sh\nexit 0\n', 'utf8')
+
+    const pnpm = join(fakeTools, 'pnpm')
+    writeFileSync(pnpm, '#!/usr/bin/env bash\nif [ "${FAIL_INSTALL:-}" = "1" ] && [ "$1" = "install" ]; then exit 37; fi\nif [ "${FAIL_BUILD:-}" = "1" ] && [ "$1" != "install" ]; then exit 38; fi\nexit 0\n', 'utf8')
+    chmodSync(pnpm, 0o755)
+    const env = { ...process.env, PATH: fakeTools + ':' + (process.env.PATH ?? '') }
+    const args = ['--local-repo', fixture, '--prefix', prefix, '--bin-dir', bin]
+    const first = spawnSync('bash', [installerPath, ...args], { env, encoding: 'utf8' })
+    expect(first.status, first.stderr).toBe(0)
+    const stable = execFileSync(join(bin, 'dsh-community'), ['version'], { encoding: 'utf8' }).trim()
+    expect(stable).toBe('STABLE_CLI')
+
+    writeFileSync(join(fixture, 'apps/tui/dist/bin.js'), 'console.log("NEW_VERSION")\n', 'utf8')
+    const badInstall = spawnSync('bash', [installerPath, ...args], {
+      env: { ...env, FAIL_INSTALL: '1' },
+      encoding: 'utf8',
+    })
+    expect(badInstall.status).not.toBe(0)
+    expect(execFileSync(join(bin, 'dsh-community'), ['version'], { encoding: 'utf8' }).trim()).toBe(stable)
+
+    const badBuild = spawnSync('bash', [installerPath, ...args], {
+      env: { ...env, FAIL_BUILD: '1' },
+      encoding: 'utf8',
+    })
+    expect(badBuild.status).not.toBe(0)
+    expect(execFileSync(join(bin, 'dsh-community'), ['version'], { encoding: 'utf8' }).trim()).toBe(stable)
+
+    const success = spawnSync('bash', [installerPath, ...args], { env, encoding: 'utf8' })
+    expect(success.status, success.stderr).toBe(0)
+    expect(execFileSync(join(bin, 'dsh-community'), ['version'], { encoding: 'utf8' }).trim()).toBe('NEW_VERSION')
+    expect(readFileSync(join(prefix, 'repo/apps/tui/dist/bin.js'), 'utf8')).toContain('NEW_VERSION')
   })
 
   it('supports pinned tag/commit installation with --ref and fail-closed --expected-commit verification', () => {
