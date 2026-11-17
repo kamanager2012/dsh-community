@@ -74,6 +74,17 @@
 - 冻结的 Agent Governance Stack 三仓曾以完整代码与提交历史并入本仓 `archive/`，独立仓于 2026-09-13 删除；**2026-09-14 回退**：AIOS 是独立项目，与 dsh 无技术依赖——`aios-core` 已在独立仓 [`kamanager2012/aios-core`](https://github.com/kamanager2012/aios-core) 恢复（原始提交 SHA 与全部分支不变），`governor-core` 与 `agent-constraint-system` 的完整历史现保留为该仓 `legacy/governor-core`、`legacy/agent-constraint-system` 分支，本仓 `archive/` 中的三个副本已移除。手册实验固定的 workspace 版本 `aios-core@6af8968` 改从独立仓检出。
 - 安全修复：通过 `pnpm-workspace.yaml` 的 `overrides` 修补官方传递依赖新披露的高危漏洞——`@xmldom/xmldom` 0.8.14→0.8.15（electron 打包链，plist 现解析 0.9.12）、`js-yaml` 4.3.1→4.3.2（官方 cordis-plugin-include 传递依赖）、`sharp` 0.35.3→0.35.4（官方 dsh-attachment-local 传递依赖，与 Android 裁决同版本）。`pnpm audit --audit-level high` 恢复通过：8 high + 9 moderate → 0 high + 7 moderate。
 
+## 0.2.2-rc.3-community.2 — Community Maintenance Candidate (2026-11-17)
+
+Built on the **same pinned official runtime** `@deepseek-ai/dsh@0.2.2-rc.3`. Publication must be verified from GitHub Release and exact-tag artifact-smoke evidence. `v0.2.2-rc.3` remains Published Latest by version policy; a `-community.2` release is a **Pre-release**, not a Latest promotion.
+
+- **Linux-first product selection (#174):** The documentation differentiates our official-runtime Linux TUI/AppImage from Herdr, Happier, Paseo, T3 Code and DS Harness Remote. First-run feedback is opt-in, without default session telemetry.
+- **Real pinned Linux source first-run acceptance (#175):** A disposable Ubuntu workflow installs, builds and runs the CLI, checks runtime identity, empty sessions, no-key doctor and records redacted proof without model calls.
+- **Failure-safe installer upgrades (#176):** Stage and verify before activation, restore previous repo and shims on handled failure and signals, dual `flock` across prefixes and shared bin-dir, preserve shared setgid/GID using copy-mode pnpm imports and post-build staged verification. Real Ubuntu smoke covers these paths. No guarantee for SIGKILL, host power loss or physical multi-user/WSL2 setups.
+- **Release channel accuracy (#177):** Separate Published Latest and explicit Community Preview badges; pinned installer source Commit and exact target Tag/SHA in bilingual onboarding, with regression guards against download/signature confusion.
+- **Evidence limits:** `v0.2.2-rc.3-community.1` is the last **published** community Pre-release before new tagging and signing. Android physical `arm64-v8a` remains `[UNVERIFIED]`; Android x86_64 emulator and Ubuntu CI evidence do not establish hardware or WSL2 physical acceptance.
+
+---
 ## 0.2.2-rc.3-community.1 — Community Prerelease (2026-11-17)
 
 Community prerelease built on the pinned official kernel `@deepseek-ai/dsh@0.2.2-rc.3`. GitHub Published Latest remains `v0.2.2-rc.3`; Android `apps/android` carries CI `x86_64` emulator E2EE verification (`pass`) while physical `arm64-v8a` handset telemetry stays `UNVERIFIED`.
