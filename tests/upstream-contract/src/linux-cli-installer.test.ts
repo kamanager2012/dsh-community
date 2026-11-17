@@ -136,6 +136,7 @@ describe('Linux/WSL Terminal CLI installer', () => {
     const prefix = join(workRoot, 'prefix')
     const bin = join(workRoot, 'bin')
     const fakeTools = makeTempDir('dsh-inst-fail-tools-')
+    const pnpmArgsLog = join(workRoot, 'pnpm-args.log')
     mkdirSync(join(fixture, 'apps/tui/dist'), { recursive: true })
     mkdirSync(join(fixture, 'packages/marketplace/bin'), { recursive: true })
     mkdirSync(join(fixture, 'packages/dsh-bridge/node_modules/.bin'), { recursive: true })
@@ -144,9 +145,9 @@ describe('Linux/WSL Terminal CLI installer', () => {
     writeFileSync(join(fixture, 'packages/dsh-bridge/node_modules/.bin/dsh'), '#!/bin/sh\nexit 0\n', 'utf8')
 
     const pnpm = join(fakeTools, 'pnpm')
-    writeFileSync(pnpm, '#!/usr/bin/env bash\nif [ "${FAIL_INSTALL:-}" = "1" ] && [ "$1" = "install" ]; then exit 37; fi\nif [ "${FAIL_BUILD:-}" = "1" ] && [ "$1" != "install" ]; then exit 38; fi\nexit 0\n', 'utf8')
+    writeFileSync(pnpm, '#!/usr/bin/env bash\nif [ -n "${PNPM_ARGS_LOG:-}" ]; then echo "$*" >> "$PNPM_ARGS_LOG"; fi\nif [ "${FAIL_INSTALL:-}" = "1" ] && [ "$1" = "install" ]; then exit 37; fi\nif [ "${FAIL_BUILD:-}" = "1" ] && [ "$1" != "install" ]; then exit 38; fi\nexit 0\n', 'utf8')
     chmodSync(pnpm, 0o755)
-    const env = { ...process.env, PATH: fakeTools + ':' + (process.env.PATH ?? '') }
+    const env = { ...process.env, PATH: fakeTools + ':' + (process.env.PATH ?? ''), PNPM_ARGS_LOG: pnpmArgsLog }
     const args = ['--local-repo', fixture, '--prefix', prefix, '--bin-dir', bin]
     const first = spawnSync('bash', [installerPath, ...args], { env, encoding: 'utf8' })
     expect(first.status, first.stderr).toBe(0)
@@ -295,6 +296,7 @@ describe('Linux/WSL Terminal CLI installer', () => {
     expect(readFileSync(join(prefix, 'repo/apps/tui/dist/bin.js'), 'utf8')).toContain('NEW_VERSION')
     expect(statSync(join(prefix, 'repo')).mode & 0o2777).toBe(0o2750)
     expect(statSync(join(prefix, 'repo')).gid).toBe(preservedGid)
+    expect(readFileSync(pnpmArgsLog, 'utf8')).toContain('install --frozen-lockfile --package-import-method=copy')
     // Preserve access on descendants: root directory GID alone is insufficient.
     for (const relative of [
       'apps',
