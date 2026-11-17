@@ -201,6 +201,8 @@ SHIMS_ARMED=0
 
 install_cleanup() {
   local status="$?"
+  # Once rollback has begun, a second handled signal must not abort recovery.
+  trap '' INT TERM HUP
   trap - EXIT
   # Backup path existence, not a post-mv flag assignment, proves that the
   # original repo has moved. A signal may arrive immediately after mv returns.
@@ -342,6 +344,9 @@ pnpm \
 # mktemp creates 0700 directories. Before publishing, preserve the old
 # install's traversal mode, or honor umask for a first installation.
 if [ -d "$INSTALL_REPO" ]; then
+  # chmod --reference copies mode only; chgrp must precede chmod so that
+  # previously accessible shared-group installs remain accessible.
+  chgrp --reference="$INSTALL_REPO" "$STAGE_REPO"
   chmod --reference="$INSTALL_REPO" "$STAGE_REPO"
 else
   MASK="$(umask)"
@@ -351,6 +356,14 @@ else
   fi
   FINAL_MODE="$(printf '%o' "$(( 0777 & ~(8#$MASK) ))")"
   chmod "$FINAL_MODE" "$STAGE_REPO"
+fi
+
+# Prefix locks do not serialize installs with different --prefix but shared
+# --bin-dir. Hold this second lock from snapshots through publish/rollback.
+exec 8>>"$BIN_DIR/.dsh-community.install.lock"
+if ! flock -n 8; then
+  echo "ERROR: another dsh-community installation is publishing to $BIN_DIR." >&2
+  exit 1
 fi
 
 # Existing shims may point to a different --prefix. Snapshot both before
