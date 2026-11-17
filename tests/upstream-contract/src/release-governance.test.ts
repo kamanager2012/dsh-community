@@ -106,7 +106,7 @@ describe('GitHub protected-tag release governance', () => {
     expect(yml).toContain('node scripts/release-governance.mjs')
     expect(yml.match(/environment: release-policy-audit/g)?.length).toBe(2)
     expect(yml.match(/actions\/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510/g)?.length).toBe(2)
-    expect(yml.match(/GITHUB_TOKEN: ${{ steps.policy-token.outputs.token }}/g)?.length).toBe(2)
+    expect(yml.split('GITHUB_TOKEN: ${{ steps.policy-token.outputs.token }}').length - 1).toBe(2)
     expect(yml).toContain('permission-administration: write')
     expect(yml).toContain('permission-contents: read')
     expect(yml).toContain('DSH_RELEASE_POLICY_APP_PRIVATE_KEY')
