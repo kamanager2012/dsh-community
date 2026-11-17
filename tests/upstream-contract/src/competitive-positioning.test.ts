@@ -23,11 +23,12 @@ describe('Linux-first positioning claims', () => {
   })
 
   it('keeps first-party references, DSH-only session truth and opt-in feedback in both languages', () => {
-    for (const [readme,guide] of [
+    const paths: ReadonlyArray<readonly [string, string]> = [
       ['README.md', 'docs/competitive-positioning.md'],
       ['README.zh-CN.md', 'docs/competitive-positioning.md'],
       ['README.en.md', 'docs/competitive-positioning.en.md'],
-    ]) {
+    ]
+    for (const [readme,guide] of paths) {
       expect(read(readme), readme).toContain(guide)
       const text=read(guide)
       for (const repo of competitors) expect(text, guide).toContain('https://github.com/'+repo)
