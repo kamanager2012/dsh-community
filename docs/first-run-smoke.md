@@ -8,13 +8,14 @@ This is a **real source installation and CLI startup** check on a disposable Lin
 2. Run the actual `scripts/install-linux.sh` with `--ref acceptance --expected-commit <SHA>` and frozen dependency installation/build. This does not trust a mutable branch for its source identity.
 3. Execute installed `dsh-community version`, `--help`, `sessions --porcelain`, `dsh-marketplace --help`, and `remote --help` from an isolated working directory.
 4. Isolate `HOME` and `DSH_HOME`; unset `DEEPSEEK_API_KEY`. Verify the session store is empty and `doctor` exits **2** with a missing-key warning (expected safe refusal).
-5. Emit a small JSON evidence file recording the commit, Node version, and checks. **No source contents, credentials, QR links, Git diff or conversation transcript** are uploaded.
+5. Simulate a failed reinstall and verify the original CLI remains runnable and byte-identical; reject concurrent installation while the prefix lock is held.
+6. Emit a small JSON evidence file recording the commit, Node version, and checks. **No source contents, credentials, QR links, Git diff or conversation transcript** are uploaded.
 
 Run [linux-first-run-smoke](../.github/workflows/linux-first-run-smoke.yml) on relevant PRs / main pushes, or dispatch it manually. It runs on Ubuntu CI with Node 24.
 
 ## Reproduce on an expendable Linux workspace
 
-Prerequisites: Node.js >=24.9, pnpm, git, bash. In a clean repository checkout:
+Prerequisites: Node.js >=24.9, pnpm, git, bash, `flock` (util-linux). In a clean repository checkout:
 
 ~~~bash
 bash scripts/e2e/linux-first-run-smoke.sh /tmp/first-run-evidence.json
@@ -28,6 +29,8 @@ The script installs into an isolated temporary directory and deletes it on exit.
 | --- | --- |
 | Actual source installation at pinned commit | Yes, on Ubuntu CI |
 | Frozen pnpm build produces runnable CLI | Yes, on Ubuntu CI |
+| Failed reinstall preserves the previously working CLI | Yes, injected pnpm failure in CI |
+| Concurrent install refuses without touching active repo | Yes, held `flock` lock in CI |
 | Missing-key safe failure and empty official sessions | Yes, isolated home |
 | Live model calls and true DSH Session continuation | **No**; see user-loop-evidence |
 | Real WSL2, physical arm64 Android or cross-network | **No** |
