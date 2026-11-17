@@ -7,6 +7,11 @@ on:
 
 # Least privilege by default: builds and artifact uploads never touch
 # repository content. Only the publish job elevates (job-level override).
+# Duplicate tagged workflow dispatches must never race to publish assets.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
@@ -24,6 +29,19 @@ jobs:
       - name: Validate immutable candidate release identity
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         run: node scripts/validate-release-tag.mjs "$GITHUB_REF_NAME"
+      - name: Verify immutable tag points to the reviewed current main
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        run: node scripts/release-provenance.mjs tagged "$GITHUB_REF_NAME" origin "$GITHUB_SHA"
+      - name: Refuse an already-published release before any expensive build
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "::error::release already exists; immutable tag requires a new version"
+            exit 1
+          fi
       - name: Verify current Published Latest against GitHub
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         env:
@@ -301,6 +319,8 @@ jobs:
               --certificate-identity "${identity}" \
               "${asset}" >/dev/null
           done
+      - name: Recheck reviewed source and tag immediately before publishing
+        run: node scripts/release-provenance.mjs tagged "$GITHUB_REF_NAME" origin "$GITHUB_SHA"
       - name: Prepare notes
         run: |
           node scripts/release-notes.mjs "${GITHUB_REF_NAME}" > release-notes.md
@@ -343,51 +363,15 @@ jobs:
           done
           printf 'publishing %s\n' "${assets[@]}"
           RELEASE_TITLE=$(head -n 1 release-title.txt)
+          # Strict create-only semantics: never append, edit, clobber, or repair
+          # an already published release. A partial release requires a NEW tag.
+          # gh release create is the atomic second check if the view races.
           if gh release view "$TAG" >/dev/null 2>&1; then
-            existing_names=$(gh release view "$TAG" --json assets --jq '.assets[].name')
-            missing_assets=()
-            primary_payloads=(
-              dist-artifacts/*/*.AppImage
-              dist-artifacts/*/*.apk
-              dist-artifacts/*/*-official-runtime.cdx.json
-            )
-            for p in "${primary_payloads[@]}"; do
-              rel=${p#dist-artifacts/}
-              group=(
-                "$p"
-                "${p}.sha256"
-                "dist-signed/${rel}.sigstore.json"
-                "dist-signed/${rel}.sha256.sigstore.json"
-              )
-              present_count=0
-              for item in "${group[@]}"; do
-                base=$(basename "$item")
-                if printf '%s\n' "$existing_names" | grep -Fxq "$base"; then
-                  present_count=$((present_count + 1))
-                fi
-              done
-              if [[ "$present_count" -eq 0 ]]; then
-                missing_assets+=("${group[@]}")
-              elif [[ "$present_count" -ne 4 ]]; then
-                echo "partial asset group for $(basename "$p") on release $TAG ($present_count/4 present); refusing inconsistent companion backfill" >&2
-                exit 1
-              fi
-            done
-            if [[ ${#missing_assets[@]} -eq 0 ]]; then
-              echo "release $TAG already contains all release assets; refusing to replace published assets"
-              echo "cut a new tag for a new build. do not move a published tag."
-              exit 1
-            fi
-            printf 'uploading missing asset groups to existing release %s: %s\n' "$TAG" "${missing_assets[*]}"
-            gh release upload "$TAG" "${missing_assets[@]}"
-            gh release edit "$TAG" \
-              --title "${RELEASE_TITLE:-$TAG}" \
-              --notes-file release-notes.md \
-              "${EXTRA[@]}"
-          else
-            gh release create "$TAG" \
-              --title "${RELEASE_TITLE:-$TAG}" \
-              --notes-file release-notes.md \
-              "${EXTRA[@]}" \
-              "${assets[@]}"
+            echo "::error::release already exists; immutable tag requires a new version"
+            exit 1
           fi
+          gh release create "$TAG" --verify-tag \
+            --title "${RELEASE_TITLE:-$TAG}" \
+            --notes-file release-notes.md \
+            "${EXTRA[@]}" \
+            "${assets[@]}"

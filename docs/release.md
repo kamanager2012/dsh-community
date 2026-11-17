@@ -21,7 +21,31 @@ matrix. See [Version and identity policy](version-policy.md).
 
 Windows and macOS Desktop installers (`DSH Community Setup *.exe`, `dsh-community-*.dmg`) are **retired** after historical `v0.1.1-rc.2` under the **Complementary Edition** policy — official `deepseek-ai/deepseek-harness` owns Windows (`win-x64`) and macOS (`mac-arm64`, `mac-x64`) Desktop releases. Future `dsh-community` releases build Linux (`ubuntu-latest`) AppImage + CycloneDX SBOM only.
 
+## Fail-closed, create-only release provenance
+
+Release publication must be a **new immutable version**, not a backfill of missing assets
+to an existing Release. The tagged workflow does not run `gh release upload` or
+`gh release edit` on an existing tag. It refuses to proceed if a Release already
+exists and uses `gh release create --verify-tag`; the GitHub API remains the
+final arbiter if another publisher races the preflight.
+
+The local `scripts/release.mjs` now independently checks that the working branch
+is `main`, its exact HEAD equals the current remote `main`, and neither local
+nor remote already contains the requested tag. It runs this check **before**
+installation/tests and **again immediately before** tagging and pushing.
+The tagged GitHub Actions build verifies that its `GITHUB_SHA`, the peeled remote
+tag commit, and current reviewed remote `main` are the same at the start and
+again immediately before publication. A moved tag, stale branch, duplicate tag,
+or release replay fails closed. Multiple runs on the same tag are serialized.
+
+These guards do not by themselves activate GitHub repository-level immutable
+release settings or a protected-tag ruleset. Maintainers must enforce those
+settings separately; a repository administrator can otherwise edit a Release
+outside this workflow. If the reviewed `main` moves before the tag builds,
+review a new candidate and cut a fresh unused tag rather than moving an old one.
+
 ## Cut a release
+
 
 ```sh
 pnpm typecheck && pnpm test          # gate
