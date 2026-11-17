@@ -1,6 +1,6 @@
 # DeepSeek Harness Community ecosystem
 
-> Project handoff and product-entry map. Baseline date: 2026-11-15 (`v0.2.2-rc.3`).
+> Project handoff and product-entry map. Baseline date: 2026-11-17 (Published Latest: `v0.2.2-rc.3`; Candidate Pre-release: `v0.2.2-rc.3-community.1`).
 
 The community project is not a fork of DeepSeek Harness and not another Agent Runtime.
 The official [DeepSeek Harness Runtime](https://github.com/deepseek-ai/deepseek-harness)
@@ -34,7 +34,7 @@ Official DeepSeek Harness Runtime
 
 The formal download entry is
 [`dsh-community/releases/latest`](https://github.com/kamanager2012/dsh-community/releases/latest).
-Published Latest is `v0.2.2-rc.3`, 1:1 with official kernel `@deepseek-ai/dsh@0.2.2-rc.3`.
+Published Latest remains `v0.2.2-rc.3`, 1:1 with official kernel `@deepseek-ai/dsh@0.2.2-rc.3`, while Candidate Source and signed patch Pre-release have advanced to [`v0.2.2-rc.3-community.1`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1) without displacing Latest.
 See [`docs/current-release.json`](https://github.com/kamanager2012/dsh-community/blob/main/docs/current-release.json),
 [current release status](../11-operations/community-release-status.md), and the
 [release runbook](../11-operations/community-release-runbook.md) for machine-readable identity
@@ -99,12 +99,14 @@ per plugin (`testedDsh` is `0.2.2-rc.3` for 6/9 plugins; 3 legacy plugins remain
 Marketplace CLI provides `list`, `search`, `info`, and `install`; `info` displays
 digest/provenance and installation remains on the official chain.
 
-Current release boundary: GitHub Actions run
-[43696414193](https://github.com/kamanager2012/dsh-community/actions/runs/43696414193)
-downloaded the exact `v0.2.2-rc.3` Release assets and passed `resolve`,
+Current release boundary: GitHub Actions `artifact-smoke` runs
+[43696414193](https://github.com/kamanager2012/dsh-community/actions/runs/43696414193) (`v0.2.2-rc.3` Latest) and
+[44005955539](https://github.com/kamanager2012/dsh-community/actions/runs/44005955539) (`v0.2.2-rc.3-community.1` Pre-release)
+downloaded their exact Release assets and passed `resolve`,
 `linux-appimage`, `android-apk`, `linux-terminal`, and `verify-signatures` (keyless cosign on all 12
-assets); the WSL/Linux live model user loop (`new -> answer -> resume -> answer`) passed in run
-[43688556931](https://github.com/kamanager2012/dsh-community/actions/runs/43688556931) (`[REAL]`), while physical `arm64-v8a` Android handset telemetry remains `[UNVERIFIED]`.
+assets); the WSL/Linux live model user loop (`new -> answer -> resume -> answer`) and cross-surface recovery passed in runs
+[43688556931](https://github.com/kamanager2012/dsh-community/actions/runs/43688556931) and
+[43729024796](https://github.com/kamanager2012/dsh-community/actions/runs/43729024796) (`[REAL]`), while physical `arm64-v8a` Android handset telemetry remains `[UNVERIFIED]`.
 
 ## Reality language
 

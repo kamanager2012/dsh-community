@@ -7,8 +7,8 @@
 ## 当前事实边界
 
 - 当前 Published Latest 是 `v0.2.2-rc.3`，共 **12 个已签名资产**：`dsh-community-0.2.2-rc.3.AppImage`、`dsh-community-0.2.2-rc.3-android-arm64-v8a.apk`、官方运行时 CycloneDX SBOM `dsh-community-0.2.2-rc.3-official-runtime.cdx.json`，以及各自的 `.sha256` 与 `.sigstore.json` keyless cosign bundle；
-- 官方内核是 `@deepseek-ai/dsh@0.2.2-rc.3`，产品 Candidate Source 与内核 1:1 同号；历史独立编号 `v0.1.2`–`v0.1.6` 与 Win/macOS 安装包（`v0.1.1-rc.2` 之后已退役）均不是当前用户下载；
-- Desktop/TUI Dual-Badge 必须显示：`DeepSeek Harness Community v0.2.2-rc.3 [Official Core: @deepseek-ai/dsh@0.2.2-rc.3]`；
+- 官方内核是 `@deepseek-ai/dsh@0.2.2-rc.3`，当前 Candidate Source / Pre-release 为 `0.2.2-rc.3-community.1`（[`v0.2.2-rc.3-community.1`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1)，`release` [Run 44004421253](https://github.com/kamanager2012/dsh-community/actions/runs/44004421253)、`artifact-smoke` [Run 44005955539](https://github.com/kamanager2012/dsh-community/actions/runs/44005955539)，不覆盖 `v0.2.2-rc.3` Latest）；历史独立编号 `v0.1.2`–`v0.1.6` 与 Win/macOS 安装包（`v0.1.1-rc.2` 之后已退役）均不是当前用户下载；
+- Desktop/TUI Dual-Badge 必须显示：`DeepSeek Harness Community v0.2.2-rc.3-community.1 [Official Core: @deepseek-ai/dsh@0.2.2-rc.3]`（Candidate Source）/ `v0.2.2-rc.3`（Published Latest）；
 - 三个互补 Community endpoint 为 WSL/Linux Terminal、Linux AppImage、Android Remote Client（已签名 `arm64-v8a` APK 已在 Latest 发行；CI `x86_64` 模拟器 E2EE 验收通过，物理真机遥测 `[UNVERIFIED]`）。官方 Web 与 Win/macOS Desktop 归官方上游所有；
 - `v0.2.2-rc.3` 真实资产在 [Run 43696414193](https://github.com/kamanager2012/dsh-community/actions/runs/43696414193) 通过 `resolve`、`linux-appimage`、`android-apk`、`linux-terminal` 与 `verify-signatures`（12 资产全验），且 WSL/Linux 用户闭环在 [Run 43688556931](https://github.com/kamanager2012/dsh-community/actions/runs/43688556931) 通过 `[REAL]`；物理 `arm64-v8a` 真机遥测保持 `[UNVERIFIED]`；
 - 发现安装包缺官方 Runtime 依赖时，必须立即停止推广并回退 Latest，再用新 tag 修复，不能移动或覆盖已发布 tag。

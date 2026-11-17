@@ -65,6 +65,17 @@
       "run": "https://github.com/kamanager2012/dsh-community/actions/runs/43696414193",
       "covers": "checksum, keyless cosign bundle verification (12 release assets), Linux AppImage SHA256/extract, Android arm64-v8a APK SHA256/signature/purity, Linux Terminal smoke"
     },
+    "candidatePrerelease": {
+      "status": "PASS",
+      "tag": "v0.2.2-rc.3-community.1",
+      "releaseId": 448012716,
+      "publishedAt": "2026-11-17T02:43:22Z",
+      "url": "https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1",
+      "releaseRun": "https://github.com/kamanager2012/dsh-community/actions/runs/44004421253",
+      "artifactSmokeRun": "https://github.com/kamanager2012/dsh-community/actions/runs/44005955539",
+      "assetCount": 12,
+      "covers": "GitHub Pre-release (Published Latest stays v0.2.2-rc.3): release.yml 6/6 jobs + artifact-smoke 5/5 jobs (keyless Cosign 12 assets, Linux AppImage SHA256/extract, Android arm64-v8a APK SHA256/apksigner/purity, Linux Terminal smoke)"
+    },
     "userLoop": {
       "status": "PASS",
       "workflow": ".github/workflows/user-loop-evidence.yml",

@@ -26,6 +26,7 @@ Candidate Source and Published Latest may coincide after publication, but they a
 | Candidate official kernel | `@deepseek-ai/dsh@0.2.2-rc.3` |
 | Candidate community product | `0.2.2-rc.3-community.1` |
 | Candidate tag | `v0.2.2-rc.3-community.1` |
+| Candidate Pre-release | [`v0.2.2-rc.3-community.1`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1) (`releaseId=448012716`, published `2026-11-17T02:43:22Z`; does **not** displace Latest `v0.2.2-rc.3`): `release` [run 44004421253](https://github.com/kamanager2012/dsh-community/actions/runs/44004421253) + `artifact-smoke` [run 44005955539](https://github.com/kamanager2012/dsh-community/actions/runs/44005955539) `PASS` across 12 signed assets |
 | GitHub Latest | [`v0.2.2-rc.3`](https://github.com/kamanager2012/dsh-community/releases/latest) |
 | Published release evidence | GitHub release ID `445732060`; published `2026-11-15T08:39:25Z`; primary AppImage + Android APK asset IDs/digests pinned in `current-release.json` |
 | Candidate Dual-Badge | `DeepSeek Harness Community v0.2.2-rc.3-community.1 [Official Core: @deepseek-ai/dsh@0.2.2-rc.3]` |
