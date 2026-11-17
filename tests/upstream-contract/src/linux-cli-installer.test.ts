@@ -154,7 +154,7 @@ describe('Linux/WSL Terminal CLI installer', () => {
     expect(stable).toBe('STABLE_CLI')
     // mktemp's 0700 staging permissions must not leak into a public install.
     expect(statSync(join(prefix, 'repo')).mode & 0o777).toBe(statSync(prefix).mode & 0o777)
-    chmodSync(join(prefix, 'repo'), 0o750)
+    chmodSync(join(prefix, 'repo'), 0o2750)
     const initialGid = statSync(join(prefix, 'repo')).gid
     const alternateGid = process.getgroups?.().find(gid => gid !== initialGid)
     if (alternateGid !== undefined && process.platform === 'linux') {
@@ -293,8 +293,21 @@ describe('Linux/WSL Terminal CLI installer', () => {
     expect(success.status, success.stderr).toBe(0)
     expect(execFileSync(join(bin, 'dsh-community'), ['version'], { encoding: 'utf8' }).trim()).toBe('NEW_VERSION')
     expect(readFileSync(join(prefix, 'repo/apps/tui/dist/bin.js'), 'utf8')).toContain('NEW_VERSION')
-    expect(statSync(join(prefix, 'repo')).mode & 0o777).toBe(0o750)
+    expect(statSync(join(prefix, 'repo')).mode & 0o2777).toBe(0o2750)
     expect(statSync(join(prefix, 'repo')).gid).toBe(preservedGid)
+    // Preserve access on descendants: root directory GID alone is insufficient.
+    for (const relative of [
+      'apps',
+      'apps/tui',
+      'apps/tui/dist',
+      'apps/tui/dist/bin.js',
+      'packages/marketplace/bin/dsh-marketplace.js',
+    ]) {
+      const item = statSync(join(prefix, 'repo', relative))
+      expect(item.gid, relative).toBe(preservedGid)
+      expect(item.mode & 0o040, relative).toBe(0o040)
+      if (item.isDirectory()) expect(item.mode & 0o010, relative).toBe(0o010)
+    }
   })
 
   it('supports pinned tag/commit installation with --ref and fail-closed --expected-commit verification', () => {
@@ -384,6 +397,40 @@ describe('Linux/WSL Terminal CLI installer', () => {
     )
     expect(matchRes.status, matchRes.stderr || matchRes.stdout).toBe(0)
     expect(matchRes.stdout).toContain(`ref=v0.2.2-rc.3 commit=${pinnedSha}`)
+
+    // Fetched-source shared upgrade with a 027 umask: Git checkout/build
+    // must inherit the existing setgid installation group in descendants.
+    // This reproduces the reported root:shared-group -> root:root regression.
+    chmodSync(join(outPrefix, 'repo'), 0o2750)
+    const prevGid = statSync(join(outPrefix, 'repo')).gid
+    const sharedGid = process.getgroups?.().find(gid => gid !== prevGid)
+    if (sharedGid !== undefined && process.platform === 'linux') {
+      execFileSync('chgrp', [String(sharedGid), join(outPrefix, 'repo')])
+    }
+    const expectedGid = statSync(join(outPrefix, 'repo')).gid
+    const sharedUpgrade = spawnSync('bash', [
+      '-c',
+      'umask 027; exec bash "$@"',
+      'dsh-test',
+      installerPath,
+      '--repo-url', `file://${bareRemote}`,
+      '--ref', 'v0.2.2-rc.3',
+      '--expected-commit', pinnedSha,
+      '--prefix', outPrefix,
+      '--bin-dir', outBin,
+    ], {
+      env: { ...process.env, PATH: `${fakeToolBin}:${process.env.PATH ?? ''}` },
+      encoding: 'utf8',
+    })
+    expect(sharedUpgrade.status, sharedUpgrade.stderr || sharedUpgrade.stdout).toBe(0)
+    expect(statSync(join(outPrefix, 'repo')).mode & 0o2777).toBe(0o2750)
+    for (const rel of ['apps', 'apps/tui', 'apps/tui/dist', 'apps/tui/dist/bin.js']) {
+      const entry = statSync(join(outPrefix, 'repo', rel))
+      expect(entry.gid, rel).toBe(expectedGid)
+      expect(entry.mode & 0o040, rel).toBe(0o040)
+      if (entry.isDirectory()) expect(entry.mode & 0o010, rel).toBe(0o010)
+    }
+
     // A rejected pin must not destroy a previously successful installation.
     const pinMismatchAfterInstall = spawnSync(
       'bash',
