@@ -188,4 +188,76 @@ class PairingQrParserAndMdnsTest {
         assertEquals("ws://[fe80::1a2b:3c4d]:8443", compact.endpointUrl)
         assertEquals("ws://192.168.1.50:8443", LanMdnsSanitizer.formatEndpointUrl("192.168.1.50", 8443))
     }
+
+    @Test
+    fun detectsLoopbackEndpointsResolvesDiscoveryFallbackAndAddsFailureHint() {
+        assertEquals(true, PairingInputHelper.isLoopbackEndpoint("ws://127.0.0.1:8443"))
+        assertEquals(true, PairingInputHelper.isLoopbackEndpoint("ws://localhost:8443"))
+        assertEquals(true, PairingInputHelper.isLoopbackEndpoint("ws://[::1]:8443"))
+        assertEquals(false, PairingInputHelper.isLoopbackEndpoint("ws://192.168.1.50:8443"))
+        assertEquals(false, PairingInputHelper.isLoopbackEndpoint(null))
+
+        val hinted = PairingInputHelper.appendLoopbackFailureHint(
+            "Connection refused",
+            "ws://127.0.0.1:8443",
+        )
+        assertEquals(true, hinted.contains("127.0.0.1/localhost"))
+        assertEquals(
+            hinted,
+            PairingInputHelper.appendLoopbackFailureHint(hinted, "ws://127.0.0.1:8443"),
+        )
+        assertEquals(
+            "Connection refused",
+            PairingInputHelper.appendLoopbackFailureHint("Connection refused", "ws://192.168.1.50:8443"),
+        )
+
+        val hostKeys = Curve25519.generateKeyPair()
+        val pubHex = CryptoUtils.toHex(hostKeys.publicKey)
+        val fp = CryptoUtils.sha256Hex(hostKeys.publicKey)
+        val loopbackDescriptor = PairingQrParser.parse(
+            """
+            {
+              "protocolVersion": 1,
+              "hostPublicKeyHex": "$pubHex",
+              "hostFingerprint": "$fp",
+              "bootstrapToken": "tok-loopback-1",
+              "endpointUrl": "ws://127.0.0.1:8443",
+              "expiresAt": 1999999999999
+            }
+            """.trimIndent(),
+        )
+        val resolved = PairingInputHelper.resolvePairingEndpointWithDiscovery(
+            loopbackDescriptor,
+            "ws://192.168.1.50:8443",
+        )
+        assertEquals("ws://192.168.1.50:8443", resolved.endpointUrl)
+
+        val unchangedLoopback = PairingInputHelper.resolvePairingEndpointWithDiscovery(
+            loopbackDescriptor,
+            "ws://localhost:8443",
+        )
+        assertEquals("ws://127.0.0.1:8443", unchangedLoopback.endpointUrl)
+
+        assertEquals(
+            "ws://192.168.1.50:54321",
+            PairingInputHelper.buildSavedLanFallbackUrl(
+                "ws://127.0.0.1:54321",
+                "ws://192.168.1.50:41111",
+            ),
+        )
+        assertEquals(
+            null,
+            PairingInputHelper.buildSavedLanFallbackUrl(
+                "ws://127.0.0.1:54321",
+                "ws://localhost:41111",
+            ),
+        )
+        assertEquals(
+            null,
+            PairingInputHelper.buildSavedLanFallbackUrl(
+                "ws://192.168.1.10:54321",
+                "ws://192.168.1.50:41111",
+            ),
+        )
+    }
 }

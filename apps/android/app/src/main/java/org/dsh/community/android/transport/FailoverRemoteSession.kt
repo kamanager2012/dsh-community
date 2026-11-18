@@ -298,6 +298,35 @@ class FailoverRemoteSession(
         return (res as? JsonObject)?.bool("ok") == true
     }
 
+    /**
+     * Probes whether an already-authenticated `PAIRING_PENDING` Noise channel has been promoted
+     * out-of-band on the Host without tearing down the transport or relaxing `dispatchRpc` guards.
+     */
+    fun probePairingAuthorization(): Boolean {
+        if (phase == RemoteConnectionPhase.ACTIVE) return true
+        if (phase != RemoteConnectionPhase.PAIRING_PENDING) return false
+        val id = "pair-probe-${requestIdCounter.incrementAndGet()}"
+        val seq = requestSeq.incrementAndGet()
+        val payload = RemoteFrameCodec.encodeRpcRequest(
+            id = id,
+            method = RemoteProtocol.METHOD_PING,
+            connectionEpoch = currentEpoch,
+            requestSeq = seq,
+            params = JsonObject.of(),
+        )
+        val res = try {
+            sendEncryptedAwaitResult(id, payload)
+        } catch (_: RpcErrorPayload) {
+            return false
+        }
+        val authorized = (res as? JsonObject)?.bool("ok") == true
+        if (authorized) {
+            phase = RemoteConnectionPhase.ACTIVE
+            notifyPhase()
+        }
+        return authorized
+    }
+
     fun listEngines(): List<EngineDescriptor> {
         val res = dispatchRpc(RemoteProtocol.METHOD_ENGINE_LIST, JsonObject.of())
         return RemoteFrameCodec.parseEngineList(res)

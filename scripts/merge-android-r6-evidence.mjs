@@ -85,8 +85,11 @@ export function validateArm64RealDeviceReport(report) {
       `arm64 real-device report: expected device.abi='arm64-v8a', got ${String(report.device.abi)}`,
     )
   }
-  if (report.device.roKernelQemu === '1') {
-    throw new Error('arm64 real-device report: device.roKernelQemu=\'1\' indicates an emulator')
+  if (report.device.isEmulator === true) {
+    throw new Error('arm64 real-device report: device.isEmulator=true indicates an emulator')
+  }
+  if (report.device.roKernelQemu === '1' || report.device.qemu === '1') {
+    throw new Error('arm64 real-device report: device.roKernelQemu/qemu=\'1\' indicates an emulator')
   }
   if (report.apk.arm64RealDeviceSmoke !== true) {
     throw new Error('arm64 real-device report: apk.arm64RealDeviceSmoke must be true')

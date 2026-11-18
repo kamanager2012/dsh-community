@@ -288,6 +288,7 @@ function inspectDeviceProperties(serial) {
     sdk,
     androidVersion,
     qemu,
+    roKernelQemu: qemu,
     hardware,
     isEmulator,
     isPhysicalArm64: !isEmulator && abi === 'arm64-v8a',
@@ -538,33 +539,45 @@ async function main() {
   await signalingServer.start()
   const signalingUrl = signalingServer.getEndpointUrl()
 
+  const hostNet = selectReachableHostIpv4()
+  const hostIpv4 = hostNet.picked?.address
+  const usePhysicalLanStun = !deviceInfo.isEmulator && Boolean(hostIpv4)
+  const useSingleEmulatorHostInterface = deviceInfo.isEmulator && Boolean(hostIpv4)
+
   const stunServer = new SelfHostedStunServer({
     enabled: true,
-    host: '127.0.0.1',
+    host: usePhysicalLanStun ? '0.0.0.0' : '127.0.0.1',
     port: 0,
   })
   await stunServer.start()
   const hostStunUrl = stunServer.getStunUrl()
   const stunPort = stunServer.getBoundAddress()?.port
   const emulatedStunUrl =
-    deviceInfo.isEmulator && stunPort ? `stun:10.0.2.2:${stunPort}` : hostStunUrl
+    deviceInfo.isEmulator && stunPort
+      ? `stun:10.0.2.2:${stunPort}`
+      : usePhysicalLanStun && stunPort
+        ? `stun:${hostIpv4}:${stunPort}`
+        : hostStunUrl
 
-  const hostNet = selectReachableHostIpv4()
-  const hostIpv4 = hostNet.picked?.address
-  const useSingleEmulatorHostInterface = deviceInfo.isEmulator && Boolean(hostIpv4)
   logStep(
-    `Host ICE network selection: candidates=${JSON.stringify(hostNet.candidates)} picked=${hostNet.picked ? `${hostNet.picked.name}:${hostNet.picked.address}` : 'none'} singleHostInterface=${useSingleEmulatorHostInterface}`,
+    `Host ICE network selection: candidates=${JSON.stringify(hostNet.candidates)} picked=${hostNet.picked ? `${hostNet.picked.name}:${hostNet.picked.address}` : 'none'} singleHostInterface=${useSingleEmulatorHostInterface} physicalLanStun=${usePhysicalLanStun}`,
   )
   const webrtcIceConfig = useSingleEmulatorHostInterface
     ? {
         iceInterfaceAddresses: { udp4: hostIpv4 },
         iceStunGatherTimeoutSec: 1,
       }
-    : {
-        ...(hostStunUrl ? { stunUrls: [hostStunUrl] } : {}),
-        iceAdditionalHostAddresses: ['127.0.0.1'],
-        iceStunGatherTimeoutSec: 2,
-      }
+    : usePhysicalLanStun && stunPort
+      ? {
+          stunUrls: [`stun:${hostIpv4}:${stunPort}`],
+          iceInterfaceAddresses: { udp4: hostIpv4 },
+          iceStunGatherTimeoutSec: 2,
+        }
+      : {
+          ...(hostStunUrl ? { stunUrls: [hostStunUrl] } : {}),
+          iceAdditionalHostAddresses: ['127.0.0.1'],
+          iceStunGatherTimeoutSec: 2,
+        }
 
   const bridge = new OfficialHostCordisBridge({
     ctx,

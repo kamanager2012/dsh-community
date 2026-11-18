@@ -893,6 +893,19 @@ describe('R2B LAN Carrier Adversarial Security & Regression Suite', () => {
     expect(concreteRec.txt.fp).toBe(host.identity.fingerprint)
     assertNoSecretsInDiscoveryHint(concreteRec as any)
 
+    const mdnsSocket = (
+      concreteAdvertiser as unknown as {
+        bonjour?: { server?: { mdns?: { emit?: (event: string, err: Error) => void } } }
+      }
+    ).bonjour?.server?.mdns
+    if (mdnsSocket && typeof mdnsSocket.emit === 'function') {
+      const bindErr = Object.assign(new Error('bind EADDRINUSE 127.0.0.1:5353'), {
+        code: 'EADDRINUSE',
+      })
+      mdnsSocket.emit('error', bindErr)
+      expect(concreteAdvertiser.isPublished()).toBe(true)
+    }
+
     await concreteAdvertiser.unpublish()
     expect(concreteAdvertiser.isPublished()).toBe(false)
     await concreteAdvertiser.destroy()
@@ -996,6 +1009,68 @@ describe('R2B LAN Carrier Adversarial Security & Regression Suite', () => {
     }
   })
 
+  it('22b. PAIRING_PENDING channel promotes dynamically to ACTIVE after confirmPairing without reconnecting', async () => {
+    const hostStore = new InMemoryHostIdentityStore()
+    const host = await hostStore.loadOrCreate()
+    const trustStore = new InMemoryDeviceTrustStore()
+    const tokenRegistry = new PairingTokenRegistry()
+    const coordinator = new PairingCoordinator(hostStore, trustStore, tokenRegistry)
+    const core = new RemoteAdapterCore(fakeSeams().seams, { trustStore, hostIdentityStore: hostStore })
+
+    const carrier = new HostLanCarrier({
+      enabled: true,
+      host: '127.0.0.1',
+      port: 0,
+      core,
+      trustStore,
+      hostIdentityStore: hostStore,
+      pairingCoordinator: coordinator,
+    })
+    await carrier.start()
+
+    try {
+      const pairingToken = tokenRegistry.createToken({
+        trustDomainId: host.identity.trustDomainId,
+        hostGeneration: host.identity.generation,
+        allowedCapabilities: ['observe'],
+        ttlMs: 60_000,
+      })
+
+      const clientKeys = generateClientKeyPair()
+      const client = new LanClientCarrier({
+        clientKeyPair: clientKeys,
+        hostPublicKey: host.identity.publicKey,
+        endpointUrl: carrier.getEndpointUrl()!,
+      })
+      await client.connect()
+
+      const res = await client.request('pairing.request', {
+        token: pairingToken.token,
+        displayName: 'Auto-Promoted Phone',
+      })
+      expect(res.candidateId).toBeDefined()
+
+      // Before host confirmation, application RPC must fail with UNAUTHORIZED_CHANNEL
+      await expect(client.request('session.list')).rejects.toThrow('UNAUTHORIZED_CHANNEL')
+
+      // Host confirms pairing out-of-band while the Noise channel stays connected
+      await coordinator.confirmPairing({
+        candidateId: res.candidateId,
+        grantedCapabilities: ['observe'],
+      })
+
+      // Same live channel promotes dynamically to ACTIVE without reconnecting
+      expect(client.isOpen()).toBe(true)
+      const sessions = await client.request('session.list')
+      expect(sessions).toEqual([{ id: 's1', title: 'Session 1' }])
+
+      client.close()
+    } finally {
+      await carrier.stop()
+    }
+  })
+
+  // Pairing Transport Integration: token replay denied
   it('23. pairing token replay denied', async () => {
     const hostStore = new InMemoryHostIdentityStore()
     const host = await hostStore.loadOrCreate()

@@ -445,6 +445,17 @@ export class RemoteServerChannel {
       return
     }
 
+    // Re-evaluate trust store in case pairing was confirmed out-of-band on the
+    // host while this authenticated Noise channel remained in PAIRING_PENDING.
+    this.evaluateAuthorization()
+    if ((this.state as ConnectionSecurityState) === 'CLOSED') {
+      return
+    }
+    if ((this.state as ConnectionSecurityState) === 'ACTIVE') {
+      await this.dispatchActiveRequest(parsed)
+      return
+    }
+
     const errorResponse = {
       jsonrpc: '2.0',
       id: parsed?.id ?? null,
@@ -530,6 +541,12 @@ export class RemoteServerChannel {
       this.terminate(1002, 'malformed JSON payload')
       return
     }
+
+    await this.dispatchActiveRequest(requestObj)
+  }
+
+  private async dispatchActiveRequest(requestObj: unknown): Promise<void> {
+    if (!this.peer) return
 
     try {
       const result = await this.ctx.core.handle(this.peer, requestObj)
