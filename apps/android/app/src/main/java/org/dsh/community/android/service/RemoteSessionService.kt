@@ -770,9 +770,7 @@ class RemoteSessionService : Service() {
         val sanitizedName = DisplayTextSanitizer.sanitizeSingleLine(displayName).ifBlank { "Android" }
         ioExecutor.execute {
             try {
-                val rawDescriptor = PairingQrParser.parse(rawDescriptorJson)
-                val savedLanUrl = trustedHostStore.get(rawDescriptor.hostFingerprint)?.lanUrl
-                val descriptor = PairingInputHelper.resolvePairingEndpointWithDiscovery(rawDescriptor, savedLanUrl)
+                val descriptor = PairingQrParser.parse(rawDescriptorJson)
                 val profile = RemoteEndpointProfile.fromDescriptor(descriptor)
                 // Fresh QR pairing may target a restarted Host process whose epoch resets to 1.
                 val resetEpoch = !profile.bootstrapToken.isNullOrBlank()
@@ -1558,6 +1556,7 @@ class RemoteSessionService : Service() {
         profile: RemoteEndpointProfile,
         displayName: String,
         resetEpochFence: Boolean = false,
+        allowSavedLanFallback: Boolean = true,
     ) {
         val prevFp = activeHostFingerprint
         val hostChanged = prevFp != null && !prevFp.equals(profile.hostFingerprint, ignoreCase = true)
@@ -1792,6 +1791,23 @@ class RemoteSessionService : Service() {
                 if (hasUsableNetwork()) {
                     scheduleBatterySafeReconnect(session, TransportKind.RELAY, reason)
                 }
+            } else if (allowSavedLanFallback &&
+                !profile.bootstrapToken.isNullOrBlank() &&
+                PairingInputHelper.isLoopbackEndpoint(profile.lanUrl)
+            ) {
+                val savedLanUrl = trustedHostStore.get(profile.hostFingerprint)?.lanUrl
+                val fallbackLanUrl = PairingInputHelper.buildSavedLanFallbackUrl(profile.lanUrl, savedLanUrl)
+                if (!fallbackLanUrl.isNullOrBlank() && fallbackLanUrl != profile.lanUrl) {
+                    connectProfileInternal(
+                        profile.copy(lanUrl = fallbackLanUrl),
+                        displayName,
+                        resetEpochFence = resetEpochFence,
+                        allowSavedLanFallback = false,
+                    )
+                    return
+                }
+                val reason = PairingInputHelper.appendLoopbackFailureHint(sanitizeErr(t), profile.lanUrl)
+                updateStatus(RemoteConnectionPhase.FAILED, null, session.currentEpoch, "Connect failed: $reason")
             } else {
                 val reason = PairingInputHelper.appendLoopbackFailureHint(sanitizeErr(t), profile.lanUrl)
                 updateStatus(RemoteConnectionPhase.FAILED, null, session.currentEpoch, "Connect failed: $reason")

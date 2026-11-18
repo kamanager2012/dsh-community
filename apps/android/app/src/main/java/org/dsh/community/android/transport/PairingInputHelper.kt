@@ -41,7 +41,7 @@ object PairingInputHelper {
 
     /**
      * When a pairing descriptor specifies a loopback URL and a non-loopback [discoveredLanUrl] is
-     * known (for example from mDNS or a prior saved LAN record), substitutes the reachable LAN URL.
+     * known from live LAN discovery, substitutes the reachable LAN URL.
      */
     fun resolvePairingEndpointWithDiscovery(
         descriptor: PairingBootstrapDescriptor,
@@ -52,6 +52,35 @@ object PairingInputHelper {
             return descriptor
         }
         return descriptor.copy(endpointUrl = candidate)
+    }
+
+    /**
+     * Builds a fallback LAN URL for an unreachable loopback pairing endpoint using the host from a
+     * saved [savedLanUrl] while preserving the fresh QR descriptor's ephemeral port and scheme.
+     */
+    fun buildSavedLanFallbackUrl(freshEndpointUrl: String?, savedLanUrl: String?): String? {
+        if (!isLoopbackEndpoint(freshEndpointUrl)) return null
+        val trimmedFresh = freshEndpointUrl?.trim() ?: return null
+        val trimmedSaved = savedLanUrl?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        if (isLoopbackEndpoint(trimmedSaved)) return null
+
+        return runCatching {
+            val freshUri = URI(if (trimmedFresh.contains("://")) trimmedFresh else "ws://$trimmedFresh")
+            val savedUri = URI(if (trimmedSaved.contains("://")) trimmedSaved else "ws://$trimmedSaved")
+            val rawHost = savedUri.host?.takeIf { it.isNotBlank() } ?: return null
+            val host = if (rawHost.contains(':') && !rawHost.startsWith("[")) "[$rawHost]" else rawHost
+            val port = if (freshUri.port > 0) freshUri.port else savedUri.port
+            val scheme = freshUri.scheme ?: savedUri.scheme ?: "ws"
+            URI(
+                scheme,
+                null,
+                host,
+                port,
+                freshUri.path?.takeIf { it.isNotEmpty() },
+                freshUri.query?.takeIf { it.isNotEmpty() },
+                null,
+            ).toString()
+        }.getOrNull()
     }
 
     /**

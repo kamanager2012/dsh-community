@@ -237,5 +237,27 @@ class PairingQrParserAndMdnsTest {
             "ws://localhost:8443",
         )
         assertEquals("ws://127.0.0.1:8443", unchangedLoopback.endpointUrl)
+
+        assertEquals(
+            "ws://192.168.1.50:54321",
+            PairingInputHelper.buildSavedLanFallbackUrl(
+                "ws://127.0.0.1:54321",
+                "ws://192.168.1.50:41111",
+            ),
+        )
+        assertEquals(
+            null,
+            PairingInputHelper.buildSavedLanFallbackUrl(
+                "ws://127.0.0.1:54321",
+                "ws://localhost:41111",
+            ),
+        )
+        assertEquals(
+            null,
+            PairingInputHelper.buildSavedLanFallbackUrl(
+                "ws://192.168.1.10:54321",
+                "ws://192.168.1.50:41111",
+            ),
+        )
     }
 }
