@@ -601,7 +601,17 @@ class RemoteSessionService : Service() {
     private var reconnectFuture: ScheduledFuture<*>? = null
 
     @Volatile
+    private var pairingPollFuture: ScheduledFuture<*>? = null
+
+    @Volatile
     private var heartbeatFuture: ScheduledFuture<*>? = null
+
+    private fun cancelPairingPoll() {
+        synchronized(reconnectLock) {
+            pairingPollFuture?.cancel(false)
+            pairingPollFuture = null
+        }
+    }
 
     private var connectivityManager: ConnectivityManager? = null
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
@@ -662,6 +672,7 @@ class RemoteSessionService : Service() {
         autoReconnectEligible.set(false)
         unregisterNetworkObserver()
         stopHeartbeat()
+        cancelPairingPoll()
         synchronized(reconnectLock) {
             reconnectFuture?.cancel(false)
             reconnectFuture = null
@@ -759,7 +770,9 @@ class RemoteSessionService : Service() {
         val sanitizedName = DisplayTextSanitizer.sanitizeSingleLine(displayName).ifBlank { "Android" }
         ioExecutor.execute {
             try {
-                val descriptor = PairingQrParser.parse(rawDescriptorJson)
+                val rawDescriptor = PairingQrParser.parse(rawDescriptorJson)
+                val savedLanUrl = trustedHostStore.get(rawDescriptor.hostFingerprint)?.lanUrl
+                val descriptor = PairingInputHelper.resolvePairingEndpointWithDiscovery(rawDescriptor, savedLanUrl)
                 val profile = RemoteEndpointProfile.fromDescriptor(descriptor)
                 // Fresh QR pairing may target a restarted Host process whose epoch resets to 1.
                 val resetEpoch = !profile.bootstrapToken.isNullOrBlank()
@@ -860,6 +873,7 @@ class RemoteSessionService : Service() {
                 autoReconnectEligible.set(false)
                 consecutiveReconnectFailures.set(0)
                 stopHeartbeat()
+                cancelPairingPoll()
                 synchronized(reconnectLock) {
                     reconnectFuture?.cancel(false)
                     reconnectFuture = null
@@ -1503,6 +1517,7 @@ class RemoteSessionService : Service() {
         networkProbePending.set(false)
         epochRecoveryGuard.reset()
         stopHeartbeat()
+        cancelPairingPoll()
         cancelApprovalNotification()
         synchronized(reconnectLock) {
             reconnectFuture?.cancel(false)
@@ -1547,6 +1562,7 @@ class RemoteSessionService : Service() {
         val prevFp = activeHostFingerprint
         val hostChanged = prevFp != null && !prevFp.equals(profile.hostFingerprint, ignoreCase = true)
         val prevAttachedId = if (!hostChanged) attachedSessionId else null
+        cancelPairingPoll()
         synchronized(reconnectLock) {
             reconnectFuture?.cancel(false)
             reconnectFuture = null
@@ -1678,8 +1694,38 @@ class RemoteSessionService : Service() {
                     phase,
                     session.activeCarrier,
                     session.currentEpoch,
-                    "Pairing requested (candidate=$cid); confirm on Host then Reconnect",
+                    "Pairing requested (candidate=$cid); confirm on Host then waiting for approval...",
                 )
+                val attempts = AtomicInteger(0)
+                synchronized(reconnectLock) {
+                    pairingPollFuture?.cancel(false)
+                    pairingPollFuture = ioExecutor.scheduleWithFixedDelay(
+                        {
+                            if (activeSession !== session ||
+                                (session.phase != RemoteConnectionPhase.PAIRING_PENDING &&
+                                    session.phase != RemoteConnectionPhase.ACTIVE) ||
+                                attempts.incrementAndGet() > 30
+                            ) {
+                                cancelPairingPoll()
+                            } else {
+                                val promoted = runCatching { session.probePairingAuthorization() }
+                                    .getOrDefault(false)
+                                if (promoted) {
+                                    cancelPairingPoll()
+                                    reconnectSavedHost(
+                                        profile.hostFingerprint,
+                                        lanUrlOverride = profile.lanUrl,
+                                        displayName = displayName,
+                                        resetEpochFence = false,
+                                    )
+                                }
+                            }
+                        },
+                        2_000L,
+                        2_000L,
+                        TimeUnit.MILLISECONDS,
+                    )
+                }
             } else if (phase == RemoteConnectionPhase.ACTIVE) {
                 consecutiveReconnectFailures.set(0)
                 autoReconnectEligible.set(true)
@@ -1741,13 +1787,14 @@ class RemoteSessionService : Service() {
                 return
             } else if (profile.bootstrapToken == null) {
                 autoReconnectEligible.set(true)
-                val reason = sanitizeErr(t)
+                val reason = PairingInputHelper.appendLoopbackFailureHint(sanitizeErr(t), profile.lanUrl)
                 updateStatus(RemoteConnectionPhase.FAILED, null, session.currentEpoch, "Connect failed: $reason")
                 if (hasUsableNetwork()) {
                     scheduleBatterySafeReconnect(session, TransportKind.RELAY, reason)
                 }
             } else {
-                updateStatus(RemoteConnectionPhase.FAILED, null, session.currentEpoch, "Connect failed: ${sanitizeErr(t)}")
+                val reason = PairingInputHelper.appendLoopbackFailureHint(sanitizeErr(t), profile.lanUrl)
+                updateStatus(RemoteConnectionPhase.FAILED, null, session.currentEpoch, "Connect failed: $reason")
             }
         } finally {
             persistStats()

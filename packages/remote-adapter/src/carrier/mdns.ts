@@ -155,9 +155,30 @@ export class BonjourMdnsAdvertiser implements MdnsAdvertiser {
 
     this.bonjour = new Bonjour(bonjourOptions, () => {
       // mDNS is an unauthenticated discovery hint only. Contain asynchronous
-      // multicast socket failures so they cannot crash the Remote Host.
+      // multicast respond failures so they cannot crash the Remote Host.
       this.publishedRecord = undefined
     })
+
+    // bonjour-service's errorCallback only wraps mdns.respond(), leaving
+    // underlying multicast-dns socket bind 'error' (e.g. EADDRINUSE on :5353)
+    // and 'warning' events unhandled on EventEmitter. Suppress those socket
+    // bind errors cleanly without crashing or discarding publishedRecord.
+    const bonjourInternal = this.bonjour as unknown as {
+      server?: {
+        mdns?: {
+          on?: (event: string, listener: (...args: unknown[]) => void) => void
+        }
+      }
+    }
+    const mdnsEmitter = bonjourInternal.server?.mdns
+    if (mdnsEmitter && typeof mdnsEmitter.on === 'function') {
+      mdnsEmitter.on('error', () => {
+        // Non-fatal socket bind/multicast error (e.g. port 5353 already bound)
+      })
+      mdnsEmitter.on('warning', () => {
+        // Non-fatal multicast warning
+      })
+    }
 
     // In bonjour-service, type 'dsh-remote' publishes as '_dsh-remote._tcp'
     const serviceType = record.type.startsWith('_')
@@ -172,6 +193,15 @@ export class BonjourMdnsAdvertiser implements MdnsAdvertiser {
       txt: record.txt,
     })
 
+    const serviceEmitter = this.service as unknown as {
+      on?: (event: string, listener: (...args: unknown[]) => void) => void
+    }
+    if (serviceEmitter && typeof serviceEmitter.on === 'function') {
+      serviceEmitter.on('error', () => {
+        // Non-fatal service publish error
+      })
+    }
+
     this.publishedRecord = Object.freeze({
       ...record,
       txt: Object.freeze({ ...record.txt }),
@@ -180,13 +210,30 @@ export class BonjourMdnsAdvertiser implements MdnsAdvertiser {
 
   async unpublish(): Promise<void> {
     if (this.service) {
+      const svc = this.service
       await new Promise<void>((resolve) => {
-        this.service!.stop(() => resolve())
+        let settled = false
+        const finish = () => {
+          if (settled) return
+          settled = true
+          clearTimeout(timer)
+          resolve()
+        }
+        const timer = setTimeout(finish, 500)
+        try {
+          svc.stop(() => finish())
+        } catch {
+          finish()
+        }
       })
       this.service = undefined
     }
     if (this.bonjour) {
-      this.bonjour.unpublishAll()
+      try {
+        this.bonjour.unpublishAll()
+      } catch {
+        // Ignore unpublish errors when mDNS socket failed to bind
+      }
     }
     this.publishedRecord = undefined
   }
@@ -194,7 +241,11 @@ export class BonjourMdnsAdvertiser implements MdnsAdvertiser {
   async destroy(): Promise<void> {
     await this.unpublish()
     if (this.bonjour) {
-      this.bonjour.destroy()
+      try {
+        this.bonjour.destroy()
+      } catch {
+        // Ignore teardown errors on unbound mDNS sockets
+      }
       this.bonjour = undefined
     }
     this.isDestroyed = true

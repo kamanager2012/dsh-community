@@ -140,6 +140,30 @@ describe('Android R6 Qualcomm arm64 signing & evidence merge contract', () => {
     expect(() =>
       validateArm64RealDeviceReport(
         makeArm64Report({
+          device: {
+            abi: 'arm64-v8a',
+            qemu: '1',
+            isPhysicalArm64: true,
+            isX86_64Emulator: false,
+          },
+        }),
+      ),
+    ).toThrow(/roKernelQemu|qemu/i)
+    expect(() =>
+      validateArm64RealDeviceReport(
+        makeArm64Report({
+          device: {
+            abi: 'arm64-v8a',
+            isEmulator: true,
+            isPhysicalArm64: true,
+            isX86_64Emulator: false,
+          },
+        }),
+      ),
+    ).toThrow(/emulator/i)
+    expect(() =>
+      validateArm64RealDeviceReport(
+        makeArm64Report({
           apk: {
             sha256: 'a'.repeat(64),
             containsNodeRuntime: true,
