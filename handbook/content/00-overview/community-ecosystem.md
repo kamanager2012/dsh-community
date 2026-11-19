@@ -70,7 +70,7 @@ dsh-community/packages/marketplace
 
 当前证据快照：注册表有 18 个验证插件；CI 检查 shape、npm 存在性/版本、`dist.integrity`、provenance 和仓库可达性，`catalog.json` 中 15/18 个插件已完成 `@deepseek-ai/dsh@0.2.2-rc.5` 合成验证（含 6 款新手精选套装 `dshmarket`、`dsh-better-sidebar`、`dsh-ops`、`dsh-rewind-plugin`、`dsh-context`、`dsh-working-activity`，以及升级至 `0.20.2` 的 `@deepseek-harness-tui/dsh-tui`；其余 3 个旧插件保持 `0.1.1-rc.2`）。Marketplace CLI 提供 `list` / `starter` / `search` / `info` / `install [--recommended]`，桌面市场页支持精选套装一键勾选安装并附 6,000+ 社区公共索引接入入口。
 
-当前发布边界：GitHub Actions `artifact-smoke` [Run 43696414193](https://github.com/kamanager2012/dsh-community/actions/runs/43696414193)（`v0.2.2-rc.3` Latest）与 [Run 44005955539](https://github.com/kamanager2012/dsh-community/actions/runs/44005955539)（`v0.2.2-rc.3-community.1` Pre-release）已从各自 Release 页面下载真实资产，完成 `resolve`、`linux-appimage`、`android-apk`、`linux-terminal` 与 `verify-signatures`（cosign keyless 12 文件校验）；WSL/Linux 真实模型首对话与恢复闭环已通过 [Run 43688556931](https://github.com/kamanager2012/dsh-community/actions/runs/43688556931) / [Run 43729024796](https://github.com/kamanager2012/dsh-community/actions/runs/43729024796) 验收 `[REAL]`，物理 `arm64-v8a` Android 真机遥测仍标为 `[UNVERIFIED]`。
+当前发布边界：GitHub Actions `artifact-smoke` [Run 44454406621](https://github.com/kamanager2012/dsh-community/actions/runs/44454406621)（`v0.2.2-rc.5` Latest）与 [Run 44516999116](https://github.com/kamanager2012/dsh-community/actions/runs/44516999116)（`v0.2.2-rc.5-community.1` Pre-release）已从各自 Release 页面下载真实资产，完成 `resolve`、`linux-appimage`、`android-apk`、`linux-terminal` 与 `verify-signatures`（cosign keyless 12 文件校验）；WSL/Linux 真实模型首对话与恢复闭环已通过 `v0.2.2-rc.3` 实盘演练 [Run 43688556931](https://github.com/kamanager2012/dsh-community/actions/runs/43688556931) / [Run 43729024796](https://github.com/kamanager2012/dsh-community/actions/runs/43729024796) 验收 `[REAL]`，物理 `arm64-v8a` Android 真机遥测仍标为 `[UNVERIFIED]`。
 
 ## 面向维护者的阅读入口
 
@@ -98,4 +98,4 @@ dsh-community/packages/marketplace
 
 除非有相应证据，不要使用“production-ready”“完全安全”“100% 兼容”等表述。
 
-> **候选版本（未发布）**：下一社区预发布候选 `v0.2.2-rc.5-community.1`（基于官方 `@deepseek-ai/dsh@0.2.2-rc.5`，含精选插件目录与新手精选套装）尚未发布；在其签名与 `artifact-smoke` 验证完成前，Published Latest 仍为 `v0.2.2-rc.5`。
+> **最新社区预发布（Pre-release）**：[`v0.2.2-rc.5-community.1`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.5-community.1)（基于官方 `@deepseek-ai/dsh@0.2.2-rc.5`，含 18 款精选插件目录、Desktop 新手精选套装与 `dsh-marketplace starter`）已通过 `release.yml`（[Run 44515930058](https://github.com/kamanager2012/dsh-community/actions/runs/44515930058)）与 `artifact-smoke`（[Run 44516999116](https://github.com/kamanager2012/dsh-community/actions/runs/44516999116)）12 资产签发与校验；GitHub Published Latest 保持为 [`v0.2.2-rc.5`](https://github.com/kamanager2012/dsh-community/releases/latest)。

@@ -9,16 +9,17 @@
 | 层级 | 当前值 | 应如何理解 |
 |---|---|---|
 | Official core pin | `@deepseek-ai/dsh@0.2.2-rc.5` | 官方内核 |
-| Candidate community product | `0.2.2-rc.5` | **已签署并发布为 GitHub Latest `v0.2.2-rc.5`（12 资产齐全并通过 `artifact-smoke`）** |
-| Historical Community Pre-release | [`v0.2.2-rc.3-community.1`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1) | 2026-11-17 发布，已被包含完整加固的 `v0.2.2-rc.5` 替代 |
-| Published Latest | `v0.2.2-rc.5` | GitHub Latest；普通用户主下载入口 |
+| Candidate community product | `0.2.2-rc.5-community.1` | **已签署并发布为 GitHub Pre-release [`v0.2.2-rc.5-community.1`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.5-community.1)（12 资产齐全并通过 `artifact-smoke`，含 18 款精选插件目录与 Starter Pack）** |
+| Historical Community Pre-release | [`v0.2.2-rc.3-community.1`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1) | 2026-11-17 发布，已被 `v0.2.2-rc.5` 与 `v0.2.2-rc.5-community.1` 替代 |
+| Published Latest | `v0.2.2-rc.5` | GitHub Latest；普通用户稳定主下载入口 |
 | Historical tags | `v0.1.2`–`v0.1.6`, `v0.1.1-rc.2`, `v0.2.2-rc.2`, `v0.2.2-rc.2-community.1`, `v0.2.2-rc.3`, `v0.2.2-rc.3-community.1` | 已被 `v0.2.2-rc.5` 替代 |
 
 Desktop 与 TUI 的版本身份必须同时显示 Dual-Badge：
 
 ```text
-DeepSeek Harness Community v0.2.2-rc.5 [Official Core: @deepseek-ai/dsh@0.2.2-rc.5]
+DeepSeek Harness Community v0.2.2-rc.5-community.1 [Official Core: @deepseek-ai/dsh@0.2.2-rc.5]
 ```
+（Published Latest `v0.2.2-rc.5` 对应展示 `DeepSeek Harness Community v0.2.2-rc.5 [Official Core: @deepseek-ai/dsh@0.2.2-rc.5]`。）
 
 ## 用户选择
 
@@ -40,8 +41,8 @@ DeepSeek Harness Community v0.2.2-rc.5 [Official Core: @deepseek-ai/dsh@0.2.2-rc
 | Gate | 状态 | 事实 |
 |---|---|---|
 | 普通 `dsh-community` CI | `[REAL]` | 主线 typecheck（8 projects）与全量 Vitest 在 `main` 通过；但普通 CI 不替代发行包验收 |
-| Release assets & signing | `[REAL]` | `v0.2.2-rc.5`（`releaseId=450856726`，`release` [Run 44453540672](https://github.com/kamanager2012/dsh-community/actions/runs/44453540672)）已发布 12 个带 SHA-256 与 keyless cosign bundle 的资产（历史 `v0.2.2-rc.3` / `v0.2.2-rc.3-community.1` 同规） |
-| `artifact-smoke` | `[REAL]` | `v0.2.2-rc.5`（[Run 44454406621](https://github.com/kamanager2012/dsh-community/actions/runs/44454406621)）已通过 `resolve`、`linux-appimage`、`android-apk`、`linux-terminal` 与 `verify-signatures`（cosign 12 文件全验）；前版 `v0.2.2-rc.3`（[Run 43696414193](https://github.com/kamanager2012/dsh-community/actions/runs/43696414193)）与 `v0.2.2-rc.3-community.1`（[Run 44005955539](https://github.com/kamanager2012/dsh-community/actions/runs/44005955539)）亦通过 |
+| Release assets & signing | `[REAL]` | `v0.2.2-rc.5` Latest（`releaseId=450856726`，`release` [Run 44453540672](https://github.com/kamanager2012/dsh-community/actions/runs/44453540672)）与 `v0.2.2-rc.5-community.1` Pre-release（`releaseId=451263403`，`release` [Run 44515930058](https://github.com/kamanager2012/dsh-community/actions/runs/44515930058)）均已发布 12 个带 SHA-256 与 keyless cosign bundle 的资产（历史 `v0.2.2-rc.3` / `v0.2.2-rc.3-community.1` 同规） |
+| `artifact-smoke` | `[REAL]` | `v0.2.2-rc.5`（[Run 44454406621](https://github.com/kamanager2012/dsh-community/actions/runs/44454406621)）与 `v0.2.2-rc.5-community.1`（[Run 44516999116](https://github.com/kamanager2012/dsh-community/actions/runs/44516999116)）均已通过 `resolve`、`linux-appimage`、`android-apk`、`linux-terminal` 与 `verify-signatures`（cosign 12 文件全验）；前版 `v0.2.2-rc.3`（[Run 43696414193](https://github.com/kamanager2012/dsh-community/actions/runs/43696414193)）与 `v0.2.2-rc.3-community.1`（[Run 44005955539](https://github.com/kamanager2012/dsh-community/actions/runs/44005955539)）亦通过 |
 | Full user loop | `[PARTIAL]` | [Run 43729024796](https://github.com/kamanager2012/dsh-community/actions/runs/43729024796) 通过 `.github/workflows/user-loop-evidence.yml` 对 `v0.2.2-rc.3` 完成社区 TUI ↔ 官方 `dsh --profile headless` ↔ Linux AppImage 内置运行时（`official-dsh.tar`）三方跨端 Session 接续、AppImage Electron GUI（`AppRun`）Session 可见性/Runtime/Marketplace 验证与全部 4 项生命周期恢复；针对 `v0.2.2-rc.5` 发布包的增量实盘闭环及物理 Android 真机闭环待后续按需触发 |
 
 目标链路是：
@@ -88,4 +89,4 @@ Historical independent numbers: v0.1.2–v0.1.6 (not a user download)
 - [`dsh-community` current-release.json](https://github.com/kamanager2012/dsh-community/blob/main/docs/current-release.json)
 - 本仓 [`archive/deepseek-harness-suite/`](https://github.com/kamanager2012/dsh-community/tree/main/archive/deepseek-harness-suite)（已归档 Labs，不要安装）
 
-> **候选版本（未发布）**：下一社区预发布候选 `v0.2.2-rc.5-community.1`（基于官方 `@deepseek-ai/dsh@0.2.2-rc.5`，含精选插件目录与新手精选套装）尚未发布；在其签名与 `artifact-smoke` 验证完成前，Published Latest 仍为 `v0.2.2-rc.5`。
+> **最新社区预发布（Pre-release）**：[`v0.2.2-rc.5-community.1`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.5-community.1)（基于官方 `@deepseek-ai/dsh@0.2.2-rc.5`，含 18 款精选插件目录、Desktop 新手精选套装与 `dsh-marketplace starter`）已通过 `release.yml`（[Run 44515930058](https://github.com/kamanager2012/dsh-community/actions/runs/44515930058)）与 `artifact-smoke`（[Run 44516999116](https://github.com/kamanager2012/dsh-community/actions/runs/44516999116)）12 资产签发与校验；GitHub Published Latest 保持为 [`v0.2.2-rc.5`](https://github.com/kamanager2012/dsh-community/releases/latest)。
