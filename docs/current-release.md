@@ -32,7 +32,7 @@ Candidate Source and Published Latest may coincide after publication, but they a
 | GitHub Latest | [`v0.2.2-rc.3`](https://github.com/kamanager2012/dsh-community/releases/latest) |
 | Published release evidence | GitHub release ID `445732060`; published `2026-11-15T08:39:25Z`; primary AppImage + Android APK asset IDs/digests pinned in `current-release.json` |
 | Candidate Dual-Badge | `DeepSeek Harness Community v0.2.2-rc.5 [Official Core: @deepseek-ai/dsh@0.2.2-rc.5]` |
-| Latest tested | `0.2.2-rc.3` — consolidated local acceptance PASS on commit `12e343a` and replay PASS on commit `69f647c` (runtime-lock attested by CI [run 43661345685](https://github.com/kamanager2012/dsh-community/actions/runs/43661345685)); published by `release` [run 43696033054](https://github.com/kamanager2012/dsh-community/actions/runs/43696033054) |
+| Latest tested | `0.2.2-rc.5` — consolidated local acceptance PASS on commit `fc12127` (runtime-lock attested by CI [run 44438093968](https://github.com/kamanager2012/dsh-community/actions/runs/44438093968)); Published Latest remains `v0.2.2-rc.3` (published by `release` [run 43696033054](https://github.com/kamanager2012/dsh-community/actions/runs/43696033054)) |
 | Active Complementary endpoints (2 shipped + Android APK) | WSL/Linux Terminal, Linux AppImage, and signed Android `arm64-v8a` Remote Client APK (official `deepseek-harness` covers Win/macOS Desktop & Web) |
 | Active unpublished endpoint | Android `apps/android` `[UNVERIFIED]` for physical `arm64-v8a` handset telemetry (CI `x86_64` emulator E2EE acceptance `PASS`, signed APK on Latest download page) |
 | Retired from future releases | Windows Desktop (`DSH.Community.Setup.*.exe`), macOS Desktop (`dsh-community-*.dmg`) — last shipped in historical `v0.1.1-rc.2` |

@@ -34,15 +34,15 @@
     "note": "Exact 0.2.2-rc.5 Candidate Source on upgrade/dsh-0.2.2-rc.5 atop main (f344185495a9def1a60fc93eee76189a66ac14b1) with CI-generated Desktop npm runtime lock (run 44438093968), complete 328-package DSH-family overrides, reviewed lifecycle policy, and refreshed official contract snapshots."
   },
   "finalAcceptance": {
-    "status": "PENDING",
+    "status": "PASS",
     "version": "0.2.2-rc.5",
     "execution": "local-consolidated-acceptance",
-    "runHeadCommit": null,
-    "testFiles": null,
-    "tests": null,
+    "runHeadCommit": "fc12127280751ffa3f4843dcc84c472735600939",
+    "testFiles": "127 passed, 1 skipped (128)",
+    "tests": "707 passed, 1 skipped (708)",
     "runtimeDshEntries": 328,
     "marketplaceOffline": "9 plugins verified",
     "providerCalls": 0,
-    "disposition": "Pre-promotion 0.2.2-rc.5 ledger staged on upgrade/dsh-0.2.2-rc.5 pending consolidated local acceptance."
+    "disposition": "Pre-promotion consolidated acceptance PASS on commit fc12127280751ffa3f4843dcc84c472735600939; latest-tested promoted to 0.2.2-rc.5 while Published Latest remains v0.2.2-rc.3. Ready for clean push and PR workflow suite."
   }
 }
