@@ -1,7 +1,7 @@
 {
   "name": "dsh-community",
   "private": true,
-  "version": "0.2.2-rc.5",
+  "version": "0.2.2-rc.5-community.1",
   "license": "MIT",
   "description": "Community preview distribution around official DeepSeek Harness. Not an official client.",
   "homepage": "https://kamanager2012.github.io/dsh-community/",

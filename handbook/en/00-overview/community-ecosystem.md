@@ -132,3 +132,5 @@ Do not use “production-ready”, “fully secure”, or “100% compatible” 
 - [Community Labs handoff](../11-operations/community-labs-handoff.md)
 - [Release checklist](../../content/11-operations/release-checklist.md)
 - [Handbook repository guide](https://github.com/kamanager2012/dsh-community/blob/main/handbook/README.en.md)
+
+> **Candidate (unpublished)**: the next community pre-release candidate `v0.2.2-rc.5-community.1` (on official `@deepseek-ai/dsh@0.2.2-rc.5`, with the curated plugin catalog and Starter Pack) is unpublished; Published Latest stays `v0.2.2-rc.5` until it is signed and passes `artifact-smoke`.

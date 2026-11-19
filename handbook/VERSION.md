@@ -42,3 +42,5 @@ Community 发行版的版本规则见 [`dsh-community` version policy](https://g
 - [官方开发指南](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/development.md)
 
 仓库中的 `evidence/` 和 `labs/` 是维护者附录，不是版本兼容性的必要阅读路径。
+
+> **候选版本（未发布）**：下一社区预发布候选 `v0.2.2-rc.5-community.1`（基于官方 `@deepseek-ai/dsh@0.2.2-rc.5`，含精选插件目录与新手精选套装）尚未发布；在其签名与 `artifact-smoke` 验证完成前，Published Latest 仍为 `v0.2.2-rc.5`。
