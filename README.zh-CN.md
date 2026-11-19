@@ -4,12 +4,13 @@
 
 [![CI](https://github.com/kamanager2012/dsh-community/actions/workflows/ci.yml/badge.svg)](https://github.com/kamanager2012/dsh-community/actions/workflows/ci.yml)
 [![Published Latest](https://img.shields.io/github/v/release/kamanager2012/dsh-community?label=Published%20Latest)](https://github.com/kamanager2012/dsh-community/releases/latest)
+[![Community Preview](https://img.shields.io/badge/Community%20Preview-v0.2.2--rc.5--community.1-blue)](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.5-community.1)
 [![Official Core](https://img.shields.io/badge/Official%20Core-%40deepseek--ai%2Fdsh-blue)](https://github.com/deepseek-ai/deepseek-harness)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 > **DSH Community 是围绕官方 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的 Linux / WSL2 社区发行与兼容层**：提供 TUI、签名 Linux AppImage、官方 Runtime 精确锁定和可选 E2EE 多 Agent 远控。**不修改官方执行内核；只有 DSH 会话使用官方 `~/.dsh`，Claude Code / Codex / OpenCode 使用各自原生会话存储。**
 
-**官方内核对齐的最新正式版（Latest）：** [v0.2.2-rc.5](https://github.com/kamanager2012/dsh-community/releases/latest)（同步 `@deepseek-ai/dsh@0.2.2-rc.5`，已集成全部加固与 `artifact-smoke` [Run 44454406621](https://github.com/kamanager2012/dsh-community/actions/runs/44454406621) 12 文件校验）；前版历史预发布见 [v0.2.2-rc.3-community.1](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1)。
+**试用最新社区精选插件预发布：** [v0.2.2-rc.5-community.1（Pre-release）](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.5-community.1)（含 18 款精选插件目录与 Desktop/CLI 新手精选套装一键安装，`artifact-smoke` [Run 44516999116](https://github.com/kamanager2012/dsh-community/actions/runs/44516999116) 12 文件全检）；**官方内核对齐的 Latest：** [v0.2.2-rc.5](https://github.com/kamanager2012/dsh-community/releases/latest)（`artifact-smoke` [Run 44454406621](https://github.com/kamanager2012/dsh-community/actions/runs/44454406621)）。两条发布频道独立，前者不会覆盖 Latest。
 
 ## 选工具先看你的主要任务
 
@@ -44,19 +45,19 @@
 `scripts/install-linux.sh` 现已随 `v0.2.2-rc.5` 合入并随源码同步，需要 **Node.js 24.9+**（官方 `@deepseek-ai/dsh@0.2.2-rc.5` 声明 `engines.node >=24.9.0`；工作区最低 `22.15+`，CI 在 Node 22/24 双通）、**`pnpm`**、**`git`** 与 **`flock`**（util-linux；不是零依赖二进制安装）：
 
 ```sh
-# 推荐：固定安装器 Commit，检查脚本后再安装已发布的 Latest 源码 (v0.2.2-rc.5)
+# 推荐：固定安装器 Commit，检查脚本后再安装已发布的社区预览源码 (v0.2.2-rc.5-community.1)
 curl -fsSLo install-linux.sh \
   https://raw.githubusercontent.com/kamanager2012/dsh-community/afe0514e9da98174ac117e70d7e9fb30aa48de2b/scripts/install-linux.sh
 less install-linux.sh
 bash install-linux.sh \
-  --ref v0.2.2-rc.5 \
-  --expected-commit 0a8009d0462042764ad67e87208df791f1f6180b
+  --ref v0.2.2-rc.5-community.1 \
+  --expected-commit fe54d126b57a9dc3439ce22751cacfffa0a81ede
 
 # 仅开发用途：主动选择可变 main（不等于已签名 Release）
 # bash install-linux.sh --ref main
 ```
 
-> **来源验证边界：** 安装器脚本 Commit 与目标 Git Tag/SHA 分别固定；源码安装**不等于**已验签的 AppImage/APK。需验证发行包时，请从 [Published Latest (`v0.2.2-rc.5`)](https://github.com/kamanager2012/dsh-community/releases/latest) 获取对应 `.sha256`、`.sigstore.json` 并核验。
+> **来源验证边界：** 安装器脚本 Commit 与目标 Git Tag/SHA 分别固定；源码安装**不等于**已验签的 AppImage/APK。需验证发行包时，请从 [Community Pre-release (`v0.2.2-rc.5-community.1`)](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.5-community.1) 或 [Published Latest (`v0.2.2-rc.5`)](https://github.com/kamanager2012/dsh-community/releases/latest) 获取对应 `.sha256`、`.sigstore.json` 并核验。
 
 > **升级安全性：** 安装器先在临时目录完成源码校验和构建，成功后才切换 `$PREFIX/repo`；`flock` 拒绝并发安装，安装错误会尝试恢复旧版本。系统断电或 `SIGKILL` 等非正常中断不保证跨目录切换的绝对原子性。详见 [首次安装与失败恢复验收](docs/first-run-smoke.md)。
 
@@ -134,7 +135,7 @@ Cosign 无密钥验签与精确文件名见 [`docs/release.md#artifact-signing-k
 
 - **官方与社区共享同一个 `~/.dsh`，补齐上游缺失的三个互补社区端** — 官方上游提供唯一执行内核、Official Web 及 Windows / macOS Desktop（`win-x64`、`mac-arm64`、`mac-x64`）；本仓专注于上游未提供的 **3 个互补 Community endpoints**：**WSL/Linux 终端（TUI）**、**Linux 桌面 AppImage** 与 **Android Remote Client APK**（`dsh-community-*-android-arm64-v8a.apk` 已在 [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) 正式发布；已通过 CI `x86_64` 模拟器 E2EE 全链路验收，物理 `arm64-v8a` 真机遥测保持 `[UNVERIFIED]`）。
 - **多 Agent（Multi-Agent）端到端加密远程控制面（`packages/remote-adapter`）** — 支持用 Android 已签名预览 APK 或零安装浏览器 PWA（[`apps/remote-web`](apps/remote-web/)）经 `Noise_IK_25519_ChaChaPoly_BLAKE2b`、局域网 mDNS、WebRTC P2P 或自部署盲中继（[`deploy/relay/`](deploy/relay/)）远程操控 **DSH、Claude Code、Codex CLI 与 OpenCode ACP**（默认仅授 `observe,prompt`，`approve` 须宿主机显式授予），已通过无头 Chromium + 模拟 Agent 夹具 E2EE 集成测试（真实外部 CLI 跨版本多场景仍在推进），并支持旧版内核插件兼容警告门禁。
-- **供应链可核验的 12 文件发行与跨端真包门禁** — `v0.2.2-rc.5`（Commit `0a8009d`）已发布为 GitHub **Published Latest**（`release` [Run 44453540672](https://github.com/kamanager2012/dsh-community/actions/runs/44453540672)），每次 Release 上传 **3 个核心资产**（Linux `.AppImage`、Android `arm64-v8a` `.apk`、官方运行时 CycloneDX SBOM）+ **3 个 `.sha256`** + **6 个 Keyless Cosign `.sigstore.json`**（共 12 个发布文件，不含源码自动归档），并通过 `artifact-smoke` [Run 44454406621](https://github.com/kamanager2012/dsh-community/actions/runs/44454406621) 12 资产全检；此前的加固与历史预发布 [`v0.2.2-rc.3-community.1`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1)（[Run 44005955539](https://github.com/kamanager2012/dsh-community/actions/runs/44005955539)）及 `v0.2.2-rc.3` 已合并并由 `v0.2.2-rc.5` 替代。
+- **供应链可核验的 12 文件发行与精选插件生态** — `v0.2.2-rc.5`（Commit `0a8009d`）为 GitHub **Published Latest**（`release` [Run 44453540672](https://github.com/kamanager2012/dsh-community/actions/runs/44453540672)，`artifact-smoke` [Run 44454406621](https://github.com/kamanager2012/dsh-community/actions/runs/44454406621)），每次 Release 上传 **3 个核心资产**（Linux `.AppImage`、Android `arm64-v8a` `.apk`、官方运行时 CycloneDX SBOM）+ **3 个 `.sha256`** + **6 个 Keyless Cosign `.sigstore.json`**（共 12 个发布文件，不含源码自动归档）；最新社区 **Pre-release** [`v0.2.2-rc.5-community.1`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.5-community.1)（Commit `fe54d12`，[Run 44516999116](https://github.com/kamanager2012/dsh-community/actions/runs/44516999116) 12 文件全检通过，不覆盖 Latest）进一步带来 **18 款精选插件目录**、**Desktop 新手精选套装（Starter Pack）一键勾选安装**、`dsh-marketplace starter | install --recommended` 与 6,000+ 公共索引接入入口。
 
 ---
 

@@ -67,14 +67,14 @@
     },
     "candidatePrerelease": {
       "status": "PASS",
-      "tag": "v0.2.2-rc.3-community.1",
-      "releaseId": 448012716,
-      "publishedAt": "2026-11-17T02:43:22Z",
-      "url": "https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1",
-      "releaseRun": "https://github.com/kamanager2012/dsh-community/actions/runs/44004421253",
-      "artifactSmokeRun": "https://github.com/kamanager2012/dsh-community/actions/runs/44005955539",
+      "tag": "v0.2.2-rc.5-community.1",
+      "releaseId": 451263403,
+      "publishedAt": "2026-11-19T11:39:41Z",
+      "url": "https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.5-community.1",
+      "releaseRun": "https://github.com/kamanager2012/dsh-community/actions/runs/44515930058",
+      "artifactSmokeRun": "https://github.com/kamanager2012/dsh-community/actions/runs/44516999116",
       "assetCount": 12,
-      "covers": "GitHub Pre-release (Published Latest stays v0.2.2-rc.3): release.yml 6/6 jobs + artifact-smoke 5/5 jobs (keyless Cosign 12 assets, Linux AppImage SHA256/extract, Android arm64-v8a APK SHA256/apksigner/purity, Linux Terminal smoke)"
+      "covers": "GitHub Pre-release (Published Latest stays v0.2.2-rc.5): release.yml 6/6 jobs + artifact-smoke 5/5 jobs (keyless Cosign 12 assets, Linux AppImage SHA256/extract, Android arm64-v8a APK SHA256/apksigner/purity, Linux Terminal smoke)"
     },
     "userLoop": {
       "status": "PASS",

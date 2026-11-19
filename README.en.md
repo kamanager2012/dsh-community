@@ -4,12 +4,13 @@
 
 [![CI](https://github.com/kamanager2012/dsh-community/actions/workflows/ci.yml/badge.svg)](https://github.com/kamanager2012/dsh-community/actions/workflows/ci.yml)
 [![Published Latest](https://img.shields.io/github/v/release/kamanager2012/dsh-community?label=Published%20Latest)](https://github.com/kamanager2012/dsh-community/releases/latest)
+[![Community Preview](https://img.shields.io/badge/Community%20Preview-v0.2.2--rc.5--community.1-blue)](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.5-community.1)
 [![Official Core](https://img.shields.io/badge/Official%20Core-%40deepseek--ai%2Fdsh-blue)](https://github.com/deepseek-ai/deepseek-harness)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 > **DSH Community is the Linux / WSL2 complementary distribution and compatibility layer for the official [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).** We ship a TUI, signed Linux AppImage, exact upstream Runtime pin and optional E2EE multi-agent remote. **We do not fork the official kernel. Only DSH sessions live in official `~/.dsh`; Claude Code, Codex and OpenCode keep their native session stores.**
 
-**Official-core-mirrored Latest:** [v0.2.2-rc.5](https://github.com/kamanager2012/dsh-community/releases/latest) (synced with `@deepseek-ai/dsh@0.2.2-rc.5`, including 12-asset `artifact-smoke` [Run 44454406621](https://github.com/kamanager2012/dsh-community/actions/runs/44454406621)); superseded historical pre-release: [v0.2.2-rc.3-community.1](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1).
+**Try the latest Community updates:** [v0.2.2-rc.5-community.1 (Pre-release)](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.5-community.1) (curated 18-plugin catalog, Desktop Starter Pack batch install & `dsh-marketplace starter`; 12-asset `artifact-smoke` [Run 44516999116](https://github.com/kamanager2012/dsh-community/actions/runs/44516999116)). **Official-core-mirrored Latest:** [v0.2.2-rc.5](https://github.com/kamanager2012/dsh-community/releases/latest) (`artifact-smoke` [Run 44454406621](https://github.com/kamanager2012/dsh-community/actions/runs/44454406621)). These are separate release channels; the pre-release does not replace Latest.
 
 ## Choose by the job, not a feature checklist
 
@@ -49,14 +50,14 @@ curl -fsSLo install-linux.sh \
   https://raw.githubusercontent.com/kamanager2012/dsh-community/afe0514e9da98174ac117e70d7e9fb30aa48de2b/scripts/install-linux.sh
 less install-linux.sh
 bash install-linux.sh \
-  --ref v0.2.2-rc.5 \
-  --expected-commit 0a8009d0462042764ad67e87208df791f1f6180b
+  --ref v0.2.2-rc.5-community.1 \
+  --expected-commit fe54d126b57a9dc3439ce22751cacfffa0a81ede
 
 # Development only: explicitly opt into mutable main (not a signed Release)
 # bash install-linux.sh --ref main
 ```
 
-> **Provenance boundary:** This example pins the installer script commit and the target Git tag/SHA separately. A source installer is **not** a signed AppImage/APK. To verify the binary, download [Published Latest (`v0.2.2-rc.5`)](https://github.com/kamanager2012/dsh-community/releases/latest) with its `.sha256` and `.sigstore.json` files.
+> **Provenance boundary:** This example pins the installer script commit and the target Git tag/SHA separately. A source installer is **not** a signed AppImage/APK. To verify the binary, download [Community Pre-release (`v0.2.2-rc.5-community.1`)](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.5-community.1) or [Published Latest (`v0.2.2-rc.5`)](https://github.com/kamanager2012/dsh-community/releases/latest) with its `.sha256` and `.sigstore.json` files.
 
 > **Upgrade safety:** source validation and build complete in a sibling staging directory before activating `$PREFIX/repo`; `flock` rejects concurrent installers and handled errors restore the prior CLI. Power loss or `SIGKILL` across directory renames is **not** guaranteed crash-atomic. See [first-run and upgrade acceptance](docs/first-run-smoke.md).
 
@@ -132,7 +133,7 @@ Cosign keyless verification and exact release filenames: [`docs/release.md#artif
 
 - **Shared `~/.dsh` Across Official & Three Complementary Community Endpoints** — Official `deepseek-ai/deepseek-harness` owns the execution kernel, Web UI, and Windows/macOS Desktop (`win-x64`, `mac-arm64`, `mac-x64`). `dsh-community` delivers the **three complementary community endpoints** absent upstream: **WSL/Linux Terminal**, **Linux Desktop AppImage**, and **Android Remote Client APK** (`dsh-community-*-android-arm64-v8a.apk` shipped in [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest); CI `x86_64` emulator E2EE verified, physical `arm64-v8a` handset telemetry `[UNVERIFIED]`).
 - **Multi-Agent E2EE Remote Control Plane (`packages/remote-adapter`)** — Steer **DSH, Claude Code, Codex CLI, and OpenCode ACP** from the zero-install Browser PWA ([`apps/remote-web`](apps/remote-web/)) or signed Android preview APK over `Noise_IK_25519_ChaChaPoly_BLAKE2b`, LAN mDNS, WebRTC P2P, or self-hosted Blind Relay ([`deploy/relay/`](deploy/relay/)) — with least-privilege default `observe,prompt` pairing (`approve` granted separately). Validated end-to-end in headless Chromium against **simulated agent fixtures** for Noise IK pairing, `tool_use` approval, and read-only Git diff inspection (broad live-CLI matrix coverage remains ongoing), plus explicit compatibility warnings for legacy `0.1.1-rc.2` plugins.
-- **Supply-Chain Verified Releases (12 Uploaded Assets)** — `v0.2.2-rc.5` (commit `0a8009d`) is now **Published Latest** (`release` [Run 44453540672](https://github.com/kamanager2012/dsh-community/actions/runs/44453540672)), shipping 3 primary artifacts (Linux `.AppImage`, Android `arm64-v8a` `.apk`, official-runtime CycloneDX SBOM) + 3 `.sha256` files + 6 keyless Cosign `.sigstore.json` bundles verified across all 12 assets by `artifact-smoke` [Run 44454406621](https://github.com/kamanager2012/dsh-community/actions/runs/44454406621); all fixes from historical pre-release [`v0.2.2-rc.3-community.1`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1) (`artifact-smoke` [Run 44005955539](https://github.com/kamanager2012/dsh-community/actions/runs/44005955539)) and `v0.2.2-rc.3` are incorporated and superseded by `v0.2.2-rc.5`.
+- **Supply-Chain Verified Releases (12 Uploaded Assets) & Curated Starter Pack** — `v0.2.2-rc.5` (commit `0a8009d`) stays **Published Latest** (`release` [Run 44453540672](https://github.com/kamanager2012/dsh-community/actions/runs/44453540672), `artifact-smoke` [Run 44454406621](https://github.com/kamanager2012/dsh-community/actions/runs/44454406621)), shipping 3 primary artifacts (Linux `.AppImage`, Android `arm64-v8a` `.apk`, official-runtime CycloneDX SBOM) + 3 `.sha256` files + 6 keyless Cosign `.sigstore.json` bundles; the latest signed **Pre-release** [`v0.2.2-rc.5-community.1`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.5-community.1) (commit `fe54d12`, `artifact-smoke` [Run 44516999116](https://github.com/kamanager2012/dsh-community/actions/runs/44516999116) PASS across all 12 assets without displacing Latest) adds the **curated 18-plugin catalog**, **Desktop Marketplace Starter Pack checkbox install**, `dsh-marketplace starter | install --recommended`, and one-click copy for the 6,000+ open community index.
 
 ---
 

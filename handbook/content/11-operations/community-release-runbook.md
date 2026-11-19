@@ -110,4 +110,4 @@ Known limits:
 Next review:
 ```
 
-> **候选版本（未发布）**：下一社区预发布候选 `v0.2.2-rc.5-community.1`（基于官方 `@deepseek-ai/dsh@0.2.2-rc.5`，含精选插件目录与新手精选套装）尚未发布；在其签名与 `artifact-smoke` 验证完成前，Published Latest 仍为 `v0.2.2-rc.5`。
+> **最新社区预发布（Pre-release）**：[`v0.2.2-rc.5-community.1`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.5-community.1)（基于官方 `@deepseek-ai/dsh@0.2.2-rc.5`，含 18 款精选插件目录、Desktop 新手精选套装与 `dsh-marketplace starter`）已通过 `release.yml`（[Run 44515930058](https://github.com/kamanager2012/dsh-community/actions/runs/44515930058)）与 `artifact-smoke`（[Run 44516999116](https://github.com/kamanager2012/dsh-community/actions/runs/44516999116)）12 资产签发与校验；GitHub Published Latest 保持为 [`v0.2.2-rc.5`](https://github.com/kamanager2012/dsh-community/releases/latest)。

@@ -37,7 +37,7 @@ describe('release channel onboarding accuracy', () => {
   it('pins installer implementation separately from the target git checkout', () => {
     const targetRef = hasNewerPreview ? preview.tag : facts.communityProduct.githubLatestTag
     const expectedCommit = hasNewerPreview
-      ? '13cc4c382ec36eeeede443c78687b117285c24cc'
+      ? 'fe54d126b57a9dc3439ce22751cacfffa0a81ede'
       : '0a8009d0462042764ad67e87208df791f1f6180b'
     for (const name of readmes) {
       const body = read(name)

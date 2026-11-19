@@ -108,4 +108,4 @@ Known limits:
 Next review:
 ```
 
-> **Candidate (unpublished)**: the next community pre-release candidate `v0.2.2-rc.5-community.1` (on official `@deepseek-ai/dsh@0.2.2-rc.5`, with the curated plugin catalog and Starter Pack) is unpublished; Published Latest stays `v0.2.2-rc.5` until it is signed and passes `artifact-smoke`.
+> **Latest Community Pre-release**: [`v0.2.2-rc.5-community.1`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.5-community.1) (on official `@deepseek-ai/dsh@0.2.2-rc.5`, shipping the curated 18-plugin catalog, Desktop Starter Pack, and `dsh-marketplace starter`) is signed and verified via `release.yml` ([Run 44515930058](https://github.com/kamanager2012/dsh-community/actions/runs/44515930058)) and `artifact-smoke` ([Run 44516999116](https://github.com/kamanager2012/dsh-community/actions/runs/44516999116)) across all 12 assets; Published Latest stays [`v0.2.2-rc.5`](https://github.com/kamanager2012/dsh-community/releases/latest).

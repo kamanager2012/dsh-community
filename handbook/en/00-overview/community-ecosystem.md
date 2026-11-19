@@ -99,11 +99,11 @@ per plugin (`testedDsh` is `0.2.2-rc.5` for 15/18 plugins, including 6 Starter P
 Marketplace CLI provides `list`, `starter`, `search`, `info`, and `install [--recommended]`; the Desktop Marketplace also offers checkbox Starter Pack batch install and one-click copy for the 6,000+ open community index while keeping installation on the official chain.
 
 Current release boundary: GitHub Actions `artifact-smoke` runs
-[43696414193](https://github.com/kamanager2012/dsh-community/actions/runs/43696414193) (`v0.2.2-rc.3` Latest) and
-[44005955539](https://github.com/kamanager2012/dsh-community/actions/runs/44005955539) (`v0.2.2-rc.3-community.1` Pre-release)
+[44454406621](https://github.com/kamanager2012/dsh-community/actions/runs/44454406621) (`v0.2.2-rc.5` Latest) and
+[44516999116](https://github.com/kamanager2012/dsh-community/actions/runs/44516999116) (`v0.2.2-rc.5-community.1` Pre-release)
 downloaded their exact Release assets and passed `resolve`,
 `linux-appimage`, `android-apk`, `linux-terminal`, and `verify-signatures` (keyless cosign on all 12
-assets); the WSL/Linux live model user loop (`new -> answer -> resume -> answer`) and cross-surface recovery passed in runs
+assets); the WSL/Linux live model user loop (`new -> answer -> resume -> answer`) and cross-surface recovery passed against `v0.2.2-rc.3` in runs
 [43688556931](https://github.com/kamanager2012/dsh-community/actions/runs/43688556931) and
 [43729024796](https://github.com/kamanager2012/dsh-community/actions/runs/43729024796) (`[REAL]`), while physical `arm64-v8a` Android handset telemetry remains `[UNVERIFIED]`.
 
@@ -133,4 +133,4 @@ Do not use “production-ready”, “fully secure”, or “100% compatible” 
 - [Release checklist](../../content/11-operations/release-checklist.md)
 - [Handbook repository guide](https://github.com/kamanager2012/dsh-community/blob/main/handbook/README.en.md)
 
-> **Candidate (unpublished)**: the next community pre-release candidate `v0.2.2-rc.5-community.1` (on official `@deepseek-ai/dsh@0.2.2-rc.5`, with the curated plugin catalog and Starter Pack) is unpublished; Published Latest stays `v0.2.2-rc.5` until it is signed and passes `artifact-smoke`.
+> **Latest Community Pre-release**: [`v0.2.2-rc.5-community.1`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.5-community.1) (on official `@deepseek-ai/dsh@0.2.2-rc.5`, shipping the curated 18-plugin catalog, Desktop Starter Pack, and `dsh-marketplace starter`) is signed and verified via `release.yml` ([Run 44515930058](https://github.com/kamanager2012/dsh-community/actions/runs/44515930058)) and `artifact-smoke` ([Run 44516999116](https://github.com/kamanager2012/dsh-community/actions/runs/44516999116)) across all 12 assets; Published Latest stays [`v0.2.2-rc.5`](https://github.com/kamanager2012/dsh-community/releases/latest).
