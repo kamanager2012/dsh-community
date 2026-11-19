@@ -58,3 +58,8 @@ export function searchPlugins(plugins: ClassifiedPlugin[], query: string): Class
     || item.plugin.description.toLowerCase().includes(q),
   )
 }
+
+/** Starter pack: plugins flagged `recommended: true` whose latest version passed the current testedDsh line. */
+export function selectStarterPackPlugins(plugins: readonly ClassifiedPlugin[]): ClassifiedPlugin[] {
+  return plugins.filter(item => item.plugin.recommended === true && item.latest.status === 'tested')
+}

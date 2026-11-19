@@ -56,9 +56,11 @@ import {
   parseMarketplaceCatalog,
   parseMarketplaceSnapshot,
   parsePluginActionRequest,
+  parsePluginBatchInstallRequest,
   pluginActionArgv,
   type MarketplaceSnapshot,
   type PluginAction,
+  type PluginBatchInstallRequest,
 } from './marketplace.ts'
 import {
   renderAboutPage,
@@ -424,6 +426,85 @@ function installedPluginNames(): readonly string[] {
   return parseInstalledPluginNames(readJsonFile(profilePackage))
 }
 
+function execPluginCliAction(name: string, action: PluginAction): Promise<{ readonly ok: boolean; readonly log: string }> {
+  return new Promise((resolve) => {
+    const paths = launchPaths()
+    const install = resolveOfficialDsh({ from: import.meta.url })
+    const env = paths.electronRunAsNode
+      ? { ...paths.env, ELECTRON_RUN_AS_NODE: '1' }
+      : paths.env
+    const nodePrefix = paths.electronRunAsNode ? ['--expose-internals'] : []
+    const child = spawn(
+      paths.nodeExecutable,
+      [...nodePrefix, install.binPath, ...pluginActionArgv({ profile: MARKETPLACE_PROFILE, action, name })],
+      {
+        cwd: paths.cwd,
+        env,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true,
+      },
+    )
+    pluginChild = child
+    const stdoutDecoder = new StringDecoder('utf8')
+    const stderrDecoder = new StringDecoder('utf8')
+    let logOutput = ''
+    let truncated = false
+    let timedOut = false
+    let settled = false
+    let killTimer: ReturnType<typeof setTimeout> | undefined
+
+    const appendLog = (text: string): void => {
+      if (text === '' || truncated) return
+      const remaining = MAX_PLUGIN_LOG_CHARS - logOutput.length
+      if (text.length <= remaining) {
+        logOutput += text
+      } else {
+        logOutput += `${text.slice(0, remaining)}\n... (log truncated at 64 KiB)`
+        truncated = true
+      }
+    }
+
+    child.stdout?.on('data', (chunk: Buffer | string) => {
+      appendLog(typeof chunk === 'string' ? chunk : stdoutDecoder.write(chunk))
+    })
+    child.stderr?.on('data', (chunk: Buffer | string) => {
+      appendLog(typeof chunk === 'string' ? chunk : stderrDecoder.write(chunk))
+    })
+
+    const timeoutTimer = setTimeout(() => {
+      timedOut = true
+      child.kill('SIGTERM')
+      killTimer = setTimeout(() => {
+        if (!settled) child.kill('SIGKILL')
+      }, 3_000)
+      killTimer.unref()
+    }, PLUGIN_ACTION_TIMEOUT_MS)
+    timeoutTimer.unref()
+
+    const finish = (ok: boolean, extra = ''): void => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeoutTimer)
+      if (killTimer !== undefined) clearTimeout(killTimer)
+      appendLog(stdoutDecoder.end())
+      appendLog(stderrDecoder.end())
+      const fullLog = extra === '' ? logOutput : logOutput === '' ? extra : `${logOutput}\n${extra}`
+      pluginChild = undefined
+      resolve({ ok, log: fullLog })
+    }
+
+    child.on('error', (error) => finish(false, error.message))
+    child.on('exit', (code, signal) => {
+      const suffix = timedOut
+        ? '执行超时，已终止子进程'
+        : signal === null
+          ? ''
+          : `终止于 ${signal}`
+      finish(code === 0 && !timedOut, suffix)
+    })
+  })
+}
+
 async function runPluginAction(request: { name: string; action: PluginAction }): Promise<void> {
   if (pluginTask !== undefined || quitting) return
   if (!isValidNpmPackageName(request.name)) return
@@ -432,89 +513,76 @@ async function runPluginAction(request: { name: string; action: PluginAction }):
   pluginTask = { plugin: request.name, action: request.action }
   pluginResult = undefined
   await showHtml(renderMarketplacePage(marketplaceModel()), 'marketplace')
-  const paths = launchPaths()
-  const install = resolveOfficialDsh({ from: import.meta.url })
-  const env = paths.electronRunAsNode
-    ? { ...paths.env, ELECTRON_RUN_AS_NODE: '1' }
-    : paths.env
-  const nodePrefix = paths.electronRunAsNode ? ['--expose-internals'] : []
-  const child = spawn(
-    paths.nodeExecutable,
-    [...nodePrefix, install.binPath, ...pluginActionArgv({ profile: MARKETPLACE_PROFILE, action: request.action, name: request.name })],
-    {
-      cwd: paths.cwd,
-      env,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      windowsHide: true,
-    },
-  )
-  pluginChild = child
-  const stdoutDecoder = new StringDecoder('utf8')
-  const stderrDecoder = new StringDecoder('utf8')
-  let logOutput = ''
-  let truncated = false
-  let timedOut = false
-  let settled = false
-  let killTimer: ReturnType<typeof setTimeout> | undefined
-
-  const appendLog = (text: string): void => {
-    if (text === '' || truncated) return
-    const remaining = MAX_PLUGIN_LOG_CHARS - logOutput.length
-    if (text.length <= remaining) {
-      logOutput += text
-    } else {
-      logOutput += `${text.slice(0, remaining)}\n... (log truncated at 64 KiB)`
-      truncated = true
-    }
+  const outcome = await execPluginCliAction(request.name, request.action)
+  pluginResult = { plugin: request.name, action: request.action, ok: outcome.ok, log: outcome.log }
+  pluginTask = undefined
+  if (shouldApplyAsyncPageUpdate({
+    quitting,
+    showingOfficial,
+    currentPage: currentShellPage,
+    expectedPage: 'marketplace',
+  })) {
+    void showHtml(renderMarketplacePage(marketplaceModel()), 'marketplace')
   }
+}
 
-  child.stdout?.on('data', (chunk: Buffer | string) => {
-    appendLog(typeof chunk === 'string' ? chunk : stdoutDecoder.write(chunk))
-  })
-  child.stderr?.on('data', (chunk: Buffer | string) => {
-    appendLog(typeof chunk === 'string' ? chunk : stderrDecoder.write(chunk))
-  })
+async function runPluginBatchInstall(request: PluginBatchInstallRequest): Promise<void> {
+  if (pluginTask !== undefined || quitting) return
+  const catalogNames = new Set((marketplace?.catalog?.plugins ?? []).map((plugin) => plugin.name))
+  const installedSet = new Set(installedPluginNames())
+  const queue = request.names.filter((name) => catalogNames.has(name) && !installedSet.has(name))
+  if (queue.length === 0) return
 
-  const timeoutTimer = setTimeout(() => {
-    timedOut = true
-    child.kill('SIGTERM')
-    killTimer = setTimeout(() => {
-      if (!settled) child.kill('SIGKILL')
-    }, 3_000)
-    killTimer.unref()
-  }, PLUGIN_ACTION_TIMEOUT_MS)
-  timeoutTimer.unref()
+  pluginResult = undefined
+  const succeeded: string[] = []
+  const failed: Array<{ name: string; log: string }> = []
 
-  const finish = (ok: boolean, extra = ''): void => {
-    if (settled) return
-    settled = true
-    clearTimeout(timeoutTimer)
-    if (killTimer !== undefined) clearTimeout(killTimer)
-    appendLog(stdoutDecoder.end())
-    appendLog(stderrDecoder.end())
-    const fullLog = extra === '' ? logOutput : logOutput === '' ? extra : `${logOutput}\n${extra}`
-    pluginResult = { plugin: request.name, action: request.action, ok, log: fullLog }
-    pluginTask = undefined
-    pluginChild = undefined
+  for (let i = 0; i < queue.length; i += 1) {
+    if (quitting) break
+    const name = queue[i]!
+    pluginTask = { plugin: `(${String(i + 1)}/${String(queue.length)}) ${name}`, action: 'install' }
     if (shouldApplyAsyncPageUpdate({
       quitting,
       showingOfficial,
       currentPage: currentShellPage,
       expectedPage: 'marketplace',
     })) {
-      void showHtml(renderMarketplacePage(marketplaceModel()), 'marketplace')
+      await showHtml(renderMarketplacePage(marketplaceModel()), 'marketplace')
+    }
+    const outcome = await execPluginCliAction(name, 'install')
+    if (outcome.ok) {
+      succeeded.push(name)
+    } else {
+      failed.push({ name, log: outcome.log })
     }
   }
 
-  child.on('error', (error) => finish(false, error.message))
-  child.on('exit', (code, signal) => {
-    const suffix = timedOut
-      ? '执行超时，已终止子进程'
-      : signal === null
-        ? ''
-        : `终止于 ${signal}`
-    finish(code === 0 && !timedOut, suffix)
-  })
+  pluginTask = undefined
+  if (failed.length === 0) {
+    pluginResult = {
+      plugin: `精选套装（${succeeded.join(', ')}）`,
+      action: 'install',
+      ok: true,
+      log: '',
+    }
+  } else {
+    const failedSummary = failed.map((item) => `--- ${item.name} ---\n${item.log}`).join('\n\n')
+    const okNote = succeeded.length > 0 ? `已成功安装：${succeeded.join(', ')}\n\n` : ''
+    pluginResult = {
+      plugin: `精选套装（成功 ${String(succeeded.length)}/${String(queue.length)}，失败 ${failed.map((f) => f.name).join(', ')}）`,
+      action: 'install',
+      ok: false,
+      log: `${okNote}${failedSummary}`,
+    }
+  }
+  if (shouldApplyAsyncPageUpdate({
+    quitting,
+    showingOfficial,
+    currentPage: currentShellPage,
+    expectedPage: 'marketplace',
+  })) {
+    void showHtml(renderMarketplacePage(marketplaceModel()), 'marketplace')
+  }
 }
 
 async function fetchLiveMarketplace(): Promise<
@@ -1024,6 +1092,12 @@ function bindIpc(): void {
     const request = parsePluginActionRequest(raw)
     if (request === undefined) return
     await runPluginAction(request)
+  })
+  ipcMain.handle(DESKTOP_IPC.pluginBatchInstall, async (event, raw: unknown) => {
+    assertAuthorizedSender(event)
+    const request = parsePluginBatchInstallRequest(raw)
+    if (request === undefined) return
+    await runPluginBatchInstall(request)
   })
   ipcMain.handle(DESKTOP_IPC.showSettings, async (event) => {
     assertAuthorizedSender(event)

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-11-19T02:35:00Z",
+  "updatedAt": "2026-11-19T05:00:00Z",
   "plugins": [
     {
       "name": "@deepseek-harness-tui/dsh-tui",
@@ -10,10 +10,10 @@
       "category": "ui",
       "versions": [
         {
-          "version": "0.20.1",
-          "testedDsh": "0.2.2-rc.3",
-          "notes": "仅旧版 0.2.2-rc.3 通过合成验证；2026-11-19 实测 @deepseek-ai/dsh@0.2.2-rc.5 因 peerDependencies 上限为 0.2.2-rc.3 拒绝安装",
-          "integrity": "sha512-agtlvmZM8xUnpitwOB/fPb/410IDzY58qIn5WSk3qAKqnGy6WxRbIzomB7M+CsfK7jbqvoA15Zhel8rkKYK6LA==",
+          "version": "0.20.2",
+          "testedDsh": "0.2.2-rc.5",
+          "notes": "社区验证线 0.2.2-rc.5:dsh plugin add 安装并 --dump-config 合成通过",
+          "integrity": "sha512-IREY2vEdz5cdRriiSHjCysOf55u/eRcnrXEarQIn32t+P4fxDZRfixhIbxydij1tUDIZ03A/2Su59xFW3j6IDA==",
           "security": {
             "risk": "high",
             "requiresConfirmation": true,
@@ -24,7 +24,120 @@
             "processExecution": "原生 subagent、会话 fork 由官方能力驱动;浏览器/computer-use 扩展可代表用户执行页面操作,是本条目风险的主要来源之一",
             "persistence": "`~/.dsh-tui`(固定会话、其他 UI 偏好)",
             "manualReviewStatus": "partial",
-            "manualReviewNote": "compose 验证通过(0.2.2-rc.3;2026-11-19 实测 0.2.2-rc.5 因 peer 上限 0.2.2-rc.3 被官方安装器拒绝);高风险判定直接来自作者 README 自述的权限边界——dsh-TUI 不实现独立沙箱,复用当前 DSH profile 的 file/shell/sandbox/approval 策略,Windows 目前没有对应的沙箱后端,组合会退回 danger-full-access 且不弹审批。作者建议在含敏感凭证或不可信仓库的环境启动前先检查 profile 配置;浏览器/computer-use 扩展未逐项独立核实",
+            "manualReviewNote": "compose 验证通过(0.2.2-rc.5);高风险判定直接来自作者 README 自述的权限边界——dsh-TUI 不实现独立沙箱,复用当前 DSH profile 的 file/shell/sandbox/approval 策略,Windows 目前没有对应的沙箱后端,组合会退回 danger-full-access 且不弹审批。作者建议在含敏感凭证或不可信仓库的环境启动前先检查 profile 配置;浏览器/computer-use 扩展未逐项独立核实",
+            "lastReviewedAt": "2026-11-19"
+          }
+        }
+      ]
+    },
+    {
+      "name": "billion-context",
+      "description": "超长会话上下文压缩插件:在较小上下文窗口内维持长周期单会话历史并显著节省 Token",
+      "author": "ranxianglei",
+      "repo": "https://github.com/ranxianglei/billion-context",
+      "category": "tool",
+      "versions": [
+        {
+          "version": "0.1.216",
+          "testedDsh": "0.2.2-rc.5",
+          "notes": "社区验证线 0.2.2-rc.5:dsh plugin add 安装并 --dump-config 合成通过",
+          "integrity": "sha512-98Q5eSqk0LyemCJ45OrYmZvEd0qpzBjLokthZlQ4yA7yvgUlzuM7fp6iq9dPAJ4N4vaplnvZeld0JxM4S7Ti1A==",
+          "security": {
+            "risk": "medium",
+            "requiresConfirmation": true,
+            "network": "随当前 DSH 会话模型调用路径完成摘要压缩,无独立遥测端点声明",
+            "dataEgress": "压缩摘要请求走用户已配置的模型 Provider,无额外第三方数据外传声明",
+            "credentials": "复用 DSH 当前配置的模型接口,不新增独立密钥存储",
+            "filesystem": "在本机维护压缩后的上下文索引与历史归档文件",
+            "processExecution": "无独立外部子进程声明;会改写/压缩发送给模型的历史上下文视图",
+            "persistence": "持久化会话压缩归档以便长周期会话回溯",
+            "manualReviewStatus": "partial",
+            "manualReviewNote": "compose 验证通过(0.2.2-rc.5);中风险来自对模型输入上下文的自动压缩与改写以及本地历史归档存储,未做逐行代码级安全审计",
+            "lastReviewedAt": "2026-11-19"
+          }
+        }
+      ]
+    },
+    {
+      "name": "dsh-api-dashboard",
+      "description": "多平台 API 余额与用量看板:在 Web GUI 输入框下方实时显示各模型平台余额、本会话估算消耗与子代理明细",
+      "author": "133563825as-ai",
+      "repo": "https://github.com/133563825as-ai/dsh-api-dashboard",
+      "category": "ui",
+      "versions": [
+        {
+          "version": "1.7.2",
+          "testedDsh": "0.2.2-rc.5",
+          "notes": "社区验证线 0.2.2-rc.5:dsh plugin add 安装并 --dump-config 合成通过",
+          "integrity": "sha512-D7r2UlBY5BbOUIGsBlXOAUQooysGGrOPpD9HWCd8aYfeRHl941F5dbS+FiyKKbj8tFUELyqUZsAy/JIQU81o5Q==",
+          "security": {
+            "risk": "medium",
+            "requiresConfirmation": true,
+            "network": "按用户配置向 DeepSeek / GLM / Kimi / OpenRouter 等对应模型服务商的官方余额查询接口发 HTTPS 请求",
+            "dataEgress": "仅向用户已启用的对应模型服务商发送账户余额查询请求,不向无关第三方回传对话正文",
+            "credentials": "读取用户为余额查询配置的各平台 API Key(或复用 DSH 已配置凭据),安装前需确认授权边界",
+            "filesystem": "在 DSH 设置或本地状态中保存阈值预警与展示偏好",
+            "processExecution": "无",
+            "persistence": "保存阈值配置与看板偏好",
+            "manualReviewStatus": "partial",
+            "manualReviewNote": "compose 验证通过(0.2.2-rc.5);中风险因插件需使用模型平台 API Key 发起余额查询请求,未做独立代码级安全审计",
+            "lastReviewedAt": "2026-11-19"
+          }
+        }
+      ]
+    },
+    {
+      "name": "dsh-better-sidebar",
+      "description": "开放右侧 IDE 工作台底座:内置文件树渲染/编辑、终端、Git、侧边对话与子代理页面,支持第三方注册侧栏页",
+      "author": "omdsh-dev",
+      "repo": "https://github.com/omdsh-dev/DSH-better-sidebar",
+      "category": "ui",
+      "recommended": true,
+      "versions": [
+        {
+          "version": "0.32.1",
+          "testedDsh": "0.2.2-rc.5",
+          "notes": "社区验证线 0.2.2-rc.5:dsh plugin add 安装并 --dump-config 合成通过",
+          "integrity": "sha512-UcIEAkLuZXz0SkNDwMtycCoO59yCasowG6DqhxkG+jAjQfofF0BbXIOctfjqsU8WyaP6XoSvi4LgMFhEfinBsw==",
+          "security": {
+            "risk": "medium",
+            "requiresConfirmation": true,
+            "network": "同源挂载在 DSH 本地 WebServer,无独立外部云服务依赖",
+            "dataEgress": "不向外部服务外传工作区数据;若与局域网暴露类插件叠加则暴露面随之扩大",
+            "credentials": "不新增独立凭据存储,复用当前 DSH 宿主机上下文",
+            "filesystem": "提供工作区文件树浏览、在线编辑、拖拽上传与打包下载能力",
+            "processExecution": "内置集成终端与 Git 操作面板,按宿主机当前用户权限执行本地命令",
+            "persistence": "在本地保存侧栏布局与页面偏好",
+            "manualReviewStatus": "partial",
+            "manualReviewNote": "compose 验证通过(0.2.2-rc.5);中风险来自其内置文件编辑、Git 与终端操作面(与宿主同权),高口碑社区精选工作台插件,未做独立代码级安全审计",
+            "lastReviewedAt": "2026-11-19"
+          }
+        }
+      ]
+    },
+    {
+      "name": "dsh-claude-style",
+      "description": "Claude Code Desktop 风格主题与交互体验增强:重构 DSH Web GUI 视觉布局并支持会话内工作区检查点回退",
+      "author": "Nwflower",
+      "repo": "https://github.com/Nwflower/dsh-claude-style",
+      "category": "ui",
+      "versions": [
+        {
+          "version": "0.21.5",
+          "testedDsh": "0.2.2-rc.5",
+          "notes": "社区验证线 0.2.2-rc.5:dsh plugin add 安装并 --dump-config 合成通过",
+          "integrity": "sha512-wgXtSywLyJ/qOeV8yNdU+fmId/4R8DxCO5Rm6tiySq0jYCRDEtNyQfI9b8ABbeqZM38u7s+WfhdiVb2nci6FEg==",
+          "security": {
+            "risk": "medium",
+            "requiresConfirmation": true,
+            "network": "纯前端主题与本地宿主插件,无外部遥测服务声明",
+            "dataEgress": "不外传数据",
+            "credentials": "不访问凭据",
+            "filesystem": "每轮记录本地工作区检查点并在用户触发回退时恢复工作区文件改动(不自动撤销 Git 提交或外部副作用)",
+            "processExecution": "无额外任意命令执行面;仅在同宿主内完成检查点管理",
+            "persistence": "保存主题偏好与工作区检查点快照",
+            "manualReviewStatus": "partial",
+            "manualReviewNote": "compose 验证通过(0.2.2-rc.5);除界面主题外还包含工作区文件检查点写入与恢复能力,故按 medium 要求显式确认,建议勿与其他主题插件同时启用",
             "lastReviewedAt": "2026-11-19"
           }
         }
@@ -64,6 +177,7 @@
       "author": "bowenliang123",
       "repo": "https://github.com/bowenliang123/dsh-context",
       "category": "ui",
+      "recommended": true,
       "versions": [
         {
           "version": "0.84.1",
@@ -143,6 +257,63 @@
       ]
     },
     {
+      "name": "dsh-mnemon",
+      "description": "可组合分层上下文与长期记忆插件:开箱即用的工作记忆、项目文档视图、自进化 Skills 管理与按需召回",
+      "author": "omdsh-dev",
+      "repo": "https://github.com/omdsh-dev/dsh-mnemon",
+      "category": "workflow",
+      "versions": [
+        {
+          "version": "0.5.48",
+          "testedDsh": "0.2.2-rc.5",
+          "notes": "社区验证线 0.2.2-rc.5:dsh plugin add 安装并 --dump-config 合成通过",
+          "integrity": "sha512-e2UVNPKc/8hH3baaLX47yooSLj9zGtaUc7qUWkfyIY8Lx30/IvNq+eUxHIHsemT0MfXYXRByad4X3y0f06x/vg==",
+          "security": {
+            "risk": "medium",
+            "requiresConfirmation": true,
+            "network": "本地优先存储,记忆整理与召回随当前 DSH 宿主模型路径执行,无独立外部云同步声明",
+            "dataEgress": "不向第三方云服务外传;召回的跨会话记忆与项目文档会注入模型上下文",
+            "credentials": "复用 DSH 当前模型配置,不新增独立凭据存储",
+            "filesystem": "读写本机分层记忆库、项目文档索引与技能演化记录",
+            "processExecution": "无独立外部守护进程声明",
+            "persistence": "跨会话持久化记忆与技能评估数据,建议避免把密钥写入记忆条目",
+            "manualReviewStatus": "partial",
+            "manualReviewNote": "compose 验证通过(0.2.2-rc.5);中风险因涉及跨会话持久化记忆读写及自动上下文注入,未做独立代码级安全审计",
+            "lastReviewedAt": "2026-11-19"
+          }
+        }
+      ]
+    },
+    {
+      "name": "dsh-ops",
+      "description": "底层文件与 PTC 操作加速工具集:动态加载渐进式工具(含文档/批量修改)并输出结构化结果,降低 Token 消耗与任务耗时",
+      "author": "T-Auto",
+      "repo": "https://github.com/T-Auto/dsh-ops",
+      "category": "tool",
+      "recommended": true,
+      "versions": [
+        {
+          "version": "0.5.5",
+          "testedDsh": "0.2.2-rc.5",
+          "notes": "社区验证线 0.2.2-rc.5:dsh plugin add 安装并 --dump-config 合成通过",
+          "integrity": "sha512-IAjBkrKM5lha7IoAQFqOnIL9H16MRqcc84XV70C72Bt96Nvn+llsbXSaQHmPtHedsfJdi4yCWhocPp0gc9yPpQ==",
+          "security": {
+            "risk": "medium",
+            "requiresConfirmation": true,
+            "network": "无外部网络请求",
+            "dataEgress": "不外传数据;全部操作在本地工作区完成",
+            "credentials": "不访问凭据",
+            "filesystem": "提供高效本地文件读写与批量修改工具(在 DSH 工具策略下工作)",
+            "processExecution": "可按配置提供 ops_bash / 宿主 Shell 封装并可选隐藏部分官方同名工具,默认低侵入且可单行开关切回",
+            "persistence": "仅保存插件自身开关配置",
+            "manualReviewStatus": "partial",
+            "manualReviewNote": "compose 验证通过(0.2.2-rc.5);中风险来自其注册本地文件/Shell 工具并可替换部分官方工具展示面,高口碑社区精选效率插件,未做独立代码级安全审计",
+            "lastReviewedAt": "2026-11-19"
+          }
+        }
+      ]
+    },
+    {
       "name": "dsh-plugin-hello",
       "description": "社区最小示例插件:注册一个可调用的 hello 工具(dsh.bundle.patch 标准入口)",
       "author": "xu1132",
@@ -171,6 +342,35 @@
       ]
     },
     {
+      "name": "dsh-rewind-plugin",
+      "description": "同窗口对话回退(/rewind):不新建分支即可撤回任意历史轮次,并自带轻量工作区备份一键还原文件",
+      "author": "SiriLee",
+      "repo": "https://github.com/SiriLee/dsh-rewind",
+      "category": "workflow",
+      "recommended": true,
+      "versions": [
+        {
+          "version": "0.22.2",
+          "testedDsh": "0.2.2-rc.5",
+          "notes": "社区验证线 0.2.2-rc.5:dsh plugin add 安装并 --dump-config 合成通过",
+          "integrity": "sha512-yXh48ZtottyQTH7J1DC6PaTA0gRIbL+kYi8czqE5weOdQe9v5GcnIrrbibjrqdI3An0mGJyUNM44yz33xsUo6g==",
+          "security": {
+            "risk": "medium",
+            "requiresConfirmation": true,
+            "network": "无外部网络请求",
+            "dataEgress": "不外传数据",
+            "credentials": "不访问凭据",
+            "filesystem": "在本地创建轻量工作区文件备份并在用户执行回退时覆写恢复对应文件",
+            "processExecution": "无外部子进程执行声明",
+            "persistence": "保存每轮对话对应的本地工作区快照以便回退",
+            "manualReviewStatus": "partial",
+            "manualReviewNote": "compose 验证通过(0.2.2-rc.5);中风险因回退会直接修改/恢复工作区文件,建议配合 Git 使用,未做独立代码级安全审计",
+            "lastReviewedAt": "2026-11-19"
+          }
+        }
+      ]
+    },
+    {
       "name": "dsh-rtk-optimizer",
       "description": "RTK 命令改写建议 + 工具输出压缩:建议 rtk 改写后的 bash 命令、压缩嘈杂输出(bash/grep/read)以省上下文(pi-rtk-optimizer 移植)",
       "author": "sleepinsummer",
@@ -193,6 +393,34 @@
             "persistence": "运行期统计(压缩节省字符数等)保存在插件自身状态,不涉及跨会话敏感数据",
             "manualReviewStatus": "partial",
             "manualReviewNote": "compose 验证通过(0.2.2-rc.5);风险点是全局命令拦截与输出改写能力而非网络/凭据——默认 mode:suggest 不阻断调用,只有用户手动切到 mode:rewrite 才会 deny 命令;`/rtk show` 可随时查看当前生效配置",
+            "lastReviewedAt": "2026-11-19"
+          }
+        }
+      ]
+    },
+    {
+      "name": "dsh-skill-mcp-panel",
+      "description": "Skill 与 MCP 服务器可视化管理面板:在 DSH 侧栏整页管理技能与 Stdio/HTTP MCP 配置,支持测试连接与热加载",
+      "author": "Fishquito7",
+      "repo": "https://github.com/Fishquito7/dsh-skill-mcp-panel",
+      "category": "workflow",
+      "versions": [
+        {
+          "version": "2.3.12",
+          "testedDsh": "0.2.2-rc.5",
+          "notes": "社区验证线 0.2.2-rc.5:dsh plugin add 安装并 --dump-config 合成通过",
+          "integrity": "sha512-4vo73A8l2QzQfaX3v2hGqNZj3mMBeH82zPU8YmdLj9wOougMO0diNuhQaOoAX2x7Z8cCQPeLxvy3dU9SeFW9ig==",
+          "security": {
+            "risk": "medium",
+            "requiresConfirmation": true,
+            "network": "在用户触发测试或连接 HTTP MCP 服务器时向目标地址发请求",
+            "dataEgress": "仅与用户自行配置的 MCP 端点通信,无额外遥测声明",
+            "credentials": "读写用户写入 profile `cordis.patch.yml` 的 MCP 连接参数与请求头",
+            "filesystem": "管理本地 Skills 目录与目标 profile 的 `cordis.patch.yml` 配置并通过 HMR 热生效",
+            "processExecution": "测试或运行 Stdio MCP 服务器时会启动用户配置的本地子进程命令",
+            "persistence": "持久化写入 profile `cordis.patch.yml` 与本地技能目录",
+            "manualReviewStatus": "partial",
+            "manualReviewNote": "compose 验证通过(0.2.2-rc.5);中风险因可编辑 `cordis.patch.yml` 并测试启动用户配置的 Stdio/HTTP MCP 服务器,未做独立代码级安全审计",
             "lastReviewedAt": "2026-11-19"
           }
         }
@@ -232,6 +460,7 @@
       "author": "dsh-community",
       "repo": "https://github.com/kamanager2012/dsh-community",
       "category": "tool",
+      "recommended": true,
       "versions": [
         {
           "version": "0.6.0",
@@ -249,6 +478,35 @@
             "persistence": "无;数据随当前会话生命周期,通过 activity/status 会话事件双出口转发,不落盘",
             "manualReviewStatus": "partial",
             "manualReviewNote": "第一方官方生态插件(author: dsh-community),行为面是只读状态转发,compose 验证通过(0.2.2-rc.5)",
+            "lastReviewedAt": "2026-11-19"
+          }
+        }
+      ]
+    },
+    {
+      "name": "dshmarket",
+      "description": "DSH 社区可视化插件商店(12.9k★):内置 6,000+ 插件搜索、一键安装、热启停、主题切换、依赖诊断与崩溃安全恢复页",
+      "author": "dsh-market",
+      "repo": "https://github.com/dsh-market/dsh-market",
+      "category": "ui",
+      "recommended": true,
+      "versions": [
+        {
+          "version": "1.73.21",
+          "testedDsh": "0.2.2-rc.5",
+          "notes": "社区验证线 0.2.2-rc.5:dsh plugin add 安装并 --dump-config 合成通过",
+          "integrity": "sha512-68L+xgsE6BblwB1hTDtxnJFvkBV7f9pjIYndHS18BJUf+JFVBgscXoKo/zm8iRI1KOwVe21hSNdDjOEyX364oA==",
+          "security": {
+            "risk": "medium",
+            "requiresConfirmation": true,
+            "network": "联网访问 npm、GitHub Releases 与 dsh-plugin-catalog 拉取插件目录、图标与安装包(支持自定义加速源与可选 WebDAV/Gist 备份)",
+            "dataEgress": "浏览目录与检查更新向公开目录/npm 发起只读查询;仅在用户显式配置 WebDAV/Gist 备份或打开 giscus 评论时连接对应外部服务",
+            "credentials": "不读取模型 API Key;仅在用户主动启用 WebDAV/Gist 同步时使用用户提供的同步凭据",
+            "filesystem": "读写当前 profile 的 `cordis.patch.yml`、插件依赖与本地商店状态 `state.json`",
+            "processExecution": "通过官方插件管理链与 pnpm 安装/卸载/升级用户选中的社区插件,并在启动失败时提供回环地址恢复页",
+            "persistence": "持久化插件收藏、分组、备注与 `cordis.patch.yml` 热启停配置",
+            "manualReviewStatus": "partial",
+            "manualReviewNote": "compose 验证通过(0.2.2-rc.5);中风险因其负责插件安装/热启停并写入 profile `cordis.patch.yml`,是解锁全量 6,000+ 社区生态与插件崩溃急救的核心入口,未做独立代码级安全审计",
             "lastReviewedAt": "2026-11-19"
           }
         }

@@ -68,7 +68,7 @@ dsh-community/packages/marketplace
 
 兼容性目录和 Marketplace CLI 都在 `dsh-community/packages/marketplace`（命令为 `dsh-marketplace` / `pnpm marketplace`）。目录不是另一个 Plugin Manager，CLI 不是 Package Manager replacement，也不拥有 Runtime。安装应回到官方 `dsh plugin add` 链路。
 
-当前证据快照：注册表有 9 个验证插件；CI 检查 shape、npm 存在性/版本、`dist.integrity`、provenance 和仓库可达性，`catalog.json` 中 5/9 个插件已完成 `@deepseek-ai/dsh@0.2.2-rc.5` 合成验证，`@deepseek-harness-tui/dsh-tui@0.20.1` 停留在 `0.2.2-rc.3`（其余 3 个旧插件保持 `0.1.1-rc.2`）。Marketplace CLI 提供 `list` / `search` / `info` / `install`。
+当前证据快照：注册表有 18 个验证插件；CI 检查 shape、npm 存在性/版本、`dist.integrity`、provenance 和仓库可达性，`catalog.json` 中 15/18 个插件已完成 `@deepseek-ai/dsh@0.2.2-rc.5` 合成验证（含 6 款新手精选套装 `dshmarket`、`dsh-better-sidebar`、`dsh-ops`、`dsh-rewind-plugin`、`dsh-context`、`dsh-working-activity`，以及升级至 `0.20.2` 的 `@deepseek-harness-tui/dsh-tui`；其余 3 个旧插件保持 `0.1.1-rc.2`）。Marketplace CLI 提供 `list` / `starter` / `search` / `info` / `install [--recommended]`，桌面市场页支持精选套装一键勾选安装并附 6,000+ 社区公共索引接入入口。
 
 当前发布边界：GitHub Actions `artifact-smoke` [Run 43696414193](https://github.com/kamanager2012/dsh-community/actions/runs/43696414193)（`v0.2.2-rc.3` Latest）与 [Run 44005955539](https://github.com/kamanager2012/dsh-community/actions/runs/44005955539)（`v0.2.2-rc.3-community.1` Pre-release）已从各自 Release 页面下载真实资产，完成 `resolve`、`linux-appimage`、`android-apk`、`linux-terminal` 与 `verify-signatures`（cosign keyless 12 文件校验）；WSL/Linux 真实模型首对话与恢复闭环已通过 [Run 43688556931](https://github.com/kamanager2012/dsh-community/actions/runs/43688556931) / [Run 43729024796](https://github.com/kamanager2012/dsh-community/actions/runs/43729024796) 验收 `[REAL]`，物理 `arm64-v8a` Android 真机遥测仍标为 `[UNVERIFIED]`。
 

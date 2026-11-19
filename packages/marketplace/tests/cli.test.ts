@@ -237,6 +237,98 @@ describe('marketplace cli', () => {
     assert.equal(badCode, 1)
     assert.equal(fetchCalls, 0)
   })
+
+  it('lists compatible starter pack plugins and skips untested recommended entries', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'mkt-starter-'))
+    try {
+      const result = await captureStdout(() => runMarketplaceCli({
+        args: ['starter'],
+        homeDir: dir,
+        fetchImpl: okFetchOf(catalogWith([
+          {
+            name: 'dsh-context', description: '上下文洞察', author: 'a',
+            repo: 'https://github.com/a/b', category: 'ui', recommended: true,
+            versions: [withIntegrity('sha512-AAA')],
+          },
+          {
+            name: 'dsh-legacy-rec', description: '旧版推荐', author: 'a',
+            repo: 'https://github.com/a/c', category: 'tool', recommended: true,
+            versions: [{ version: '0.1.0', testedDsh: '0.1.1-rc.2' }],
+          },
+        ])),
+      }))
+      assert.equal(result.code, 0)
+      assert.match(result.out, /新手精选套装/)
+      assert.match(result.out, /dsh-context@1\.0\.0/)
+      assert.match(result.out, /已跳过暂未适配.*dsh-legacy-rec/)
+      assert.match(result.out, /dsh-plugin-catalog\/index\.json/)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('installs --recommended starter pack with integrity check and security gate', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'mkt-starter-install-'))
+    try {
+      const medSecurity = { ...highSecurity, risk: 'medium' as const }
+      const catalog = catalogWith([
+        {
+          name: 'dsh-context', description: '上下文洞察', author: 'a',
+          repo: 'https://github.com/a/b', category: 'ui', recommended: true,
+          versions: [withIntegrity('sha512-AAA')],
+        },
+        {
+          name: 'dshmarket', description: '插件商店', author: 'm',
+          repo: 'https://github.com/dsh-market/dsh-market', category: 'ui', recommended: true,
+          versions: [{ version: '1.73.21', testedDsh: TESTED, integrity: 'sha512-BBB', security: medSecurity }],
+        },
+        {
+          name: 'dsh-untested', description: '未适配推荐', author: 'u',
+          repo: 'https://github.com/a/u', category: 'tool', recommended: true,
+          versions: [{ version: '0.1.0', testedDsh: '0.1.1-rc.2', integrity: 'sha512-CCC' }],
+        },
+      ])
+
+      // Fail-closed when digest mismatches
+      const calls: Array<{ packageName: string; version: string }> = []
+      const badDigest = await runMarketplaceCli({
+        args: ['install', '--recommended', '--yes'],
+        homeDir: dir,
+        fetchImpl: okFetchOf(catalog),
+        npmViewIntegrity: (name) => name === 'dshmarket' ? 'sha512-TAMPERED' : 'sha512-AAA',
+        install: (opts) => { calls.push(opts); return { status: 0 } },
+      })
+      assert.equal(badDigest, 1)
+      assert.equal(calls.length, 0)
+
+      // Refuses medium-risk starter pack without --yes / confirm
+      const unconfirmed = await runMarketplaceCli({
+        args: ['install', '--recommended'],
+        homeDir: dir,
+        fetchImpl: okFetchOf(catalog),
+        npmViewIntegrity: (name) => name === 'dshmarket' ? 'sha512-BBB' : 'sha512-AAA',
+        install: (opts) => { calls.push(opts); return { status: 0 } },
+      })
+      assert.equal(unconfirmed, 1)
+      assert.equal(calls.length, 0)
+
+      // Installs only tested recommended plugins sequentially after --yes
+      const ok = await runMarketplaceCli({
+        args: ['install', '--recommended', '--yes'],
+        homeDir: dir,
+        fetchImpl: okFetchOf(catalog),
+        npmViewIntegrity: (name) => name === 'dshmarket' ? 'sha512-BBB' : 'sha512-AAA',
+        install: (opts) => { calls.push(opts); return { status: 0 } },
+      })
+      assert.equal(ok, 0)
+      assert.deepEqual(calls, [
+        { profile: 'dsh-community-tui', packageName: 'dsh-context', version: '1.0.0' },
+        { profile: 'dsh-community-tui', packageName: 'dshmarket', version: '1.73.21' },
+      ])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
 })
 
 describe('client fallback branches', () => {

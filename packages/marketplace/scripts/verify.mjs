@@ -130,6 +130,9 @@ for (const plugin of catalog.plugins ?? []) {
   if (!['ui', 'tool', 'provider', 'workflow', 'other'].includes(plugin.category)) {
     problems.push(`${plugin.name}: bad category`)
   }
+  if (plugin.recommended !== undefined && typeof plugin.recommended !== 'boolean') {
+    problems.push(`${plugin.name}: recommended must be boolean when present`)
+  }
   if (!Array.isArray(plugin.versions) || plugin.versions.length === 0) {
     problems.push(`${plugin.name}: versions missing`)
   }

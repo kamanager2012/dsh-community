@@ -37,15 +37,17 @@ pnpm marketplace -- list
 
 ```sh
 dsh-marketplace list
+dsh-marketplace starter
 dsh-marketplace search <keyword>
 dsh-marketplace info <package-name>
 dsh-marketplace audit <package-name>
 dsh-marketplace install [--yes] <package-name>[@version]
+dsh-marketplace install --recommended [--yes]
 ```
 
-`list`, `search`, and `info` display registry verification lines.
+`list`, `starter`, `search`, and `info` display registry verification lines (`starter` and `install --recommended` select only `recommended: true` picks validated against the current runtime line, and include the 6,000+ open Format-1 index `https://cdn.jsdelivr.net/npm/dsh-plugin-catalog/index.json` for official DSH 0.2.1+ Discover sources).
 `info` also displays digest, provenance, and `security` when present. Before
-calling the official install chain, `install` compares the registry digest against npm
+calling the official install chain, `install` (including `--recommended` batch installs) compares the registry digest against npm
 `dist.integrity`. Plugins with `requiresConfirmation` or non-`low` `risk` refuse unless
 `--yes` is passed.
 
