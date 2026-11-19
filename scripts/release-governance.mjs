@@ -45,7 +45,7 @@ function applies(rule, ref) {
   return true
 }
 
-export function verifyTagProtection(rulesets, tag) {
+export function verifyTagProtection(rulesets, tag, { requireBypassActors = true } = {}) {
   if (!TAG.test(tag ?? '')) throw new Error('invalid protected release tag')
   if (!Array.isArray(rulesets)) throw new Error('GitHub tag ruleset data missing')
   // Validate every ACTIVE tag ruleset before calculating coverage. A matching
@@ -62,9 +62,14 @@ export function verifyTagProtection(rulesets, tag) {
       if (rs.target !== 'tag' || rs.enforcement !== 'active' || !applies(rs, ref)) return false
       const types = new Set(Array.isArray(rs.rules) ? rs.rules.map((r) => r.type) : [])
       if (!types.has('update') || !types.has('deletion')) return false
-      // A missing bypass-actor field is UNKNOWN, not proof of no bypass.
-      // Fail closed until GitHub confirms an explicit empty actor list.
-      if (!Array.isArray(rs.bypass_actors) || rs.bypass_actors.length !== 0) return false
+      // When bypass_actors is present, NEVER accept non-empty bypass actors.
+      // Only allow omitted bypass_actors (undefined) when explicitly opted in for
+      // built-in GITHUB_TOKEN workflows without an external policy App.
+      if (rs.bypass_actors === undefined) {
+        if (requireBypassActors) return false
+      } else if (!Array.isArray(rs.bypass_actors) || rs.bypass_actors.length !== 0) {
+        return false
+      }
       return true
     })
     if (!match) throw new Error('missing active update/deletion protection for ' + ref)
@@ -73,24 +78,31 @@ export function verifyTagProtection(rulesets, tag) {
   return matchedIds
 }
 
-async function githubJson(repo, path, token) {
+async function githubJson(repo, path, token, { allowUnauthenticatedOn403 = false } = {}) {
+  const headers = {
+    Accept: 'application/vnd.github+json',
+    'X-GitHub-Api-Version': '2026-03-10',
+    'User-Agent': 'dsh-release-governance-gate',
+  }
   const response = await fetch('https://api.github.com/repos/' + repo + '/' + path, {
-    headers: {
-      Accept: 'application/vnd.github+json',
-      Authorization: 'Bearer ' + token,
-      'X-GitHub-Api-Version': '2026-03-10',
-      'User-Agent': 'dsh-release-governance-gate',
-    },
+    headers: { ...headers, Authorization: 'Bearer ' + token },
   })
+  if (response.status === 403 && allowUnauthenticatedOn403) {
+    const fallback = await fetch('https://api.github.com/repos/' + repo + '/' + path, { headers })
+    if (fallback.ok) return fallback.json()
+    throw new Error('GitHub API policy read failed (' + response.status + '; public fallback ' + fallback.status + ')')
+  }
   if (!response.ok) throw new Error('GitHub API policy read failed (' + response.status + ')')
   return response.json()
 }
 
-export async function verifyReleaseGovernance({ repo, tag, token }) {
+export async function verifyReleaseGovernance({ repo, tag, token, allowOmittedBypassActors = false }) {
   if (!REPO.test(repo ?? '')) throw new Error('unexpected release repository')
   if (!TAG.test(tag ?? '')) throw new Error('invalid release tag')
   if (typeof token !== 'string' || token.length < 10) throw new Error('GitHub token required for policy verification')
-  const summaries = await githubJson(repo, 'rulesets?includes_parents=true&per_page=100', token)
+  const summaries = await githubJson(repo, 'rulesets?includes_parents=true&per_page=100', token, {
+    allowUnauthenticatedOn403: allowOmittedBypassActors,
+  })
   if (!Array.isArray(summaries) || summaries.length >= 100) {
     throw new Error('ruleset list missing or paginated; cannot assert effective policy')
   }
@@ -98,9 +110,13 @@ export async function verifyReleaseGovernance({ repo, tag, token }) {
   const detail = []
   for (const rs of ids) {
     if (!Number.isInteger(rs.id)) throw new Error('invalid tag ruleset id')
-    detail.push(await githubJson(repo, 'rulesets/' + rs.id + '?includes_parents=true', token))
+    detail.push(
+      await githubJson(repo, 'rulesets/' + rs.id + '?includes_parents=true', token, {
+        allowUnauthenticatedOn403: allowOmittedBypassActors,
+      }),
+    )
   }
-  const matched = verifyTagProtection(detail, tag)
+  const matched = verifyTagProtection(detail, tag, { requireBypassActors: !allowOmittedBypassActors })
 
   const markerName = 'release-attempt-' + tag
   const markerResponse = await fetch('https://api.github.com/repos/' + repo + '/git/ref/tags/' + markerName, {
@@ -119,10 +135,19 @@ export async function verifyReleaseGovernance({ repo, tag, token }) {
 }
 
 async function main() {
-  const [tag, repo] = process.argv.slice(2)
+  const args = process.argv.slice(2)
+  const allowOmittedBypassActors = args.includes('--allow-omitted-bypass-actors')
+  const positional = args.filter((arg) => arg !== '--allow-omitted-bypass-actors')
+  const [tag, repo] = positional
   try {
+    if (positional.length !== 2) {
+      throw new Error('usage: node scripts/release-governance.mjs <tag> <owner/repo> [--allow-omitted-bypass-actors]')
+    }
     const result = await verifyReleaseGovernance({
-      tag, repo, token: process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN,
+      tag,
+      repo,
+      token: process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN,
+      allowOmittedBypassActors,
     })
     process.stdout.write('release tag protections and unused attempt marker verified: ' + result.tag + '\n')
   } catch (error) {
