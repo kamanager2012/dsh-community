@@ -92,12 +92,11 @@ Neither owns the Runtime or replaces the official plugin manager. The standalone
 `dsh-community-plugins` repo was deleted after its content merged into
 `catalog.json`.
 
-Current evidence snapshot: the registry has 9 verified plugins. CI checks
+Current evidence snapshot: the registry has 18 verified plugins. CI checks
 shape, npm existence/version, `dist.integrity`, provenance, and repository reachability;
 the compose workflow runs the official `dsh plugin add` chain and a composition assertion
-per plugin (`testedDsh` is `0.2.2-rc.5` for 5/9 plugins; `@deepseek-harness-tui/dsh-tui@0.20.1` remains on `0.2.2-rc.3`, and 3 legacy plugins remain on `0.1.1-rc.2`). The
-Marketplace CLI provides `list`, `search`, `info`, and `install`; `info` displays
-digest/provenance and installation remains on the official chain.
+per plugin (`testedDsh` is `0.2.2-rc.5` for 15/18 plugins, including 6 Starter Pack picks — `dshmarket`, `dsh-better-sidebar`, `dsh-ops`, `dsh-rewind-plugin`, `dsh-context`, `dsh-working-activity` — and `@deepseek-harness-tui/dsh-tui@0.20.2`; 3 legacy plugins remain on `0.1.1-rc.2`). The
+Marketplace CLI provides `list`, `starter`, `search`, `info`, and `install [--recommended]`; the Desktop Marketplace also offers checkbox Starter Pack batch install and one-click copy for the 6,000+ open community index while keeping installation on the official chain.
 
 Current release boundary: GitHub Actions `artifact-smoke` runs
 [43696414193](https://github.com/kamanager2012/dsh-community/actions/runs/43696414193) (`v0.2.2-rc.3` Latest) and

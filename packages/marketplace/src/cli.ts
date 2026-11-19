@@ -5,9 +5,9 @@
 import { homedir } from 'node:os'
 import { spawnSync } from 'node:child_process'
 import { createInterface } from 'node:readline'
-import { parseCatalog, needsInstallConfirmation, type PluginSecurity } from './catalog.js'
+import { COMMUNITY_INDEX_URL, parseCatalog, needsInstallConfirmation, type PluginSecurity } from './catalog.js'
 import { defaultCachePath, fetchCatalog } from './client.js'
-import { classifyPlugin, searchPlugins } from './compat.js'
+import { classifyPlugin, searchPlugins, selectStarterPackPlugins } from './compat.js'
 import { installPlugin } from './install.js'
 import { auditPluginSecurity } from './audit.js'
 import { generateMcpDshPlugin, type McpServerConfig } from './mcp-adapter.js'
@@ -73,10 +73,12 @@ const MARKETPLACE_HELP = `社区插件市场 CLI (dsh-community marketplace)
 
 用法:
   marketplace list                                      列出可用社区插件
+  marketplace starter                                   列出当前内核已验证的新手精选套装（Starter Pack）
   marketplace search <关键词>                            按名称或描述搜索插件
   marketplace info <plugin-name>                        查看插件版本、摘要与安全审查
   marketplace audit <plugin-name>                       审计插件安全声明与风险
   marketplace install [--yes] <plugin-name>[@version]   核验 digest 并安装到当前 profile
+  marketplace install --recommended [--yes]             一键核验并安装当前内核兼容的新手精选套装
   marketplace mcp-wrap <name> <command> [args...]       生成只读/可控 MCP DSH 适配模板
   marketplace --help                                    显示本帮助`
 
@@ -93,9 +95,9 @@ export async function runMarketplaceCli(options: MarketplaceCliOptions): Promise
     console.log(MARKETPLACE_HELP)
     return 0
   }
-  const knownCommands = new Set(['list', 'search', 'info', 'audit', 'mcp-wrap', 'install'])
+  const knownCommands = new Set(['list', 'starter', 'search', 'info', 'audit', 'mcp-wrap', 'install'])
   if (!knownCommands.has(commandName)) {
-    console.error(`未知命令 ${commandName};可用: list / search <词> / info <name> / audit <name> / mcp-wrap <name> <cmd> / install [--yes] <name>[@version]`)
+    console.error(`未知命令 ${commandName};可用: list / starter / search <词> / info <name> / audit <name> / mcp-wrap <name> <cmd> / install [--yes] <name>[@version] | install --recommended [--yes]`)
     return 1
   }
   if (commandName === 'mcp-wrap') {
@@ -128,15 +130,37 @@ export async function runMarketplaceCli(options: MarketplaceCliOptions): Promise
 
   switch (commandName) {
     case 'list': {
-      console.log(`社区市场 · 已验证线 ${testedDsh} · ${catalog.plugins.length} 个插件`)
+      const starter = selectStarterPackPlugins(classified)
+      console.log(`社区市场 · 已验证线 ${testedDsh} · ${catalog.plugins.length} 个插件（精选套装 ${starter.length} 个）`)
       for (const item of classified) {
         const mark = item.latest.status === 'tested'
           ? ''
           : ` ⚠未验证（仅旧版 ${item.latest.entry.testedDsh}）`
         const risk = item.latest.entry.security?.risk
         const riskMark = risk !== undefined && risk !== 'low' ? ` [${risk}]` : ''
-        console.log(`  ${item.plugin.name}  [${item.plugin.category}]  ${item.plugin.description.slice(0, 60)}${mark}${riskMark}`)
+        const starMark = item.plugin.recommended === true && item.latest.status === 'tested' ? ' ★精选' : ''
+        console.log(`  ${item.plugin.name}  [${item.plugin.category}]${starMark}  ${item.plugin.description.slice(0, 60)}${mark}${riskMark}`)
       }
+      console.log(`提示: 运行 marketplace starter 查看精选套装，或在官方 DSH 0.2.1+ Plugins → Discover 添加公共索引 ${COMMUNITY_INDEX_URL}`)
+      return 0
+    }
+    case 'starter': {
+      const starter = selectStarterPackPlugins(classified)
+      const skipped = classified.filter(item => item.plugin.recommended === true && item.latest.status !== 'tested')
+      console.log(`新手精选套装（Starter Pack）· 已验证线 ${testedDsh} · ${starter.length} 个兼容插件`)
+      if (starter.length === 0) {
+        console.log('  当前验证线暂无匹配的精选插件。')
+      } else {
+        for (const item of starter) {
+          const risk = item.latest.entry.security?.risk ?? 'low'
+          console.log(`  ${item.plugin.name}@${item.latest.entry.version}  [${item.plugin.category}] [${risk}]  ${item.plugin.description.slice(0, 70)}`)
+        }
+        console.log('一键安装全部精选: dsh-marketplace install --recommended')
+      }
+      if (skipped.length > 0) {
+        console.log(`已跳过暂未适配 ${testedDsh} 的精选插件: ${skipped.map(s => `${s.plugin.name}(${s.latest.entry.testedDsh})`).join(', ')}`)
+      }
+      console.log(`完整 6,000+ 社区插件索引（官方 Plugins → Discover → Index sources）: ${COMMUNITY_INDEX_URL}`)
       return 0
     }
     case 'search': {
@@ -203,9 +227,73 @@ export async function runMarketplaceCli(options: MarketplaceCliOptions): Promise
     }
     case 'install': {
       const yes = rest.includes('--yes')
+      const installRecommended = rest.includes('--recommended')
       const target = rest.find((arg) => !arg.startsWith('--'))
+      if (installRecommended) {
+        if (target !== undefined) {
+          console.error('用法: marketplace install --recommended [--yes]（不要同时指定单个包名）')
+          return 1
+        }
+        const starter = selectStarterPackPlugins(classified)
+        if (starter.length === 0) {
+          console.error(`当前验证线 ${testedDsh} 没有可安装的新手精选插件`)
+          return 1
+        }
+        const plan = starter.map(item => ({
+          packageName: item.plugin.name,
+          version: item.latest.entry.version,
+          entry: item.latest.entry,
+        }))
+        for (const item of plan) {
+          if (item.entry.integrity !== undefined) {
+            const published = (options.npmViewIntegrity ?? npmDistIntegrity)(item.packageName, item.version)
+            if (published === item.entry.integrity) {
+              console.log(`digest 核对一致 ✓ ${item.packageName}@${item.version}`)
+            } else if (published === undefined) {
+              console.warn(`⚠ 无法从 npm 取到 ${item.packageName}@${item.version} 的 dist.integrity 自动核对`)
+            } else {
+              console.error(`✗ digest 不匹配: ${item.packageName}@${item.version} 注册表 ${item.entry.integrity} vs npm ${published};拒绝安装`)
+              return 1
+            }
+          }
+        }
+        const gated = plan.filter(item => needsInstallConfirmation(item.entry.security))
+        if (gated.length > 0) {
+          for (const item of gated) {
+            console.log(`需要确认: ${item.packageName}@${item.version} (risk=${item.entry.security?.risk})`)
+            if (item.entry.security !== undefined) printSecurity(item.entry.security)
+          }
+          if (!yes) {
+            const summary = gated.map(item => `${item.packageName}(${item.entry.security?.risk})`).join(', ')
+            const ok = await Promise.resolve((options.confirm ?? defaultConfirm)(
+              `新手精选套装包含需确认插件 [${summary}]，共安装 ${plan.length} 个插件。输入 y 继续: `,
+            ))
+            if (!ok) {
+              console.error('拒绝安装:精选套装包含中/高风险插件。非交互环境请加 --yes')
+              return 1
+            }
+          }
+        }
+        const install = options.install ?? ((opts) => installPlugin(opts))
+        const profile = options.profile ?? 'dsh-community-tui'
+        let failed = 0
+        for (const item of plan) {
+          console.log(`安装精选插件 ${item.packageName}@${item.version} -> profile ${profile}`)
+          const { status } = await Promise.resolve(install({ profile, packageName: item.packageName, version: item.version }))
+          if ((status ?? 1) !== 0) {
+            failed += 1
+            console.error(`✗ 安装失败: ${item.packageName}@${item.version} (exit=${String(status)})`)
+          }
+        }
+        if (failed > 0) {
+          console.error(`精选套装安装完成: 成功 ${plan.length - failed}/${plan.length}，失败 ${failed}`)
+          return 1
+        }
+        console.log(`✓ 精选套装全部安装完成 (${plan.length}/${plan.length})`)
+        return 0
+      }
       if (target === undefined) {
-        console.error('用法: marketplace install [--yes] <name>[@version]')
+        console.error('用法: marketplace install [--yes] <name>[@version] 或 marketplace install --recommended [--yes]')
         return 1
       }
       const at = target.lastIndexOf('@')
@@ -259,7 +347,7 @@ export async function runMarketplaceCli(options: MarketplaceCliOptions): Promise
       return status ?? 1
     }
     default: {
-      console.error(`未知命令 ${commandName};可用: list / search <词> / info <name> / audit <name> / mcp-wrap <name> <cmd> / install [--yes] <name>[@version]`)
+      console.error(`未知命令 ${commandName};可用: list / starter / search <词> / info <name> / audit <name> / mcp-wrap <name> <cmd> / install [--yes] <name>[@version] | install --recommended [--yes]`)
       return 1
     }
   }

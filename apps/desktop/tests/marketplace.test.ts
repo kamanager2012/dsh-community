@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
+  COMMUNITY_INDEX_URL,
   parseInstalledPluginNames,
   parseMarketplaceCatalog,
   parseMarketplaceSnapshot,
   parsePluginActionRequest,
+  parsePluginBatchInstallRequest,
   pluginActionArgv,
+  selectStarterPackPlugins,
 } from '../src/marketplace.ts'
 import { renderMarketplacePage } from '../src/pages.ts'
 
@@ -354,5 +357,105 @@ describe('marketplace page', () => {
       name: '@scope/valid-plugin',
       action: 'install',
     })
+  })
+
+  it('validates starter pack batch requests and renders Starter Pack + community index without inline styles', () => {
+    expect(parsePluginBatchInstallRequest({ names: ['dsh-context', 'dshmarket', 'dsh-context'] })).toEqual({
+      names: ['dsh-context', 'dshmarket'],
+    })
+    expect(parsePluginBatchInstallRequest({ names: [] })).toBeUndefined()
+    expect(parsePluginBatchInstallRequest({ names: ['--evil'] })).toBeUndefined()
+    expect(parsePluginBatchInstallRequest({ names: Array.from({ length: 21 }, (_, i) => `dsh-p-${String(i)}`) })).toBeUndefined()
+
+    const starterCatalog = parseMarketplaceCatalog({
+      version: 1,
+      updatedAt: '2026-11-19T05:00:00Z',
+      plugins: [
+        {
+          name: 'dsh-context',
+          description: '只读上下文洞察',
+          author: 'bowenliang123',
+          repo: 'https://github.com/bowenliang123/dsh-context',
+          category: 'ui',
+          recommended: true,
+          versions: [{
+            version: '0.84.1',
+            testedDsh: '0.2.2-rc.5',
+            security: {
+              risk: 'low',
+              requiresConfirmation: false,
+              network: 'none',
+              dataEgress: 'none',
+              credentials: 'none',
+              filesystem: 'readonly',
+              processExecution: 'none',
+              persistence: 'settings',
+              manualReviewStatus: 'partial',
+              manualReviewNote: 'ok',
+              lastReviewedAt: '2026-11-19',
+            },
+          }],
+        },
+        {
+          name: 'dshmarket',
+          description: '可视化插件商店',
+          author: 'dsh-market',
+          repo: 'https://github.com/dsh-market/dsh-market',
+          category: 'ui',
+          recommended: true,
+          versions: [{
+            version: '1.73.21',
+            testedDsh: '0.2.2-rc.5',
+            security: {
+              risk: 'medium',
+              requiresConfirmation: true,
+              network: 'npm/github',
+              dataEgress: 'catalog queries',
+              credentials: 'none',
+              filesystem: 'profile',
+              processExecution: 'dsh plugin',
+              persistence: 'state',
+              manualReviewStatus: 'partial',
+              manualReviewNote: 'medium risk',
+              lastReviewedAt: '2026-11-19',
+            },
+          }],
+        },
+        {
+          name: 'dsh-old-rec',
+          description: '旧内核推荐项',
+          author: 'legacy',
+          repo: 'https://github.com/example/dsh-old-rec',
+          category: 'tool',
+          recommended: true,
+          versions: [{ version: '0.1.0', testedDsh: '0.1.1-rc.2' }],
+        },
+      ],
+    })
+    expect(starterCatalog).toBeDefined()
+    expect(selectStarterPackPlugins(starterCatalog!.plugins, '0.2.2-rc.5').map((p) => p.name)).toEqual([
+      'dsh-context',
+      'dshmarket',
+    ])
+    expect(parseMarketplaceCatalog({
+      ...VALID_CATALOG,
+      plugins: [{ ...VALID_CATALOG.plugins[0], recommended: 'yes' }],
+    })).toBeUndefined()
+
+    const html = renderMarketplacePage(marketplacePageModel({
+      catalog: starterCatalog,
+      installedDsh: '0.2.2-rc.5',
+      installed: [],
+    }))
+    expect(html).toContain('id="starter-pack-panel"')
+    expect(html).toContain('data-starter-plugin="dsh-context" data-starter-risk="low" checked')
+    expect(html).toContain('data-starter-plugin="dshmarket" data-starter-risk="medium" data-starter-confirm="true"')
+    expect(html).not.toContain('data-starter-plugin="dsh-old-rec"')
+    expect(html).toContain('id="install-starter"')
+    expect(html).toContain('id="select-all-starter"')
+    expect(html).toContain('pluginBatchInstall')
+    expect(html).toContain('id="community-index-panel"')
+    expect(html).toContain(COMMUNITY_INDEX_URL)
+    expect(html).not.toMatch(/\sstyle="/)
   })
 })

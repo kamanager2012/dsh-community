@@ -1,8 +1,10 @@
 import { randomBytes } from 'node:crypto'
 import { COMMUNITY_PRODUCT_NAME } from './branding.ts'
 import {
+  COMMUNITY_INDEX_URL,
   PLUGIN_CATEGORIES,
   PLUGIN_CATEGORY_LABELS,
+  selectStarterPackPlugins,
   type MarketplaceCatalog,
   type MarketplaceSource,
   type PluginAction,
@@ -243,6 +245,9 @@ function shellDocument(
       .panel.pending { border-color: #2f6fed; background: #0e172a; }
       .panel.warn { border-color: #7c5816; background: #1d170c; color: #f5c26b; }
       .panel.warn p { color: #f5c26b; margin: 0; }
+      .panel-title { margin-top: 0; }
+      .panel-lead { margin: 0 0 8px; }
+      .plugin-actions.compact { margin-top: 0; }
       .pair-grid { display: flex; gap: 18px; align-items: flex-start; flex-wrap: wrap; margin-top: 10px; }
       .qr-wrap { background: #ffffff; border-radius: 10px; padding: 10px; width: 220px; height: 220px;
         flex: 0 0 auto; box-sizing: border-box; display: flex; align-items: center; justify-content: center; }
@@ -590,6 +595,45 @@ export function renderMarketplacePage(model: MarketplacePageModel): string {
   const plugins = model.catalog?.plugins ?? []
   const installedSet = new Set(model.installed)
   const disabled = busy === undefined ? '' : ' disabled'
+  const starterPlugins = selectStarterPackPlugins(plugins, model.installedDsh)
+  const starterUninstalled = starterPlugins.filter((plugin) => !installedSet.has(plugin.name))
+  const starterPanel = starterPlugins.length === 0
+    ? ''
+    : `<section class="panel pending" id="starter-pack-panel">
+        <h2 class="panel-title">新手精选套装（Starter Pack · ${String(starterPlugins.length)} 个已适配）</h2>
+        <p class="meta">仅展示已通过当前内核合成验证的社区精选插件；默认仅勾选低风险项，中风险项可按需勾选并在安装前统一确认。底层均通过官方 <code>dsh plugin add</code> 安装，不污染内核，随时可卸载。</p>
+        ${starterPlugins.map((plugin) => {
+          const isInstalled = installedSet.has(plugin.name)
+          const sec = plugin.versions[plugin.versions.length - 1]?.security
+          const risk = sec?.risk ?? 'low'
+          const riskChip = risk === 'high'
+            ? '<span class="chip risk-high">高风险</span>'
+            : risk === 'medium'
+              ? '<span class="chip risk-med">中风险</span>'
+              : '<span class="chip">低风险</span>'
+          const checked = isInstalled || risk === 'low' ? ' checked' : ''
+          const itemDisabled = isInstalled || busy !== undefined ? ' disabled' : ''
+          const needsItemConfirm = sec !== undefined && (sec.requiresConfirmation || sec.risk !== 'low')
+          return `<label class="opt">
+            <input type="checkbox" data-starter-plugin="${escapeHtml(plugin.name)}" data-starter-risk="${escapeHtml(risk)}"${needsItemConfirm ? ' data-starter-confirm="true"' : ''}${checked}${itemDisabled} />
+            <span>
+              <code class="plugin-name">${escapeHtml(plugin.name)}</code> ${riskChip}${isInstalled ? ' <span class="chip ok">已装</span>' : ''}<br/>
+              <span class="meta">${escapeHtml(plugin.description)}</span>
+            </span>
+          </label>`
+        }).join('')}
+        <div class="row">
+          <button id="install-starter"${busy !== undefined || starterUninstalled.length === 0 ? ' disabled' : ''}>${starterUninstalled.length === 0 ? '精选插件已全部安装' : '一键安装已选精选'}</button>
+          <button class="secondary" id="select-all-starter"${busy !== undefined || starterUninstalled.length === 0 ? ' disabled' : ''}>全选未装精选</button>
+        </div>
+      </section>`
+  const communityIndexPanel = `<section class="panel" id="community-index-panel">
+      <p class="panel-lead"><strong>接入完整 6,000+ 社区插件索引：</strong>除一键安装上方 <code>dshmarket</code> 可视化商店外，也可在官方 DSH 0.2.1+ 的 <strong>Plugins → Discover → Index sources</strong> 添加公共 Format-1 索引：</p>
+      <div class="plugin-actions compact">
+        <code id="community-index-url">${escapeHtml(COMMUNITY_INDEX_URL)}</code>
+        <button class="secondary small" id="copy-community-index">复制索引地址</button>
+      </div>
+    </section>`
   const sections = PLUGIN_CATEGORIES.map((category) => {
     const members = plugins.filter((plugin) => plugin.category === category)
     if (members.length === 0) return ''
@@ -617,6 +661,9 @@ export function renderMarketplacePage(model: MarketplacePageModel): string {
       const compatBadge = matchesInstalled
         ? ''
         : `<span class="chip risk-med">仅旧内核 ${escapeHtml(latestTested ?? '未知')}（未适配当前 ${escapeHtml(installedDsh ?? '')}）</span>`
+      const starterBadge = plugin.recommended === true && matchesInstalled
+        ? '<span class="chip ok">★精选</span>'
+        : ''
       const needsConfirm = !installed
         && (
           !matchesInstalled
@@ -640,6 +687,7 @@ export function renderMarketplacePage(model: MarketplacePageModel): string {
         <div class="plugin-head">
           <code class="plugin-name">${escapeHtml(plugin.name)}</code>
           <span class="author">by ${escapeHtml(plugin.author)}</span>
+          ${starterBadge}
           ${riskBadge}
           ${compatBadge}
           ${installed ? '<span class="chip ok">已装</span>' : ''}
@@ -659,11 +707,11 @@ export function renderMarketplacePage(model: MarketplacePageModel): string {
   }).join('')
   const body = plugins.length === 0
     ? `<p>目录还没有内容，或抓取的 <code>catalog.json</code> 无法通过校验。</p>`
-    : sections
+    : `${starterPanel}${communityIndexPanel}${sections}`
   return shellDocument(
     `${model.product} · 社区市场`,
     (nonce) => `<h1>社区市场</h1>
-     <p>浏览 <a href="${escapeHtml(model.registryUrl)}">插件目录 catalog.json</a>。安装/卸载按钮唤起官方 <code>dsh plugin --profile ${escapeHtml(model.profile)} add|remove</code>（写完 profile 后重启官方运行时生效）；本窗口不自己实现安装器。TUI profile 的安装仍走 <code>dsh-marketplace install &lt;name&gt;</code> 或上面这行官方命令。</p>
+     <p>浏览 <a href="${escapeHtml(model.registryUrl)}">插件目录 catalog.json</a>。安装/卸载按钮唤起官方 <code>dsh plugin --profile ${escapeHtml(model.profile)} add|remove</code>（写完 profile 后重启官方运行时生效）；本窗口不自己实现安装器。TUI profile 的安装仍走 <code>dsh-marketplace install &lt;name&gt;</code>（或 <code>dsh-marketplace install --recommended</code>）或上面这行官方命令。</p>
      <p class="meta">${escapeHtml(sourceLine)} · 抓取时间 ${escapeHtml(formatLocalTimestamp(model.fetchedAt))} · 已装 ${String(model.installed.length)} 个（${escapeHtml(model.profile)} profile${model.installedDsh === undefined ? '' : ` · 当前内核 @deepseek-ai/dsh@${escapeHtml(model.installedDsh)}`}）</p>
      ${errorBlock}
      <div class="row">
@@ -679,6 +727,40 @@ export function renderMarketplacePage(model: MarketplacePageModel): string {
        })
        document.getElementById('restart')?.addEventListener('click', () => {
          window.dshCommunity?.restartHost()
+       })
+       document.getElementById('copy-community-index')?.addEventListener('click', (ev) => {
+         const url = document.getElementById('community-index-url')?.textContent ?? ''
+         if (!url) return
+         window.dshCommunity?.copyText(url)
+         const btn = ev.currentTarget
+         if (btn && btn instanceof HTMLElement) {
+           btn.setAttribute('data-copied', 'true')
+           btn.textContent = '已复制'
+         }
+       })
+       document.getElementById('select-all-starter')?.addEventListener('click', () => {
+         document.querySelectorAll('input[data-starter-plugin]:not(:disabled)').forEach((el) => {
+           if (el instanceof HTMLInputElement) el.checked = true
+         })
+       })
+       document.getElementById('install-starter')?.addEventListener('click', () => {
+         const selected = []
+         const gated = []
+         document.querySelectorAll('input[data-starter-plugin]:not(:disabled)').forEach((el) => {
+           if (el instanceof HTMLInputElement && el.checked) {
+             const name = el.getAttribute('data-starter-plugin') ?? ''
+             if (!name) return
+             selected.push(name)
+             if (el.getAttribute('data-starter-confirm') === 'true') {
+               gated.push(name + '(' + (el.getAttribute('data-starter-risk') ?? 'medium') + ')')
+             }
+           }
+         })
+         if (selected.length === 0) return
+         if (gated.length > 0) {
+           if (!window.confirm('所选精选插件包含中/高风险项 [' + gated.join(', ') + ']，将依次调用官方 dsh plugin add 安装共 ' + selected.length + ' 个插件到 web profile。确认继续？')) return
+         }
+         window.dshCommunity?.pluginBatchInstall(selected)
        })
        document.querySelectorAll('[data-plugin-action]').forEach((btn) => {
          btn.addEventListener('click', () => {

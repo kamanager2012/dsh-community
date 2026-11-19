@@ -12,6 +12,9 @@ export const MARKETPLACE_CATALOG_URL =
 
 export const MARKETPLACE_REGISTRY_URL = 'https://github.com/kamanager2012/dsh-community/blob/main/packages/marketplace/catalog.json'
 
+/** Open Format-1 DSH community index (6,000+ plugins) for official DSH 0.2.1+ Discover sources. */
+export const COMMUNITY_INDEX_URL = 'https://cdn.jsdelivr.net/npm/dsh-plugin-catalog/index.json'
+
 export const PLUGIN_CATEGORIES = ['ui', 'tool', 'provider', 'workflow', 'other'] as const
 export type PluginCategory = (typeof PLUGIN_CATEGORIES)[number]
 
@@ -55,6 +58,7 @@ export interface MarketplacePlugin {
   readonly author: string
   readonly repo: string
   readonly category: PluginCategory
+  readonly recommended?: boolean
   readonly versions: readonly MarketplacePluginVersion[]
 }
 
@@ -138,6 +142,7 @@ export function parseMarketplaceCatalog(raw: unknown): MarketplaceCatalog | unde
       || typeof repo !== 'string' || !isValidPluginRepoUrl(repo)
       || typeof category !== 'string' || !PLUGIN_CATEGORIES.includes(category as PluginCategory)
     ) return undefined
+    if (plugin.recommended !== undefined && typeof plugin.recommended !== 'boolean') return undefined
     names.add(name)
     if (!Array.isArray(plugin.versions) || plugin.versions.length === 0) return undefined
     const versions: MarketplacePluginVersion[] = []
@@ -167,6 +172,7 @@ export function parseMarketplaceCatalog(raw: unknown): MarketplaceCatalog | unde
       author,
       repo,
       category: category as PluginCategory,
+      ...(plugin.recommended === true ? { recommended: true } : {}),
       versions,
     })
   }
@@ -243,6 +249,42 @@ export function parsePluginActionRequest(raw: unknown): PluginActionRequest | un
   if (typeof name !== 'string' || !isValidNpmPackageName(name)) return undefined
   if (action !== 'install' && action !== 'remove') return undefined
   return { name, action }
+}
+
+export const MAX_BATCH_INSTALL_PLUGINS = 20
+
+export interface PluginBatchInstallRequest {
+  readonly names: readonly string[]
+}
+
+/** Renderer-side validation for Starter Pack batch install requests. */
+export function parsePluginBatchInstallRequest(raw: unknown): PluginBatchInstallRequest | undefined {
+  if (raw === null || typeof raw !== 'object') return undefined
+  const value = raw as Record<string, unknown>
+  if (!Array.isArray(value.names) || value.names.length === 0 || value.names.length > MAX_BATCH_INSTALL_PLUGINS) {
+    return undefined
+  }
+  const seen = new Set<string>()
+  const names: string[] = []
+  for (const item of value.names) {
+    if (typeof item !== 'string' || !isValidNpmPackageName(item)) return undefined
+    if (!seen.has(item)) {
+      seen.add(item)
+      names.push(item)
+    }
+  }
+  return names.length > 0 ? { names } : undefined
+}
+
+/** Starter Pack candidates compatible with the currently installed official DSH version. */
+export function selectStarterPackPlugins(
+  plugins: readonly MarketplacePlugin[],
+  installedDsh?: string,
+): readonly MarketplacePlugin[] {
+  return plugins.filter((plugin) =>
+    plugin.recommended === true
+    && (installedDsh === undefined || plugin.versions.some((v) => v.testedDsh === installedDsh)),
+  )
 }
 
 /**

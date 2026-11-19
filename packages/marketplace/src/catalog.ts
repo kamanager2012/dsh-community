@@ -1,5 +1,8 @@
 /** Catalog schema for the DSH community marketplace registry. */
 
+/** Open Format-1 DSH community index (6,000+ plugins) compatible with official DSH 0.2.1+ Discover sources. */
+export const COMMUNITY_INDEX_URL = 'https://cdn.jsdelivr.net/npm/dsh-plugin-catalog/index.json'
+
 export const PLUGIN_CATEGORIES = ['ui', 'tool', 'provider', 'workflow', 'other'] as const
 export type PluginCategory = (typeof PLUGIN_CATEGORIES)[number]
 
@@ -85,6 +88,8 @@ export interface PluginEntry {
   author: string
   repo: string
   category: PluginCategory
+  /** Included in the Starter Pack when tested against the current official kernel line. */
+  recommended?: boolean
   versions: PluginVersion[]
 }
 
@@ -129,6 +134,7 @@ export function parseCatalog(raw: unknown): PluginCatalog | undefined {
       || typeof repo !== 'string' || !isValidPluginRepoUrl(repo)
       || typeof category !== 'string' || !PLUGIN_CATEGORIES.includes(category as PluginCategory)
     ) return undefined
+    if (plugin.recommended !== undefined && typeof plugin.recommended !== 'boolean') return undefined
     names.add(name)
     if (!Array.isArray(plugin.versions) || plugin.versions.length === 0) return undefined
     const versions: PluginVersion[] = []
@@ -154,6 +160,7 @@ export function parseCatalog(raw: unknown): PluginCatalog | undefined {
       author,
       repo,
       category: category as PluginCategory,
+      ...(plugin.recommended === true ? { recommended: true } : {}),
       versions,
     })
   }

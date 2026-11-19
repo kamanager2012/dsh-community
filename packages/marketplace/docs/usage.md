@@ -37,14 +37,16 @@ pnpm marketplace -- list
 
 ```sh
 dsh-marketplace list
+dsh-marketplace starter
 dsh-marketplace search <keyword>
 dsh-marketplace info <package-name>
 dsh-marketplace audit <package-name>
 dsh-marketplace install [--yes] <package-name>[@version]
+dsh-marketplace install --recommended [--yes]
 ```
 
-`list`、`search` 和 `info` 展示的是注册表中的验证线。`info` 还会显示 digest、provenance
-和 `security` 披露（如果有）。`install` 会在调用官方安装链前自动比对注册表 digest 与 npm `dist.integrity`：
+`list`、`starter`、`search` 和 `info` 展示的是注册表中的验证线（`starter` 与 `install --recommended` 仅筛选已适配当前验证线且标有 `recommended: true` 的精选插件，并在官方 DSH 0.2.1+ 中附带 6,000+ 社区公共索引 `https://cdn.jsdelivr.net/npm/dsh-plugin-catalog/index.json` 接入说明）。`info` 还会显示 digest、provenance
+和 `security` 披露（如果有）。`install`（含 `--recommended` 批量安装）会在调用官方安装链前自动比对注册表 digest 与 npm `dist.integrity`：
 一致则继续；不一致直接拒绝。`security.requiresConfirmation` 为 true 或 `risk` 不是 `low`
 时，非交互环境必须加 `--yes`，否则退出非零。
 
