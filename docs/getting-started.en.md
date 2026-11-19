@@ -10,12 +10,12 @@
 | --- | --- | --- |
 | Use Official Web or Windows / macOS Desktop | [`deepseek-ai/deepseek-harness`](https://github.com/deepseek-ai/deepseek-harness) (`npx @deepseek-ai/dsh web`) | Upstream product and Win/macOS desktop builds; Complementary Edition does not duplicate them |
 | Use the community Terminal / TUI & Remote Host | `dsh-community`, `pnpm tui`, or `dsh-community remote start` from source | Primary Linux / WSL complementary endpoint around the official Runtime |
-| Download the Linux Desktop AppImage | [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) `.AppImage` or `pnpm desktop:package -- --appimage` | Linux desktop complementary build absent upstream; exact tag/filenames live in [`current-release.md`](current-release.md) |
-| Download the Android Remote Client APK | [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) `-android-arm64-v8a.apk` (in-repo `apps/android` + `packages/remote-adapter`) | Signed `arm64-v8a` APK (CI `x86_64` emulator E2EE verified; physical `arm64-v8a` handset telemetry `[UNVERIFIED]`) |
-| Test recent Community fixes | [Community Pre-release `v0.2.2-rc.3-community.1`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1) | Separate preview assets/signatures; not interchangeable with Published Latest `v0.2.2-rc.3` |
+| Download the Linux Desktop AppImage | [Published Latest (`v0.2.2-rc.5`)](https://github.com/kamanager2012/dsh-community/releases/latest) `.AppImage` or `pnpm desktop:package -- --appimage` | Linux desktop complementary build absent upstream; exact tag/filenames live in [`current-release.md`](current-release.md) |
+| Download the Android Remote Client APK | [Published Latest (`v0.2.2-rc.5`)](https://github.com/kamanager2012/dsh-community/releases/latest) `-android-arm64-v8a.apk` (in-repo `apps/android` + `packages/remote-adapter`) | Signed `arm64-v8a` APK (CI `x86_64` emulator E2EE verified; physical `arm64-v8a` handset telemetry `[UNVERIFIED]`) |
+| Historical Community pre-release archive | [Community Pre-release `v0.2.2-rc.3-community.1`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1) | Superseded earlier pre-release; now incorporated into Published Latest `v0.2.2-rc.5` |
 | Read the full operational guide | [DeepSeek Harness Handbook](https://kamanager2012.github.io/dsh-community/en/) | Providers, Sessions, security, automation, and acceptance |
 
-**Select a release channel first:** GitHub Published Latest is `v0.2.2-rc.3`; the latest Community Pre-release is `v0.2.2-rc.3-community.1`. Their artifacts and signature files are separate. For a source install pin both the installer code and target Git tag/SHA in the [README example](../README.en.md#30-second-quick-start); do not present mutable `main` as a signed Release.
+**Select a release channel first:** GitHub Published Latest is now `v0.2.2-rc.5` (synced with `@deepseek-ai/dsh@0.2.2-rc.5` and incorporating the fixes from prior pre-release [`v0.2.2-rc.3-community.1`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1)). Do not mix artifacts or signature files across versions. For a source install pin both the installer code and target Git tag/SHA in the [README example](../README.en.md#30-second-quick-start); do not present mutable `main` as a signed Release.
 
 Do not download a formal client from archived Suite, the standalone Marketplace, the standalone Plugins registry, or Edition. **Published Latest** is defined by [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) plus `githubLatestTag / publishedAssets / publishedReleaseEvidence` in `current-release.json`; published assets carry keyless cosign signatures (`.sigstore.json`). Do not download historical `v0.1.2`–`v0.1.6` as the current product. Official Web and Win/macOS Desktop are upstream surfaces, not Complementary Community endpoints. The product defines three complementary Community endpoints — all published in Latest (`WSL/Linux Terminal`, `Linux AppImage`, and signed `Android arm64-v8a` Remote Client APK), while physical `arm64-v8a` handset telemetry remains `[UNVERIFIED]`. See [community-endpoints.en.md](community-endpoints.en.md) and the [version policy](version-policy.md).
 
@@ -30,7 +30,7 @@ At [`releases/latest`](https://github.com/kamanager2012/dsh-community/releases/l
 - `dsh-community-<version>-official-runtime.cdx.json` — CycloneDX SBOM for the embedded `@deepseek-ai/dsh` dependency tree
 - `*.sha256` & `*.sigstore.json` — SHA-256 sidecar and keyless Cosign bundle for every asset
 
-Verify integrity and keyless provenance locally (`cosign >= v2.4`; see the copy-paste command on [`current-release.md`](current-release.md#quick-download--verification-v022-rc3)):
+Verify integrity and keyless provenance locally (`cosign >= v2.4`; see the copy-paste command on [`current-release.md`](current-release.md#quick-download--verification-v022-rc5)):
 
 ```sh
 sha256sum -c dsh-community-<version>.AppImage.sha256
@@ -60,15 +60,15 @@ Both images are generated by the headless harness [`scripts/e2e/remote-web-brows
 
 ## Install WSL / Linux CLI in 30 Seconds (or Run from Source)
 
-`scripts/install-linux.sh` landed on `main` after `v0.2.2-rc.3`; it is a source-build helper requiring Node.js 24.9+ (minimum `22.15+` in workspace/CI), pnpm, git, and `flock` (util-linux) (`@deepseek-ai/dsh@0.2.2-rc.3` declares `engines.node >=24.9.0`; 0.1.0-rc.8+ session JSONL uses `node:zlib` zstd added in 22.15). Install tracking `main` or pin an immutable tag & commit:
+`scripts/install-linux.sh` is included in `v0.2.2-rc.5` as a source-build helper requiring Node.js 24.9+ (minimum `22.15+` in workspace/CI), pnpm, git, and `flock` (util-linux) (`@deepseek-ai/dsh@0.2.2-rc.5` declares `engines.node >=24.9.0`; 0.1.0-rc.8+ session JSONL uses `node:zlib` zstd added in 22.15). Pin the installer commit and an immutable released tag & commit SHA:
 
 ```sh
-# Track latest main source:
-curl -fsSL https://raw.githubusercontent.com/kamanager2012/dsh-community/main/scripts/install-linux.sh | bash
+# Recommended: pin installer commit and Published Latest (v0.2.2-rc.5 = 0a8009d0462042764ad67e87208df791f1f6180b):
+curl -fsSL https://raw.githubusercontent.com/kamanager2012/dsh-community/afe0514e9da98174ac117e70d7e9fb30aa48de2b/scripts/install-linux.sh | \
+  bash -s -- --ref v0.2.2-rc.5 --expected-commit 0a8009d0462042764ad67e87208df791f1f6180b
 
-# Or pin to a released tag and commit SHA (v0.2.2-rc.3 = 073826c38df4cf246e7ac90b27e0df98569a534d):
-curl -fsSL https://raw.githubusercontent.com/kamanager2012/dsh-community/main/scripts/install-linux.sh | \
-  bash -s -- --ref v0.2.2-rc.3 --expected-commit 073826c38df4cf246e7ac90b27e0df98569a534d
+# Development only: track mutable main source (not a signed Release):
+# curl -fsSL https://raw.githubusercontent.com/kamanager2012/dsh-community/main/scripts/install-linux.sh | bash
 ```
 
 > Remote pairing & security notes:

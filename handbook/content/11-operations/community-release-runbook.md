@@ -1,16 +1,16 @@
 # Community 发布 Runbook
 
-> 事实状态：`v0.2.2-rc.3` 的 12 资产 `artifact-smoke` 已在真实 runner 上通过（[Run 43696414193](https://github.com/kamanager2012/dsh-community/actions/runs/43696414193)），WSL/Linux 用户闭环已通过 [Run 43688556931](https://github.com/kamanager2012/dsh-community/actions/runs/43688556931) 验收；本文仍将首启/验签 smoke 与完整用户闭环及物理 `arm64-v8a` 真机遥测分开记录，也不把 README 声明当成运行证据。
+> 事实状态：`v0.2.2-rc.5` 的 12 资产 `artifact-smoke` 已在真实 runner 上通过（[Run 44454406621](https://github.com/kamanager2012/dsh-community/actions/runs/44454406621)），前版 `v0.2.2-rc.3` 已通过 `artifact-smoke`（[Run 43696414193](https://github.com/kamanager2012/dsh-community/actions/runs/43696414193)）与 `user-loop-evidence.yml`（[Run 43729024796](https://github.com/kamanager2012/dsh-community/actions/runs/43729024796) / [Run 43688556931](https://github.com/kamanager2012/dsh-community/actions/runs/43688556931)）验收；本文仍将首启/验签 smoke 与完整用户闭环及物理 `arm64-v8a` 真机遥测分开记录，也不把 README 声明当成运行证据。
 
 相关入口：[当前发行状态](community-release-status.md) · [发布检查清单](release-checklist.md) · [生态与产品入口](../00-overview/community-ecosystem.md) · [dsh-community Release](https://github.com/kamanager2012/dsh-community/releases/latest)
 
 ## 当前事实边界
 
-- 当前 Published Latest 是 `v0.2.2-rc.3`，共 **12 个已签名资产**：`dsh-community-0.2.2-rc.3.AppImage`、`dsh-community-0.2.2-rc.3-android-arm64-v8a.apk`、官方运行时 CycloneDX SBOM `dsh-community-0.2.2-rc.3-official-runtime.cdx.json`，以及各自的 `.sha256` 与 `.sigstore.json` keyless cosign bundle；
-- 官方内核是 `@deepseek-ai/dsh@0.2.2-rc.5`，当前 Candidate Source（尚未发布）为 `0.2.2-rc.5`（Tag `v0.2.2-rc.5`）；最后已签发的 Community Pre-release 是 [`v0.2.2-rc.3-community.1`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1)，`release` [Run 44004421253](https://github.com/kamanager2012/dsh-community/actions/runs/44004421253)、`artifact-smoke` [Run 44005955539](https://github.com/kamanager2012/dsh-community/actions/runs/44005955539)，不覆盖 `v0.2.2-rc.3` Latest）；历史独立编号 `v0.1.2`–`v0.1.6` 与 Win/macOS 安装包（`v0.1.1-rc.2` 之后已退役）均不是当前用户下载；
-- Desktop/TUI Dual-Badge 必须显示：`DeepSeek Harness Community v0.2.2-rc.5 [Official Core: @deepseek-ai/dsh@0.2.2-rc.5]`（Candidate Source）/ `v0.2.2-rc.3`（Published Latest）；
+- 当前 Published Latest 是 `v0.2.2-rc.5`（[Run 44453540672](https://github.com/kamanager2012/dsh-community/actions/runs/44453540672) / `artifact-smoke` [Run 44454406621](https://github.com/kamanager2012/dsh-community/actions/runs/44454406621)），共 **12 个已签名资产**：`dsh-community-0.2.2-rc.5.AppImage`、`dsh-community-0.2.2-rc.5-android-arm64-v8a.apk`、官方运行时 CycloneDX SBOM `dsh-community-0.2.2-rc.5-official-runtime.cdx.json`，以及各自的 `.sha256` 与 `.sigstore.json` keyless cosign bundle；
+- 官方内核是 `@deepseek-ai/dsh@0.2.2-rc.5`，Published Latest `v0.2.2-rc.5` 现已替代此前 `v0.2.2-rc.3` 及历史预发布 [`v0.2.2-rc.3-community.1`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1)；历史独立编号 `v0.1.2`–`v0.1.6` 与 Win/macOS 安装包（`v0.1.1-rc.2` 之后已退役）均不是当前用户下载；
+- Desktop/TUI Dual-Badge 显示：`DeepSeek Harness Community v0.2.2-rc.5 [Official Core: @deepseek-ai/dsh@0.2.2-rc.5]`；
 - 三个互补 Community endpoint 为 WSL/Linux Terminal、Linux AppImage、Android Remote Client（已签名 `arm64-v8a` APK 已在 Latest 发行；CI `x86_64` 模拟器 E2EE 验收通过，物理真机遥测 `[UNVERIFIED]`）。官方 Web 与 Win/macOS Desktop 归官方上游所有；
-- `v0.2.2-rc.3` 真实资产在 [Run 43696414193](https://github.com/kamanager2012/dsh-community/actions/runs/43696414193) 通过 `resolve`、`linux-appimage`、`android-apk`、`linux-terminal` 与 `verify-signatures`（12 资产全验），且 WSL/Linux 用户闭环在 [Run 43688556931](https://github.com/kamanager2012/dsh-community/actions/runs/43688556931) 通过 `[REAL]`；物理 `arm64-v8a` 真机遥测保持 `[UNVERIFIED]`；
+- `v0.2.2-rc.5` 真实资产在 [Run 44454406621](https://github.com/kamanager2012/dsh-community/actions/runs/44454406621) 通过 `resolve`、`linux-appimage`、`android-apk`、`linux-terminal` 与 `verify-signatures`（12 资产全验）；此前 `v0.2.2-rc.3` 的 WSL/Linux 用户闭环在 [Run 43729024796](https://github.com/kamanager2012/dsh-community/actions/runs/43729024796) / [Run 43688556931](https://github.com/kamanager2012/dsh-community/actions/runs/43688556931) 通过 `[REAL]`；物理 `arm64-v8a` 真机遥测保持 `[UNVERIFIED]`；
 - 发现安装包缺官方 Runtime 依赖时，必须立即停止推广并回退 Latest，再用新 tag 修复，不能移动或覆盖已发布 tag。
 
 ## 1. 发布前冻结
@@ -31,7 +31,7 @@
 node scripts/release.mjs <vX.Y.Z[-prerelease]>
 ```
 
-社区自研补丁才使用 `vX.Y.Z-community.N`；常规上游镜像同步直接使用 `vX.Y.Z[-prerelease]`（如当前 `v0.2.2-rc.3`），且已发布 tag 不得重跑。
+社区自研补丁才使用 `vX.Y.Z-community.N`；常规上游镜像同步直接使用 `vX.Y.Z[-prerelease]`（如当前 `v0.2.2-rc.5`），且已发布 tag 不得重跑。
 
 脚本按以下顺序执行：
 
@@ -62,11 +62,11 @@ Windows 与 macOS 打包 job 已在 Complementary Edition 收敛后移除，由�
 核对必须针对 Release 页面下载的原始文件：
 
 ```sh
-sha256sum -c dsh-community-0.2.2-rc.3.AppImage.sha256
-cosign verify-blob dsh-community-0.2.2-rc.3.AppImage \
-  --bundle dsh-community-0.2.2-rc.3.AppImage.sigstore.json \
+sha256sum -c dsh-community-0.2.2-rc.5.AppImage.sha256
+cosign verify-blob dsh-community-0.2.2-rc.5.AppImage \
+  --bundle dsh-community-0.2.2-rc.5.AppImage.sigstore.json \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  --certificate-identity-regexp '^https://github\.com/kamanager2012/dsh-community/\.github/workflows/release\.yml@refs/tags/v0\.2\.2-rc\.3$'
+  --certificate-identity-regexp '^https://github\.com/kamanager2012/dsh-community/\.github/workflows/release\.yml@refs/tags/v0\.2\.2-rc\.5$'
 ```
 
 签名与哈希通过仅证明构建与供应链完整性 `[REAL]`，不能代替官方 Runtime 就绪或人工首对话验收。
@@ -76,11 +76,11 @@ cosign verify-blob dsh-community-0.2.2-rc.3.AppImage \
 workflow 输入支持指定 tag；复核已发布版本时使用真实 tag：
 
 ```sh
-gh workflow run artifact-smoke.yml --repo kamanager2012/dsh-community --field tag=v0.2.2-rc.3
+gh workflow run artifact-smoke.yml --repo kamanager2012/dsh-community --field tag=v0.2.2-rc.5
 gh run list --repo kamanager2012/dsh-community --workflow artifact-smoke.yml --limit 1
 ```
 
-最近一次 `v0.2.2-rc.3` 对应 [Run 43696414193](https://github.com/kamanager2012/dsh-community/actions/runs/43696414193)，通过 `resolve`、`linux-appimage`、`android-apk`、`linux-terminal` 与 `verify-signatures`（12 资产全验）；社区 TUI ↔ 官方 `dsh --profile headless` ↔ Linux AppImage 内置运行时（`official-dsh.tar`）三方跨端 Session 接续闭环、Linux AppImage Electron GUI（`AppRun`）Session 可见性/Runtime/Marketplace 离线缓存实测，以及全部 4 项生命周期恢复（缺 Key 拒绝、`ensureOfficialHostExtracted()` 解压中断恢复、版本升级、断网缓存回退）已通过 `user-loop-evidence.yml`（[Run 43729024796](https://github.com/kamanager2012/dsh-community/actions/runs/43729024796)，前序 [Run 43713641736](https://github.com/kamanager2012/dsh-community/actions/runs/43713641736)、[Run 43709890408](https://github.com/kamanager2012/dsh-community/actions/runs/43709890408)）验证。
+最近一次 `v0.2.2-rc.5` 对应 [Run 44454406621](https://github.com/kamanager2012/dsh-community/actions/runs/44454406621)，通过 `resolve`、`linux-appimage`、`android-apk`、`linux-terminal` 与 `verify-signatures`（12 资产全验）；前版 `v0.2.2-rc.3` 已由 `artifact-smoke`（[Run 43696414193](https://github.com/kamanager2012/dsh-community/actions/runs/43696414193)）及社区 TUI ↔ 官方 `dsh --profile headless` ↔ Linux AppImage 内置运行时（`official-dsh.tar`）三方跨端 Session 接续闭环、Linux AppImage Electron GUI（`AppRun`）Session 可见性/Runtime/Marketplace 离线缓存实测，以及全部 4 项生命周期恢复（缺 Key 拒绝、`ensureOfficialHostExtracted()` 解压中断恢复、版本升级、断网缓存回退）的 `user-loop-evidence.yml`（[Run 43729024796](https://github.com/kamanager2012/dsh-community/actions/runs/43729024796)，前序 [Run 43713641736](https://github.com/kamanager2012/dsh-community/actions/runs/43713641736)、[Run 43709890408](https://github.com/kamanager2012/dsh-community/actions/runs/43709890408)）验证（`v0.2.2-rc.5` 二进制的独立真模型 `user-loop-evidence.yml` 仍待复验）。
 
 ## 6. Latest 晋升与回退
 

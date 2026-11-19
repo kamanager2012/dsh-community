@@ -1,6 +1,6 @@
 # 版本与兼容性
 
-DeepSeek Harness 仍处于 Developer Preview，命令、配置字段和插件接口可能随版本变化。本手册提供使用路径和安全边界；实际运行时以已安装版本的 `--help` 和上游文档为准。当前 Community 版本事实快照为 2026-11-19（Published Latest: `v0.2.2-rc.3`；Candidate Source (unpublished): `v0.2.2-rc.5`; last signed Community Pre-release: `v0.2.2-rc.3-community.1`，详见 `current-release.json`）。
+DeepSeek Harness 仍处于 Developer Preview，命令、配置字段和插件接口可能随版本变化。本手册提供使用路径和安全边界；实际运行时以已安装版本的 `--help` 和上游文档为准。当前 Community 版本事实快照为 2026-11-19（Published Latest: `v0.2.2-rc.5`；Candidate Source: `v0.2.2-rc.5`; historical Pre-release: `v0.2.2-rc.3-community.1`，详见 `current-release.json`）。
 
 ## 手册定位
 

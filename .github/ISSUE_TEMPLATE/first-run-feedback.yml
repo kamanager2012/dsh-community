@@ -35,14 +35,14 @@ body:
     id: version
     attributes:
       label: dsh-community tag or commit
-      placeholder: v0.2.2-rc.3-community.1
+      placeholder: v0.2.2-rc.5
     validations:
       required: true
   - type: input
     id: upstream
     attributes:
       label: Official DSH version, if used
-      placeholder: 0.2.2-rc.3 / not applicable
+      placeholder: 0.2.2-rc.5 / not applicable
   - type: textarea
     id: environment
     attributes:

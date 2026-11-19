@@ -7,7 +7,7 @@
   },
   "communityProduct": {
     "version": "0.2.2-rc.5",
-    "githubLatestTag": "v0.2.2-rc.3",
+    "githubLatestTag": "v0.2.2-rc.5",
     "download": "https://github.com/kamanager2012/dsh-community/releases/latest"
   },
   "dualBadge": "DeepSeek Harness Community v0.2.2-rc.5 [Official Core: @deepseek-ai/dsh@0.2.2-rc.5]",
@@ -48,8 +48,8 @@
   ],
   "officialWeb": "kernel UI and upstream Win/macOS Desktop; not community endpoints",
   "assets": {
-    "linuxAppImage": "dsh-community-0.2.2-rc.3.AppImage",
-    "androidApk": "dsh-community-0.2.2-rc.3-android-arm64-v8a.apk",
+    "linuxAppImage": "dsh-community-0.2.2-rc.5.AppImage",
+    "androidApk": "dsh-community-0.2.2-rc.5-android-arm64-v8a.apk",
     "note": "Historical v0.1.1-rc.2 shipped Linux/Win/macOS (GitHub may show Windows spaces as dots). Complementary Edition releases ship Linux AppImage and signed Android arm64-v8a Remote Client APK."
   },
   "historicalIndependentTags": [
@@ -61,8 +61,8 @@
   "evidence": {
     "artifactSmoke": {
       "status": "PASS",
-      "tag": "v0.2.2-rc.3",
-      "run": "https://github.com/kamanager2012/dsh-community/actions/runs/43696414193",
+      "tag": "v0.2.2-rc.5",
+      "run": "https://github.com/kamanager2012/dsh-community/actions/runs/44454406621",
       "covers": "checksum, keyless cosign bundle verification (12 release assets), Linux AppImage SHA256/extract, Android arm64-v8a APK SHA256/signature/purity, Linux Terminal smoke"
     },
     "candidatePrerelease": {
@@ -100,7 +100,7 @@
       "runtimeDshEntries": 328,
       "marketplaceOffline": "9 plugins verified",
       "providerCalls": 0,
-      "note": "Consolidated 0.2.2-rc.5 local acceptance passed on commit fc12127280751ffa3f4843dcc84c472735600939 atop CI-attested runtime-lock (run 44438093968 / job 135271887944), promoting latest-tested to 0.2.2-rc.5; Published Latest and published installer evidence remain v0.2.2-rc.3."
+      "note": "Consolidated 0.2.2-rc.5 local acceptance passed on commit fc12127280751ffa3f4843dcc84c472735600939 atop CI-attested runtime-lock (run 44438093968 / job 135271887944), promoting latest-tested to 0.2.2-rc.5 prior to publishing v0.2.2-rc.5 as GitHub Latest (releaseId 450856726, artifact-smoke run 44454406621)."
     },
     "previousCandidateAcceptance": {
       "status": "PASS",
@@ -121,25 +121,25 @@
   },
   "candidateTag": "v0.2.2-rc.5",
   "publishedAssets": {
-    "linuxAppImage": "dsh-community-0.2.2-rc.3.AppImage",
-    "androidApk": "dsh-community-0.2.2-rc.3-android-arm64-v8a.apk",
+    "linuxAppImage": "dsh-community-0.2.2-rc.5.AppImage",
+    "androidApk": "dsh-community-0.2.2-rc.5-android-arm64-v8a.apk",
     "note": "Historical v0.1.1-rc.2 shipped Linux/Win/macOS (GitHub may show Windows spaces as dots). Complementary Edition releases ship Linux AppImage and signed Android arm64-v8a Remote Client APK."
   },
   "publishedReleaseEvidence": {
-    "releaseId": 445732060,
-    "tag": "v0.2.2-rc.3",
-    "url": "https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3",
-    "publishedAt": "2026-11-15T08:39:25Z",
+    "releaseId": 450856726,
+    "tag": "v0.2.2-rc.5",
+    "url": "https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.5",
+    "publishedAt": "2026-11-19T03:51:33Z",
     "primaryAssets": {
       "linuxAppImage": {
-        "name": "dsh-community-0.2.2-rc.3.AppImage",
-        "assetId": 749395719,
-        "digest": "sha256:21d8e9102e22f40ebc8962da7c2a074953c19bdc144675ee81d30c7a3b9e2d07"
+        "name": "dsh-community-0.2.2-rc.5.AppImage",
+        "assetId": 766120820,
+        "digest": "sha256:d7f442c1b6a720cf3271cce670f0de65d945e7cd89c6de8f88d6881d76f6bf26"
       },
       "androidApk": {
-        "name": "dsh-community-0.2.2-rc.3-android-arm64-v8a.apk",
-        "assetId": 750393827,
-        "digest": "sha256:c3e101d80e5fe1abea6d5a2a60f4328083302800b3177753b15e8772498719e1"
+        "name": "dsh-community-0.2.2-rc.5-android-arm64-v8a.apk",
+        "assetId": 766120816,
+        "digest": "sha256:41623e6008d40512a9a306a70c11054172c881c6e7d69ad21b0777a579c0b766"
       }
     }
   }

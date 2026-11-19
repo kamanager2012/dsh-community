@@ -10,12 +10,12 @@
 | --- | --- | --- |
 | 使用官方 Web 或 Windows / macOS 桌面 | [`deepseek-ai/deepseek-harness`](https://github.com/deepseek-ai/deepseek-harness)（`npx @deepseek-ai/dsh web`） | 官方上游产品与桌面路径，互补版不重复打包 Win/macOS |
 | 使用社区终端 / TUI 与多引擎远程 | 本仓库 `dsh-community`、`pnpm tui` 或 `dsh-community remote start` | Linux / WSL 主力互补端，执行核心仍是官方 Runtime |
-| 下载 Linux 桌面 AppImage | [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) `.AppImage` 或 `pnpm desktop:package -- --appimage` | 官方未覆盖的 Linux 桌面互补端；精确 tag/文件名见 [`current-release.md`](current-release.md) |
-| 下载 Android Remote Client APK | [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) `-android-arm64-v8a.apk`（源码 `apps/android` + `packages/remote-adapter`） | 已签名 `arm64-v8a` APK（CI `x86_64` 模拟器 E2EE 已验收，物理真机遥测 `[UNVERIFIED]`） |
-| 试用最新社区修复 | [Community Pre-release `v0.2.2-rc.3-community.1`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1) | 预发布安装包与签名文件独立于 `releases/latest` 的 `v0.2.2-rc.3` |
+| 下载 Linux 桌面 AppImage | [Published Latest (`v0.2.2-rc.5`)](https://github.com/kamanager2012/dsh-community/releases/latest) `.AppImage` 或 `pnpm desktop:package -- --appimage` | 官方未覆盖的 Linux 桌面互补端；精确 tag/文件名见 [`current-release.md`](current-release.md) |
+| 下载 Android Remote Client APK | [Published Latest (`v0.2.2-rc.5`)](https://github.com/kamanager2012/dsh-community/releases/latest) `-android-arm64-v8a.apk`（源码 `apps/android` + `packages/remote-adapter`） | 已签名 `arm64-v8a` APK（CI `x86_64` 模拟器 E2EE 已验收，物理真机遥测 `[UNVERIFIED]`） |
+| 历史社区预发布归档 | [Community Pre-release `v0.2.2-rc.3-community.1`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1) | 前序预发布（已被 `releases/latest` 的 `v0.2.2-rc.5` 替代；二者校验文件不可混用） |
 | 查完整操作手册 | [DeepSeek Harness Handbook](https://kamanager2012.github.io/dsh-community/) | Provider、Session、安全、自动化和验收 |
 
-**安装前先选发行频道：** GitHub Published Latest 仍是 `v0.2.2-rc.3`；最新 Community Pre-release 是 `v0.2.2-rc.3-community.1`。两者的安装包及校验文件不能混用。CLI 源码安装请使用 [README 的固定 Commit/Tag 示例](../README.md#30-秒极速上手)，不要误将可变 `main` 当成已签名的 Release。
+**安装前先选发行频道：** GitHub Published Latest 现为 `v0.2.2-rc.5`（已同步 `@deepseek-ai/dsh@0.2.2-rc.5` 并整合此前预发布 [`v0.2.2-rc.3-community.1`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1) 的加固修复）。不同版本的安装包及校验文件不能混用。CLI 源码安装请使用 [README 的固定 Commit/Tag 示例](../README.md#30-秒极速上手)，不要误将可变 `main` 当成已签名的 Release。
 
 不要从已归档的 Suite、独立 Marketplace、独立 Plugins 或 Edition 下载正式客户端。**Published Latest** 仍以 [releases/latest](https://github.com/kamanager2012/dsh-community/releases/latest) 和 `current-release.json` 中的 `githubLatestTag / publishedAssets / publishedReleaseEvidence` 为准；发行产物带 keyless cosign 签名（`.sigstore.json`）。不要下载历史编号 `v0.1.2`–`v0.1.6` 当当前产品。官方 Web 与 Windows/macOS Desktop 是上游端，不是 Community 互补端。三个互补 Community endpoints（全部已发行：WSL/Linux 终端、Linux AppImage 与已签名 Android `arm64-v8a` APK；其中 Android 物理真机遥测保持 `[UNVERIFIED]`）的定义见 [community-endpoints.md](community-endpoints.md)。详见[版本策略](version-policy.md)。
 
@@ -30,7 +30,7 @@
 - `dsh-community-<version>-official-runtime.cdx.json` — 内嵌官方 `@deepseek-ai/dsh` 依赖树的 CycloneDX SBOM
 - `*.sha256` 与 `*.sigstore.json` — 每个文件的 SHA-256 sidecar 与 keyless Cosign 签名包
 
-本地完整性与无密钥签名校验（需 `cosign >= v2.4`，完整步骤见 [当前版本页面](current-release.md#quick-download--verification-v022-rc3)）：
+本地完整性与无密钥签名校验（需 `cosign >= v2.4`，完整步骤见 [当前版本页面](current-release.md#quick-download--verification-v022-rc5)）：
 
 ```sh
 sha256sum -c dsh-community-<version>.AppImage.sha256
@@ -60,15 +60,15 @@ cosign verify-blob \
 
 ## 三十秒一键安装终端（WSL / Linux）与五分钟从源码启动
 
-`scripts/install-linux.sh` 是在 `v0.2.2-rc.3` 之后合入 `main` 的源码安装脚本（需要 Node.js 24.9+ / 最低 22.15、pnpm、git 与 `flock`（util-linux））。注意官方 `@deepseek-ai/dsh@0.2.2-rc.3` 声明 `engines.node >=24.9.0`（官方 0.1.0-rc.8 起 session JSONL 依赖 `node:zlib` zstd，22.15 才有）。直接安装或锁定精确 tag / commit：
+`scripts/install-linux.sh` 现已随 `v0.2.2-rc.5` 发行并随源码同步（需要 Node.js 24.9+ / 最低 22.15、pnpm、git 与 `flock`（util-linux））。注意官方 `@deepseek-ai/dsh@0.2.2-rc.5` 声明 `engines.node >=24.9.0`（官方 0.1.0-rc.8 起 session JSONL 依赖 `node:zlib` zstd，22.15 才有）。推荐固定安装器 Commit 并锁定已发布 tag 与精确 Commit：
 
 ```sh
-# 跟踪 main 最新源码：
-curl -fsSL https://raw.githubusercontent.com/kamanager2012/dsh-community/main/scripts/install-linux.sh | bash
+# 推荐：固定安装器 Commit，并锁定 Published Latest (v0.2.2-rc.5 = 0a8009d0462042764ad67e87208df791f1f6180b)：
+curl -fsSL https://raw.githubusercontent.com/kamanager2012/dsh-community/afe0514e9da98174ac117e70d7e9fb30aa48de2b/scripts/install-linux.sh | \
+  bash -s -- --ref v0.2.2-rc.5 --expected-commit 0a8009d0462042764ad67e87208df791f1f6180b
 
-# 或锁定到已发布 tag 与精确 Commit（v0.2.2-rc.3 = 073826c38df4cf246e7ac90b27e0df98569a534d）：
-curl -fsSL https://raw.githubusercontent.com/kamanager2012/dsh-community/main/scripts/install-linux.sh | \
-  bash -s -- --ref v0.2.2-rc.3 --expected-commit 073826c38df4cf246e7ac90b27e0df98569a534d
+# 仅开发用途：跟踪可变 main 最新源码（不等于已签名 Release）：
+# curl -fsSL https://raw.githubusercontent.com/kamanager2012/dsh-community/main/scripts/install-linux.sh | bash
 ```
 
 > 远程控制配对注意：

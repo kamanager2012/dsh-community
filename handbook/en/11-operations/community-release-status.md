@@ -14,12 +14,12 @@ as independent states.
 | Layer | Current value | Meaning |
 |---|---|---|
 | Official core pin | `@deepseek-ai/dsh@0.2.2-rc.5` | Official kernel |
-| Candidate community product | `0.2.2-rc.5` | **Unpublished source candidate (`v0.2.2-rc.5`); no signed assets exist for this tag yet** |
-| Last signed Community Pre-release | [`v0.2.2-rc.3-community.1`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1) | Published 2026-11-17, passed exact-tag artifact-smoke; separate from `0.2.2-rc.5` source candidate |
-| Published Latest | `v0.2.2-rc.3` | GitHub Latest; canonical user download entry |
-| Historical tags | `v0.1.2`–`v0.1.6`, `v0.1.1-rc.2`, `v0.2.2-rc.2`, `v0.2.2-rc.2-community.1` | Superseded by `v0.2.2-rc.3` |
+| Candidate community product | `0.2.2-rc.5` | **Signed and published as GitHub Latest `v0.2.2-rc.5` (12 assets verified via `artifact-smoke`)** |
+| Historical Community Pre-release | [`v0.2.2-rc.3-community.1`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1) | Published 2026-11-17; superseded by `v0.2.2-rc.5` |
+| Published Latest | `v0.2.2-rc.5` | GitHub Latest; canonical user download entry |
+| Historical tags | `v0.1.2`–`v0.1.6`, `v0.1.1-rc.2`, `v0.2.2-rc.2`, `v0.2.2-rc.2-community.1`, `v0.2.2-rc.3`, `v0.2.2-rc.3-community.1` | Superseded by `v0.2.2-rc.5` |
 
-Desktop and TUI show the Dual-Badge identity (current Candidate Source / Pre-release):
+Desktop and TUI show the Dual-Badge identity:
 
 ```text
 DeepSeek Harness Community v0.2.2-rc.5 [Official Core: @deepseek-ai/dsh@0.2.2-rc.5]
@@ -29,13 +29,13 @@ DeepSeek Harness Community v0.2.2-rc.5 [Official Core: @deepseek-ai/dsh@0.2.2-rc
 
 The canonical download entry is
 [`dsh-community/releases/latest`](https://github.com/kamanager2012/dsh-community/releases/latest).
-Normal users download [`v0.2.2-rc.3`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3).
+Normal users download [`v0.2.2-rc.5`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.5).
 
-Published `v0.2.2-rc.3` (release commit `073826c38df4cf246e7ac90b27e0df98569a534d`) uploads **12 release assets total (3 primary files + 3 `.sha256` digests + 6 keyless Cosign `.sigstore.json` bundles**, excluding GitHub's auto-generated source archives; under the Complementary Edition policy, it ships Linux AppImage + signed Android `arm64-v8a` Remote Client APK + official-runtime CycloneDX SBOM, while Windows `.exe` and macOS `.dmg` installers were retired after historical `v0.1.1-rc.2` in favor of upstream `deepseek-ai/deepseek-harness`):
+Published `v0.2.2-rc.5` (release commit `0a8009d0462042764ad67e87208df791f1f6180b`) uploads **12 release assets total (3 primary files + 3 `.sha256` digests + 6 keyless Cosign `.sigstore.json` bundles**, excluding GitHub's auto-generated source archives; under the Complementary Edition policy, it ships Linux AppImage + signed Android `arm64-v8a` Remote Client APK + official-runtime CycloneDX SBOM, while Windows `.exe` and macOS `.dmg` installers were retired after historical `v0.1.1-rc.2` in favor of upstream `deepseek-ai/deepseek-harness`):
 
-- `dsh-community-0.2.2-rc.3.AppImage` + `.sha256` + `.sigstore.json` + `.sha256.sigstore.json`
-- `dsh-community-0.2.2-rc.3-android-arm64-v8a.apk` + `.sha256` + `.sigstore.json` + `.sha256.sigstore.json`
-- `dsh-community-0.2.2-rc.3-official-runtime.cdx.json` + `.sha256` + `.sigstore.json` + `.sha256.sigstore.json`
+- `dsh-community-0.2.2-rc.5.AppImage` + `.sha256` + `.sigstore.json` + `.sha256.sigstore.json`
+- `dsh-community-0.2.2-rc.5-android-arm64-v8a.apk` + `.sha256` + `.sigstore.json` + `.sha256.sigstore.json`
+- `dsh-community-0.2.2-rc.5-official-runtime.cdx.json` + `.sha256` + `.sigstore.json` + `.sha256.sigstore.json`
 
 The three Complementary Community endpoints are **WSL/Linux Terminal** (shipped),
 **Linux AppImage** (shipped), and **Android Remote Client** (signed `arm64-v8a` APK shipped in Published Latest; CI `x86_64` emulator E2EE verified, physical handset telemetry stays
@@ -49,9 +49,9 @@ Observed for this snapshot:
 | Gate | Status | Evidence boundary |
 |---|---|---|
 | Normal `dsh-community` CI | `[REAL]` | `pnpm typecheck` and Vitest pass on `main`, but main CI does not prove installer readiness |
-| Release assets & signing | `[REAL]` | `v0.2.2-rc.3` (`releaseId=445732060`) and Pre-release [`v0.2.2-rc.3-community.1`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1) (`releaseId=448012716`, `release` [Run 44004421253](https://github.com/kamanager2012/dsh-community/actions/runs/44004421253)) each published 12 assets with SHA-256 and keyless cosign bundles |
-| `artifact-smoke` | `[REAL]` | Both `v0.2.2-rc.3` ([Run 43696414193](https://github.com/kamanager2012/dsh-community/actions/runs/43696414193)) and Candidate Pre-release `v0.2.2-rc.3-community.1` ([Run 44005955539](https://github.com/kamanager2012/dsh-community/actions/runs/44005955539)) passed `resolve`, `linux-appimage`, `android-apk`, `linux-terminal`, and `verify-signatures` across all 12 assets |
-| Full user loop | `[PARTIAL]` | [Run 43729024796](https://github.com/kamanager2012/dsh-community/actions/runs/43729024796) passed `.github/workflows/user-loop-evidence.yml` 3-way `dsh-community` TUI ↔ official `dsh --profile headless` ↔ Linux AppImage bundled runtime (`official-dsh.tar`) Session continuation roundtrip, packaged AppImage Electron GUI (`AppRun`) Session visibility/Runtime/Marketplace checks, plus all 4 lifecycle recovery checks (prior runs [43713641736](https://github.com/kamanager2012/dsh-community/actions/runs/43713641736), [43709890408](https://github.com/kamanager2012/dsh-community/actions/runs/43709890408), [43688556931](https://github.com/kamanager2012/dsh-community/actions/runs/43688556931)); interactive packaged GUI / Official Web turn-submission continuation and physical Android handset loops remain pending |
+| Release assets & signing | `[REAL]` | `v0.2.2-rc.5` (`releaseId=450856726`, `release` [Run 44453540672](https://github.com/kamanager2012/dsh-community/actions/runs/44453540672)) published 12 assets with SHA-256 and keyless cosign bundles (matching prior `v0.2.2-rc.3` and `v0.2.2-rc.3-community.1` standards) |
+| `artifact-smoke` | `[REAL]` | `v0.2.2-rc.5` ([Run 44454406621](https://github.com/kamanager2012/dsh-community/actions/runs/44454406621)) passed `resolve`, `linux-appimage`, `android-apk`, `linux-terminal`, and `verify-signatures` across all 12 assets (following prior `v0.2.2-rc.3` [43696414193](https://github.com/kamanager2012/dsh-community/actions/runs/43696414193) and `v0.2.2-rc.3-community.1` [44005955539](https://github.com/kamanager2012/dsh-community/actions/runs/44005955539)) |
+| Full user loop | `[PARTIAL]` | [Run 43729024796](https://github.com/kamanager2012/dsh-community/actions/runs/43729024796) passed `.github/workflows/user-loop-evidence.yml` 3-way session continuation, Electron GUI (`AppRun`) checks, and all 4 lifecycle recovery checks against `v0.2.2-rc.3`; a dedicated live-API user-loop run for `v0.2.2-rc.5` binaries and physical Android handset loops remain pending |
 
 ```text
 tag
@@ -60,9 +60,9 @@ tag
   → publish 12 signed assets to GitHub Release
 ```
 
-## Latest vs current Pre-release
+## Latest vs historical Pre-release
 
-`v0.2.2-rc.3` (commit `073826c`) remains Published Latest. Post-`rc.3` hardening and fixes (`scripts/install-linux.sh`, headless Chromium E2EE acceptance, fail-closed `observe` Git diff secret redaction, and Codex/ACP crash recovery) were tagged and published on `2026-11-17` as signed GitHub Pre-release [`v0.2.2-rc.3-community.1`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1) (`release` [Run 44004421253](https://github.com/kamanager2012/dsh-community/actions/runs/44004421253), `artifact-smoke` [Run 44005955539](https://github.com/kamanager2012/dsh-community/actions/runs/44005955539)) without displacing `v0.2.2-rc.3`.
+`v0.2.2-rc.5` (commit `0a8009d0462042764ad67e87208df791f1f6180b`) is now Published Latest, incorporating all fixes previously shipped in Pre-release `v0.2.2-rc.3-community.1` (`scripts/install-linux.sh`, headless Chromium E2EE acceptance, fail-closed `observe` Git diff redaction, Codex/ACP crash recovery), #182 mDNS/pairing fixes, and the `@deepseek-ai/dsh@0.2.2-rc.5` kernel sync.
 
 ## Distribution Reality Gate
 
@@ -70,18 +70,18 @@ Exact-release-artifact evidence:
 
 | Scenario | Status | Must prove |
 |---|---|---|
-| Linux AppImage + `dsh-community-0.2.2-rc.3.AppImage` | `[REAL]` | [Run 43696414193](https://github.com/kamanager2012/dsh-community/actions/runs/43696414193) verified SHA-256, extraction, headless launch checks, and keyless cosign signatures; [Run 43729024796](https://github.com/kamanager2012/dsh-community/actions/runs/43729024796) verified the bundled `official-dsh.tar` runtime resumes the shared Session while the packaged Electron GUI (`AppRun`) renders the shared Session ID and copy/resume command controls in `#sessions-table`, Runtime version status, and Marketplace offline cache fallback |
-| WSL/Linux host + `dsh-community` / `pnpm tui` | `[REAL]` | Same run checked Linux TUI help, version, missing-key doctor, sessions, and no-TTY refusal; [Run 43729024796](https://github.com/kamanager2012/dsh-community/actions/runs/43729024796) verified 3-way `dsh-community` TUI ↔ official `dsh --profile headless` ↔ AppImage bundled runtime continuation plus AppImage Electron GUI Session list visibility |
-| Session loop | `[PARTIAL]` | Three-way `dsh-community` TUI ↔ official `dsh --profile headless` ↔ Linux AppImage bundled runtime continuation sharing `~/.dsh`, plus shared Session visibility and copy/resume command controls inside packaged AppImage Electron GUI (`AppRun`), verified `[REAL]` in [Run 43729024796](https://github.com/kamanager2012/dsh-community/actions/runs/43729024796); interactive Official Web / Win·macOS / Linux Desktop GUI turn continuation remains `[待复核]` |
+| Linux AppImage + `dsh-community-0.2.2-rc.5.AppImage` | `[REAL]` | [Run 44454406621](https://github.com/kamanager2012/dsh-community/actions/runs/44454406621) verified `0.2.2-rc.5` SHA-256, extraction, and keyless cosign signatures; prior `rc.3` [Run 43729024796](https://github.com/kamanager2012/dsh-community/actions/runs/43729024796) proved bundled `official-dsh.tar` and Electron GUI (`AppRun`) behavior |
+| WSL/Linux host + `dsh-community` / `pnpm tui` | `[REAL]` | [Run 44454406621](https://github.com/kamanager2012/dsh-community/actions/runs/44454406621) checked `v0.2.2-rc.5` Linux TUI help, version, missing-key doctor, sessions, and no-TTY refusal; prior `rc.3` [Run 43729024796](https://github.com/kamanager2012/dsh-community/actions/runs/43729024796) verified 3-way session continuation |
+| Session loop | `[PARTIAL]` | Verified `[REAL]` for `v0.2.2-rc.3` in [Run 43729024796](https://github.com/kamanager2012/dsh-community/actions/runs/43729024796); interactive Official Web / Desktop GUI turn continuation remains `[待复核]` |
 | Plugin / restart | `[PARTIAL]` | 5/9 catalog plugins verified at `testedDsh` `0.2.2-rc.5` (`dsh plugin add` + `--dump-config`); `@deepseek-harness-tui/dsh-tui@0.20.1` remains at `0.2.2-rc.3`, and 3 legacy plugins remain at `0.1.1-rc.2` |
-| Lifecycle recovery | `[REAL]` | Missing-key clean refusal (exit 2 / 0 orphan sessions), `apps/desktop/src/host-extract.ts#ensureOfficialHostExtracted` interrupted Runtime extraction recovery, `0.2.2-rc.2 → 0.2.2-rc.3` version upgrade (in-place TUI profile upgrade, session preservation, and AppImage GUI runtime switch), and offline handling (TUI fail-closed plus Marketplace client/CLI and AppImage GUI cache fallback) all verified `[REAL]` in [Run 43729024796](https://github.com/kamanager2012/dsh-community/actions/runs/43729024796) |
-| Android Remote Client | `[PARTIAL]` | Signed `dsh-community-0.2.2-rc.3-android-arm64-v8a.apk` shipped in Latest and verified in [Run 43696414193](https://github.com/kamanager2012/dsh-community/actions/runs/43696414193) plus CI `x86_64` emulator E2EE gate; physical `arm64-v8a` handset telemetry remains `[UNVERIFIED]` (`REAL_DEVICE_ACCEPTANCE_READY = false`) |
+| Lifecycle recovery | `[REAL]` | Missing-key clean refusal, interrupted Runtime extraction recovery, version upgrade preservation, and offline handling all verified `[REAL]` in [Run 43729024796](https://github.com/kamanager2012/dsh-community/actions/runs/43729024796) |
+| Android Remote Client | `[PARTIAL]` | Signed `dsh-community-0.2.2-rc.5-android-arm64-v8a.apk` shipped in Latest and verified in [Run 44454406621](https://github.com/kamanager2012/dsh-community/actions/runs/44454406621) plus `0.2.2-rc.5` CI `x86_64` KVM emulator E2EE gate ([Run 44441973511](https://github.com/kamanager2012/dsh-community/actions/runs/44441973511)); physical `arm64-v8a` handset telemetry remains `[UNVERIFIED]` (`REAL_DEVICE_ACCEPTANCE_READY = false`) |
 
 ## Runtime version sources
 
 ```text
-Official kernel: @deepseek-ai/dsh@0.2.2-rc.3
-Community product / Published Latest: v0.2.2-rc.3
+Official kernel: @deepseek-ai/dsh@0.2.2-rc.5
+Community product / Published Latest: v0.2.2-rc.5
 Historical independent numbers: v0.1.2–v0.1.6 (not a user download)
 ```
 

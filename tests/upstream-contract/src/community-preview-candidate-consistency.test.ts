@@ -54,7 +54,10 @@ describe('community preview candidate identity', () => {
       const content = read(name)
       expect(content, name).toContain(facts.candidateTag)
       expect(content, name).toContain(facts.evidence.candidatePrerelease.tag)
-      if (facts.evidence.candidatePrerelease.tag !== facts.candidateTag) {
+      if (
+        facts.publishedReleaseEvidence.tag !== facts.candidateTag
+        && facts.evidence.candidatePrerelease.tag !== facts.candidateTag
+      ) {
         expect(content, name).toMatch(/unpublished|未发布|待发布/iu)
       }
     }

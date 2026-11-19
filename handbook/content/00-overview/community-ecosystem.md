@@ -1,6 +1,6 @@
 # DeepSeek Harness Community 生态与产品入口
 
-> 本页是 DeepSeek Harness Community 生态的项目 handoff。基线日期：2026-11-19（Published Latest: `v0.2.2-rc.3`；Candidate Source（待发布）: `v0.2.2-rc.5`；最近已签发的 Community Pre-release: `v0.2.2-rc.3-community.1`）。
+> 本页是 DeepSeek Harness Community 生态的项目 handoff。基线日期：2026-11-19（Published Latest: `v0.2.2-rc.5`；Candidate Source: `v0.2.2-rc.5`；历史 Pre-release: `v0.2.2-rc.3-community.1`）。
 
 本项目不是 DeepSeek Harness 的 fork，也不是另一套 Agent Runtime。唯一的执行核心仍然是官方 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)；社区仓库围绕官方 Runtime 提供互补发行、多 Agent E2EE 远程控制面、兼容契约、插件目录、知识手册与安全验证能力。
 
@@ -23,11 +23,11 @@
         └── Android Remote Client（apps/android，[UNVERIFIED]）
 ```
 
-正式软件入口统一指向 [`dsh-community/releases/latest`](https://github.com/kamanager2012/dsh-community/releases/latest)。当前 Published Latest 保持为 `v0.2.2-rc.3`（官方内核 `@deepseek-ai/dsh@0.2.2-rc.3`），当前 Candidate Source 为 **`v0.2.2-rc.5`（同步官方 `@deepseek-ai/dsh@0.2.2-rc.5`，尚未发布）**，最近已签发的社区预发布仍是 [`v0.2.2-rc.3-community.1`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1)（不覆盖 Latest；详细状态与分离真源见 [`docs/current-release.json`](https://github.com/kamanager2012/dsh-community/blob/main/docs/current-release.json) 与[当前发行状态](../11-operations/community-release-status.md)）。
+正式软件入口统一指向 [`dsh-community/releases/latest`](https://github.com/kamanager2012/dsh-community/releases/latest)。当前 Published Latest 为 **`v0.2.2-rc.5`**（Release Commit `0a8009d0462042764ad67e87208df791f1f6180b`，同步官方内核 `@deepseek-ai/dsh@0.2.2-rc.5`，并通过 `artifact-smoke` [Run 44454406621](https://github.com/kamanager2012/dsh-community/actions/runs/44454406621)）；此前历史预发布 [`v0.2.2-rc.3-community.1`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1) 已被 `v0.2.2-rc.5` 替代（详细状态与分离真源见 [`docs/current-release.json`](https://github.com/kamanager2012/dsh-community/blob/main/docs/current-release.json) 与[当前发行状态](../11-operations/community-release-status.md)）。
 
 按照 **Complementary Edition** 边界：
 
-- **三个互补社区端**：**WSL/Linux Terminal**（已发行）、**Linux AppImage**（已发行）与 **Android Remote Client**（`dsh-community-0.2.2-rc.3-android-arm64-v8a.apk` 已在 Published Latest 发行；CI `x86_64` 模拟器 E2EE 验收通过，物理真机遥测保持 `[UNVERIFIED]`）。
+- **三个互补社区端**：**WSL/Linux Terminal**（已发行）、**Linux AppImage**（已发行）与 **Android Remote Client**（`dsh-community-0.2.2-rc.5-android-arm64-v8a.apk` 已在 Published Latest 发行；CI `x86_64` 模拟器 E2EE 验收通过，物理真机遥测保持 `[UNVERIFIED]`）。
 - Windows 与 macOS Desktop 安装包已自历史版本 `v0.1.1-rc.2` 后退役，交还官方上游 `deepseek-ai/deepseek-harness`（`--win` / `--mac` fail-closed）；历史独立编号 `v0.1.2`–`v0.1.6` 仅作历史记录，不是下载入口。
 - 除 `~/.dsh` 会话互通外，本仓 `packages/remote-adapter` 与 `apps/remote-web` 还提供 **Multi-Agent E2EE 远程控制面**（Noise IK 加密、局域网/WebRTC/自部署盲中继），可统一控制本机 DSH、Claude Code、Codex CLI 与 OpenCode 并进行只读 Git diff 审查。
 
