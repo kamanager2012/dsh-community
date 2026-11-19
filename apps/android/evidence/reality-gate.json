@@ -1,9 +1,9 @@
 {
   "schemaVersion": 2,
   "architecture": "remote-only",
-  "asOf": "2026-11-15",
+  "asOf": "2026-11-19",
   "status": "EMULATOR_PASS_NOT_PHYSICAL_ARM64",
-  "officialHostTarget": "0.2.2-rc.3",
+  "officialHostTarget": "0.2.2-rc.5",
   "embeddedNodeRemoved": true,
   "remoteAcceptance": {
     "pairing": "PASS",
@@ -28,11 +28,11 @@
     "isX86_64Emulator": true
   },
   "apk": {
-    "sha256": "6d15f6f996ff0d7df22abf4c4ba722237dd937b91c96991b85374d44a67b27ba",
+    "sha256": "3828892fc1d67f749b5f05173fcef6ca3bcafb6d0b24e96b02534e43a9aee095",
     "containsNodeRuntime": false,
     "containsOfficialDsh": false,
     "arm64RealDeviceSmoke": false,
     "x86_64EmulatorSmoke": true
   },
-  "notes": "R5 migrated apps/android to a pure thin Remote Client (zero Node.js, zero @deepseek-ai/dsh). CI KVM x86_64 emulator E2EE Remote Acceptance (6/6 instrumentation tests, 7/7 remoteAcceptance gates) and signed arm64-v8a release APK packaging verified in GitHub Actions run 43689446502; physical arm64-v8a handset smoke (arm64RealDeviceSmoke) remains false until USB hardware sign-off."
+  "notes": "R5 migrated apps/android to a pure thin Remote Client (zero Node.js, zero @deepseek-ai/dsh). CI KVM x86_64 emulator E2EE Remote Acceptance (6/6 instrumentation tests, 7/7 remoteAcceptance gates, debug APK sha256=3828892fc1d67f749b5f05173fcef6ca3bcafb6d0b24e96b02534e43a9aee095) and signed arm64-v8a release APK packaging (sha256=e62718b5be414009a86f20a804bbeafea407d4efd48f2fcbe5cb18c06a07b11e) verified for officialHostTarget 0.2.2-rc.5 in main GitHub Actions run 44441973511 (commit faf56a84c39854bf482911861f17b34f06931ab8); physical arm64-v8a handset smoke (arm64RealDeviceSmoke) remains false until USB hardware sign-off."
 }
