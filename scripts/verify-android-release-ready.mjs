@@ -3,7 +3,7 @@ import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)))
-const EXPECTED_HOST_TARGET = '0.2.2-rc.3'
+const EXPECTED_HOST_TARGET = '0.2.2-rc.5'
 
 function readJson(rel) {
   return JSON.parse(readFileSync(resolve(ROOT, rel), 'utf8'))

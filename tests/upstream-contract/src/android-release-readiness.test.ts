@@ -28,7 +28,7 @@ describe('Android R5 release readiness is fail-closed', () => {
     })
     expect(emuResult.status).toBe(0)
     expect(emuResult.stdout).toContain(
-      'android-release-ready: PASS architecture=remote-only host=0.2.2-rc.3 mode=emulator-verified',
+      'android-release-ready: PASS architecture=remote-only host=0.2.2-rc.5 mode=emulator-verified',
     )
   })
 
@@ -49,7 +49,7 @@ describe('Android R5 release readiness is fail-closed', () => {
     expect(evidence.schemaVersion).toBe(2)
     expect(evidence.architecture).toBe('remote-only')
     expect(evidence.status).toBe('EMULATOR_PASS_NOT_PHYSICAL_ARM64')
-    expect(evidence.officialHostTarget).toBe('0.2.2-rc.3')
+    expect(evidence.officialHostTarget).toBe('0.2.2-rc.5')
     expect(evidence.embeddedNodeRemoved).toBe(true)
     expect(evidence.remoteAcceptance).toEqual({
       pairing: 'PASS',

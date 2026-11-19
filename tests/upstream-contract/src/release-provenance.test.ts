@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 const root = join(dirname(fileURLToPath(import.meta.url)), '../../..')
 const verifier = join(root, 'scripts/release-provenance.mjs')
 const dirs: string[] = []
-const tag = 'v0.2.2-rc.3-community.2'
+const tag = 'v0.2.2-rc.5'
 
 function git(cwd: string, ...args: string[]): string {
   const r = spawnSync('git', args, { cwd, encoding: 'utf8' })

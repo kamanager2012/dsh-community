@@ -291,7 +291,7 @@ describe('marketplace page', () => {
         ...VALID_CATALOG.plugins[0]!,
         versions: [{
           version: '0.2.0',
-          testedDsh: '0.2.2-rc.3',
+          testedDsh: '0.2.2-rc.5',
           integrity: 'sha512-abc',
           provenance: true,
           security: {
@@ -328,7 +328,7 @@ describe('marketplace page', () => {
         ...VALID_CATALOG.plugins[0]!,
         versions: [{
           version: '0.2.0',
-          testedDsh: '0.2.2-rc.3',
+          testedDsh: '0.2.2-rc.5',
           security: {
             risk: 'high',
             requiresConfirmation: false,

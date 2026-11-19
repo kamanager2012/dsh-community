@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '../../..')
 const helper = join(root, 'scripts/release-governance.mjs')
-const tag = 'v0.2.2-rc.3-community.2'
+const tag = 'v0.2.2-rc.5'
 
 function rule(include: string[], overrides: Record<string, unknown> = {}) {
   return {

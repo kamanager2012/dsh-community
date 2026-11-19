@@ -729,7 +729,7 @@ async function main() {
       architecture: 'remote-only',
       asOf: new Date().toISOString().slice(0, 10),
       status: deviceInfo.isPhysicalArm64 ? 'PASS' : 'EMULATOR_PASS_NOT_PHYSICAL_ARM64',
-      officialHostTarget: '0.2.2-rc.3',
+      officialHostTarget: '0.2.2-rc.5',
       embeddedNodeRemoved: true,
       device: deviceInfo,
       pairedDeviceId: pairedDevice.deviceId,

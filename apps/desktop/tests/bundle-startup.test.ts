@@ -88,7 +88,7 @@ describe('desktop ESM bundles CJS/sodium-native interop', () => {
             exit: noop,
             setName: noop,
             setPath: noop,
-            getVersion: () => '0.2.2-rc.3',
+            getVersion: () => '0.2.2-rc.5',
             isPackaged: false,
             on: noop,
             once: noop,

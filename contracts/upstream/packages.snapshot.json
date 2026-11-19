@@ -1,5 +1,5 @@
 {
-  "pin": "0.2.2-rc.3",
+  "pin": "0.2.2-rc.5",
   "count": 198,
   "names": [
     "@deepseek-ai/cordis-plugin-timer",
