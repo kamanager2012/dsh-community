@@ -310,7 +310,7 @@ describe('marketplace page', () => {
         }],
       }],
     })
-    expect(withSecurity?.plugins[0]?.versions[0]?.testedDsh).toBe('0.2.2-rc.3')
+    expect(withSecurity?.plugins[0]?.versions[0]?.testedDsh).toBe('0.2.2-rc.5')
     expect(withSecurity?.plugins[0]?.versions[0]?.security?.risk).toBe('high')
     expect(withSecurity?.plugins[0]?.versions[0]?.integrity).toBe('sha512-abc')
     expect(withSecurity?.plugins[0]?.versions[0]?.provenance).toBe(true)

@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '../../..')
 
 describe('frozen upstream candidate target', () => {
-  it('advances explicitly from accepted 0.2.2-rc.2 to frozen 0.2.2-rc.3 with measured source evidence', () => {
+  it('advances explicitly from accepted 0.2.2-rc.3 to frozen 0.2.2-rc.5 with measured source evidence', () => {
     const watch = JSON.parse(
       readFileSync(
         join(repoRoot, 'contracts/compatibility/upstream-candidate-watch.json'),
@@ -62,17 +62,17 @@ describe('frozen upstream candidate target', () => {
 
     expect(watch.schemaVersion).toBe(2)
     expect(watch.previousAccepted.package).toBe('@deepseek-ai/dsh')
-    expect(watch.previousAccepted.version).toBe('0.2.2-rc.2')
+    expect(watch.previousAccepted.version).toBe('0.2.2-rc.3')
     expect(watch.previousAccepted.disposition).toBe('PREVIOUS_ACCEPTED_BASELINE')
     expect(watch.previousAccepted.acceptedCommunityMain)
-      .toBe('4419bd1a14d011253174e304383ba95a4b818f4d')
+      .toBe('f344185495a9def1a60fc93eee76189a66ac14b1')
 
     expect(watch.frozenTarget.package).toBe('@deepseek-ai/dsh')
-    expect(watch.frozenTarget.version).toBe('0.2.2-rc.3')
+    expect(watch.frozenTarget.version).toBe('0.2.2-rc.5')
     expect(watch.frozenTarget.registryGate.status).toBe('PASS')
     expect(watch.frozenTarget.registryGate.command)
-      .toBe('npm view @deepseek-ai/dsh@0.2.2-rc.3 version --registry=https://registry.npmjs.org/')
-    expect(watch.frozenTarget.registryGate.runId).toBe(43661345685)
+      .toBe('npm view @deepseek-ai/dsh@0.2.2-rc.5 version --registry=https://registry.npmjs.org/')
+    expect(watch.frozenTarget.registryGate.runId).toBe(44438093968)
     expect(watch.policy.candidateAdvancement).toBe('EXPLICIT_ONLY')
 
     for (const sha of [
@@ -90,7 +90,7 @@ describe('frozen upstream candidate target', () => {
     )
 
     const comparison = watch.frozenTarget.comparisonFromPrevious
-    expect(comparison.commitsBetweenReleaseMerges).toBe(6)
+    expect(comparison.commitsBetweenReleaseMerges).toBe(13)
     expect(comparison.changedFiles).toBe(300)
 
     expect(comparison.readinessImplementation.verdict).toBe('UNCHANGED')

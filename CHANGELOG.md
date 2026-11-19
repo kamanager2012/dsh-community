@@ -74,6 +74,14 @@
 - 冻结的 Agent Governance Stack 三仓曾以完整代码与提交历史并入本仓 `archive/`，独立仓于 2026-09-13 删除；**2026-09-14 回退**：AIOS 是独立项目，与 dsh 无技术依赖——`aios-core` 已在独立仓 [`kamanager2012/aios-core`](https://github.com/kamanager2012/aios-core) 恢复（原始提交 SHA 与全部分支不变），`governor-core` 与 `agent-constraint-system` 的完整历史现保留为该仓 `legacy/governor-core`、`legacy/agent-constraint-system` 分支，本仓 `archive/` 中的三个副本已移除。手册实验固定的 workspace 版本 `aios-core@6af8968` 改从独立仓检出。
 - 安全修复：通过 `pnpm-workspace.yaml` 的 `overrides` 修补官方传递依赖新披露的高危漏洞——`@xmldom/xmldom` 0.8.14→0.8.15（electron 打包链，plist 现解析 0.9.12）、`js-yaml` 4.3.1→4.3.2（官方 cordis-plugin-include 传递依赖）、`sharp` 0.35.3→0.35.4（官方 dsh-attachment-local 传递依赖，与 Android 裁决同版本）。`pnpm audit --audit-level high` 恢复通过：8 high + 9 moderate → 0 high + 7 moderate。
 
+## 0.2.2-rc.5 — Candidate Source (2026-11-19)
+
+Candidate Source aligns **Community Product Version** 1:1 with the latest official `@deepseek-ai/dsh@0.2.2-rc.5` (`next` dist-tag, published `2026-11-18T13:17:23.604Z`, upstream tag `dsh-v0.2.2-rc.5`, release commit `9bf478edde5b14e6a15d3802a8834bdca83f2d97`, merge commit `9c2670d3bce5275e0d1610272958121af87787bb`). Published Latest remains `v0.2.2-rc.3` (and last signed Community Pre-release remains `v0.2.2-rc.3-community.1`) until a `v0.2.2-rc.5` tag is verified and released.
+
+- **Synced kernel & product (`@deepseek-ai/dsh@0.2.2-rc.5`)**: Advances `PINNED_DSH_VERSION`, `COMMUNITY_PRODUCT_VERSION`, 11 workspace manifests, TUI peers, Android target metadata (`versionCode = 7`), and `pnpm-lock.yaml` from `0.2.2-rc.3` to `0.2.2-rc.5` (incorporating upstream `0.2.2-rc.4`/`0.2.2-rc.5` DeepSeek `safetyCheck`/refusal handling, `liveshare` tunnel/clock fixes, and `web-search-deepseek` default model updates while keeping `contracts/upstream` shape unchanged).
+- **Desktop runtime lock**: Regenerated via GitHub Actions `runtime-lock-generate` (run `44438093968` / job `135271887944` on `ubuntu-24.04`, Node `v22.23.5`, npm `10.9.9`): **676 entries** with **328 DSH-family entries** pinned to exact `0.2.2-rc.5`, retaining `zod@4.6.7` and `undici@^8.12.2` overrides and `dsh-subprocess-local@0.2.2-rc.5` lifecycle policy.
+- **Official contracts & Android gate**: Refreshed `contracts/upstream` (`config-rows` `202`, `packages` `198`, `exports`, `cli` — zero structural drift from `0.2.2-rc.3`), retained #182 mDNS/pairing/R6-STUN fixes, and kept Android `REAL_DEVICE_ACCEPTANCE_READY = false` / `arm64RealDeviceSmoke = false`.
+
 ## 0.2.2-rc.3-community.2 — Community Maintenance Candidate (2026-11-17)
 
 Built on the **same pinned official runtime** `@deepseek-ai/dsh@0.2.2-rc.3`. Publication must be verified from GitHub Release and exact-tag artifact-smoke evidence. `v0.2.2-rc.3` remains Published Latest by version policy; a `-community.2` release is a **Pre-release**, not a Latest promotion.

@@ -1,6 +1,6 @@
 # DeepSeek Harness Community ecosystem
 
-> Project handoff and product-entry map. Baseline date: 2026-11-17 (Published Latest: `v0.2.2-rc.3`; Candidate Source (unpublished): `v0.2.2-rc.3-community.2`; last signed Community Pre-release: `v0.2.2-rc.3-community.1`).
+> Project handoff and product-entry map. Baseline date: 2026-11-19 (Published Latest: `v0.2.2-rc.3`; Candidate Source (unpublished): `v0.2.2-rc.5`; last signed Community Pre-release: `v0.2.2-rc.3-community.1`).
 
 The community project is not a fork of DeepSeek Harness and not another Agent Runtime.
 The official [DeepSeek Harness Runtime](https://github.com/deepseek-ai/deepseek-harness)
@@ -34,7 +34,7 @@ Official DeepSeek Harness Runtime
 
 The formal download entry is
 [`dsh-community/releases/latest`](https://github.com/kamanager2012/dsh-community/releases/latest).
-Published Latest remains `v0.2.2-rc.3`, 1:1 with official kernel `@deepseek-ai/dsh@0.2.2-rc.3`, while **Candidate Source is `v0.2.2-rc.3-community.2` (unpublished)**; the last signed Community Pre-release remains [`v0.2.2-rc.3-community.1`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1) without displacing Latest.
+Published Latest remains `v0.2.2-rc.3` (official kernel `@deepseek-ai/dsh@0.2.2-rc.3`), while **Candidate Source is `v0.2.2-rc.5` (synced 1:1 with `@deepseek-ai/dsh@0.2.2-rc.5`, unpublished)**; the last signed Community Pre-release remains [`v0.2.2-rc.3-community.1`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1) without displacing Latest.
 See [`docs/current-release.json`](https://github.com/kamanager2012/dsh-community/blob/main/docs/current-release.json),
 [current release status](../11-operations/community-release-status.md), and the
 [release runbook](../11-operations/community-release-runbook.md) for machine-readable identity
