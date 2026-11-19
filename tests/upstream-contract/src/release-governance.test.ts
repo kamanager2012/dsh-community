@@ -18,11 +18,12 @@ function rule(include: string[], overrides: Record<string, unknown> = {}) {
   }
 }
 
-function run(rulesets: unknown) {
+function run(rulesets: unknown, extraOptions?: Record<string, unknown>) {
+  const opts = extraOptions ? ', ' + JSON.stringify(extraOptions) : ''
   const code = [
     'import { verifyTagProtection } from ' + JSON.stringify(helper),
     'const x = JSON.parse(process.env.DSH_TEST_RULESETS || "null")',
-    'try { const ids = verifyTagProtection(x, ' + JSON.stringify(tag) + '); console.log("OK:" + ids.join(",")) }',
+    'try { const ids = verifyTagProtection(x, ' + JSON.stringify(tag) + opts + '); console.log("OK:" + ids.join(",")) }',
     'catch(e) { console.error(e.message); process.exitCode = 1 }',
   ].join('\n')
   return spawnSync(process.execPath, ['--input-type=module', '-e', code], {
@@ -129,5 +130,24 @@ describe('GitHub protected-tag release governance', () => {
     expect(yml).toContain('gh api -X POST "repos/${GITHUB_REPOSITORY}/git/refs"')
     expect(yml).toContain('-f "ref=refs/tags/release-attempt-${TAG}"')
     expect(yml).not.toContain('gh release upload')
+    expect(yml).toContain("vars.DSH_RELEASE_POLICY_APP_CLIENT_ID != ''")
+    expect(yml).toContain("vars.DSH_RELEASE_POLICY_APP_CLIENT_ID == ''")
+    expect(yml).toContain('--allow-omitted-bypass-actors')
+  })
+
+  it('supports built-in GITHUB_TOKEN mode with --allow-omitted-bypass-actors while still rejecting visible bypass actors', () => {
+    const omitted = run(
+      [rule(['refs/tags/v*', 'refs/tags/release-attempt-v*'], { bypass_actors: undefined })],
+      { requireBypassActors: false },
+    )
+    expect(omitted.status, omitted.stderr).toBe(0)
+    expect(omitted.stdout).toContain('OK:101,101')
+
+    const visibleBypass = run(
+      [rule(['refs/tags/v*', 'refs/tags/release-attempt-v*'], { bypass_actors: [{ actor_type: 'RepositoryRole', actor_id: 5 }] })],
+      { requireBypassActors: false },
+    )
+    expect(visibleBypass.status).toBe(1)
+    expect(visibleBypass.stderr).toContain('missing active update/deletion protection')
   })
 })

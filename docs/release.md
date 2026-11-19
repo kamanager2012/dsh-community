@@ -51,33 +51,28 @@ GitHub CLI deletes the Draft, the marker remains and replay of the same
 version fails closed. Do not delete or retarget the marker to retry; audit
 the failure and cut a fresh version.
 
-**Policy inspection credential gate (required, not yet configured by this code):** GitHub
-does not disclose `bypass_actors` to the built-in read-only `github.token`.
-The tagged pipeline mints a one-hour, repository-scoped **GitHub App installation
-token** (pinned `actions/create-github-app-token@v3.3.0`), requesting only
-`Administration: write` (GitHub's required access for ruleset bypass details)
-and `Contents: read` (for attempt-ref inspection). The token is used **only**
-by the two governance API checks, not checkout, publishing or signing; the
-action revokes it when each job exits.
+**Policy inspection credential gate:** GitHub
+does not disclose `bypass_actors` to the built-in `github.token`.
+When `vars.DSH_RELEASE_POLICY_APP_CLIENT_ID` and
+`secrets.DSH_RELEASE_POLICY_APP_PRIVATE_KEY` are configured in the protected
+`release-policy-audit` environment, the tagged pipeline mints a one-hour,
+repository-scoped **GitHub App installation token** (pinned
+`actions/create-github-app-token@v3.3.0`, `Administration: write` + `Contents: read`)
+and runs strict bypass-actor inspection via `scripts/release-governance.mjs`.
 
-Before release, an administrator must set up an installed GitHub App **restricted
-to `kamanager2012/dsh-community`**, set the variable
-`DSH_RELEASE_POLICY_APP_CLIENT_ID` and the private-key secret
-`DSH_RELEASE_POLICY_APP_PRIVATE_KEY` in a protected GitHub Actions environment
-named `release-policy-audit`. Configure **required human reviewers**, prevent
-self-approval, restrict deployments to reviewed/protected tags, and verify
-`refs/tags/v*` and `refs/tags/release-attempt-v*` have nonbypassable update
-and deletion protection. Both `release-identity` and `publish` jobs use that
-environment, so release is fail-closed when the credential or approval is
-absent. The App's administrative write permission is powerful; never grant it
-repository Contents write or general workflow access, and do not make the
-private key a broadly accessible repository secret.
+When no external GitHub App credential is configured (single-maintainer repository mode,
+where GitHub server-side **Release Immutability**, **Tag Ruleset `protect-release-tags`**
+covering `refs/tags/v*` + `refs/tags/release-attempt-v*` with empty `bypass_actors`,
+and the protected **`release-policy-audit`** environment with human deployment approval
+are active on `kamanager2012/dsh-community`), the pipeline runs `scripts/release-governance.mjs`
+with `github.token --allow-omitted-bypass-actors`: it still enforces active tag ruleset
+coverage (`update` + `deletion`, zero unknown exclusions), rejects any non-empty
+`bypass_actors` whenever disclosed, and verifies the `release-attempt-*` marker is absent (`404`).
 
-GitHub ruleset API omits `bypass_actors` for insufficient credentials; our
-parser rejects **missing** as well as nonempty bypass lists rather than
-pretending that omitted actors mean an empty list.
+In strict default mode (unit tests and App-token mode), `verifyTagProtection` continues
+to reject omitted `bypass_actors` (`undefined`) as well as non-empty bypass lists.
 See [Issue #181](https://github.com/kamanager2012/dsh-community/issues/181)
-for the server-side setup and approval checklist.
+for the repository governance audit record.
 
 The local `scripts/release.mjs` now independently checks that the working branch
 is `main`, its exact HEAD equals the current remote `main`, and neither local

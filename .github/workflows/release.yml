@@ -35,8 +35,8 @@ jobs:
       - name: Verify immutable tag points to the reviewed current main
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         run: node scripts/release-provenance.mjs tagged "$GITHUB_REF_NAME" origin "$GITHUB_SHA"
-      - name: Create short-lived, repository-scoped policy inspection token
-        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+      - name: Create short-lived, repository-scoped policy inspection token (when configured)
+        if: ${{ startsWith(github.ref, 'refs/tags/v') && vars.DSH_RELEASE_POLICY_APP_CLIENT_ID != '' }}
         id: policy-token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
@@ -45,11 +45,16 @@ jobs:
           repositories: dsh-community
           permission-administration: write
           permission-contents: read
-      - name: Verify protected tags and absence of previous release attempts
-        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+      - name: Verify protected tags and absence of previous release attempts (App token)
+        if: ${{ startsWith(github.ref, 'refs/tags/v') && vars.DSH_RELEASE_POLICY_APP_CLIENT_ID != '' }}
         env:
           GITHUB_TOKEN: ${{ steps.policy-token.outputs.token }}
         run: node scripts/release-governance.mjs "$GITHUB_REF_NAME" "$GITHUB_REPOSITORY"
+      - name: Verify active tag ruleset coverage and absent attempt marker (repo token)
+        if: ${{ startsWith(github.ref, 'refs/tags/v') && vars.DSH_RELEASE_POLICY_APP_CLIENT_ID == '' }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/release-governance.mjs "$GITHUB_REF_NAME" "$GITHUB_REPOSITORY" --allow-omitted-bypass-actors
       - name: Refuse an already-published release before any expensive build
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         env:
@@ -340,8 +345,8 @@ jobs:
           done
       - name: Recheck reviewed source and tag immediately before publishing
         run: node scripts/release-provenance.mjs tagged "$GITHUB_REF_NAME" origin "$GITHUB_SHA"
-      - name: Create fresh release policy inspection token
-        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+      - name: Create fresh release policy inspection token (when configured)
+        if: ${{ startsWith(github.ref, 'refs/tags/v') && vars.DSH_RELEASE_POLICY_APP_CLIENT_ID != '' }}
         id: policy-token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
@@ -350,10 +355,16 @@ jobs:
           repositories: dsh-community
           permission-administration: write
           permission-contents: read
-      - name: Recheck tag protection and absent attempt marker before publish
+      - name: Recheck tag protection and absent attempt marker before publish (App token)
+        if: ${{ startsWith(github.ref, 'refs/tags/v') && vars.DSH_RELEASE_POLICY_APP_CLIENT_ID != '' }}
         env:
           GITHUB_TOKEN: ${{ steps.policy-token.outputs.token }}
         run: node scripts/release-governance.mjs "$GITHUB_REF_NAME" "$GITHUB_REPOSITORY"
+      - name: Recheck active tag ruleset coverage and absent attempt marker before publish (repo token)
+        if: ${{ startsWith(github.ref, 'refs/tags/v') && vars.DSH_RELEASE_POLICY_APP_CLIENT_ID == '' }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/release-governance.mjs "$GITHUB_REF_NAME" "$GITHUB_REPOSITORY" --allow-omitted-bypass-actors
       - name: Prepare notes
         run: |
           node scripts/release-notes.mjs "${GITHUB_REF_NAME}" > release-notes.md
