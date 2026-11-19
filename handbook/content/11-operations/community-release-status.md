@@ -1,6 +1,6 @@
 # Community 当前发行状态
 
-> 事实快照日期：2026-11-17。机器可读真源是 [`dsh-community/docs/current-release.json`](https://github.com/kamanager2012/dsh-community/blob/main/docs/current-release.json)。本页只补充说明，不另造 Latest / 内核 pin。本文不替代 GitHub Release、Actions 结果或用户闭环实测。
+> 事实快照日期：2026-11-19。机器可读真源是 [`dsh-community/docs/current-release.json`](https://github.com/kamanager2012/dsh-community/blob/main/docs/current-release.json)。本页只补充说明，不另造 Latest / 内核 pin。本文不替代 GitHub Release、Actions 结果或用户闭环实测。
 
 ## 版本模型
 
@@ -8,16 +8,16 @@
 
 | 层级 | 当前值 | 应如何理解 |
 |---|---|---|
-| Official core pin | `@deepseek-ai/dsh@0.2.2-rc.3` | 官方内核 |
-| Candidate community product | `0.2.2-rc.3-community.2` | **待发布的源码候选；尚无该版本签名资产** |
-| Last signed Community Pre-release | [`v0.2.2-rc.3-community.1`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1) | 2026-11-17 已发布，并通过 exact-tag artifact-smoke；与候选 `.2` 分离 |
+| Official core pin | `@deepseek-ai/dsh@0.2.2-rc.5` | 官方内核 |
+| Candidate community product | `0.2.2-rc.5` | **待发布的源码候选（Tag `v0.2.2-rc.5`）；尚无该版本签名资产** |
+| Last signed Community Pre-release | [`v0.2.2-rc.3-community.1`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1) | 2026-11-17 已发布，并通过 exact-tag artifact-smoke；与候选 `0.2.2-rc.5` 分离 |
 | Published Latest | `v0.2.2-rc.3` | GitHub Latest；普通用户主下载入口 |
 | Historical tags | `v0.1.2`–`v0.1.6`, `v0.1.1-rc.2`, `v0.2.2-rc.2`, `v0.2.2-rc.2-community.1` | 已被 `v0.2.2-rc.3` 替代 |
 
 Desktop 与 TUI 的版本身份必须同时显示 Dual-Badge（当前 Candidate Source / Pre-release）：
 
 ```text
-DeepSeek Harness Community v0.2.2-rc.3-community.2 [Official Core: @deepseek-ai/dsh@0.2.2-rc.3]
+DeepSeek Harness Community v0.2.2-rc.5 [Official Core: @deepseek-ai/dsh@0.2.2-rc.5]
 ```
 
 ## 用户选择

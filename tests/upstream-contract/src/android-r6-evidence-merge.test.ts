@@ -31,7 +31,7 @@ function makeArm64Report(overrides: Record<string, unknown> = {}): Record<string
     architecture: 'remote-only',
     asOf: '2026-11-13',
     status: 'PASS',
-    officialHostTarget: '0.2.2-rc.3',
+    officialHostTarget: '0.2.2-rc.5',
     embeddedNodeRemoved: true,
     device: {
       abi: 'arm64-v8a',
@@ -63,7 +63,7 @@ function makeEmulatorReport(overrides: Record<string, unknown> = {}): Record<str
     architecture: 'remote-only',
     asOf: '2026-11-13',
     status: 'EMULATOR_PASS_NOT_PHYSICAL_ARM64',
-    officialHostTarget: '0.2.2-rc.3',
+    officialHostTarget: '0.2.2-rc.5',
     embeddedNodeRemoved: true,
     device: {
       abi: 'x86_64',

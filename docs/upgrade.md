@@ -21,10 +21,10 @@ Official Harness is in developer preview and **will break**. This repo is design
 
 ## Consolidated local acceptance
 
-After the exact `0.2.2-rc.3` upgrade baseline is an ancestor of the integration branch and all candidate-specific contract updates are resolved, run exactly one consolidated local gate:
+After the exact `0.2.2-rc.5` upgrade baseline is an ancestor of the integration branch and all candidate-specific contract updates are resolved, run exactly one consolidated local gate:
 
 ```sh
-node scripts/accept-0.2.2-rc.3-integration.mjs
+node scripts/accept-0.2.2-rc.5-integration.mjs
 ```
 
 The runner requires a clean non-main branch and verifies that the accepted
@@ -43,10 +43,10 @@ post-integration suite completing green in this single run.
 
 ## Remote integration gate
 
-Do not open the `0.2.2-rc.3` pull request until the accepted `0.2.2-rc.3` baseline is integrated with the current compatibility/security hardening and the consolidated local acceptance suite has passed on the final tree.
+Do not open the `0.2.2-rc.5` pull request until the accepted `0.2.2-rc.5` baseline is integrated with the current compatibility/security hardening and the consolidated local acceptance suite has passed on the final tree.
 
 A push to a non-main integration branch is the no-Actions staging path under the
-current workflow triggers. Opening a pull request is not: the `0.2.2-rc.3` diff fans
+current workflow triggers. Opening a pull request is not: the `0.2.2-rc.5` diff fans
 out into CI, dependency audit, Linux AppImage package smoke,
 runtime-lock verification, runtime-SBOM smoke, and artifact-action smoke.
 Machine-readable state: `contracts/compatibility/remote-integration-gate.json`.
@@ -70,12 +70,12 @@ An upstream prerelease discovered **after** an upgrade baseline has been frozen
 does not silently replace that baseline. The current cycle is pinned in
 `contracts/compatibility/upstream-candidate-watch.json`.
 
-For this cycle, `0.2.2-rc.3` is frozen after registry, CI runtime-lock, and consolidated local acceptance verification, advancing `latest-tested` from `0.2.2-rc.2` to `0.2.2-rc.3`. `0.2.2-rc.3` retains the
+For this cycle, `0.2.2-rc.5` is frozen after registry, CI runtime-lock, and consolidated local acceptance verification, advancing `latest-tested` from `0.2.2-rc.3` to `0.2.2-rc.5`. `0.2.2-rc.5` retains the
 loopback Web readiness line and one-time `?token=` bootstrap contract, keeps
-official `engines.node` at `>=24.9.0`, updates Desktop `runtime-lock` to 328 DSH
-family entries (adding `@deepseek-ai/dsh-deepseek-chat-import`), and keeps the Android
+official `engines.node` at `>=24.9.0`, retains Desktop `runtime-lock` at 328 DSH
+family entries, and keeps the Android
 ripgrep discovery contract unchanged without an Android executable path seam.
-Advancing beyond `0.2.2-rc.3` requires another explicit upgrade cycle, registry gate,
+Advancing beyond `0.2.2-rc.5` requires another explicit upgrade cycle, registry gate,
 fresh locks, fresh snapshots, and a new consolidated acceptance.
 
 ## What a failure means

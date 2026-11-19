@@ -139,10 +139,10 @@ describe('catalog schema', () => {
       ...valid,
       plugins: [{
         ...valid.plugins[0],
-        versions: [{ version: '0.2.0', testedDsh: '0.2.2-rc.3' }],
+        versions: [{ version: '0.2.0', testedDsh: '0.2.2-rc.5' }],
       }],
     }
-    assert.equal(parseCatalog(v02)?.plugins[0]?.versions[0]?.testedDsh, '0.2.2-rc.3')
+    assert.equal(parseCatalog(v02)?.plugins[0]?.versions[0]?.testedDsh, '0.2.2-rc.5')
     const badName = {
       ...valid,
       plugins: [{ ...valid.plugins[0], name: '--flag-injection' }],

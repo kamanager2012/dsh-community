@@ -9,7 +9,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-export const EXPECTED_HOST_TARGET = '0.2.2-rc.3'
+export const EXPECTED_HOST_TARGET = '0.2.2-rc.5'
 export const REQUIRED_REMOTE_GATES = [
   'pairing',
   'sessionListAndAttach',

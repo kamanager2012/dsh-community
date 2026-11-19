@@ -1,6 +1,6 @@
 {
-  "pin": "0.2.2-rc.3",
-  "version": "0.2.2-rc.3",
+  "pin": "0.2.2-rc.5",
+  "version": "0.2.2-rc.5",
   "helpMustContain": [
     "--profile",
     "--dump-config",

@@ -584,9 +584,9 @@ describe('shell pages', () => {
   it('exposes direct About navigation from Runtime and Diagnostics without adding nav tabs', () => {
     const runtimeHtml = renderRuntimePage({
       product: 'DSH Community',
-      installed: '0.2.2-rc.3',
-      latestTested: '0.2.2-rc.3',
-      defaultPin: '0.2.2-rc.3',
+      installed: '0.2.2-rc.5',
+      latestTested: '0.2.2-rc.5',
+      defaultPin: '0.2.2-rc.5',
       recommendation: 'stay',
       canSwitchToTested: false,
       officialHome: '/tmp/.dsh',

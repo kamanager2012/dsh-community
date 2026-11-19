@@ -28,7 +28,7 @@ describe('community preview candidate identity', () => {
       expect(entry.version, name).toBe(facts.communityProduct.version)
     }
     expect(facts.candidateTag).toBe('v' + facts.communityProduct.version)
-    expect(facts.officialKernel.version).toBe('0.2.2-rc.3')
+    expect(facts.officialKernel.version).toBe('0.2.2-rc.5')
     const android = read('apps/android/app/build.gradle.kts')
     expect(android).toContain('versionName = "' + facts.communityProduct.version + '"')
     expect(android).toMatch(/versionCode\s*=\s*[1-9]\d*/u)

@@ -3,6 +3,19 @@
 Record the delta here when contract CI or a pin bump hits a public-surface move.
 Do not invent a compatibility shim in Desktop IPC.
 
+## 0.2.2-rc.5
+
+- surface: package / runtime-closure / pin (non-breaking web & CLI surface)
+- what moved:
+  - Candidate Source AND Community Product Version are synced 1:1 at `0.2.2-rc.5` (`@deepseek-ai/dsh@0.2.2-rc.5`, `next` dist-tag, published `2026-11-18T13:17:23.604Z`; upstream tag `dsh-v0.2.2-rc.5`, release commit `9bf478edde5b14e6a15d3802a8834bdca83f2d97`, merge commit `9c2670d3bce5275e0d1610272958121af87787bb`, 13 commits / 300 changed files from `dsh-v0.2.2-rc.3`). `engines.node` remains `>=24.9.0`.
+  - Official Web default config snapshot (`202` rows), published package snapshot (`198` entries), `exports`, and `cli` surfaces are unchanged in shape from `0.2.2-rc.3`.
+  - Upstream `0.2.2-rc.4`–`0.2.2-rc.5` includes DeepSeek `safetyCheck` / refusal handling, `liveshare` clock & tunnel Electron Node fixes, and `web-search-deepseek` model defaults; `packages/util/ripgrep/src/index.ts` (blob `e9ca71e63618acc75b8cd3308d38c42e423354f8`), `packages/bundle/web-app/src/index.ts` (blob `b93b559620fe9a064b6ff24e0b2ed3bf22b3f6dd`), `apps/cli/src/args.ts` (blob `41d4ebeaa832473b25952af1b185e02a7c182844`), and `apps/cli/reference/README.md` (blob `dc84a267d8bd1f59758ca02b1fde0fee4d0ef825`) remain unchanged.
+  - Community `apps/desktop/runtime-lock` stays at **676 total / 328 `@deepseek-ai/dsh*` packages** pinned cleanly to `0.2.2-rc.5`, retaining `zod@4.6.7` and `undici@^8.12.2` security overrides.
+- community action:
+  - Bump `PINNED_DSH_VERSION`, `COMMUNITY_PRODUCT_VERSION` (`0.2.2-rc.5`), workspace manifests, TUI official peers, Android target manifests/scripts, and Desktop runtime lock overrides/lifecycle policy to `0.2.2-rc.5`.
+  - Re-extract `contracts/upstream` snapshots (`config-rows` 202, `packages` 198, `exports`, `cli`).
+  - Regenerate CI-attested `apps/desktop/runtime-lock/package-lock.json` and `evidence.json` on `ubuntu-24.04` (Node `v22.23.5`, npm `10.9.9`, run `44438093968`), verify clean `pnpm audit` and `npm audit`, keep Android `[UNVERIFIED]` / `BLOCKED`, and keep `Published Latest` (`v0.2.2-rc.3`) independent until `v0.2.2-rc.5` is released.
+
 ## 0.2.2-rc.3
 
 - surface: package / runtime-closure / pin (non-breaking web surface)

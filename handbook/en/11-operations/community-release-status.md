@@ -1,6 +1,6 @@
 # Current Community release status
 
-> Snapshot date: 2026-11-17. Machine-readable source of truth:
+> Snapshot date: 2026-11-19. Machine-readable source of truth:
 > [`dsh-community/docs/current-release.json`](https://github.com/kamanager2012/dsh-community/blob/main/docs/current-release.json).
 > This page summarizes the operational status; it does not invent a second Latest or
 > kernel pin and does not replace GitHub Releases, Actions runs, or user-loop checks.
@@ -13,16 +13,16 @@ as independent states.
 
 | Layer | Current value | Meaning |
 |---|---|---|
-| Official core pin | `@deepseek-ai/dsh@0.2.2-rc.3` | Official kernel |
-| Candidate community product | `0.2.2-rc.3-community.2` | **Unpublished source candidate; no signed assets exist for this tag yet** |
-| Last signed Community Pre-release | [`v0.2.2-rc.3-community.1`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1) | Published 2026-11-17, passed exact-tag artifact-smoke; separate from `.2` source candidate |
+| Official core pin | `@deepseek-ai/dsh@0.2.2-rc.5` | Official kernel |
+| Candidate community product | `0.2.2-rc.5` | **Unpublished source candidate (`v0.2.2-rc.5`); no signed assets exist for this tag yet** |
+| Last signed Community Pre-release | [`v0.2.2-rc.3-community.1`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1) | Published 2026-11-17, passed exact-tag artifact-smoke; separate from `0.2.2-rc.5` source candidate |
 | Published Latest | `v0.2.2-rc.3` | GitHub Latest; canonical user download entry |
 | Historical tags | `v0.1.2`–`v0.1.6`, `v0.1.1-rc.2`, `v0.2.2-rc.2`, `v0.2.2-rc.2-community.1` | Superseded by `v0.2.2-rc.3` |
 
 Desktop and TUI show the Dual-Badge identity (current Candidate Source / Pre-release):
 
 ```text
-DeepSeek Harness Community v0.2.2-rc.3-community.2 [Official Core: @deepseek-ai/dsh@0.2.2-rc.3]
+DeepSeek Harness Community v0.2.2-rc.5 [Official Core: @deepseek-ai/dsh@0.2.2-rc.5]
 ```
 
 ## User choice
