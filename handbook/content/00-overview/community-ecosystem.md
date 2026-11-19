@@ -97,3 +97,5 @@ dsh-community/packages/marketplace
 | `[NOT_IMPLEMENTED]` | 当前没有实现，不应以未来计划描述成现状 |
 
 除非有相应证据，不要使用“production-ready”“完全安全”“100% 兼容”等表述。
+
+> **候选版本（未发布）**：下一社区预发布候选 `v0.2.2-rc.5-community.1`（基于官方 `@deepseek-ai/dsh@0.2.2-rc.5`，含精选插件目录与新手精选套装）尚未发布；在其签名与 `artifact-smoke` 验证完成前，Published Latest 仍为 `v0.2.2-rc.5`。

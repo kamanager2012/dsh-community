@@ -92,3 +92,5 @@ See:
 - [`dsh-community` contract snapshots](https://github.com/kamanager2012/dsh-community/tree/main/contracts)
 - [`dsh-community` current-release.json](https://github.com/kamanager2012/dsh-community/blob/main/docs/current-release.json)
 - In-repo [`archive/deepseek-harness-suite/`](https://github.com/kamanager2012/dsh-community/tree/main/archive/deepseek-harness-suite) (archived Labs; do not install)
+
+> **Candidate (unpublished)**: the next community pre-release candidate `v0.2.2-rc.5-community.1` (on official `@deepseek-ai/dsh@0.2.2-rc.5`, with the curated plugin catalog and Starter Pack) is unpublished; Published Latest stays `v0.2.2-rc.5` until it is signed and passes `artifact-smoke`.

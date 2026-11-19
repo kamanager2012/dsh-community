@@ -12,7 +12,8 @@ const facts = JSON.parse(read('docs/current-release.json')) as {
   evidence: { candidatePrerelease: { status: string; tag: string; url: string } }
 }
 const preview = facts.evidence.candidatePrerelease
-const hasNewerPreview = facts.publishedReleaseEvidence.tag !== facts.candidateTag
+// A pre-release is only surfaced as a separate channel when it is a community patch on top of the current Latest.
+const hasNewerPreview = preview.tag.startsWith(facts.communityProduct.githubLatestTag + '-community.')
 
 describe('release channel onboarding accuracy', () => {
   const readmes = ['README.md', 'README.zh-CN.md', 'README.en.md'] as const

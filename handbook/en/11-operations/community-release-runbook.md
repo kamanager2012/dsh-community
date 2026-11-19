@@ -107,3 +107,5 @@ User loop: UNVERIFIED / PARTIAL / REAL
 Known limits:
 Next review:
 ```
+
+> **Candidate (unpublished)**: the next community pre-release candidate `v0.2.2-rc.5-community.1` (on official `@deepseek-ai/dsh@0.2.2-rc.5`, with the curated plugin catalog and Starter Pack) is unpublished; Published Latest stays `v0.2.2-rc.5` until it is signed and passes `artifact-smoke`.

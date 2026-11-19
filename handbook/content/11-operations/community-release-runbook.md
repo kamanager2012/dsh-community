@@ -109,3 +109,5 @@ User loop: UNVERIFIED / PARTIAL / REAL
 Known limits:
 Next review:
 ```
+
+> **候选版本（未发布）**：下一社区预发布候选 `v0.2.2-rc.5-community.1`（基于官方 `@deepseek-ai/dsh@0.2.2-rc.5`，含精选插件目录与新手精选套装）尚未发布；在其签名与 `artifact-smoke` 验证完成前，Published Latest 仍为 `v0.2.2-rc.5`。

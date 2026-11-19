@@ -1,6 +1,6 @@
 {
   "name": "@dsh-community/remote-web",
-  "version": "0.2.2-rc.5",
+  "version": "0.2.2-rc.5-community.1",
   "private": true,
   "type": "module",
   "description": "Zero-install E2EE browser and iOS Safari PWA client for DSH Community multi-agent remote sessions.",

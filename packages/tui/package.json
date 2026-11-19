@@ -1,6 +1,6 @@
 {
   "name": "@dsh-community/tui-surface",
-  "version": "0.2.2-rc.5",
+  "version": "0.2.2-rc.5-community.1",
   "private": true,
   "type": "module",
   "description": "Community-owned terminal surface for official DeepSeek Harness. Own code only: official host seams, no third-party harness products.",
