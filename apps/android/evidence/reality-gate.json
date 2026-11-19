@@ -1,9 +1,9 @@
 {
   "schemaVersion": 2,
   "architecture": "remote-only",
-  "asOf": "2026-11-19",
+  "asOf": "2026-11-15",
   "status": "EMULATOR_PASS_NOT_PHYSICAL_ARM64",
-  "officialHostTarget": "0.2.2-rc.5",
+  "officialHostTarget": "0.2.2-rc.3",
   "embeddedNodeRemoved": true,
   "remoteAcceptance": {
     "pairing": "PASS",
