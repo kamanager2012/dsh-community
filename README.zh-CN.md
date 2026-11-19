@@ -4,13 +4,12 @@
 
 [![CI](https://github.com/kamanager2012/dsh-community/actions/workflows/ci.yml/badge.svg)](https://github.com/kamanager2012/dsh-community/actions/workflows/ci.yml)
 [![Published Latest](https://img.shields.io/github/v/release/kamanager2012/dsh-community?label=Published%20Latest)](https://github.com/kamanager2012/dsh-community/releases/latest)
-[![Community Preview](https://img.shields.io/badge/Community%20Preview-v0.2.2--rc.3--community.1-blue)](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1)
 [![Official Core](https://img.shields.io/badge/Official%20Core-%40deepseek--ai%2Fdsh-blue)](https://github.com/deepseek-ai/deepseek-harness)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 > **DSH Community 是围绕官方 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的 Linux / WSL2 社区发行与兼容层**：提供 TUI、签名 Linux AppImage、官方 Runtime 精确锁定和可选 E2EE 多 Agent 远控。**不修改官方执行内核；只有 DSH 会话使用官方 `~/.dsh`，Claude Code / Codex / OpenCode 使用各自原生会话存储。**
 
-**试用本轮社区更新：** [v0.2.2-rc.3-community.1（Pre-release）](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1)；**官方内核对齐的 Latest：** [v0.2.2-rc.3](https://github.com/kamanager2012/dsh-community/releases/latest)。两条发布频道独立，前者不会覆盖 Latest。
+**官方内核对齐的最新正式版（Latest）：** [v0.2.2-rc.5](https://github.com/kamanager2012/dsh-community/releases/latest)（同步 `@deepseek-ai/dsh@0.2.2-rc.5`，已集成全部加固与 `artifact-smoke` [Run 44454406621](https://github.com/kamanager2012/dsh-community/actions/runs/44454406621) 12 文件校验）；前版历史预发布见 [v0.2.2-rc.3-community.1](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1)。
 
 ## 选工具先看你的主要任务
 
@@ -42,22 +41,22 @@
 
 ### 1. WSL / Linux 终端源码安装（`dsh-community` & `dsh-marketplace`）
 
-`scripts/install-linux.sh` 是 `v0.2.2-rc.3` 发布之后合入 `main` 的源码安装脚本，需要 **Node.js 24.9+**（官方 `@deepseek-ai/dsh@0.2.2-rc.3` 声明 `engines.node >=24.9.0`；工作区最低 `22.15+`，CI 在 Node 22/24 双通）、**`pnpm`**、**`git`** 与 **`flock`**（util-linux；不是零依赖二进制安装）：
+`scripts/install-linux.sh` 现已随 `v0.2.2-rc.5` 合入并随源码同步，需要 **Node.js 24.9+**（官方 `@deepseek-ai/dsh@0.2.2-rc.5` 声明 `engines.node >=24.9.0`；工作区最低 `22.15+`，CI 在 Node 22/24 双通）、**`pnpm`**、**`git`** 与 **`flock`**（util-linux；不是零依赖二进制安装）：
 
 ```sh
-# 推荐：固定安装器 Commit，检查脚本后再安装已发布的社区预览源码
+# 推荐：固定安装器 Commit，检查脚本后再安装已发布的 Latest 源码 (v0.2.2-rc.5)
 curl -fsSLo install-linux.sh \
   https://raw.githubusercontent.com/kamanager2012/dsh-community/afe0514e9da98174ac117e70d7e9fb30aa48de2b/scripts/install-linux.sh
 less install-linux.sh
 bash install-linux.sh \
-  --ref v0.2.2-rc.3-community.1 \
-  --expected-commit 13cc4c382ec36eeeede443c78687b117285c24cc
+  --ref v0.2.2-rc.5 \
+  --expected-commit 0a8009d0462042764ad67e87208df791f1f6180b
 
 # 仅开发用途：主动选择可变 main（不等于已签名 Release）
 # bash install-linux.sh --ref main
 ```
 
-> **来源验证边界：** 安装器脚本 Commit 与目标 Git Tag/SHA 分别固定；源码安装**不等于**已验签的 AppImage/APK。需验证发行包时，请从 [Community Pre-release](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1) 获取对应 `.sha256`、`.sigstore.json` 并核验。
+> **来源验证边界：** 安装器脚本 Commit 与目标 Git Tag/SHA 分别固定；源码安装**不等于**已验签的 AppImage/APK。需验证发行包时，请从 [Published Latest (`v0.2.2-rc.5`)](https://github.com/kamanager2012/dsh-community/releases/latest) 获取对应 `.sha256`、`.sigstore.json` 并核验。
 
 > **升级安全性：** 安装器先在临时目录完成源码校验和构建，成功后才切换 `$PREFIX/repo`；`flock` 拒绝并发安装，安装错误会尝试恢复旧版本。系统断电或 `SIGKILL` 等非正常中断不保证跨目录切换的绝对原子性。详见 [首次安装与失败恢复验收](docs/first-run-smoke.md)。
 
@@ -97,9 +96,9 @@ dsh-marketplace list          # 查看已验证社区插件与旧版 0.1.1-rc.2 
   > 注意：首次配对设备默认**仅授予 `['observe', 'prompt']`**（只能看会话/状态、发 prompt、读 Git Diff），**不能直接批准工具调用**；`--allow-caps observe,prompt,approve` 仅用于放宽本次配对令牌的**上限能力列表**（不会自动授予 `approve`）。要真正让手机端点击 `Allow Once` / `Reject`（`approval.respond`），须由宿主机明确授权——在配对时于 REPL 输入 `confirm <candidateId> observe,prompt,approve`（需同时在 `--allow-caps` 内并勾选桌面确认框），或配对完成后执行 `dsh-community remote grant <deviceId> approve`。非回环监听 `remote gateway` 未设 `--host-secret` 会 fail-closed 拒绝启动。
   > 安全边界：`Noise_IK_25519_ChaChaPoly_BLAKE2b` 保护远控链路应用载荷（自托管盲中继只转发密文）；但**不替代**模型 Provider API 传输边界，拥有 `observe` 权限的客户端可查看工作区未提交的 `git diff`（若工作区含未提交密钥需自行防范），且本项目尚未完成独立第三方密码学安全审计。
 
-### 2. 或直接下载已签名 `v0.2.2-rc.3` 桌面 / 安卓安装包
+### 2. 或直接下载已签名 `v0.2.2-rc.5` 桌面 / 安卓安装包
 
-在 [`releases/latest`](https://github.com/kamanager2012/dsh-community/releases/latest) 获取 `v0.2.2-rc.3`（发布 Commit `073826c`）的 `.AppImage`（Linux 桌面端）或 `-android-arm64-v8a.apk`（Android 8.0+ 预览 APK，CI `x86_64` 模拟器 E2EE 验收通过、物理真机遥测 `[UNVERIFIED]`；共上传 **12 个资产**：AppImage / APK / CycloneDX SBOM 3 个核心文件 + 3 个 `.sha256` + 6 个 Keyless Cosign `.sigstore.json` 证明，不含 GitHub 自动生成的源码归档）：
+在 [`releases/latest`](https://github.com/kamanager2012/dsh-community/releases/latest) 获取 `v0.2.2-rc.5`（发布 Commit `0a8009d`）的 `.AppImage`（Linux 桌面端）或 `-android-arm64-v8a.apk`（Android 8.0+ 预览 APK，CI `x86_64` 模拟器 E2EE 验收通过、物理真机遥测 `[UNVERIFIED]`；共上传 **12 个资产**：AppImage / APK / CycloneDX SBOM 3 个核心文件 + 3 个 `.sha256` + 6 个 Keyless Cosign `.sigstore.json` 证明，不含 GitHub 自动生成的源码归档）：
 
 ```sh
 # Linux 桌面 AppImage（内置官方 Runtime，支持断网自愈与市场离线回退）：
@@ -135,7 +134,7 @@ Cosign 无密钥验签与精确文件名见 [`docs/release.md#artifact-signing-k
 
 - **官方与社区共享同一个 `~/.dsh`，补齐上游缺失的三个互补社区端** — 官方上游提供唯一执行内核、Official Web 及 Windows / macOS Desktop（`win-x64`、`mac-arm64`、`mac-x64`）；本仓专注于上游未提供的 **3 个互补 Community endpoints**：**WSL/Linux 终端（TUI）**、**Linux 桌面 AppImage** 与 **Android Remote Client APK**（`dsh-community-*-android-arm64-v8a.apk` 已在 [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest) 正式发布；已通过 CI `x86_64` 模拟器 E2EE 全链路验收，物理 `arm64-v8a` 真机遥测保持 `[UNVERIFIED]`）。
 - **多 Agent（Multi-Agent）端到端加密远程控制面（`packages/remote-adapter`）** — 支持用 Android 已签名预览 APK 或零安装浏览器 PWA（[`apps/remote-web`](apps/remote-web/)）经 `Noise_IK_25519_ChaChaPoly_BLAKE2b`、局域网 mDNS、WebRTC P2P 或自部署盲中继（[`deploy/relay/`](deploy/relay/)）远程操控 **DSH、Claude Code、Codex CLI 与 OpenCode ACP**（默认仅授 `observe,prompt`，`approve` 须宿主机显式授予），已通过无头 Chromium + 模拟 Agent 夹具 E2EE 集成测试（真实外部 CLI 跨版本多场景仍在推进），并支持旧版内核插件兼容警告门禁。
-- **供应链可核验的 12 文件发行与跨端真包门禁** — `v0.2.2-rc.3`（`073826c`）每次 Release 上传 **3 个核心资产**（Linux `.AppImage`、Android `arm64-v8a` `.apk`、官方运行时 CycloneDX SBOM）+ **3 个 `.sha256`** + **6 个 Keyless Cosign `.sigstore.json`**（共 12 个发布文件，不含源码自动归档），由 GitHub Actions `artifact-smoke` 与 `user-loop-evidence.yml` 实测；发布后的加固与修复（`install-linux.sh`、Chromium E2EE 验收、`observe` Git Diff 密钥脱敏与 Codex/ACP 崩溃恢复）现已额外签发为 GitHub **Pre-release** [`v0.2.2-rc.3-community.1`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1)（通过 `artifact-smoke` [Run 44005955539](https://github.com/kamanager2012/dsh-community/actions/runs/44005955539) 12 文件全检，不覆盖 `v0.2.2-rc.3` Latest 推荐位）。
+- **供应链可核验的 12 文件发行与跨端真包门禁** — `v0.2.2-rc.5`（Commit `0a8009d`）已发布为 GitHub **Published Latest**（`release` [Run 44453540672](https://github.com/kamanager2012/dsh-community/actions/runs/44453540672)），每次 Release 上传 **3 个核心资产**（Linux `.AppImage`、Android `arm64-v8a` `.apk`、官方运行时 CycloneDX SBOM）+ **3 个 `.sha256`** + **6 个 Keyless Cosign `.sigstore.json`**（共 12 个发布文件，不含源码自动归档），并通过 `artifact-smoke` [Run 44454406621](https://github.com/kamanager2012/dsh-community/actions/runs/44454406621) 12 资产全检；此前的加固与历史预发布 [`v0.2.2-rc.3-community.1`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1)（[Run 44005955539](https://github.com/kamanager2012/dsh-community/actions/runs/44005955539)）及 `v0.2.2-rc.3` 已合并并由 `v0.2.2-rc.5` 替代。
 
 ---
 
@@ -193,7 +192,7 @@ Cosign 无密钥验签方法见 [`docs/release.md#artifact-signing-keyless`](doc
 
 ### 2. 从源码运行（WSL/Linux 终端、Linux 桌面或多 Agent 远程）
 
-环境要求：Node.js 24.9+（官方 `@deepseek-ai/dsh@0.2.2-rc.3` 声明 `engines.node >=24.9.0`；本仓工作区最低要求 22.15，CI 在 Node 22 上通过）、pnpm，以及 `DEEPSEEK_API_KEY`（DSH / 混合模式）或本地 `PATH` 中的 **Claude Code / Codex CLI / OpenCode**（独立多 Agent 远程控制面模式）。官方 `0.1.0-rc.8` 起 session JSONL 使用了 Node 22.15 才提供的 `node:zlib` zstd API。对话与官方共用 `~/.dsh`。
+环境要求：Node.js 24.9+（官方 `@deepseek-ai/dsh@0.2.2-rc.5` 声明 `engines.node >=24.9.0`；本仓工作区最低要求 22.15，CI 在 Node 22 上通过）、pnpm，以及 `DEEPSEEK_API_KEY`（DSH / 混合模式）或本地 `PATH` 中的 **Claude Code / Codex CLI / OpenCode**（独立多 Agent 远程控制面模式）。官方 `0.1.0-rc.8` 起 session JSONL 使用了 Node 22.15 才提供的 `node:zlib` zstd API。对话与官方共用 `~/.dsh`。
 
 ```sh
 git clone https://github.com/kamanager2012/dsh-community.git

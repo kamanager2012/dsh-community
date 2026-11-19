@@ -27,14 +27,14 @@ body:
     id: community-version
     attributes:
       label: dsh-community version
-      placeholder: v0.2.2-rc.3
+      placeholder: v0.2.2-rc.5
     validations:
       required: true
   - type: input
     id: official-version
     attributes:
       label: Official @deepseek-ai/dsh version
-      placeholder: 0.2.2-rc.3
+      placeholder: 0.2.2-rc.5
     validations:
       required: true
   - type: textarea

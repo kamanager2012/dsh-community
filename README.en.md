@@ -4,13 +4,12 @@
 
 [![CI](https://github.com/kamanager2012/dsh-community/actions/workflows/ci.yml/badge.svg)](https://github.com/kamanager2012/dsh-community/actions/workflows/ci.yml)
 [![Published Latest](https://img.shields.io/github/v/release/kamanager2012/dsh-community?label=Published%20Latest)](https://github.com/kamanager2012/dsh-community/releases/latest)
-[![Community Preview](https://img.shields.io/badge/Community%20Preview-v0.2.2--rc.3--community.1-blue)](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1)
 [![Official Core](https://img.shields.io/badge/Official%20Core-%40deepseek--ai%2Fdsh-blue)](https://github.com/deepseek-ai/deepseek-harness)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 > **DSH Community is the Linux / WSL2 complementary distribution and compatibility layer for the official [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).** We ship a TUI, signed Linux AppImage, exact upstream Runtime pin and optional E2EE multi-agent remote. **We do not fork the official kernel. Only DSH sessions live in official `~/.dsh`; Claude Code, Codex and OpenCode keep their native session stores.**
 
-**Try the current community changes:** [v0.2.2-rc.3-community.1 (Pre-release)](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1). **Official-core-mirrored Latest:** [v0.2.2-rc.3](https://github.com/kamanager2012/dsh-community/releases/latest). These are separate release channels; the pre-release does not replace Latest.
+**Official-core-mirrored Latest:** [v0.2.2-rc.5](https://github.com/kamanager2012/dsh-community/releases/latest) (synced with `@deepseek-ai/dsh@0.2.2-rc.5`, including 12-asset `artifact-smoke` [Run 44454406621](https://github.com/kamanager2012/dsh-community/actions/runs/44454406621)); superseded historical pre-release: [v0.2.2-rc.3-community.1](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1).
 
 ## Choose by the job, not a feature checklist
 
@@ -42,7 +41,7 @@ Multi-agent dashboards, E2EE, remote approvals and Git diff are **not exclusive*
 
 ### 1. WSL / Linux Terminal Source Installer (`dsh-community` & `dsh-marketplace`)
 
-`scripts/install-linux.sh` landed on `main` **after** the `v0.2.2-rc.3` release tag; it is a source-build helper requiring **Node.js 24.9+** (official `@deepseek-ai/dsh@0.2.2-rc.3` declares `engines.node >=24.9.0`; workspace minimum is `22.15+`, passing CI on Node 22 & 24), **`pnpm`**, **`git`**, and **`flock`** (util-linux; not a zero-dependency binary):
+`scripts/install-linux.sh` is included in `v0.2.2-rc.5` as a source-build helper requiring **Node.js 24.9+** (official `@deepseek-ai/dsh@0.2.2-rc.5` declares `engines.node >=24.9.0`; workspace minimum is `22.15+`, passing CI on Node 22 & 24), **`pnpm`**, **`git`**, and **`flock`** (util-linux; not a zero-dependency binary):
 
 ```sh
 # Recommended: download and inspect a pinned installer commit
@@ -50,14 +49,14 @@ curl -fsSLo install-linux.sh \
   https://raw.githubusercontent.com/kamanager2012/dsh-community/afe0514e9da98174ac117e70d7e9fb30aa48de2b/scripts/install-linux.sh
 less install-linux.sh
 bash install-linux.sh \
-  --ref v0.2.2-rc.3-community.1 \
-  --expected-commit 13cc4c382ec36eeeede443c78687b117285c24cc
+  --ref v0.2.2-rc.5 \
+  --expected-commit 0a8009d0462042764ad67e87208df791f1f6180b
 
 # Development only: explicitly opt into mutable main (not a signed Release)
 # bash install-linux.sh --ref main
 ```
 
-> **Provenance boundary:** This example pins the installer script commit and the target Git tag/SHA separately. A source installer is **not** a signed AppImage/APK. To verify the binary, download the [Community Pre-release](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1) with its `.sha256` and `.sigstore.json` files.
+> **Provenance boundary:** This example pins the installer script commit and the target Git tag/SHA separately. A source installer is **not** a signed AppImage/APK. To verify the binary, download [Published Latest (`v0.2.2-rc.5`)](https://github.com/kamanager2012/dsh-community/releases/latest) with its `.sha256` and `.sigstore.json` files.
 
 > **Upgrade safety:** source validation and build complete in a sibling staging directory before activating `$PREFIX/repo`; `flock` rejects concurrent installers and handled errors restore the prior CLI. Power loss or `SIGKILL` across directory renames is **not** guaranteed crash-atomic. See [first-run and upgrade acceptance](docs/first-run-smoke.md).
 
@@ -97,9 +96,9 @@ dsh-marketplace list          # inspect tested plugins and 0.1.1-rc.2 compatibil
   > Note: newly paired devices receive **only `['observe', 'prompt']`** by default (read sessions/files/Git diff and send prompts) — passing `--allow-caps observe,prompt,approve` only raises the pairing token's **maximum capability ceiling** (`DSH_REMOTE_ALLOWED_CAPS`); it does **not** automatically grant `approve`. To allow tool approvals (`Allow Once` / `Reject` via `approval.respond`), the host must explicitly confirm with `confirm <candidateId> observe,prompt,approve` (or check `approve` in Desktop UI, when included in `--allow-caps`), or grant post-pairing via `dsh-community remote grant <deviceId> approve`. Binding `remote gateway` to non-loopback/wildcard addresses fails closed without `--host-secret`.
   > Security boundary: `Noise_IK_25519_ChaChaPoly_BLAKE2b` encrypts application payloads over the remote transport link so the self-hosted blind relay forwards opaque ciphertext. It does **not** encrypt or alter model provider API calls (DeepSeek / Anthropic / OpenAI), authorized `observe` clients can read uncommitted working-tree `git diff`s (keep accidental secrets out of dirty worktrees), and no independent third-party cryptographic security audit has been completed yet.
 
-### 2. Or Download Signed `v0.2.2-rc.3` Linux AppImage / Android APK
+### 2. Or Download Signed `v0.2.2-rc.5` Linux AppImage / Android APK
 
-Grab `v0.2.2-rc.3` (release commit `073826c`) `.AppImage` (Linux Desktop) or `-android-arm64-v8a.apk` (Android 8.0+ Preview APK; CI `x86_64` emulator E2EE verified, physical `arm64-v8a` handset telemetry `[UNVERIFIED]`) from [`releases/latest`](https://github.com/kamanager2012/dsh-community/releases/latest) (**12 uploaded assets total**: 3 primary artifacts — AppImage, APK, CycloneDX SBOM — plus 3 `.sha256` files and 6 keyless Cosign `.sigstore.json` bundles, excluding GitHub's auto-generated source tarballs):
+Grab `v0.2.2-rc.5` (release commit `0a8009d`) `.AppImage` (Linux Desktop) or `-android-arm64-v8a.apk` (Android 8.0+ Preview APK; CI `x86_64` emulator E2EE verified, physical `arm64-v8a` handset telemetry `[UNVERIFIED]`) from [`releases/latest`](https://github.com/kamanager2012/dsh-community/releases/latest) (**12 uploaded assets total**: 3 primary artifacts — AppImage, APK, CycloneDX SBOM — plus 3 `.sha256` files and 6 keyless Cosign `.sigstore.json` bundles, excluding GitHub's auto-generated source tarballs):
 
 ```sh
 chmod +x dsh-community-*.AppImage && sha256sum -c dsh-community-*.AppImage.sha256
@@ -133,7 +132,7 @@ Cosign keyless verification and exact release filenames: [`docs/release.md#artif
 
 - **Shared `~/.dsh` Across Official & Three Complementary Community Endpoints** — Official `deepseek-ai/deepseek-harness` owns the execution kernel, Web UI, and Windows/macOS Desktop (`win-x64`, `mac-arm64`, `mac-x64`). `dsh-community` delivers the **three complementary community endpoints** absent upstream: **WSL/Linux Terminal**, **Linux Desktop AppImage**, and **Android Remote Client APK** (`dsh-community-*-android-arm64-v8a.apk` shipped in [Published Latest](https://github.com/kamanager2012/dsh-community/releases/latest); CI `x86_64` emulator E2EE verified, physical `arm64-v8a` handset telemetry `[UNVERIFIED]`).
 - **Multi-Agent E2EE Remote Control Plane (`packages/remote-adapter`)** — Steer **DSH, Claude Code, Codex CLI, and OpenCode ACP** from the zero-install Browser PWA ([`apps/remote-web`](apps/remote-web/)) or signed Android preview APK over `Noise_IK_25519_ChaChaPoly_BLAKE2b`, LAN mDNS, WebRTC P2P, or self-hosted Blind Relay ([`deploy/relay/`](deploy/relay/)) — with least-privilege default `observe,prompt` pairing (`approve` granted separately). Validated end-to-end in headless Chromium against **simulated agent fixtures** for Noise IK pairing, `tool_use` approval, and read-only Git diff inspection (broad live-CLI matrix coverage remains ongoing), plus explicit compatibility warnings for legacy `0.1.1-rc.2` plugins.
-- **Supply-Chain Verified Releases (12 Uploaded Assets) & Clear `rc.3` vs Pre-release Boundary** — `v0.2.2-rc.3` (`073826c`) remains `Published Latest` with 3 primary artifacts (`.AppImage`, `arm64-v8a` `.apk`, CycloneDX SBOM) + 3 `.sha256` files + 6 keyless Cosign `.sigstore.json` bundles verified via `artifact-smoke` and `user-loop-evidence.yml`; post-`rc.3` fixes (`install-linux.sh`, Chromium E2EE acceptance, fail-closed `observe` Git diff secret redaction, and Codex/ACP crash recovery) are now also signed and published as GitHub **Pre-release** [`v0.2.2-rc.3-community.1`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1) (`artifact-smoke` [Run 44005955539](https://github.com/kamanager2012/dsh-community/actions/runs/44005955539) PASS across all 12 assets, without displacing `v0.2.2-rc.3` Latest).
+- **Supply-Chain Verified Releases (12 Uploaded Assets)** — `v0.2.2-rc.5` (commit `0a8009d`) is now **Published Latest** (`release` [Run 44453540672](https://github.com/kamanager2012/dsh-community/actions/runs/44453540672)), shipping 3 primary artifacts (Linux `.AppImage`, Android `arm64-v8a` `.apk`, official-runtime CycloneDX SBOM) + 3 `.sha256` files + 6 keyless Cosign `.sigstore.json` bundles verified across all 12 assets by `artifact-smoke` [Run 44454406621](https://github.com/kamanager2012/dsh-community/actions/runs/44454406621); all fixes from historical pre-release [`v0.2.2-rc.3-community.1`](https://github.com/kamanager2012/dsh-community/releases/tag/v0.2.2-rc.3-community.1) (`artifact-smoke` [Run 44005955539](https://github.com/kamanager2012/dsh-community/actions/runs/44005955539)) and `v0.2.2-rc.3` are incorporated and superseded by `v0.2.2-rc.5`.
 
 ---
 
@@ -194,7 +193,7 @@ Verification guide: [`docs/release.md#artifact-signing-keyless`](docs/release.md
 
 ### 2. Run from Source (WSL / Linux Terminal, Desktop, or Multi-Agent Remote)
 
-Requirements: Node.js 24.9+ (official `@deepseek-ai/dsh@0.2.2-rc.3` declares `engines.node >=24.9.0`; this workspace requires at least 22.15 and CI passes on Node 22), pnpm, and either a configured `DEEPSEEK_API_KEY` (for DSH / hybrid mode) or local **Claude Code / Codex CLI / OpenCode** binaries on `PATH` (for standalone Multi-Agent Remote Control Plane mode).  
+Requirements: Node.js 24.9+ (official `@deepseek-ai/dsh@0.2.2-rc.5` declares `engines.node >=24.9.0`; this workspace requires at least 22.15 and CI passes on Node 22), pnpm, and either a configured `DEEPSEEK_API_KEY` (for DSH / hybrid mode) or local **Claude Code / Codex CLI / OpenCode** binaries on `PATH` (for standalone Multi-Agent Remote Control Plane mode).  
 Since official `0.1.0-rc.8`, session JSONL uses `node:zlib` zstd APIs added in Node 22.15. Sessions continue to use the official `~/.dsh` data source.
 
 ```sh
